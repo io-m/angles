@@ -52,6 +52,7 @@ Not used. Native iOS `URLSession` is not a browser. Do not add wildcard CORS.
 - ATS: `NSAllowsLocalNetworking` only. Never `NSAllowsArbitraryLoads`.
 - No third-party networking libraries.
 - ViewModels arrive with screens. Keep networking free of UIKit/SwiftUI.
+- **Always install and launch on Joe’s iPhone** (`id=E5C20243-B9B7-571E-9EEA-14FC441C13B7`, bundle `app.angles.ios`). A Simulator compile is not done. See `.cursor/rules/ios-device.mdc`.
 
 ## Skills
 

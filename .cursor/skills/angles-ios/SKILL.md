@@ -32,3 +32,21 @@ Keep `Style` raw values identical to the backend: `stoic`, `optimistic`, `humoro
 ## UI
 
 Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData until History.
+
+## Device
+
+Always install and launch on **Joe’s iPhone**. Never treat a Simulator `xcodebuild` as verification.
+
+- Destination: `id=E5C20243-B9B7-571E-9EEA-14FC441C13B7`
+- Bundle: `app.angles.ios`
+
+```bash
+cd AnglesApp
+xcodebuild -project AnglesApp.xcodeproj -scheme AnglesApp -configuration Debug \
+  -destination 'id=E5C20243-B9B7-571E-9EEA-14FC441C13B7' \
+  -derivedDataPath DerivedData -allowProvisioningUpdates build
+xcrun devicectl device install app --device E5C20243-B9B7-571E-9EEA-14FC441C13B7 \
+  DerivedData/Build/Products/Debug-iphoneos/Angles.app
+xcrun devicectl device process launch --device E5C20243-B9B7-571E-9EEA-14FC441C13B7 \
+  app.angles.ios
+```

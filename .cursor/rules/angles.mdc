@@ -8,7 +8,7 @@ alwaysApply: true
 Private paid reframe app. No public feed in v1.
 
 - Backend: Hono + Node on Railway (`backend/`). Not Cloudflare Workers.
-- iOS: SwiftUI, iOS 17+, `URLSession` only (`AnglesApp/`).
+- iOS: SwiftUI, iOS 17+, `URLSession` only (`AnglesApp/`). Run on **Joe’s iPhone**, not Simulator.
 - LLM: `backend/src/lib/llmClient.ts` only. Never from the app.
 - Screen/feature order is `BUILD.md`. Build only the current item. Update that file in the same change as every new screen or feature.
 - Do not add StoreKit, SwiftData, Drizzle, or Better Auth until that row in `BUILD.md` is next (or the user asked for that task).

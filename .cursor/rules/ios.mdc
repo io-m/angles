@@ -13,3 +13,4 @@ alwaysApply: false
 - No SwiftData/Core Data until the History row in `BUILD.md`. Persistence TODO stays a comment.
 - Follow `BUILD.md` for screens. No third-party HTTP libraries.
 - After adding/removing source files, run `xcodegen generate` in `AnglesApp/`.
+- Always install and launch on **Joe’s iPhone** (`E5C20243-B9B7-571E-9EEA-14FC441C13B7`). Simulator build is not verification.

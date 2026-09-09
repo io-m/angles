@@ -1,0 +1,93 @@
+<h2 class="sr-only">Home screen mockup for the Angles app with a floating composer dock, a menu button that reveals a side drawer of links, and flippable history cards.</h2>
+<div style="display:flex; justify-content:center; padding:1rem 0;">
+<div style="width:280px; height:600px; background:var(--surface-2); border:0.5px solid var(--border); border-radius:28px; padding:0; position:relative; overflow:hidden;">
+
+  <div id="drawer" style="position:absolute; top:0; right:0; width:170px; height:100%; background:var(--surface-1); padding:50px 14px 14px; display:flex; flex-direction:column; gap:2px;">
+    <p style="font-size:11px; color:var(--text-muted); margin:0 0 8px; padding:0 6px;">Menu</p>
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 6px; border-radius:var(--radius);"><i class="ti ti-user" style="font-size:17px; color:var(--text-secondary);" aria-hidden="true"></i><span style="font-size:13px;">Profile</span></div>
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 6px; border-radius:var(--radius);"><i class="ti ti-settings" style="font-size:17px; color:var(--text-secondary);" aria-hidden="true"></i><span style="font-size:13px;">Settings</span></div>
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 6px; border-radius:var(--radius);"><i class="ti ti-credit-card" style="font-size:17px; color:var(--text-secondary);" aria-hidden="true"></i><span style="font-size:13px;">Subscription</span></div>
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 6px; border-radius:var(--radius);"><i class="ti ti-lifebuoy" style="font-size:17px; color:var(--text-secondary);" aria-hidden="true"></i><span style="font-size:13px;">Help & feedback</span></div>
+    <div style="display:flex; align-items:center; gap:10px; padding:10px 6px; border-radius:var(--radius);"><i class="ti ti-info-circle" style="font-size:17px; color:var(--text-secondary);" aria-hidden="true"></i><span style="font-size:13px;">About</span></div>
+  </div>
+
+  <div id="main" style="position:absolute; inset:0; background:var(--surface-2); transition:transform 0.35s; padding:12px;">
+    <div style="text-align:center; font-size:11px; color:var(--text-muted); padding:4px 0 10px;">9:41</div>
+    <p style="font-size:20px; font-weight:500; margin:0 0 12px; padding:0 4px;">Angles</p>
+
+    <div id="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; height:420px; overflow:hidden;"></div>
+
+    <div style="position:absolute; left:12px; right:12px; bottom:18px; display:flex; align-items:center; gap:8px;">
+      <div id="composer" style="flex:1; height:44px; border-radius:22px; background:var(--surface-1); border:0.5px solid var(--border); display:flex; align-items:center; padding:0 14px; color:var(--text-muted); font-size:13px; cursor:pointer;">
+        Tell me what's on your mind...
+      </div>
+      <button id="fab" aria-label="Open menu" style="width:40px; height:40px; border-radius:50%; background:var(--fill-primary); color:var(--on-primary); border:none; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">
+        <i class="ti ti-menu-2" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+
+  <div id="sheet" style="position:absolute; inset:0; background:var(--surface-2); display:none; flex-direction:column; padding:16px; z-index:5;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <p style="font-size:15px; font-weight:500; margin:0;">New reframe</p>
+      <button id="closeSheet" aria-label="Close" style="background:transparent; border:none; font-size:18px; color:var(--text-secondary);"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:flex-end; gap:10px;">
+      <div style="align-self:flex-end; max-width:80%; background:var(--bg-accent-muted); color:var(--text-accent); border-radius:12px; padding:10px 12px; font-size:13px;">I bombed my job interview today...</div>
+      <div style="align-self:flex-start; max-width:80%; background:var(--surface-1); border-radius:12px; padding:10px 12px; font-size:13px;">You can't control the outcome, only how you showed up. You showed up.</div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:12px; border-top:0.5px solid var(--border); padding-top:12px;">
+      <input type="text" placeholder="Tell me what's on your mind..." style="flex:1;" />
+      <button aria-label="Send" style="width:36px; height:36px; border-radius:50%; background:var(--fill-primary); color:var(--on-primary); border:none; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><i class="ti ti-arrow-up" style="font-size:16px;" aria-hidden="true"></i></button>
+    </div>
+  </div>
+
+</div>
+</div>
+<script>
+const cards = [
+  { style: "Stoic", front: "I bombed my job interview today...", back: "You can't control the outcome, only how you showed up." },
+  { style: "Humorous", front: "My friend cancelled on me again...", back: "Congrats, you've joined the club of every human who's sweated through this." },
+  { style: "Tough Love", front: "I keep procrastinating on my project...", back: "Stop waiting to feel ready. Start now and feel ready later." },
+  { style: "Optimistic", front: "I feel behind compared to my peers...", back: "Different pace, same direction. You're not behind, you're on your own clock." }
+];
+
+const grid = document.getElementById("grid");
+cards.forEach((c) => {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "perspective:800px; height:150px;";
+  wrap.innerHTML = [
+    '<div class="flipcard" data-flipped="false" style="position:relative; width:100%; height:100%; transition:transform 0.5s; transform-style:preserve-3d; cursor:pointer;">',
+      '<div style="position:absolute; inset:0; backface-visibility:hidden; background:var(--surface-1); border-radius:12px; padding:10px; display:flex; flex-direction:column; justify-content:space-between;">',
+        '<span style="font-size:10px; color:var(--text-accent); background:var(--bg-accent-muted); align-self:flex-start; padding:2px 8px; border-radius:var(--radius);">' + c.style + '</span>',
+        '<p style="font-size:12px; line-height:1.4; margin:0;">' + c.front + '</p>',
+      '</div>',
+      '<div style="position:absolute; inset:0; backface-visibility:hidden; transform:rotateY(180deg); background:var(--bg-accent); border-radius:12px; padding:10px; display:flex; align-items:center;">',
+        '<p style="font-size:11px; line-height:1.4; margin:0; color:var(--text-accent);">' + c.back + '</p>',
+      '</div>',
+    '</div>'
+  ].join("");
+  wrap.addEventListener("click", () => {
+    const fc = wrap.querySelector(".flipcard");
+    const flipped = fc.getAttribute("data-flipped") === "true";
+    fc.style.transform = flipped ? "rotateY(0deg)" : "rotateY(180deg)";
+    fc.setAttribute("data-flipped", flipped ? "false" : "true");
+  });
+  grid.appendChild(wrap);
+});
+
+const main = document.getElementById("main");
+const fab = document.getElementById("fab");
+let drawerOpen = false;
+fab.addEventListener("click", () => {
+  drawerOpen = !drawerOpen;
+  main.style.transform = drawerOpen ? "translateX(-140px)" : "translateX(0)";
+  fab.querySelector("i").className = drawerOpen ? "ti ti-x" : "ti ti-menu-2";
+});
+
+const composer = document.getElementById("composer");
+const sheet = document.getElementById("sheet");
+const closeSheet = document.getElementById("closeSheet");
+composer.addEventListener("click", () => { sheet.style.display = "flex"; });
+closeSheet.addEventListener("click", () => { sheet.style.display = "none"; });
+</script>

@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**1. Compose (home)** — fake data, no API.
+**2. Results** — fake data, no API.
 
 ## Core loop
 
@@ -29,7 +29,7 @@ Loading and error are **states on Results**, not their own screens.
 
 | # | Item | Kind | Status | Files | Shipped |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Compose (home) | screen | not started | | |
+| 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Circular drawer icons, gradient FAB, subtle dock glow, and blur-crossfade rotating title. |
 | 2 | Results | screen | not started | | |
 | 3 | Multi-style results | same screen as 2 | not started | | |
 | 4 | Hook up fetching | feature | not started | | |
@@ -37,12 +37,13 @@ Loading and error are **states on Results**, not their own screens.
 
 ### 1. Compose (home)
 
-Thought text field, four style chips (`stoic`, `optimistic`, `humorous`, `tough_love`), submit.
+Home shell with a scrollable fake-history card grid, composer dock, and sliding drawer.
 
-- Validate: empty thought, no style selected.
-- Submit navigates to Results with **hardcoded** `ReframeResult`s.
+- Cards flip between the original thought and a hardcoded `ReframeResult`.
+- Composer sheet validates empty thought and no style selected, then shows a hardcoded response in place.
+- Drawer destinations are centered-text navigation stubs only.
 - Use existing `Style` / `ReframeResult` models. Do not invent a parallel JSON shape.
-- No API. No paywall. App launches here.
+- No API or persistence. No paywall. App launches here.
 
 ### 2. Results
 
@@ -92,4 +93,10 @@ No settings/account screen until auth exists.
 
 Newest first. Add a line when something moves to `done`.
 
-_Nothing shipped yet._
+- 2026-09-09 — Compose (home): removed Help drawer item; nudged flipped card washes closer to white.
+- 2026-09-09 — Compose (home): circled drawer icons with new help/about glyphs, gradient FAB with glow, softer dock glow, and blur-crossfade title.
+- 2026-09-09 — Compose (home): softened category card backs to tints, calmed card shadow for a continuous plane, and replaced boxed drawer icons with a quiet rail.
+- 2026-09-09 — Compose (home): stripped glass sheen, colored glows, and double shadows; quiet white cards with one soft shadow, calm dock and FAB.
+- 2026-09-09 — Compose (home): quieted the canvas to a near-white lavender linear wash and removed the radial purple glows.
+- 2026-09-09 — Compose (home): glassy lavender canvas, category-matched AI card backs, borderless premium icons, elevated sparkle dock, and a rotating title.
+- 2026-09-09 — Compose (home): balanced the lavender canvas, added category-coded cards and a distinct answer face, and removed the drawer’s moving plane edge.
