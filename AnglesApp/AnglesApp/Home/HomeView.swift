@@ -81,6 +81,7 @@ struct HomeView: View {
             .overlay(alignment: .bottomTrailing) {
                 composerDock(safeBottom: safeBottom)
             }
+            .ignoresSafeArea(.keyboard)
         }
     }
 

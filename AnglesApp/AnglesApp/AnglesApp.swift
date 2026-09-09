@@ -35,6 +35,7 @@ struct AppRoot: View {
                 .ignoresSafeArea(.container, edges: .vertical)
             }
             .background(Color.clear)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.keyboard)
 
             ComposeFrost()
@@ -58,7 +59,6 @@ struct AppRoot: View {
             .allowsHitTesting(isComposePresented)
             .accessibilityHidden(!isComposePresented)
         }
-        .ignoresSafeArea(.keyboard)
         .background {
             GeometryReader { geo in
                 Color.clear

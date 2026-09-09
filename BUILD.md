@@ -99,6 +99,7 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-09 — Home: chat composer sits on the keyboard again; home layer still ignores it so the FAB does not slide.
 - 2026-09-09 — Home: FAB stays put when chat closes; card flip no longer hitches or double-taps haptics.
 - 2026-09-09 — Home: shorter bottom fade so it stays around the FAB.
 - 2026-09-09 — Home: FAB is near-black/near-white with a flipped sparkle; dark cards sit a notch deeper.
