@@ -10,6 +10,6 @@ alwaysApply: false
 - Networking: `URLSession` + async/await only. Surface failures as `APIError`.
 - `ReframeModels.swift` must match backend JSON (`tough_love`, not `toughLove` on the wire).
 - Debug API base URL: `http://localhost:8787`. Do not enable `NSAllowsArbitraryLoads`.
-- No SwiftData/Core Data until the history task. Persistence TODO stays a comment.
-- Do not add SwiftUI screens or third-party HTTP libraries unless asked.
+- No SwiftData/Core Data until the History row in `BUILD.md`. Persistence TODO stays a comment.
+- Follow `BUILD.md` for screens. No third-party HTTP libraries.
 - After adding/removing source files, run `xcodegen generate` in `AnglesApp/`.

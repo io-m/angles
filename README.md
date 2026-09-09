@@ -2,7 +2,7 @@
 
 Private iOS app: type a negative thought, get it reframed in Stoic, Optimistic, Humorous, or Tough Love. No public feed in v1. Paid-only after one onboarding taste.
 
-This repository is **scaffold only**. Networking, types, and agent docs are in place. Screens/UI, auth, database, and a real LLM provider come next.
+This repository is **scaffold only**. Networking, types, and agent docs are in place. What to build next lives in [`BUILD.md`](BUILD.md) — update that file whenever a screen or feature lands.
 
 ## Layout
 
@@ -55,4 +55,4 @@ Do not add `railway.json` / `railway.toml` (Config as Code is deprecated for new
 
 ## Constraints
 
-Do not invent screens, auth, a database, or extra product features in this pass.
+Follow [`BUILD.md`](BUILD.md). Do not invent screens, auth, a database, or extra product features outside that order.

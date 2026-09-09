@@ -31,4 +31,4 @@ Keep `Style` raw values identical to the backend: `stoic`, `optimistic`, `humoro
 
 ## UI
 
-Do not add screens here unless the user specified them. The `@main` placeholder is intentional. MVVM starts with the first real screen. No SwiftData yet.
+Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData until History.

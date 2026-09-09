@@ -26,10 +26,11 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/project.yml` — XcodeGen source of truth; run `xcodegen generate` after structural file changes
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
+- `BUILD.md` — **screen/feature order**. Update it in the same change as every new screen or feature.
 
 ## Do not invent
 
-No SwiftUI screens, StoreKit, SwiftData, Drizzle schema, Better Auth implementation, CORS “for browsers”, client-side LLM keys, or v2 social feed.
+Follow `BUILD.md`. Do not add screens or features that are not the current item. No StoreKit, SwiftData, Drizzle, Better Auth, CORS “for browsers”, client-side LLM keys, or v2 social feed until that row in `BUILD.md` is next.
 
 ## Type sync
 
