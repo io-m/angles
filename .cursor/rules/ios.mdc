@@ -1,0 +1,15 @@
+---
+description: SwiftUI and networking conventions for the Angles iOS app
+globs: AnglesApp/**/*.swift
+alwaysApply: false
+---
+
+# iOS
+
+- iOS 17+, SwiftUI. MVVM when screens exist; no ViewModels without a view.
+- Networking: `URLSession` + async/await only. Surface failures as `APIError`.
+- `ReframeModels.swift` must match backend JSON (`tough_love`, not `toughLove` on the wire).
+- Debug API base URL: `http://localhost:8787`. Do not enable `NSAllowsArbitraryLoads`.
+- No SwiftData/Core Data until the history task. Persistence TODO stays a comment.
+- Do not add SwiftUI screens or third-party HTTP libraries unless asked.
+- After adding/removing source files, run `xcodegen generate` in `AnglesApp/`.

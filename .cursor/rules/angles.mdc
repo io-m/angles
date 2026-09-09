@@ -1,0 +1,17 @@
+---
+description: Angles product and scaffold constraints for every session
+alwaysApply: true
+---
+
+# Angles
+
+Private paid reframe app. No public feed in v1.
+
+- Backend: Hono + Node on Railway (`backend/`). Not Cloudflare Workers.
+- iOS: SwiftUI, iOS 17+, `URLSession` only (`AnglesApp/`).
+- LLM: `backend/src/lib/llmClient.ts` only. Never from the app.
+- Do not add screens, StoreKit, SwiftData, Drizzle, or Better Auth unless the user asked for that task.
+- Keep `backend/src/types/index.ts` and `ReframeModels.swift` JSON-identical.
+- Do not log user thought text. Do not add browser CORS.
+- Auth hook is `authStub.ts` (TODO). DB will be Postgres + Drizzle (`postgres` driver) later.
+- Prefer failing a multi-style reframe over a partial `results` array.
