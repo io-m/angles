@@ -5,84 +5,30 @@ struct ReframeCardView: View {
     var onEdit: () -> Void = {}
     var onDelete: () -> Void = {}
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 226
     @State private var pagedSlideID: UUID?
-    @State private var showActions = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var cardShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
     }
 
-    private var showsPageDots: Bool {
-        card.slides.count > 1
-    }
-
-    private var currentIndex: Int {
-        if let pagedSlideID,
-           let index = card.slides.firstIndex(where: { $0.id == pagedSlideID })
-        {
-            return index
-        }
-
-        return 0
-    }
-
-    private var visibleDotIndices: [Int] {
-        let count = card.slides.count
-        guard count > 1 else {
-            return []
-        }
-
-        if count <= 3 {
-            return Array(0..<count)
-        }
-
-        if currentIndex <= 1 {
-            return [0, 1, 2]
-        }
-
-        if currentIndex >= count - 2 {
-            return [count - 3, count - 2, count - 1]
-        }
-
-        return [currentIndex - 1, currentIndex, currentIndex + 1]
-    }
-
     var body: some View {
-        ZStack(alignment: .bottom) {
-            pager
-
-            footer
-                .allowsHitTesting(false)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: cardHeight)
-        .clipShape(cardShape)
-        .overlay(alignment: .topLeading) {
-            if let slide = currentSlide {
-                stylePill(for: slide.result.style)
-                    .padding(.leading, 14)
-                    .padding(.top, 14)
+        pager
+            .frame(maxWidth: .infinity)
+            .frame(height: cardHeight)
+            .clipShape(cardShape)
+            .overlay {
+                cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
+                    .allowsHitTesting(false)
             }
-        }
-        .overlay(alignment: .topTrailing) {
-            menuButton
-                .padding(.trailing, 10)
-                .padding(.top, 10)
-        }
-        .overlay {
-            cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
-                .allowsHitTesting(false)
-        }
-        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-        .onAppear {
-            if pagedSlideID == nil {
-                pagedSlideID = card.slides.first?.id
+            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+            .onAppear {
+                if pagedSlideID == nil {
+                    pagedSlideID = card.slides.first?.id
+                }
             }
-        }
     }
 
     @ViewBuilder
@@ -90,10 +36,15 @@ struct ReframeCardView: View {
         if card.slides.count > 1 {
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
-                    ForEach(card.slides) { slide in
+                    ForEach(Array(card.slides.enumerated()), id: \.element.id) { index, slide in
                         FlipReframeCard(
                             thought: slide.thought,
-                            result: slide.result
+                            result: slide.result,
+                            dateLabel: HomeViewModel.dateLabel(for: card.createdAt),
+                            slideIndex: index,
+                            slideCount: card.slides.count,
+                            onEdit: onEdit,
+                            onDelete: onDelete
                         )
                         .containerRelativeFrame(.horizontal)
                         .id(slide.id)
@@ -109,80 +60,126 @@ struct ReframeCardView: View {
         } else if let slide = card.slides.first {
             FlipReframeCard(
                 thought: slide.thought,
-                result: slide.result
+                result: slide.result,
+                dateLabel: HomeViewModel.dateLabel(for: card.createdAt),
+                slideIndex: 0,
+                slideCount: card.slides.count,
+                onEdit: onEdit,
+                onDelete: onDelete
+            )
+        }
+    }
+}
+
+private struct FlipReframeCard: View {
+    let thought: String
+    let result: ReframeResult
+    let dateLabel: String
+    let slideIndex: Int
+    let slideCount: Int
+    var onEdit: () -> Void
+    var onDelete: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isFlipped = false
+    @State private var showActions = false
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    private var styleAppearance: CardStyleAppearance {
+        CardStyleAppearance(style: result.style)
+    }
+
+    var body: some View {
+        FlipStack(progress: isFlipped ? 1 : 0) {
+            frontFace
+        } back: {
+            backFace
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .compositingGroup()
+        .clipped()
+        .contentShape(Rectangle())
+        .onTapGesture(perform: flip)
+        .sensoryFeedback(.impact(weight: .light), trigger: isFlipped)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            isFlipped
+                ? "\(result.style.displayName) answer. \(result.reframe)"
+                : "\(result.style.displayName). \(thought)"
+        )
+        .accessibilityHint(isFlipped ? "Shows the original thought" : "Shows the answer")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var frontFace: some View {
+        cardFace(background: frontSurface) {
+            faceContent(
+                icon: styleAppearance.systemImage,
+                title: result.style.displayName,
+                text: thought,
+                textFont: .body.weight(.semibold)
             )
         }
     }
 
-    private var footer: some View {
-        ZStack(alignment: .bottom) {
-            pageDots
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 14)
+    private var backFace: some View {
+        cardFace(background: backSurface) {
+            faceContent(
+                icon: "sparkle",
+                title: result.style.displayName,
+                text: result.reframe,
+                textFont: .callout.weight(.medium)
+            )
+        }
+    }
 
-            HStack {
-                Text(HomeViewModel.dateLabel(for: card.createdAt))
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .lineLimit(1)
+    private func faceContent(
+        icon: String,
+        title: String,
+        text: String,
+        textFont: Font
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 8) {
+                stylePill(icon: icon, title: title)
 
-                Spacer(minLength: 0)
+                Spacer(minLength: 8)
+
+                menuButton
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
+
+            Text(text)
+                .font(textFont)
+                .foregroundStyle(theme.ink)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 0)
+
+            footer
         }
-        .frame(height: 34, alignment: .bottom)
     }
 
-    private var pageDots: some View {
-        HStack(spacing: 5) {
-            ForEach(visibleDotIndices, id: \.self) { index in
-                let isActive = index == currentIndex
-                Capsule()
-                    .fill(isActive ? theme.ink : theme.faint)
-                    .frame(width: isActive ? 18 : 6, height: 6)
-            }
-        }
-        .frame(minHeight: 6)
-        .animation(dotAnimation, value: currentIndex)
-        .opacity(showsPageDots ? 1 : 0)
-        .accessibilityHidden(true)
-    }
-
-    private var dotAnimation: Animation? {
-        reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.72)
-    }
-
-    private var currentSlide: HomeCardSlide? {
-        if let pagedSlideID,
-           let slide = card.slides.first(where: { $0.id == pagedSlideID })
-        {
-            return slide
-        }
-
-        return card.slides.first
-    }
-
-    private func stylePill(for style: Style) -> some View {
-        let appearance = CardStyleAppearance(style: style)
-
-        return HStack(spacing: 6) {
-            Image(systemName: appearance.systemImage)
+    private func stylePill(icon: String, title: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
                 .symbolRenderingMode(.hierarchical)
                 .font(.system(size: 12, weight: .semibold))
 
-            Text(style.displayName)
+            Text(title)
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
         }
-        .foregroundStyle(appearance.ink)
+        .foregroundStyle(styleAppearance.ink)
         .padding(.leading, 8)
         .padding(.trailing, 10)
         .padding(.vertical, 5)
-        .background(appearance.ink.opacity(0.14), in: Capsule())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(style.displayName)
+        .background(styleAppearance.ink.opacity(0.14), in: Capsule())
+        .accessibilityHidden(true)
     }
 
     private var menuButton: some View {
@@ -232,76 +229,60 @@ struct ReframeCardView: View {
         .padding(.vertical, 8)
         .frame(minWidth: 180)
     }
-}
 
-private struct FlipReframeCard: View {
-    let thought: String
-    let result: ReframeResult
+    private var footer: some View {
+        ZStack(alignment: .bottom) {
+            pageDots
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 2)
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var isFlipped = false
+            HStack {
+                Text(dateLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .lineLimit(1)
 
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    private var styleAppearance: CardStyleAppearance {
-        CardStyleAppearance(style: result.style)
-    }
-
-    var body: some View {
-        Button(action: flip) {
-            FlipStack(progress: isFlipped ? 1 : 0) {
-                frontFace
-            } back: {
-                backFace
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .compositingGroup()
-            .clipped()
-            .contentShape(Rectangle())
         }
-        .buttonStyle(CardFlipButtonStyle())
-        .sensoryFeedback(.impact(weight: .light), trigger: isFlipped)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            isFlipped
-                ? "\(result.style.displayName) reframe. \(result.reframe)"
-                : "\(result.style.displayName). \(thought)"
-        )
-        .accessibilityHint(isFlipped ? "Shows the original thought" : "Shows the reframe")
+        .frame(height: 22, alignment: .bottom)
+        .accessibilityHidden(true)
     }
 
-    private var frontFace: some View {
-        cardFace(background: frontSurface) {
-            faceContent(
-                text: thought,
-                textFont: .body.weight(.semibold)
-            )
+    private var pageDots: some View {
+        let indices = visibleDotIndices
+        return HStack(spacing: 5) {
+            ForEach(indices, id: \.self) { index in
+                let isActive = index == slideIndex
+                Capsule()
+                    .fill(isActive ? theme.ink : theme.faint)
+                    .frame(width: isActive ? 18 : 6, height: 6)
+            }
         }
+        .frame(minHeight: 6)
+        .opacity(slideCount > 1 ? 1 : 0)
+        .accessibilityHidden(true)
     }
 
-    private var backFace: some View {
-        cardFace(background: backSurface) {
-            faceContent(
-                text: result.reframe,
-                textFont: .callout.weight(.medium)
-            )
+    private var visibleDotIndices: [Int] {
+        let count = slideCount
+        guard count > 1 else {
+            return []
         }
-    }
 
-    private func faceContent(text: String, textFont: Font) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(text)
-                .font(textFont)
-                .foregroundStyle(theme.ink)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Spacer(minLength: 0)
+        if count <= 3 {
+            return Array(0..<count)
         }
-        .padding(.top, 36)
-        .padding(.bottom, 22)
+
+        if slideIndex <= 1 {
+            return [0, 1, 2]
+        }
+
+        if slideIndex >= count - 2 {
+            return [count - 3, count - 2, count - 1]
+        }
+
+        return [slideIndex - 1, slideIndex, slideIndex + 1]
     }
 
     private var frontSurface: Color {
@@ -335,12 +316,6 @@ private struct FlipReframeCard: View {
         withAnimation(.timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)) {
             isFlipped.toggle()
         }
-    }
-}
-
-private struct CardFlipButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
     }
 }
 

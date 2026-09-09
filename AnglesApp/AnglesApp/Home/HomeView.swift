@@ -69,7 +69,7 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, Layout.horizontalPadding)
                     .padding(.top, safeTop + 6)
-                    .padding(.bottom, safeBottom + 92)
+                    .padding(.bottom, safeBottom + 80)
                 }
                 .scrollIndicators(.hidden)
                 .frame(width: geometry.size.width, height: geometry.size.height)
@@ -140,7 +140,7 @@ struct HomeView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: safeBottom + 104)
+            .frame(height: safeBottom + 56)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -148,41 +148,44 @@ struct HomeView: View {
     }
 
     private func composerDock(safeBottom: CGFloat) -> some View {
-        Button {
-            presentCompose()
-        } label: {
-            HStack(spacing: 12) {
-                CircleIcon(
-                    systemName: "sparkle",
-                    fill: theme.ink,
-                    symbol: theme.paper,
-                    weight: .semibold
-                )
+        HStack {
+            Spacer(minLength: 0)
 
-                Text("Tell me what's on your mind...")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                CircleIcon(
-                    systemName: "arrow.up",
-                    fill: theme.line,
-                    symbol: theme.ink,
-                    weight: .semibold
-                )
-                .accessibilityHidden(true)
+            Button {
+                presentCompose()
+            } label: {
+                Image(systemName: "sparkle")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(fabSymbol)
+                    .frame(width: 56, height: 56)
+                    .background(fabFill, in: Circle())
+                    .overlay {
+                        Circle()
+                            .strokeBorder(fabSymbol.opacity(0.12), lineWidth: 0.5)
+                    }
+                    .shadow(color: .black.opacity(0.16), radius: 16, y: 7)
+                    .shadow(color: accentPalette.accent.opacity(0.18), radius: 12, y: 4)
+                    .contentShape(Circle())
             }
-            .padding(10)
-            .background(theme.surface, in: Capsule())
-            .shadow(color: .black.opacity(0.08), radius: 16, y: 7)
-            .shadow(color: accentPalette.accent.opacity(0.16), radius: 10, y: 4)
-            .contentShape(Capsule())
+            .buttonStyle(.plain)
+            .accessibilityLabel("Inspire me")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("New reframe")
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.bottom, max(safeBottom, 10) + 12)
+    }
+
+    private var fabFill: Color {
+        if colorScheme == .dark {
+            return Color(red: 0xFB / 255, green: 0xFA / 255, blue: 0xF8 / 255)
+        }
+        return Color(red: 0x0C / 255, green: 0x0B / 255, blue: 0x0A / 255)
+    }
+
+    private var fabSymbol: Color {
+        if colorScheme == .dark {
+            return Color(red: 0x14 / 255, green: 0x13 / 255, blue: 0x12 / 255)
+        }
+        return Color(red: 0xFD / 255, green: 0xFB / 255, blue: 0xF8 / 255)
     }
 
     private func presentCompose() {

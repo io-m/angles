@@ -99,6 +99,15 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-09 — Home: shorter bottom fade so it stays around the FAB.
+- 2026-09-09 — Home: FAB is near-black/near-white with a flipped sparkle; dark cards sit a notch deeper.
+- 2026-09-09 — Home: Inspire me is a trailing frosted FAB with an accent-gradient sparkle.
+- 2026-09-09 — Home: quieter Inspire me type; dark chat composer matches the keyboard.
+- 2026-09-09 — Home: Inspire me pill is larger, with a contrasting sparkle circle inside.
+- 2026-09-09 — Home: compact centered Inspire me pill replaces the full-width composer dock.
+- 2026-09-09 — Home: AI answer wash is stronger in dark mode so the diagonal tint actually reads.
+- 2026-09-09 — Home: date, dots, and ⋮ flip with the card; answer pill uses the sparkle icon.
+- 2026-09-09 — Home: flipped card pill uses the sparkle answer icon instead of the style glyph.
 - 2026-09-09 — Home: style icon+name share a pill; ⋮ opens Edit (reopen thread) or Delete.
 - 2026-09-09 — Home: thinner style chip; stoic slate, optimistic gold, humorous orchid, tough love ember.
 - 2026-09-09 — Home: quieter AI wash at the bottom; top icon and style badge share one 40pt line.

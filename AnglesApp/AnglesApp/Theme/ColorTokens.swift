@@ -20,7 +20,7 @@ struct ColorTokens {
     static let faintDark = Color(red: 0x5E / 255, green: 0x5C / 255, blue: 0x59 / 255)
     static let lineDark = Color.white.opacity(0.10)
     static let surfaceLight = Color.white
-    static let surfaceDark = Color(red: 0x32 / 255, green: 0x31 / 255, blue: 0x30 / 255)
+    static let surfaceDark = Color(red: 0x27 / 255, green: 0x26 / 255, blue: 0x25 / 255)
 
     static let paperLightRGB = (253.0 / 255, 251.0 / 255, 248.0 / 255)
     static let greyLightRGB = (240.0 / 255, 239.0 / 255, 236.0 / 255)

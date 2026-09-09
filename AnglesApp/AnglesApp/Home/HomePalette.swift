@@ -51,20 +51,32 @@ struct CardStyleAppearance {
     }
 
     /// Top-left fades out; color collects toward the bottom-right.
-    var washGradient: LinearGradient {
-        LinearGradient(
-            stops: [
-                .init(color: ink.opacity(0.02), location: 0),
-                .init(color: ink.opacity(0.05), location: 0.55),
-                .init(color: ink.opacity(0.10), location: 1)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
     func washFill(over surface: Color) -> some View {
-        surface.overlay(washGradient)
+        StyleWashFill(ink: ink, surface: surface)
+    }
+}
+
+private struct StyleWashFill: View {
+    let ink: Color
+    let surface: Color
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let top = colorScheme == .dark ? 0.10 : 0.02
+        let mid = colorScheme == .dark ? 0.24 : 0.05
+        let bottom = colorScheme == .dark ? 0.42 : 0.10
+
+        surface.overlay(
+            LinearGradient(
+                stops: [
+                    .init(color: ink.opacity(top), location: 0),
+                    .init(color: ink.opacity(mid), location: 0.55),
+                    .init(color: ink.opacity(bottom), location: 1)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
     }
 }
 

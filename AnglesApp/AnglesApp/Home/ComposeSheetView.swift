@@ -534,6 +534,14 @@ struct ComposeSheetView: View {
         .accessibilityHidden(true)
     }
 
+    /// Dark keyboard chrome is near #2B2B2A; keep the field in that family so they read as one slab.
+    private var composerFill: Color {
+        if colorScheme == .dark {
+            return Color(red: 0x2B / 255, green: 0x2B / 255, blue: 0x2A / 255)
+        }
+        return theme.surface
+    }
+
     private var composerBar: some View {
         HStack(alignment: .center, spacing: 0) {
             TextField(
@@ -554,7 +562,7 @@ struct ComposeSheetView: View {
         }
         .frame(minHeight: 56)
         .background(
-            theme.surface,
+            composerFill,
             in: RoundedRectangle(cornerRadius: 28, style: .continuous)
         )
         .overlay {
