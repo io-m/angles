@@ -24,6 +24,7 @@ struct AnglesApp: App {
                 }
                 .tint(.anglesAccent)
             }
+            .ignoresSafeArea(.keyboard)
         }
     }
 }

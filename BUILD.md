@@ -29,7 +29,7 @@ Loading and error are **states on Results**, not their own screens.
 
 | # | Item | Kind | Status | Files | Shipped |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Circular drawer icons, gradient FAB, subtle dock glow, and blur-crossfade rotating title. |
+| 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Frosted overlay, inverted bubbles, pill composer, and header style popover. |
 | 2 | Results | screen | not started | | |
 | 3 | Multi-style results | same screen as 2 | not started | | |
 | 4 | Hook up fetching | feature | not started | | |
@@ -40,7 +40,7 @@ Loading and error are **states on Results**, not their own screens.
 Home shell with a scrollable fake-history card grid, composer dock, and sliding drawer.
 
 - Cards flip between the original thought and a hardcoded `ReframeResult`.
-- Composer sheet validates empty thought and no style selected, then shows a hardcoded response in place.
+- Composer overlay validates empty thought and no style selected, then cooks a hardcoded response in place.
 - Drawer destinations are centered-text navigation stubs only.
 - Use existing `Style` / `ReframeResult` models. Do not invent a parallel JSON shape.
 - No API or persistence. No paywall. App launches here.
@@ -93,6 +93,12 @@ No settings/account screen until auth exists.
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-09 — Compose (home): fade overlay chrome with the frost, slightly faster on close so nothing lingers.
+- 2026-09-09 — Compose (home): keep the home grid still while the frost overlay fades.
+- 2026-09-09 — Compose (home): fixed composer to 8pt bottom padding so it no longer jumps with the keyboard.
+- 2026-09-09 — Compose (home): Bandaid-matched composer (newline Return, Send on text, Optimistic default), smoother frost close, wider dock–FAB gap.
+- 2026-09-09 — Compose (home): subtle bell-shaped accent glow around the overlay composer.
+- 2026-09-09 — Compose (home): frosted overlay, inverted bubbles, cooking line, pill composer, and a header style popover.
 - 2026-09-09 — Compose (home): removed Help drawer item; nudged flipped card washes closer to white.
 - 2026-09-09 — Compose (home): circled drawer icons with new help/about glyphs, gradient FAB with glow, softer dock glow, and blur-crossfade title.
 - 2026-09-09 — Compose (home): softened category card backs to tints, calmed card shadow for a continuous plane, and replaced boxed drawer icons with a quiet rail.

@@ -49,9 +49,13 @@ final class HomeViewModel: ObservableObject {
     let cards: [HomeCard]
 
     @Published var composeText = ""
-    @Published var selectedStyle: Style?
+    @Published var selectedStyle: Style? = .optimistic
     @Published private(set) var submittedThought: String?
     @Published private(set) var submittedResult: ReframeResult?
+    @Published private(set) var isCooking = false
+    @Published private(set) var cookHaptic = 0
+
+    private var cookTask: Task<Void, Never>?
 
     init(cards: [HomeCard]? = nil) {
         self.cards = cards ?? Self.sampleCards
@@ -59,32 +63,58 @@ final class HomeViewModel: ObservableObject {
 
     var canSubmit: Bool {
         !composeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && selectedStyle != nil
+            && !isCooking
     }
 
     func selectStyle(_ style: Style) {
         selectedStyle = selectedStyle == style ? nil : style
     }
 
-    func submitCompose() {
+    func submitCompose(animatedDelay: Bool) {
         let thought = composeText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !thought.isEmpty, let selectedStyle else {
+        guard !thought.isEmpty, !isCooking else {
             return
         }
 
+        let style = selectedStyle ?? .optimistic
+
+        cookTask?.cancel()
         submittedThought = thought
-        submittedResult = ReframeResult(
-            style: selectedStyle,
-            reframe: Self.fakeReframe(for: selectedStyle)
-        )
+        submittedResult = nil
         composeText = ""
+        isCooking = true
+
+        cookTask = Task { @MainActor in
+            if animatedDelay {
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+            }
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            submittedResult = ReframeResult(
+                style: style,
+                reframe: Self.fakeReframe(for: style)
+            )
+            isCooking = false
+            cookHaptic += 1
+            cookTask = nil
+        }
     }
 
     func resetCompose() {
+        cookTask?.cancel()
+        cookTask = nil
         composeText = ""
-        selectedStyle = nil
+        selectedStyle = .optimistic
         submittedThought = nil
         submittedResult = nil
+        isCooking = false
     }
 
     private static func fakeReframe(for style: Style) -> String {

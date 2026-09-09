@@ -34,6 +34,31 @@ extension Color {
 
     static let anglesPlaceholder = anglesAccent.opacity(0.42)
 
+    static let anglesInk = adaptive(
+        light: UIColor(red: 0.13, green: 0.10, blue: 0.20, alpha: 1),
+        dark: UIColor(red: 0.96, green: 0.94, blue: 0.98, alpha: 1)
+    )
+
+    static let anglesPaper = adaptive(
+        light: UIColor(red: 0.995, green: 0.99, blue: 1.00, alpha: 1),
+        dark: UIColor(red: 0.07, green: 0.065, blue: 0.075, alpha: 1)
+    )
+
+    static let anglesHairline = adaptive(
+        light: UIColor.black.withAlphaComponent(0.05),
+        dark: UIColor.white.withAlphaComponent(0.07)
+    )
+
+    static let anglesShadowSoft = adaptive(
+        light: UIColor.black.withAlphaComponent(0.06),
+        dark: UIColor.white.withAlphaComponent(0.04)
+    )
+
+    static let anglesShadowLift = adaptive(
+        light: UIColor.black.withAlphaComponent(0.10),
+        dark: UIColor.white.withAlphaComponent(0.07)
+    )
+
     fileprivate static func adaptive(light: UIColor, dark: UIColor) -> Color {
         Color(
             uiColor: UIColor { traits in

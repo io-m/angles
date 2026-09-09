@@ -7,7 +7,7 @@ struct HomeView: View {
         static let drawerWidth: CGFloat = 88
         static let contentShift: CGFloat = 96
         static let fabSize: CGFloat = 56
-        static let fabGap: CGFloat = 8
+        static let fabGap: CGFloat = 16
     }
 
     let onOpenDestination: (DrawerDestination) -> Void
@@ -32,6 +32,20 @@ struct HomeView: View {
     }
 
     var body: some View {
+        ZStack {
+            homeChrome
+                .ignoresSafeArea(.keyboard)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
+
+            composeOverlay
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .tint(.anglesAccent)
+    }
+
+    private var homeChrome: some View {
         GeometryReader { geometry in
             let safeTop = safeAreaInsets.top
             let safeBottom = safeAreaInsets.bottom
@@ -67,11 +81,32 @@ struct HomeView: View {
                 menuButton(safeBottom: safeBottom)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .tint(.anglesAccent)
-        .sheet(isPresented: $isComposePresented, onDismiss: viewModel.resetCompose) {
-            ComposeSheetView(viewModel: viewModel)
+    }
+
+    private var composeOverlay: some View {
+        ZStack {
+            ComposeFrost()
+                .opacity(isComposePresented ? 1 : 0)
+                .allowsHitTesting(false)
+                .ignoresSafeArea()
+                .animation(ComposeMotion.fade(reduceMotion), value: isComposePresented)
+
+            ComposeSheetView(
+                viewModel: viewModel,
+                safeAreaInsets: safeAreaInsets,
+                isActive: isComposePresented,
+                onClose: closeCompose
+            )
+            .compositingGroup()
+            .opacity(isComposePresented ? 1 : 0)
+            .animation(
+                ComposeMotion.contentFade(reduceMotion, presented: isComposePresented),
+                value: isComposePresented
+            )
+            .allowsHitTesting(isComposePresented)
+            .accessibilityHidden(!isComposePresented)
         }
+        .allowsHitTesting(isComposePresented)
     }
 
     private func mainChrome(
@@ -136,8 +171,7 @@ struct HomeView: View {
     private func composerDock(safeBottom: CGFloat) -> some View {
         HStack(spacing: Layout.fabGap) {
             Button {
-                viewModel.resetCompose()
-                isComposePresented = true
+                presentCompose()
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "sparkle")
@@ -167,8 +201,6 @@ struct HomeView: View {
         }
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.bottom, max(safeBottom, 10) + 12)
-        .opacity(isComposePresented ? 0 : 1)
-        .allowsHitTesting(!isComposePresented)
     }
 
     private func drawer(safeTop: CGFloat, safeBottom: CGFloat) -> some View {
@@ -238,8 +270,6 @@ struct HomeView: View {
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.bottom, max(safeBottom, 10) + 12)
         }
-        .opacity(isComposePresented ? 0 : 1)
-        .allowsHitTesting(!isComposePresented)
     }
 
     private var closeDragGesture: some Gesture {
@@ -354,6 +384,19 @@ struct HomeView: View {
 
     private func resetDragTracking() {
         dragTracker.reset()
+    }
+
+    private func presentCompose() {
+        if isMenuActive {
+            closeMenu()
+        }
+
+        viewModel.resetCompose()
+        isComposePresented = true
+    }
+
+    private func closeCompose() {
+        isComposePresented = false
     }
 
     private func toggleMenu() {
