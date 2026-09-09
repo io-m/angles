@@ -44,18 +44,25 @@ extension Style {
     }
 }
 
+struct ComposeTurn: Identifiable, Equatable {
+    let id: UUID
+    let thought: String
+    var result: ReframeResult?
+    var error: String?
+}
+
 @MainActor
 final class HomeViewModel: ObservableObject {
     let cards: [HomeCard]
 
     @Published var composeText = ""
-    @Published var selectedStyle: Style? = .optimistic
-    @Published private(set) var submittedThought: String?
-    @Published private(set) var submittedResult: ReframeResult?
+    @Published var selectedStyle: Style = .optimistic
+    @Published private(set) var turns: [ComposeTurn] = []
     @Published private(set) var isCooking = false
     @Published private(set) var cookHaptic = 0
 
     private var cookTask: Task<Void, Never>?
+    private var cookingTurnID: UUID?
 
     init(cards: [HomeCard]? = nil) {
         self.cards = cards ?? Self.sampleCards
@@ -66,8 +73,15 @@ final class HomeViewModel: ObservableObject {
             && !isCooking
     }
 
-    func selectStyle(_ style: Style) {
-        selectedStyle = selectedStyle == style ? nil : style
+    func selectStyle(_ style: Style, animatedDelay: Bool) {
+        let shouldRecook = !turns.isEmpty && selectedStyle != style
+        selectedStyle = style
+
+        guard shouldRecook else {
+            return
+        }
+
+        beginCook(animatedDelay: animatedDelay)
     }
 
     func submitCompose(animatedDelay: Bool) {
@@ -76,12 +90,44 @@ final class HomeViewModel: ObservableObject {
             return
         }
 
-        let style = selectedStyle ?? .optimistic
+        let turn = ComposeTurn(id: UUID(), thought: thought)
+        turns.append(turn)
+        composeText = ""
+        beginCook(animatedDelay: animatedDelay, turnID: turn.id)
+    }
+
+    func retryCook(animatedDelay: Bool) {
+        guard let last = turns.last, !isCooking else {
+            return
+        }
+
+        beginCook(animatedDelay: animatedDelay, turnID: last.id)
+    }
+
+    func resetCompose() {
+        cookTask?.cancel()
+        cookTask = nil
+        cookingTurnID = nil
+        composeText = ""
+        selectedStyle = .optimistic
+        turns = []
+        isCooking = false
+    }
+
+    private func beginCook(animatedDelay: Bool, turnID: UUID? = nil) {
+        let targetID = turnID ?? turns.last?.id
+        guard let targetID, turns.contains(where: { $0.id == targetID }) else {
+            return
+        }
+
+        let style = selectedStyle
 
         cookTask?.cancel()
-        submittedThought = thought
-        submittedResult = nil
-        composeText = ""
+        cookingTurnID = targetID
+        updateTurn(targetID) { turn in
+            turn.result = nil
+            turn.error = nil
+        }
         isCooking = true
 
         cookTask = Task { @MainActor in
@@ -97,24 +143,30 @@ final class HomeViewModel: ObservableObject {
                 return
             }
 
-            submittedResult = ReframeResult(
-                style: style,
-                reframe: Self.fakeReframe(for: style)
-            )
+            updateTurn(targetID) { turn in
+                turn.result = ReframeResult(
+                    style: style,
+                    reframe: Self.fakeReframe(for: style)
+                )
+                turn.error = nil
+            }
             isCooking = false
+            cookingTurnID = nil
             cookHaptic += 1
             cookTask = nil
         }
     }
 
-    func resetCompose() {
-        cookTask?.cancel()
-        cookTask = nil
-        composeText = ""
-        selectedStyle = .optimistic
-        submittedThought = nil
-        submittedResult = nil
-        isCooking = false
+    private func updateTurn(_ id: UUID, mutate: (inout ComposeTurn) -> Void) {
+        guard let index = turns.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        mutate(&turns[index])
+    }
+
+    func isCookingTurn(_ turn: ComposeTurn) -> Bool {
+        isCooking && cookingTurnID == turn.id
     }
 
     private static func fakeReframe(for style: Style) -> String {

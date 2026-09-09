@@ -13,28 +13,18 @@ struct ReframeCardView: View {
 
     var body: some View {
         Button(action: flip) {
-            Group {
-                if reduceMotion {
-                    if isFlipped {
-                        backFace
-                    } else {
-                        frontFace
-                    }
-                } else {
-                    frontFace.modifier(
-                        FlipEffect(
-                            progress: isFlipped ? 1 : 0,
-                            back: backFace
-                        )
-                    )
-                }
+            FlipStack(progress: isFlipped ? 1 : 0) {
+                frontFace
+            } back: {
+                backFace
             }
             .frame(maxWidth: .infinity)
             .frame(height: cardHeight)
             .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
             .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardFlipButtonStyle())
+        .sensoryFeedback(.impact(weight: .light), trigger: isFlipped)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             isFlipped
@@ -89,6 +79,10 @@ struct ReframeCardView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(styleAppearance.ink.opacity(0.09), lineWidth: 1)
         }
     }
 
@@ -146,40 +140,58 @@ struct ReframeCardView: View {
             withTransaction(transaction) {
                 isFlipped.toggle()
             }
-        } else {
-            withAnimation(.smooth(duration: 0.48)) {
-                isFlipped.toggle()
-            }
+            return
+        }
+
+        withAnimation(.timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)) {
+            isFlipped.toggle()
         }
     }
 }
 
-private struct FlipEffect<Back: View>: AnimatableModifier {
-    var progress: Double
-    let back: Back
+private struct CardFlipButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+    }
+}
 
-    var animatableData: Double {
+private struct FlipStack<Front: View, Back: View>: View, Animatable {
+    var progress: CGFloat
+    var front: Front
+    var back: Back
+
+    init(
+        progress: CGFloat,
+        @ViewBuilder front: () -> Front,
+        @ViewBuilder back: () -> Back
+    ) {
+        self.progress = progress
+        self.front = front()
+        self.back = back()
+    }
+
+    var animatableData: CGFloat {
         get { progress }
         set { progress = newValue }
     }
 
-    func body(content: Content) -> some View {
+    var body: some View {
+        let showingBack = progress > 0.5
+
         ZStack {
-            content
-                .opacity(progress < 0.5 ? 1 : 0)
+            front
+                .compositingGroup()
+                .opacity(showingBack ? 0 : 1)
 
             back
-                .rotation3DEffect(
-                    .degrees(180),
-                    axis: (x: 0, y: 1, z: 0),
-                    perspective: 1.0 / 800.0
-                )
-                .opacity(progress < 0.5 ? 0 : 1)
+                .compositingGroup()
+                .scaleEffect(x: -1, y: 1)
+                .opacity(showingBack ? 1 : 0)
         }
         .rotation3DEffect(
-            .degrees(progress * 180),
+            .radians(Double(progress) * .pi),
             axis: (x: 0, y: 1, z: 0),
-            perspective: 1.0 / 800.0
+            perspective: 0.55
         )
     }
 }

@@ -13,36 +13,35 @@ struct HomeView: View {
     let onOpenDestination: (DrawerDestination) -> Void
     let safeAreaInsets: EdgeInsets
 
-    @StateObject private var viewModel = HomeViewModel()
+    @ObservedObject var viewModel: HomeViewModel
+    @Binding var isComposePresented: Bool
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var menuProgress: CGFloat = 0
     @State private var isMenuActive = false
-    @State private var isComposePresented = false
 
     @State private var dragTracker = DrawerDragTracker()
 
+    @MainActor
     init(
+        viewModel: HomeViewModel? = nil,
         safeAreaInsets: EdgeInsets = EdgeInsets(),
+        isComposePresented: Binding<Bool> = .constant(false),
         onOpenDestination: @escaping (DrawerDestination) -> Void = { _ in }
     ) {
+        self.viewModel = viewModel ?? HomeViewModel()
         self.safeAreaInsets = safeAreaInsets
+        self._isComposePresented = isComposePresented
         self.onOpenDestination = onOpenDestination
     }
 
     var body: some View {
-        ZStack {
-            homeChrome
-                .ignoresSafeArea(.keyboard)
-                .transaction { transaction in
-                    transaction.animation = nil
-                }
-
-            composeOverlay
-        }
-        .toolbar(.hidden, for: .navigationBar)
-        .tint(.anglesAccent)
+        homeChrome
+            .ignoresSafeArea(.keyboard)
+            .toolbar(.hidden, for: .navigationBar)
+            .tint(.anglesAccent)
     }
 
     private var homeChrome: some View {
@@ -81,32 +80,6 @@ struct HomeView: View {
                 menuButton(safeBottom: safeBottom)
             }
         }
-    }
-
-    private var composeOverlay: some View {
-        ZStack {
-            ComposeFrost()
-                .opacity(isComposePresented ? 1 : 0)
-                .allowsHitTesting(false)
-                .ignoresSafeArea()
-                .animation(ComposeMotion.fade(reduceMotion), value: isComposePresented)
-
-            ComposeSheetView(
-                viewModel: viewModel,
-                safeAreaInsets: safeAreaInsets,
-                isActive: isComposePresented,
-                onClose: closeCompose
-            )
-            .compositingGroup()
-            .opacity(isComposePresented ? 1 : 0)
-            .animation(
-                ComposeMotion.contentFade(reduceMotion, presented: isComposePresented),
-                value: isComposePresented
-            )
-            .allowsHitTesting(isComposePresented)
-            .accessibilityHidden(!isComposePresented)
-        }
-        .allowsHitTesting(isComposePresented)
     }
 
     private func mainChrome(
@@ -393,10 +366,6 @@ struct HomeView: View {
 
         viewModel.resetCompose()
         isComposePresented = true
-    }
-
-    private func closeCompose() {
-        isComposePresented = false
     }
 
     private func toggleMenu() {

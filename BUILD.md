@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**2. Results** — fake data, no API.
+**3. Multi-style results** — same overlay as Results, still fake.
 
 ## Core loop
 
@@ -30,7 +30,7 @@ Loading and error are **states on Results**, not their own screens.
 | # | Item | Kind | Status | Files | Shipped |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Frosted overlay, inverted bubbles, pill composer, and header style popover. |
-| 2 | Results | screen | not started | | |
+| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift` | Overlay session of thought + style-wash card pairs; Send appends, header style recooks the latest. |
 | 3 | Multi-style results | same screen as 2 | not started | | |
 | 4 | Hook up fetching | feature | not started | | |
 | 5 | History | screen | not started | | |
@@ -49,7 +49,8 @@ Home shell with a scrollable fake-history card grid, composer dock, and sliding 
 
 Original thought + reframe for the chosen style.
 
-- Actions: copy, pick another style (swap fake copy, don’t retype), “new thought” back to Compose.
+- Pick another style in the header to recook the latest thought without retyping.
+- Send another thought from the composer to append a new cook; earlier pairs stay.
 - Loading and error live on this screen.
 - Still fake data.
 
@@ -93,6 +94,13 @@ No settings/account screen until auth exists.
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-09 — Compose (home): Bandaid-matched keyboard insets; overlay sibling layout, constant 8pt bottom pad, and focus-bound dismiss chevron.
+- 2026-09-09 — Compose (home): fixed overlay composer to the same bottom inset as the home dock; no keyboard padding animation.
+- 2026-09-09 — Compose (home): rest the overlay composer above the home indicator when the keyboard is down.
+- 2026-09-09 — Results: sending another thought appends a new cook; previous overlay pairs stay.
+- 2026-09-09 — Compose (home): restored 3D card flip on the feed; overlay freeze no longer zeros grid animation.
+- 2026-09-09 — Results: avatar beside a compact style-wash card; next thought from the composer; dropped Copy/Again tiles.
+- 2026-09-09 — Results: one-shot overlay cook with a style-wash result bubble, in-bubble Copy/Again, header style recook, and in-place error/retry.
 - 2026-09-09 — Compose (home): fade overlay chrome with the frost, slightly faster on close so nothing lingers.
 - 2026-09-09 — Compose (home): keep the home grid still while the frost overlay fades.
 - 2026-09-09 — Compose (home): fixed composer to 8pt bottom padding so it no longer jumps with the keyboard.

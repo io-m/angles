@@ -40,9 +40,10 @@ struct ComposeSheetView: View {
     @FocusState private var composerFocused: Bool
     @State private var showStylePicker = false
     @State private var scrollToken = 0
+    @State private var headerStrip: CGFloat = 119
 
     private var hasTranscript: Bool {
-        viewModel.submittedThought != nil
+        !viewModel.turns.isEmpty
     }
 
     private let edgePad: CGFloat = 20
@@ -59,10 +60,11 @@ struct ComposeSheetView: View {
             .onChange(of: isActive) { _, active in
                 composerFocused = active
                 if !active {
+                    showStylePicker = false
                     resetAfterDismiss()
                 }
             }
-            .onChange(of: viewModel.submittedThought) { _, _ in
+            .onChange(of: viewModel.turns) { _, _ in
                 scrollToken += 1
             }
             .onChange(of: viewModel.isCooking) { _, _ in
@@ -102,8 +104,11 @@ struct ComposeSheetView: View {
             stylePill
         }
         .padding(.horizontal, edgePad)
-        .padding(.top, safeAreaInsets.top + 6)
+        .padding(.top, 6)
         .padding(.bottom, 10)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.frame(in: .global).maxY
+        } action: { headerStrip = $0 }
     }
 
     private var stylePill: some View {
@@ -136,14 +141,11 @@ struct ComposeSheetView: View {
     }
 
     private var stylePillIcon: String {
-        if let style = viewModel.selectedStyle {
-            return CardStyleAppearance(style: style).systemImage
-        }
-        return "sparkle"
+        CardStyleAppearance(style: viewModel.selectedStyle).systemImage
     }
 
     private var stylePillLabel: String {
-        viewModel.selectedStyle?.displayName ?? "Style"
+        viewModel.selectedStyle.displayName
     }
 
     private var stylePicker: some View {
@@ -153,8 +155,10 @@ struct ComposeSheetView: View {
                 let isSelected = viewModel.selectedStyle == style
 
                 Button {
-                    viewModel.selectStyle(style)
                     showStylePicker = false
+                    withAnimation(insertAnimation) {
+                        viewModel.selectStyle(style, animatedDelay: !reduceMotion)
+                    }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: appearance.systemImage)
@@ -224,7 +228,7 @@ struct ComposeSheetView: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .frame(height: safeAreaInsets.top + 60)
+                    .frame(height: headerStrip)
 
                     Color.black
                 }
@@ -235,18 +239,23 @@ struct ComposeSheetView: View {
     private var thread: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    if let thought = viewModel.submittedThought {
-                        userRow(thought)
-                            .transition(insertTransition(isAI: false))
-                    }
+                LazyVStack(alignment: .leading, spacing: 22) {
+                    ForEach(viewModel.turns) { turn in
+                        VStack(alignment: .leading, spacing: 10) {
+                            userRow(turn.thought)
+                                .transition(insertTransition(isAI: false))
 
-                    if viewModel.isCooking {
-                        cookingRow
-                            .transition(insertTransition(isAI: true))
-                    } else if let result = viewModel.submittedResult {
-                        aiRow(result)
-                            .transition(insertTransition(isAI: true))
+                            if viewModel.isCookingTurn(turn) {
+                                cookingRow
+                                    .transition(insertTransition(isAI: true))
+                            } else if let error = turn.error {
+                                errorRow(error)
+                                    .transition(insertTransition(isAI: true))
+                            } else if let result = turn.result {
+                                resultRow(result)
+                                    .transition(insertTransition(isAI: true))
+                            }
+                        }
                     }
 
                     Color.clear
@@ -256,8 +265,8 @@ struct ComposeSheetView: View {
                 .padding(.horizontal, edgePad)
                 .padding(.top, 4)
                 .padding(.bottom, 12)
+                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.turns)
                 .animation(reduceMotion ? nil : insertAnimation, value: viewModel.isCooking)
-                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.submittedResult)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.never)
@@ -313,28 +322,98 @@ struct ComposeSheetView: View {
         .accessibilityLabel("Cooking")
     }
 
-    private func aiRow(_ result: ReframeResult) -> some View {
+    private func resultRow(_ result: ReframeResult) -> some View {
+        let appearance = CardStyleAppearance(style: result.style)
+
+        return HStack(alignment: .bottom, spacing: 10) {
+            aiAvatar
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .center, spacing: 8) {
+                    styleIconBadge(appearance)
+
+                    Spacer(minLength: 4)
+
+                    styleChip(appearance, title: result.style.displayName)
+                }
+
+                Text(result.reframe)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(Color.anglesInk)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                styleWash(appearance),
+                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            )
+            .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(result.style.displayName) reframe. \(result.reframe)")
+        }
+    }
+
+    private func errorRow(_ message: String) -> some View {
         HStack(alignment: .bottom, spacing: 10) {
             aiAvatar
 
-            VStack(alignment: .leading, spacing: 7) {
-                Text(result.style.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.anglesAccent)
-
-                Text(result.reframe)
-                    .font(.system(size: 16, weight: .medium))
+            VStack(alignment: .leading, spacing: 12) {
+                Text(message)
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(Color.anglesInk)
                     .lineSpacing(3)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(Color.anglesSurface, in: bubbleShape(isAI: true))
-            .frame(maxWidth: 280, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 12)
+                Button("Retry", action: retryCook)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.anglesInk)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                Color.anglesSurface,
+                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            )
+            .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(message)
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    private func styleIconBadge(_ appearance: CardStyleAppearance) -> some View {
+        Image(systemName: appearance.systemImage)
+            .symbolRenderingMode(.hierarchical)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(appearance.ink)
+            .frame(width: 40, height: 40)
+            .background(
+                appearance.ink.opacity(0.10),
+                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            )
+            .accessibilityHidden(true)
+    }
+
+    private func styleChip(_ appearance: CardStyleAppearance, title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(appearance.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(appearance.ink.opacity(0.14), in: Capsule())
+    }
+
+    private func styleWash(_ appearance: CardStyleAppearance) -> LinearGradient {
+        LinearGradient(
+            colors: [appearance.washHighlight, appearance.wash],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     private var aiAvatar: some View {
@@ -362,7 +441,7 @@ struct ComposeSheetView: View {
     private var composer: some View {
         composerBar
             .padding(.horizontal, 18)
-            .padding(.top, 36)
+            .padding(.top, 44)
             .padding(.bottom, 8)
             .background {
                 composerGlow
@@ -496,6 +575,12 @@ struct ComposeSheetView: View {
 
         withAnimation(insertAnimation) {
             viewModel.submitCompose(animatedDelay: !reduceMotion)
+        }
+    }
+
+    private func retryCook() {
+        withAnimation(insertAnimation) {
+            viewModel.retryCook(animatedDelay: !reduceMotion)
         }
     }
 }
