@@ -61,7 +61,9 @@ struct HomeView: View {
                         HomeCardGrid(
                             cards: viewModel.cards,
                             usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
-                            spacing: Layout.gridSpacing
+                            spacing: Layout.gridSpacing,
+                            onEdit: editCard,
+                            onDelete: deleteCard
                         )
                         .equatable()
                     }
@@ -187,6 +189,17 @@ struct HomeView: View {
         viewModel.resetCompose()
         isComposePresented = true
     }
+
+    private func editCard(_ card: HomeCard) {
+        viewModel.beginEdit(card)
+        isComposePresented = true
+    }
+
+    private func deleteCard(_ card: HomeCard) {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            viewModel.deleteCard(card.id)
+        }
+    }
 }
 
 private struct RotatingHomeTitle: View {
@@ -244,6 +257,14 @@ private struct HomeCardGrid: View, Equatable {
     let cards: [HomeCard]
     let usesSingleColumn: Bool
     let spacing: CGFloat
+    var onEdit: (HomeCard) -> Void = { _ in }
+    var onDelete: (HomeCard) -> Void = { _ in }
+
+    static func == (lhs: HomeCardGrid, rhs: HomeCardGrid) -> Bool {
+        lhs.cards == rhs.cards
+            && lhs.usesSingleColumn == rhs.usesSingleColumn
+            && lhs.spacing == rhs.spacing
+    }
 
     private var columns: [GridItem] {
         if usesSingleColumn {
@@ -259,7 +280,11 @@ private struct HomeCardGrid: View, Equatable {
     var body: some View {
         LazyVGrid(columns: columns, spacing: spacing) {
             ForEach(cards) { card in
-                ReframeCardView(card: card)
+                ReframeCardView(
+                    card: card,
+                    onEdit: { onEdit(card) },
+                    onDelete: { onDelete(card) }
+                )
             }
         }
     }

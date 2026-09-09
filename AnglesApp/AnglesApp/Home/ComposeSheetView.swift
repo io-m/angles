@@ -53,6 +53,7 @@ struct ComposeSheetView: View {
 
     private let edgePad: CGFloat = 20
     private let insertAnimation = Animation.easeOut(duration: 0.32)
+    private let saveCloudAnimation = Animation.easeOut(duration: 0.14)
 
     var body: some View {
         chatLayout
@@ -100,7 +101,7 @@ struct ComposeSheetView: View {
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close")
+            .accessibilityLabel("Close without saving")
 
             Spacer()
 
@@ -159,9 +160,7 @@ struct ComposeSheetView: View {
 
                 Button {
                     showStylePicker = false
-                    withAnimation(insertAnimation) {
-                        viewModel.selectStyle(style, animatedDelay: !reduceMotion)
-                    }
+                    viewModel.selectStyle(style)
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: appearance.systemImage)
@@ -255,7 +254,7 @@ struct ComposeSheetView: View {
                                 errorRow(error)
                                     .transition(insertTransition(isAI: true))
                             } else if let result = turn.result {
-                                resultRow(result)
+                                resultRow(result, turnID: turn.id)
                                     .transition(insertTransition(isAI: true))
                             }
                         }
@@ -300,6 +299,8 @@ struct ComposeSheetView: View {
                 .padding(.vertical, 11)
                 .background(theme.ink, in: bubbleShape(isAI: false))
                 .frame(maxWidth: 280, alignment: .trailing)
+
+            userAvatar
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .accessibilityLabel(text)
@@ -325,19 +326,28 @@ struct ComposeSheetView: View {
         .accessibilityLabel("Cooking")
     }
 
-    private func resultRow(_ result: ReframeResult) -> some View {
+    private func resultRow(_ result: ReframeResult, turnID: UUID) -> some View {
         let appearance = CardStyleAppearance(style: result.style)
+        let isSaved = viewModel.isSaved(turnID: turnID)
 
         return HStack(alignment: .bottom, spacing: 10) {
             aiAvatar
 
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     styleIconBadge(appearance)
+
+                    Text(result.style.displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(appearance.ink)
+                        .lineLimit(1)
+                        .frame(height: 40)
 
                     Spacer(minLength: 4)
 
-                    styleChip(appearance, title: result.style.displayName)
+                    saveCheckbox(isSaved: isSaved, ink: appearance.ink) {
+                        viewModel.toggleSave(turnID: turnID)
+                    }
                 }
 
                 Text(result.reframe)
@@ -349,12 +359,12 @@ struct ComposeSheetView: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                styleWash(appearance),
-                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-            )
+            .background {
+                appearance.washFill(over: theme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            }
             .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityLabel("\(result.style.displayName) reframe. \(result.reframe)")
         }
     }
@@ -400,23 +410,27 @@ struct ComposeSheetView: View {
             .accessibilityHidden(true)
     }
 
-    private func styleChip(_ appearance: CardStyleAppearance, title: String) -> some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(appearance.ink)
-            .lineLimit(1)
-            .minimumScaleFactor(0.82)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(appearance.ink.opacity(0.14), in: Capsule())
+    private func saveCheckbox(isSaved: Bool, ink: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: isSaved ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(ink)
+                .frame(width: 40, height: 40)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isSaved ? "Deselect" : "Select to save")
+        .accessibilityAddTraits(isSaved ? .isSelected : [])
     }
 
-    private func styleWash(_ appearance: CardStyleAppearance) -> LinearGradient {
-        LinearGradient(
-            colors: [appearance.washHighlight, appearance.wash],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+    private var userAvatar: some View {
+        CircleIcon(
+            systemName: "person.fill",
+            fill: theme.ink,
+            symbol: theme.paper,
+            weight: .semibold
         )
+        .accessibilityHidden(true)
     }
 
     private var aiAvatar: some View {
@@ -441,13 +455,54 @@ struct ComposeSheetView: View {
     }
 
     private var composer: some View {
-        composerBar
-            .padding(.horizontal, 18)
-            .padding(.top, 44)
-            .padding(.bottom, 8)
-            .background {
-                composerGlow
+        VStack(spacing: 10) {
+            saveCloud
+                .opacity(viewModel.canPublish ? 1 : 0)
+                .scaleEffect(viewModel.canPublish ? 1 : 0.96)
+                .offset(y: viewModel.canPublish ? 0 : 6)
+                .allowsHitTesting(viewModel.canPublish)
+                .accessibilityHidden(!viewModel.canPublish)
+                .compositingGroup()
+
+            composerBar
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background {
+            composerGlow
+        }
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.08) : saveCloudAnimation,
+            value: viewModel.canPublish
+        )
+    }
+
+    private var saveCloud: some View {
+        Button(action: publishAndLeave) {
+            HStack(spacing: 8) {
+                Image(systemName: "icloud.and.arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Save")
+                    .font(.subheadline.weight(.semibold))
             }
+            .foregroundStyle(theme.ink)
+            .padding(.horizontal, 16)
+            .frame(height: 40)
+            .background(theme.surface, in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(theme.cardHairline, lineWidth: 0.5)
+            }
+            .shadow(color: theme.shadowSoft, radius: 2, y: 1)
+            .shadow(
+                color: theme.shadowLift,
+                radius: colorScheme == .dark ? 16 : 10,
+                y: colorScheme == .dark ? 0 : 4
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Save selected")
+        .accessibilityHint("Adds checked replies to home and closes the chat")
     }
 
     private var composerGlow: some View {
@@ -557,6 +612,15 @@ struct ComposeSheetView: View {
     }
 
     private func leaveNow() {
+        onClose()
+    }
+
+    private func publishAndLeave() {
+        guard viewModel.canPublish else {
+            return
+        }
+
+        viewModel.publishSelected()
         onClose()
     }
 

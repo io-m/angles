@@ -2,16 +2,250 @@ import SwiftUI
 
 struct ReframeCardView: View {
     let card: HomeCard
+    var onEdit: () -> Void = {}
+    var onDelete: () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 226
+    @State private var pagedSlideID: UUID?
+    @State private var showActions = false
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    private var cardShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+    }
+
+    private var showsPageDots: Bool {
+        card.slides.count > 1
+    }
+
+    private var currentIndex: Int {
+        if let pagedSlideID,
+           let index = card.slides.firstIndex(where: { $0.id == pagedSlideID })
+        {
+            return index
+        }
+
+        return 0
+    }
+
+    private var visibleDotIndices: [Int] {
+        let count = card.slides.count
+        guard count > 1 else {
+            return []
+        }
+
+        if count <= 3 {
+            return Array(0..<count)
+        }
+
+        if currentIndex <= 1 {
+            return [0, 1, 2]
+        }
+
+        if currentIndex >= count - 2 {
+            return [count - 3, count - 2, count - 1]
+        }
+
+        return [currentIndex - 1, currentIndex, currentIndex + 1]
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            pager
+
+            footer
+                .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: cardHeight)
+        .clipShape(cardShape)
+        .overlay(alignment: .topLeading) {
+            if let slide = currentSlide {
+                stylePill(for: slide.result.style)
+                    .padding(.leading, 14)
+                    .padding(.top, 14)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            menuButton
+                .padding(.trailing, 10)
+                .padding(.top, 10)
+        }
+        .overlay {
+            cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+        .onAppear {
+            if pagedSlideID == nil {
+                pagedSlideID = card.slides.first?.id
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var pager: some View {
+        if card.slides.count > 1 {
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ForEach(card.slides) { slide in
+                        FlipReframeCard(
+                            thought: slide.thought,
+                            result: slide.result
+                        )
+                        .containerRelativeFrame(.horizontal)
+                        .id(slide.id)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $pagedSlideID)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .clipped()
+        } else if let slide = card.slides.first {
+            FlipReframeCard(
+                thought: slide.thought,
+                result: slide.result
+            )
+        }
+    }
+
+    private var footer: some View {
+        ZStack(alignment: .bottom) {
+            pageDots
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 14)
+
+            HStack {
+                Text(HomeViewModel.dateLabel(for: card.createdAt))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+        .frame(height: 34, alignment: .bottom)
+    }
+
+    private var pageDots: some View {
+        HStack(spacing: 5) {
+            ForEach(visibleDotIndices, id: \.self) { index in
+                let isActive = index == currentIndex
+                Capsule()
+                    .fill(isActive ? theme.ink : theme.faint)
+                    .frame(width: isActive ? 18 : 6, height: 6)
+            }
+        }
+        .frame(minHeight: 6)
+        .animation(dotAnimation, value: currentIndex)
+        .opacity(showsPageDots ? 1 : 0)
+        .accessibilityHidden(true)
+    }
+
+    private var dotAnimation: Animation? {
+        reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.72)
+    }
+
+    private var currentSlide: HomeCardSlide? {
+        if let pagedSlideID,
+           let slide = card.slides.first(where: { $0.id == pagedSlideID })
+        {
+            return slide
+        }
+
+        return card.slides.first
+    }
+
+    private func stylePill(for style: Style) -> some View {
+        let appearance = CardStyleAppearance(style: style)
+
+        return HStack(spacing: 6) {
+            Image(systemName: appearance.systemImage)
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 12, weight: .semibold))
+
+            Text(style.displayName)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .foregroundStyle(appearance.ink)
+        .padding(.leading, 8)
+        .padding(.trailing, 10)
+        .padding(.vertical, 5)
+        .background(appearance.ink.opacity(0.14), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(style.displayName)
+    }
+
+    private var menuButton: some View {
+        Button {
+            showActions = true
+        } label: {
+            Image(systemName: "ellipsis.vertical")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(theme.muted)
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("More")
+        .popover(isPresented: $showActions) {
+            cardActions
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private var cardActions: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                showActions = false
+                onEdit()
+            } label: {
+                Label("Edit", systemImage: "square.and.pencil")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button(role: .destructive) {
+                showActions = false
+                onDelete()
+            } label: {
+                Label("Delete", systemImage: "trash")
+                    .font(.body.weight(.medium))
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(minWidth: 180)
+    }
+}
+
+private struct FlipReframeCard: View {
+    let thought: String
+    let result: ReframeResult
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isFlipped = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     private var styleAppearance: CardStyleAppearance {
-        CardStyleAppearance(style: card.result.style)
+        CardStyleAppearance(style: result.style)
     }
 
     var body: some View {
@@ -21,119 +255,71 @@ struct ReframeCardView: View {
             } back: {
                 backFace
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: cardHeight)
-            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .compositingGroup()
+            .clipped()
+            .contentShape(Rectangle())
         }
         .buttonStyle(CardFlipButtonStyle())
         .sensoryFeedback(.impact(weight: .light), trigger: isFlipped)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             isFlipped
-                ? "\(card.result.style.displayName) reframe. \(card.result.reframe)"
-                : "\(card.result.style.displayName). \(card.thought)"
+                ? "\(result.style.displayName) reframe. \(result.reframe)"
+                : "\(result.style.displayName). \(thought)"
         )
         .accessibilityHint(isFlipped ? "Shows the original thought" : "Shows the reframe")
     }
 
     private var frontFace: some View {
         cardFace(background: frontSurface) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 8) {
-                    iconBadge(
-                        systemName: styleAppearance.systemImage,
-                        color: styleAppearance.ink
-                    )
-
-                    Spacer(minLength: 4)
-
-                    styleChip
-                }
-
-                Text(card.thought)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(theme.ink)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            faceContent(
+                text: thought,
+                textFont: .body.weight(.semibold)
+            )
         }
     }
 
     private var backFace: some View {
         cardFace(background: backSurface) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 8) {
-                    iconBadge(
-                        systemName: "quote.opening",
-                        color: styleAppearance.ink
-                    )
-
-                    Spacer(minLength: 4)
-
-                    styleChip
-                }
-
-                Text(card.result.reframe)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(theme.ink)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(styleAppearance.ink.opacity(0.09), lineWidth: 1)
+            faceContent(
+                text: result.reframe,
+                textFont: .callout.weight(.medium)
+            )
         }
     }
 
-    private var styleChip: some View {
-        Text(card.result.style.displayName)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(styleAppearance.ink)
-            .lineLimit(1)
-            .minimumScaleFactor(0.82)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(styleAppearance.ink.opacity(0.14), in: Capsule())
+    private func faceContent(text: String, textFont: Font) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(text)
+                .font(textFont)
+                .foregroundStyle(theme.ink)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 36)
+        .padding(.bottom, 22)
     }
 
     private var frontSurface: Color {
         theme.surface
     }
 
-    private var backSurface: LinearGradient {
-        LinearGradient(
-            colors: [styleAppearance.washHighlight, styleAppearance.wash],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var backSurface: some View {
+        styleAppearance.washFill(over: theme.surface)
     }
 
-    private func iconBadge(systemName: String, color: Color) -> some View {
-        Image(systemName: systemName)
-            .symbolRenderingMode(.hierarchical)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(color)
-            .frame(width: 40, height: 40)
-            .background(
-                color.opacity(0.10),
-                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-            )
-            .accessibilityHidden(true)
-    }
-
-    private func cardFace<Background: ShapeStyle, Content: View>(
+    private func cardFace<Background: View, Content: View>(
         background: Background,
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
             .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background { background }
     }
 
     private func flip() {
@@ -180,21 +366,31 @@ private struct FlipStack<Front: View, Back: View>: View, Animatable {
 
     var body: some View {
         let showingBack = progress > 0.5
+        let isMidFlip = progress > 0.02 && progress < 0.98
 
-        ZStack {
-            front
-                .compositingGroup()
-                .opacity(showingBack ? 0 : 1)
+        Group {
+            if isMidFlip {
+                ZStack {
+                    front
+                        .compositingGroup()
+                        .opacity(showingBack ? 0 : 1)
 
-            back
+                    back
+                        .compositingGroup()
+                        .scaleEffect(x: -1, y: 1)
+                        .opacity(showingBack ? 1 : 0)
+                }
+                .rotation3DEffect(
+                    .radians(Double(progress) * .pi),
+                    axis: (x: 0, y: 1, z: 0),
+                    perspective: 0.55
+                )
                 .compositingGroup()
-                .scaleEffect(x: -1, y: 1)
-                .opacity(showingBack ? 1 : 0)
+            } else if showingBack {
+                back
+            } else {
+                front
+            }
         }
-        .rotation3DEffect(
-            .radians(Double(progress) * .pi),
-            axis: (x: 0, y: 1, z: 0),
-            perspective: 0.55
-        )
     }
 }

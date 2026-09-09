@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**3. Multi-style results** — same overlay as Results, still fake.
+**4. Hook up fetching** — Compose → `ReframeService.getReframes` → Results.
 
 ## Core loop
 
@@ -30,9 +30,9 @@ Loading and error are **states on Results**, not their own screens.
 | # | Item | Kind | Status | Files | Shipped |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Frosted overlay, inverted bubbles, pill composer, and header style popover. |
-| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift` | Overlay session of thought + style-wash card pairs; Send appends, header style recooks the latest. |
+| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift` | Overlay session of thought + style-wash card; Send appends; header style applies to the next send only. |
 | 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
-| 3 | Multi-style results | same screen as 2 | not started | | |
+| 3 | Multi-style results | same screen as 2 | skipped | | Per-send single style. Checkbox to select; floating Save above composer publishes. Carousel when 2+ saved. In-memory only. |
 | 4 | Hook up fetching | feature | not started | | |
 | 5 | History | screen | not started | | |
 
@@ -50,7 +50,7 @@ Home shell with a scrollable fake-history card grid, composer dock, and header S
 
 Original thought + reframe for the chosen style.
 
-- Pick another style in the header to recook the latest thought without retyping.
+- Pick another style in the header; it applies to the next send, not a recook of the latest thought.
 - Send another thought from the composer to append a new cook; earlier pairs stay.
 - Loading and error live on this screen.
 - Still fake data.
@@ -61,7 +61,7 @@ Header Settings sheet. Gradient chrome, large title that collapses to inline. Ap
 
 ### 3. Multi-style results
 
-Same Results screen. Stacked cards when more than one style is selected. Still fake. Matches later `Promise.all` / onboarding taste.
+Skipped. Stacked multi-style on one send was rejected. Header style is single-select and binds at Send. Checkbox selects replies; a floating Save chip above the composer publishes them to home (carousel when 2+). X closes without saving.
 
 ### 4. Hook up fetching
 
@@ -99,6 +99,14 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-09 — Home: style icon+name share a pill; ⋮ opens Edit (reopen thread) or Delete.
+- 2026-09-09 — Home: thinner style chip; stoic slate, optimistic gold, humorous orchid, tough love ember.
+- 2026-09-09 — Home: quieter AI wash at the bottom; top icon and style badge share one 40pt line.
+- 2026-09-09 — Home: AI card wash is a top-left to bottom-right fade, clear at the top and tinted at the bottom.
+- 2026-09-09 — Home: AI card backs a touch more tinted, still a soft gradient.
+- 2026-09-09 — Results: checkboxes on AI cards; floating Save chip above the composer; carousel dots sit on the card.
+- 2026-09-09 — Results: checkmark publishes bookmarked replies to home; 2+ become a carousel with Bandaid-style dots. X discards.
+- 2026-09-09 — Results: single style per send, circular bookmark-to-memory, avatars beside bubbles. Multi-style stacked cook skipped.
 - 2026-09-09 — Home: shorter, denser status-bar fade; title and Settings scroll under it.
 - 2026-09-09 — Home: dropped the sidebar and FAB; Settings lives in the header, dock is full width.
 - 2026-09-09 — Settings: modal sheet from a thumb-reach drawer icon; profile avatar and subscription live inside Settings.

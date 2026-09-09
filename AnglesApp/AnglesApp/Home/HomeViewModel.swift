@@ -1,10 +1,30 @@
 import Combine
 import Foundation
 
-struct HomeCard: Identifiable, Equatable {
-    let id: Int
+struct HomeCardSlide: Identifiable, Equatable {
+    let id: UUID
     let thought: String
     let result: ReframeResult
+}
+
+struct HomeCard: Identifiable, Equatable {
+    let id: UUID
+    let createdAt: Date
+    let slides: [HomeCardSlide]
+
+    init(id: UUID = UUID(), createdAt: Date = Date(), slides: [HomeCardSlide]) {
+        self.id = id
+        self.createdAt = createdAt
+        self.slides = slides
+    }
+
+    init(id: UUID = UUID(), createdAt: Date = Date(), thought: String, result: ReframeResult) {
+        self.id = id
+        self.createdAt = createdAt
+        self.slides = [
+            HomeCardSlide(id: id, thought: thought, result: result)
+        ]
+    }
 }
 
 extension Style {
@@ -25,13 +45,15 @@ extension Style {
 struct ComposeTurn: Identifiable, Equatable {
     let id: UUID
     let thought: String
+    let style: Style
     var result: ReframeResult?
+    var isSaved: Bool = true
     var error: String?
 }
 
 @MainActor
 final class HomeViewModel: ObservableObject {
-    let cards: [HomeCard]
+    @Published private(set) var cards: [HomeCard]
 
     @Published var composeText = ""
     @Published var selectedStyle: Style = .optimistic
@@ -41,6 +63,7 @@ final class HomeViewModel: ObservableObject {
 
     private var cookTask: Task<Void, Never>?
     private var cookingTurnID: UUID?
+    private var editingCardID: UUID?
 
     init(cards: [HomeCard]? = nil) {
         self.cards = cards ?? Self.sampleCards
@@ -51,15 +74,8 @@ final class HomeViewModel: ObservableObject {
             && !isCooking
     }
 
-    func selectStyle(_ style: Style, animatedDelay: Bool) {
-        let shouldRecook = !turns.isEmpty && selectedStyle != style
+    func selectStyle(_ style: Style) {
         selectedStyle = style
-
-        guard shouldRecook else {
-            return
-        }
-
-        beginCook(animatedDelay: animatedDelay)
     }
 
     func submitCompose(animatedDelay: Bool) {
@@ -68,7 +84,11 @@ final class HomeViewModel: ObservableObject {
             return
         }
 
-        let turn = ComposeTurn(id: UUID(), thought: thought)
+        let turn = ComposeTurn(
+            id: UUID(),
+            thought: thought,
+            style: selectedStyle
+        )
         turns.append(turn)
         composeText = ""
         beginCook(animatedDelay: animatedDelay, turnID: turn.id)
@@ -82,10 +102,85 @@ final class HomeViewModel: ObservableObject {
         beginCook(animatedDelay: animatedDelay, turnID: last.id)
     }
 
+    func toggleSave(turnID: UUID) {
+        updateTurn(turnID) { turn in
+            guard turn.result != nil else {
+                return
+            }
+
+            turn.isSaved.toggle()
+        }
+    }
+
+    func isSaved(turnID: UUID) -> Bool {
+        turns.first(where: { $0.id == turnID })?.isSaved == true
+    }
+
+    var canPublish: Bool {
+        turns.contains { $0.isSaved && $0.result != nil }
+    }
+
+    func publishSelected() {
+        let slides: [HomeCardSlide] = turns.compactMap { turn in
+            guard turn.isSaved, let result = turn.result else {
+                return nil
+            }
+
+            return HomeCardSlide(
+                id: turn.id,
+                thought: turn.thought,
+                result: result
+            )
+        }
+
+        guard !slides.isEmpty else {
+            return
+        }
+
+        if let editingCardID,
+           let index = cards.firstIndex(where: { $0.id == editingCardID })
+        {
+            cards[index] = HomeCard(
+                id: editingCardID,
+                createdAt: cards[index].createdAt,
+                slides: slides
+            )
+        } else {
+            cards.insert(HomeCard(createdAt: Date(), slides: slides), at: 0)
+        }
+    }
+
+    func beginEdit(_ card: HomeCard) {
+        cookTask?.cancel()
+        cookTask = nil
+        cookingTurnID = nil
+        composeText = ""
+        isCooking = false
+        editingCardID = card.id
+        turns = card.slides.map { slide in
+            ComposeTurn(
+                id: slide.id,
+                thought: slide.thought,
+                style: slide.result.style,
+                result: slide.result,
+                isSaved: true
+            )
+        }
+        selectedStyle = turns.last?.style ?? .optimistic
+    }
+
+    func deleteCard(_ id: UUID) {
+        cards.removeAll { $0.id == id }
+        if editingCardID == id {
+            resetCompose()
+        }
+    }
+
     func resetCompose() {
         cookTask?.cancel()
         cookTask = nil
         cookingTurnID = nil
+        editingCardID = nil
         composeText = ""
         selectedStyle = .optimistic
         turns = []
@@ -94,11 +189,13 @@ final class HomeViewModel: ObservableObject {
 
     private func beginCook(animatedDelay: Bool, turnID: UUID? = nil) {
         let targetID = turnID ?? turns.last?.id
-        guard let targetID, turns.contains(where: { $0.id == targetID }) else {
+        guard let targetID,
+              let turn = turns.first(where: { $0.id == targetID })
+        else {
             return
         }
 
-        let style = selectedStyle
+        let style = turn.style
 
         cookTask?.cancel()
         cookingTurnID = targetID
@@ -147,6 +244,41 @@ final class HomeViewModel: ObservableObject {
         isCooking && cookingTurnID == turn.id
     }
 
+    private static func minutesAgo(_ minutes: Int) -> Date {
+        Date().addingTimeInterval(TimeInterval(-minutes * 60))
+    }
+
+    private static func hoursAgo(_ hours: Int) -> Date {
+        Date().addingTimeInterval(TimeInterval(-hours * 3600))
+    }
+
+    private static func daysAgo(_ days: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+    }
+
+    static func dateLabel(for date: Date, now: Date = Date()) -> String {
+        let calendar = Calendar.current
+        if calendar.isDate(date, inSameDayAs: now) {
+            let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
+            if minutes < 1 {
+                return "Just now"
+            }
+            if minutes < 60 {
+                return "\(minutes)m ago"
+            }
+            return "\(minutes / 60)h ago"
+        }
+
+        let formatter = DateFormatter()
+        formatter.doesRelativeDateFormatting = false
+        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+            formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        } else {
+            formatter.setLocalizedDateFormatFromTemplate("MMMdyyyy")
+        }
+        return formatter.string(from: date)
+    }
+
     private static func fakeReframe(for style: Style) -> String {
         switch style {
         case .stoic:
@@ -162,15 +294,28 @@ final class HomeViewModel: ObservableObject {
 
     private static let sampleCards: [HomeCard] = [
         HomeCard(
-            id: 0,
-            thought: "I bombed my job interview today.",
-            result: ReframeResult(
-                style: .stoic,
-                reframe: "You can't control the outcome, only how you showed up."
-            )
+            createdAt: minutesAgo(18),
+            slides: [
+                HomeCardSlide(
+                    id: UUID(),
+                    thought: "I bombed my job interview today.",
+                    result: ReframeResult(
+                        style: .stoic,
+                        reframe: "You can't control the outcome, only how you showed up."
+                    )
+                ),
+                HomeCardSlide(
+                    id: UUID(),
+                    thought: "I bombed my job interview today.",
+                    result: ReframeResult(
+                        style: .optimistic,
+                        reframe: "This is one hard moment, not the shape of everything ahead."
+                    )
+                ),
+            ]
         ),
         HomeCard(
-            id: 1,
+            createdAt: hoursAgo(4),
             thought: "My friend cancelled on me again.",
             result: ReframeResult(
                 style: .humorous,
@@ -178,7 +323,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 2,
+            createdAt: daysAgo(2),
             thought: "I keep procrastinating on my project.",
             result: ReframeResult(
                 style: .toughLove,
@@ -186,7 +331,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 3,
+            createdAt: daysAgo(3),
             thought: "I feel behind compared to my peers.",
             result: ReframeResult(
                 style: .optimistic,
@@ -194,7 +339,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 4,
+            createdAt: daysAgo(4),
             thought: "I replayed that awkward meeting all night.",
             result: ReframeResult(
                 style: .stoic,
@@ -202,7 +347,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 5,
+            createdAt: daysAgo(5),
             thought: "They ended the text with a period.",
             result: ReframeResult(
                 style: .humorous,
@@ -210,7 +355,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 6,
+            createdAt: daysAgo(6),
             thought: "I missed two days of my new habit.",
             result: ReframeResult(
                 style: .optimistic,
@@ -218,7 +363,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 7,
+            createdAt: daysAgo(7),
             thought: "I keep avoiding a difficult conversation.",
             result: ReframeResult(
                 style: .toughLove,
@@ -226,7 +371,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 8,
+            createdAt: daysAgo(8),
             thought: "I stumbled over my presentation.",
             result: ReframeResult(
                 style: .humorous,
@@ -234,7 +379,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 9,
+            createdAt: daysAgo(9),
             thought: "This week has not gone to plan.",
             result: ReframeResult(
                 style: .stoic,
@@ -242,7 +387,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 10,
+            createdAt: daysAgo(10),
             thought: "Starting over feels like failure.",
             result: ReframeResult(
                 style: .optimistic,
@@ -250,7 +395,7 @@ final class HomeViewModel: ObservableObject {
             )
         ),
         HomeCard(
-            id: 11,
+            createdAt: daysAgo(11),
             thought: "I have been waiting for motivation.",
             result: ReframeResult(
                 style: .toughLove,
