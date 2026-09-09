@@ -3,12 +3,14 @@ import SwiftUI
 struct ComposeFrost: View {
     @Environment(\.colorScheme) private var colorScheme
 
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
     var body: some View {
         ZStack {
             Rectangle()
                 .fill(.thinMaterial)
 
-            Color.anglesSurface
+            theme.surface
                 .opacity(colorScheme == .dark ? 0.14 : 0.10)
         }
         .accessibilityHidden(true)
@@ -37,6 +39,9 @@ struct ComposeSheetView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accentPalette) private var accentPalette
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     @FocusState private var composerFocused: Bool
     @State private var showStylePicker = false
     @State private var scrollToken = 0
@@ -86,15 +91,13 @@ struct ComposeSheetView: View {
     private var header: some View {
         HStack {
             Button(action: leaveNow) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.anglesInk)
-                    .frame(width: 44, height: 44)
-                    .background(Color.anglesSurface, in: Circle())
-                    .overlay {
-                        Circle().strokeBorder(Color.anglesHairline, lineWidth: 0.5)
-                    }
-                    .contentShape(Circle())
+                CircleIcon(
+                    systemName: "xmark",
+                    fill: theme.surface,
+                    symbol: theme.ink,
+                    weight: .semibold,
+                    hairline: theme.cardHairline
+                )
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
@@ -122,12 +125,12 @@ struct ComposeSheetView: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(Color.anglesInk)
+            .foregroundStyle(theme.ink)
             .padding(.horizontal, 14)
             .frame(height: 44)
-            .background(Color.anglesSurface, in: Capsule())
+            .background(theme.surface, in: Capsule())
             .overlay {
-                Capsule().strokeBorder(Color.anglesHairline, lineWidth: 0.5)
+                Capsule().strokeBorder(theme.cardHairline, lineWidth: 0.5)
             }
             .contentShape(Capsule())
         }
@@ -168,14 +171,14 @@ struct ComposeSheetView: View {
 
                         Text(style.displayName)
                             .font(.body.weight(.medium))
-                            .foregroundStyle(Color.anglesInk)
+                            .foregroundStyle(theme.ink)
 
                         Spacer(minLength: 12)
 
                         if isSelected {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.anglesInk)
+                                .foregroundStyle(theme.ink)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -197,10 +200,10 @@ struct ComposeSheetView: View {
                 VStack(spacing: 20) {
                     Image(systemName: "sparkle")
                         .font(.system(size: 56, weight: .medium))
-                        .foregroundStyle(Color.anglesInk)
+                        .foregroundStyle(theme.ink)
                     Text("Tell me what's on your mind...")
                         .font(.title2.weight(.semibold))
-                        .foregroundStyle(Color.anglesInk)
+                        .foregroundStyle(theme.ink)
                         .tracking(-0.4)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -291,11 +294,11 @@ struct ComposeSheetView: View {
 
             Text(text)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Color.anglesPaper)
+                .foregroundStyle(theme.paper)
                 .lineSpacing(3)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .background(Color.anglesInk, in: bubbleShape(isAI: false))
+                .background(theme.ink, in: bubbleShape(isAI: false))
                 .frame(maxWidth: 280, alignment: .trailing)
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -308,13 +311,13 @@ struct ComposeSheetView: View {
 
             CookingLine(
                 text: "Cooking...",
-                ink: Color.anglesInk,
-                muted: Color.anglesInk.opacity(0.45),
+                ink: theme.ink,
+                muted: theme.muted,
                 reduceMotion: reduceMotion
             )
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .background(Color.anglesSurface, in: bubbleShape(isAI: true))
+            .background(theme.surface, in: bubbleShape(isAI: true))
             .frame(maxWidth: 280, alignment: .leading)
 
             Spacer(minLength: 12)
@@ -339,7 +342,7 @@ struct ComposeSheetView: View {
 
                 Text(result.reframe)
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(Color.anglesInk)
+                    .foregroundStyle(theme.ink)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -350,7 +353,7 @@ struct ComposeSheetView: View {
                 styleWash(appearance),
                 in: RoundedRectangle(cornerRadius: 24, style: .continuous)
             )
-            .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(result.style.displayName) reframe. \(result.reframe)")
         }
@@ -363,22 +366,22 @@ struct ComposeSheetView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(message)
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(Color.anglesInk)
+                    .foregroundStyle(theme.ink)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Button("Retry", action: retryCook)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.anglesInk)
+                    .foregroundStyle(theme.ink)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                Color.anglesSurface,
+                theme.surface,
                 in: RoundedRectangle(cornerRadius: 24, style: .continuous)
             )
-            .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(message)
         }
@@ -417,15 +420,14 @@ struct ComposeSheetView: View {
     }
 
     private var aiAvatar: some View {
-        Image(systemName: "sparkle")
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(Color.anglesInk)
-            .frame(width: 40, height: 40)
-            .background(Color.anglesSurface, in: Circle())
-            .overlay {
-                Circle().strokeBorder(Color.anglesHairline, lineWidth: 0.5)
-            }
-            .accessibilityHidden(true)
+        CircleIcon(
+            systemName: "sparkle",
+            fill: theme.surface,
+            symbol: theme.ink,
+            weight: .semibold,
+            hairline: theme.cardHairline
+        )
+        .accessibilityHidden(true)
     }
 
     private func bubbleShape(isAI: Bool) -> UnevenRoundedRectangle {
@@ -452,15 +454,15 @@ struct ComposeSheetView: View {
         EllipticalGradient(
             stops: [
                 .init(
-                    color: Color.anglesAccent.opacity(colorScheme == .dark ? 0.16 : 0.10),
+                    color: accentPalette.accent.opacity(colorScheme == .dark ? 0.16 : 0.10),
                     location: 0
                 ),
                 .init(
-                    color: Color.anglesAccent.opacity(colorScheme == .dark ? 0.07 : 0.045),
+                    color: accentPalette.accent.opacity(colorScheme == .dark ? 0.07 : 0.045),
                     location: 0.42
                 ),
                 .init(
-                    color: Color.anglesAccent.opacity(colorScheme == .dark ? 0.02 : 0.015),
+                    color: accentPalette.accent.opacity(colorScheme == .dark ? 0.02 : 0.015),
                     location: 0.72
                 ),
                 .init(color: .clear, location: 1),
@@ -485,7 +487,7 @@ struct ComposeSheetView: View {
                 axis: .vertical
             )
             .font(.system(size: 16, weight: .medium))
-            .foregroundStyle(Color.anglesInk)
+            .foregroundStyle(theme.ink)
             .textInputAutocapitalization(.sentences)
             .focused($composerFocused)
             .lineLimit(1...4)
@@ -497,16 +499,16 @@ struct ComposeSheetView: View {
         }
         .frame(minHeight: 56)
         .background(
-            Color.anglesSurface,
+            theme.surface,
             in: RoundedRectangle(cornerRadius: 28, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(Color.anglesHairline, lineWidth: 0.5)
+                .strokeBorder(theme.cardHairline, lineWidth: 0.5)
         }
-        .shadow(color: .anglesShadowSoft, radius: 2, y: 1)
+        .shadow(color: theme.shadowSoft, radius: 2, y: 1)
         .shadow(
-            color: .anglesShadowLift,
+            color: theme.shadowLift,
             radius: colorScheme == .dark ? 18 : 10,
             y: colorScheme == .dark ? 0 : 4
         )
@@ -518,7 +520,7 @@ struct ComposeSheetView: View {
                 Button(action: dismissKeyboard) {
                     Image(systemName: "keyboard.chevron.compact.down")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Color.anglesInk.opacity(0.45))
+                        .foregroundStyle(theme.muted)
                         .frame(width: 40, height: 40)
                         .contentShape(Rectangle())
                 }
@@ -527,11 +529,12 @@ struct ComposeSheetView: View {
             }
 
             Button(action: submit) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.anglesPaper)
-                    .frame(width: 40, height: 40)
-                    .background(Color.anglesInk, in: Circle())
+                CircleIcon(
+                    systemName: "arrow.up",
+                    fill: theme.ink,
+                    symbol: theme.paper,
+                    weight: .semibold
+                )
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.canSubmit)

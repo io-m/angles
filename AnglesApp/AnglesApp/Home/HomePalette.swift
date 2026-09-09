@@ -1,83 +1,16 @@
 import SwiftUI
 import UIKit
 
-extension Color {
-    static let anglesCanvasTop = adaptive(
-        light: UIColor(red: 0.992, green: 0.988, blue: 0.996, alpha: 1),
-        dark: UIColor(red: 0.07, green: 0.065, blue: 0.075, alpha: 1)
-    )
-
-    static let anglesCanvas = adaptive(
-        light: UIColor(red: 0.980, green: 0.976, blue: 0.988, alpha: 1),
-        dark: UIColor(red: 0.08, green: 0.075, blue: 0.085, alpha: 1)
-    )
-
-    static let anglesCanvasBottom = adaptive(
-        light: UIColor(red: 0.973, green: 0.969, blue: 0.984, alpha: 1),
-        dark: UIColor(red: 0.09, green: 0.08, blue: 0.095, alpha: 1)
-    )
-
-    static let anglesSurface = adaptive(
-        light: UIColor(red: 0.995, green: 0.99, blue: 1.00, alpha: 1),
-        dark: UIColor(red: 0.17, green: 0.135, blue: 0.23, alpha: 1)
-    )
-
-    static let anglesAccent = adaptive(
-        light: UIColor(red: 0.424, green: 0.282, blue: 0.659, alpha: 1),
-        dark: UIColor(red: 0.769, green: 0.659, blue: 0.910, alpha: 1)
-    )
-
-    static let anglesAccentLight = adaptive(
-        light: UIColor(red: 0.58, green: 0.44, blue: 0.80, alpha: 1),
-        dark: UIColor(red: 0.87, green: 0.78, blue: 0.96, alpha: 1)
-    )
-
-    static let anglesPlaceholder = anglesAccent.opacity(0.42)
-
-    static let anglesInk = adaptive(
-        light: UIColor(red: 0.13, green: 0.10, blue: 0.20, alpha: 1),
-        dark: UIColor(red: 0.96, green: 0.94, blue: 0.98, alpha: 1)
-    )
-
-    static let anglesPaper = adaptive(
-        light: UIColor(red: 0.995, green: 0.99, blue: 1.00, alpha: 1),
-        dark: UIColor(red: 0.07, green: 0.065, blue: 0.075, alpha: 1)
-    )
-
-    static let anglesHairline = adaptive(
-        light: UIColor.black.withAlphaComponent(0.05),
-        dark: UIColor.white.withAlphaComponent(0.07)
-    )
-
-    static let anglesShadowSoft = adaptive(
-        light: UIColor.black.withAlphaComponent(0.06),
-        dark: UIColor.white.withAlphaComponent(0.04)
-    )
-
-    static let anglesShadowLift = adaptive(
-        light: UIColor.black.withAlphaComponent(0.10),
-        dark: UIColor.white.withAlphaComponent(0.07)
-    )
-
-    fileprivate static func adaptive(light: UIColor, dark: UIColor) -> Color {
-        Color(
-            uiColor: UIColor { traits in
-                traits.userInterfaceStyle == .dark ? dark : light
-            }
-        )
-    }
-}
-
 struct AnglesCanvasBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
     var body: some View {
         LinearGradient(
-            colors: [
-                .anglesCanvasTop,
-                .anglesCanvas,
-                .anglesCanvasBottom,
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            colors: [theme.paper, theme.grey],
+            startPoint: .top,
+            endPoint: .bottom
         )
         .ignoresSafeArea()
         .accessibilityHidden(true)
@@ -149,5 +82,15 @@ struct CardStyleAppearance {
                 dark: UIColor(red: 0.167, green: 0.106, blue: 0.111, alpha: 1)
             )
         }
+    }
+}
+
+private extension Color {
+    static func adaptive(light: UIColor, dark: UIColor) -> Color {
+        Color(
+            uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark ? dark : light
+            }
+        )
     }
 }

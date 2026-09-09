@@ -7,28 +7,6 @@ struct HomeCard: Identifiable, Equatable {
     let result: ReframeResult
 }
 
-enum DrawerDestination: String, CaseIterable, Hashable, Identifiable {
-    case profile = "Profile"
-    case settings = "Settings"
-    case subscription = "Subscription"
-    case about = "About"
-
-    var id: Self { self }
-
-    var systemImage: String {
-        switch self {
-        case .profile:
-            return "person"
-        case .settings:
-            return "gearshape"
-        case .subscription:
-            return "creditcard"
-        case .about:
-            return "info.circle"
-        }
-    }
-}
-
 extension Style {
     var displayName: String {
         switch self {

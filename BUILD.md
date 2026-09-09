@@ -13,7 +13,7 @@ When you add or change a screen/feature:
 3. Move **Next up** to the following item.
 4. If you need a screen that is not listed, add it here *before* building it.
 
-Do not skip ahead. Do not invent extras (tabs, settings, social, extra styles).
+Do not skip ahead. Do not invent extras (tabs, social, extra styles).
 
 Status values: `not started` · `in progress` · `done` · `skipped`
 
@@ -31,17 +31,18 @@ Loading and error are **states on Results**, not their own screens.
 | --- | --- | --- | --- | --- | --- |
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Frosted overlay, inverted bubbles, pill composer, and header style popover. |
 | 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift` | Overlay session of thought + style-wash card pairs; Send appends, header style recooks the latest. |
+| 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
 | 3 | Multi-style results | same screen as 2 | not started | | |
 | 4 | Hook up fetching | feature | not started | | |
 | 5 | History | screen | not started | | |
 
 ### 1. Compose (home)
 
-Home shell with a scrollable fake-history card grid, composer dock, and sliding drawer.
+Home shell with a scrollable fake-history card grid, composer dock, and header Settings.
 
 - Cards flip between the original thought and a hardcoded `ReframeResult`.
 - Composer overlay validates empty thought and no style selected, then cooks a hardcoded response in place.
-- Drawer destinations are centered-text navigation stubs only.
+- Settings is a dismissible sheet from a circular header control; header scrolls with the feed; appearance is a popover.
 - Use existing `Style` / `ReframeResult` models. Do not invent a parallel JSON shape.
 - No API or persistence. No paywall. App launches here.
 
@@ -53,6 +54,10 @@ Original thought + reframe for the chosen style.
 - Send another thought from the composer to append a new cook; earlier pairs stay.
 - Loading and error live on this screen.
 - Still fake data.
+
+### 2a. Settings (appearance + accent)
+
+Header Settings sheet. Gradient chrome, large title that collapses to inline. Appearance is a popover. Accent and subscription stay sheets. Prefs in UserDefaults, not SwiftData.
 
 ### 3. Multi-style results
 
@@ -80,7 +85,7 @@ Tabs are allowed only once this screen exists (Compose + History).
 | 7 | Paywall | screen | not started | StoreKit, hard gate after the taste |
 | 8 | Auth | feature | not started | Sign in with Apple / Better Auth; needed for restore, not for typing a thought |
 
-No settings/account screen until auth exists.
+Account / auth settings wait until auth exists. Appearance + accent already shipped in 2a.
 
 ## Out of scope (v1)
 
@@ -94,6 +99,10 @@ No settings/account screen until auth exists.
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-09 — Home: shorter, denser status-bar fade; title and Settings scroll under it.
+- 2026-09-09 — Home: dropped the sidebar and FAB; Settings lives in the header, dock is full width.
+- 2026-09-09 — Settings: modal sheet from a thumb-reach drawer icon; profile avatar and subscription live inside Settings.
+- 2026-09-09 — Settings: appearance (System/Light/Dark) and accent picker; charcoal neutrals so dark cards are no longer purple.
 - 2026-09-09 — Compose (home): Bandaid-matched keyboard insets; overlay sibling layout, constant 8pt bottom pad, and focus-bound dismiss chevron.
 - 2026-09-09 — Compose (home): fixed overlay composer to the same bottom inset as the home dock; no keyboard padding animation.
 - 2026-09-09 — Compose (home): rest the overlay composer above the home indicator when the keyboard is down.

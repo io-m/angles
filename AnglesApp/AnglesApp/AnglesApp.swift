@@ -2,37 +2,37 @@ import SwiftUI
 
 @main
 struct AnglesApp: App {
+    @StateObject private var themeStore = ThemeStore()
+
     var body: some Scene {
         WindowGroup {
             AppRoot()
+                .modifier(UserAppearance(store: themeStore))
         }
     }
 }
 
 struct AppRoot: View {
-    @State private var navigationPath: [DrawerDestination] = []
     @StateObject private var viewModel = HomeViewModel()
     @State private var isComposePresented = false
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
         ZStack {
-            Color.anglesCanvasTop
+            theme.paper
                 .ignoresSafeArea()
 
-            NavigationStack(path: $navigationPath) {
+            NavigationStack {
                 HomeView(
                     viewModel: viewModel,
                     safeAreaInsets: homeSafeAreaInsets,
                     isComposePresented: $isComposePresented
-                ) { destination in
-                    navigationPath.append(destination)
-                }
+                )
                 .ignoresSafeArea(.container, edges: .vertical)
-                .navigationDestination(for: DrawerDestination.self) { destination in
-                    DrawerStubView(destination: destination)
-                }
             }
             .background(Color.clear)
             .ignoresSafeArea(.keyboard)
@@ -70,6 +70,5 @@ struct AppRoot: View {
             }
             .ignoresSafeArea(.keyboard)
         }
-        .tint(.anglesAccent)
     }
 }

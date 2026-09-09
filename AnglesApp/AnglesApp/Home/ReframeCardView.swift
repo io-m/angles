@@ -4,8 +4,11 @@ struct ReframeCardView: View {
     let card: HomeCard
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 226
     @State private var isFlipped = false
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     private var styleAppearance: CardStyleAppearance {
         CardStyleAppearance(style: card.result.style)
@@ -20,7 +23,7 @@ struct ReframeCardView: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: cardHeight)
-            .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
             .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(CardFlipButtonStyle())
@@ -50,7 +53,7 @@ struct ReframeCardView: View {
 
                 Text(card.thought)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.ink)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -74,7 +77,7 @@ struct ReframeCardView: View {
 
                 Text(card.result.reframe)
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.ink)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -98,7 +101,7 @@ struct ReframeCardView: View {
     }
 
     private var frontSurface: Color {
-        .anglesSurface
+        theme.surface
     }
 
     private var backSurface: LinearGradient {

@@ -7,19 +7,28 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */; };
+		26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */; };
 		2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B602E536EA39A5C8524CE6 /* ReframeService.swift */; };
 		2EB391598577F25425C75DFF /* Angles.icon in Resources */ = {isa = PBXBuildFile; fileRef = 277F500C2565CC7DF5621C5A /* Angles.icon */; };
 		327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05847EC66A8A1B53179B539 /* ReframeCardView.swift */; };
 		3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D55F6643C769B38928FD8B /* ReframeModels.swift */; };
+		475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */; };
 		48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */; };
 		6B24BAA80221DF85876BB30A /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EBC59EB491832949278518 /* APIClient.swift */; };
 		729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */; };
+		7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */; };
 		830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */; };
 		9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */; };
+		978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657231FF50708210A4AA9FDD /* UserAppearance.swift */; };
 		A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A473004998C2F650FCA971D /* DrawerStubView.swift */; };
 		A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = CECAAC54ED5DE586764B6970 /* HomePalette.swift */; };
 		A72468A7C749E204738C1D2C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B13ED3B345E39F024359E6C0 /* Assets.xcassets */; };
+		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
 		C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564F37666F47FDFD54D03D2D /* HomeView.swift */; };
+		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
+		EBDA2E1E27376A11583D19E9 /* AccentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */; };
+		F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551EA9251B494B0E82C36D47 /* ColorTokens.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,15 +37,24 @@
 		338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
 		3726E6089528365BA6EC3BA8 /* AnglesApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnglesApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		40B602E536EA39A5C8524CE6 /* ReframeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeService.swift; sourceTree = "<group>"; };
+		4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModalScreen.swift; sourceTree = "<group>"; };
 		4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
 		54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		551EA9251B494B0E82C36D47 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
+		55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentPickerView.swift; sourceTree = "<group>"; };
 		564F37666F47FDFD54D03D2D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		657231FF50708210A4AA9FDD /* UserAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAppearance.swift; sourceTree = "<group>"; };
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
+		A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleIcon.swift; sourceTree = "<group>"; };
 		B05847EC66A8A1B53179B539 /* ReframeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeCardView.swift; sourceTree = "<group>"; };
 		B13ED3B345E39F024359E6C0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B1EBC59EB491832949278518 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnglesApp.swift; sourceTree = "<group>"; };
+		C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeStore.swift; sourceTree = "<group>"; };
+		CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
 		CECAAC54ED5DE586764B6970 /* HomePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomePalette.swift; sourceTree = "<group>"; };
+		DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentPalette.swift; sourceTree = "<group>"; };
 		F2D55F6643C769B38928FD8B /* ReframeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -58,6 +76,19 @@
 			path = Config;
 			sourceTree = "<group>";
 		};
+		2157775442BD938B1D553050 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */,
+				A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */,
+				551EA9251B494B0E82C36D47 /* ColorTokens.swift */,
+				4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */,
+				C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */,
+				657231FF50708210A4AA9FDD /* UserAppearance.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
 		36A7FDF3680174422F75E625 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -72,6 +103,16 @@
 				E5867170AF5329B3B1527D6E /* AnglesApp */,
 				36A7FDF3680174422F75E625 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A1EEEC4B1AED5D4B34FC7B21 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */,
+				CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */,
+				C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		B6B237C79F6DE4D015CCAE8C /* Models */ = {
@@ -106,6 +147,8 @@
 				D295652A17D76C4EDC80DF36 /* Home */,
 				B6B237C79F6DE4D015CCAE8C /* Models */,
 				0015A8A62717D6248D7BE219 /* Networking */,
+				A1EEEC4B1AED5D4B34FC7B21 /* Settings */,
+				2157775442BD938B1D553050 /* Theme */,
 			);
 			path = AnglesApp;
 			sourceTree = "<group>";
@@ -183,16 +226,25 @@
 			buildActionMask = 2147483647;
 			files = (
 				6B24BAA80221DF85876BB30A /* APIClient.swift in Sources */,
+				23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */,
+				EBDA2E1E27376A11583D19E9 /* AccentPickerView.swift in Sources */,
 				48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */,
 				9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */,
+				7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */,
+				475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */,
+				F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */,
 				729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */,
 				A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */,
 				A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */,
 				C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */,
 				830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */,
+				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
 				327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */,
 				3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */,
 				2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */,
+				ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */,
+				26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */,
+				978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

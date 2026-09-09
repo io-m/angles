@@ -1,25 +1,23 @@
 import SwiftUI
 
 struct DrawerStubView: View {
-    let destination: DrawerDestination
+    let title: String
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
-        ZStack {
-            Color(uiColor: .systemBackground)
-                .ignoresSafeArea()
-
-            Text(destination.rawValue)
-                .font(.title2.bold())
-                .multilineTextAlignment(.center)
-                .padding()
+        ModalScreen(title: title) {
+            Text("Coming later")
+                .font(.body)
+                .foregroundStyle(theme.muted)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 32)
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
     }
 }
 
 #Preview {
-    NavigationStack {
-        DrawerStubView(destination: .settings)
-    }
+    DrawerStubView(title: "Subscription")
 }
