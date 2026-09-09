@@ -58,17 +58,27 @@ struct AppRoot: View {
             .allowsHitTesting(isComposePresented)
             .accessibilityHidden(!isComposePresented)
         }
+        .ignoresSafeArea(.keyboard)
         .background {
             GeometryReader { geo in
                 Color.clear
                     .onAppear {
-                        homeSafeAreaInsets = geo.safeAreaInsets
+                        captureHomeInsets(geo.safeAreaInsets)
                     }
                     .onChange(of: geo.safeAreaInsets) { _, newInsets in
-                        homeSafeAreaInsets = newInsets
+                        captureHomeInsets(newInsets)
                     }
             }
             .ignoresSafeArea(.keyboard)
         }
+    }
+
+    /// Keyboard bottom inset is hundreds of points; the home indicator is not.
+    private func captureHomeInsets(_ insets: EdgeInsets) {
+        var next = insets
+        if next.bottom > 80 {
+            next.bottom = homeSafeAreaInsets.bottom
+        }
+        homeSafeAreaInsets = next
     }
 }

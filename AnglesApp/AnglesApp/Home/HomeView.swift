@@ -35,6 +35,7 @@ struct HomeView: View {
     var body: some View {
         homeChrome
             .ignoresSafeArea(.keyboard)
+            .animation(nil, value: isComposePresented)
             .toolbar(.hidden, for: .navigationBar)
             .tint(accentPalette.accent)
             .sheet(isPresented: $showSettings) {
@@ -76,12 +77,9 @@ struct HomeView: View {
 
                 topFade(safeTop: safeTop)
                 bottomFade(safeBottom: safeBottom)
-
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                        .allowsHitTesting(false)
-                    composerDock(safeBottom: safeBottom)
-                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                composerDock(safeBottom: safeBottom)
             }
         }
     }
@@ -148,29 +146,25 @@ struct HomeView: View {
     }
 
     private func composerDock(safeBottom: CGFloat) -> some View {
-        HStack {
-            Spacer(minLength: 0)
-
-            Button {
-                presentCompose()
-            } label: {
-                Image(systemName: "sparkle")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(fabSymbol)
-                    .frame(width: 56, height: 56)
-                    .background(fabFill, in: Circle())
-                    .overlay {
-                        Circle()
-                            .strokeBorder(fabSymbol.opacity(0.12), lineWidth: 0.5)
-                    }
-                    .shadow(color: .black.opacity(0.16), radius: 16, y: 7)
-                    .shadow(color: accentPalette.accent.opacity(0.18), radius: 12, y: 4)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Inspire me")
+        Button {
+            presentCompose()
+        } label: {
+            Image(systemName: "sparkle")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(fabSymbol)
+                .frame(width: 56, height: 56)
+                .background(fabFill, in: Circle())
+                .overlay {
+                    Circle()
+                        .strokeBorder(fabSymbol.opacity(0.12), lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.16), radius: 16, y: 7)
+                .shadow(color: accentPalette.accent.opacity(0.18), radius: 12, y: 4)
+                .contentShape(Circle())
         }
-        .padding(.horizontal, Layout.horizontalPadding)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Inspire me")
+        .padding(.trailing, Layout.horizontalPadding)
         .padding(.bottom, max(safeBottom, 10) + 12)
     }
 

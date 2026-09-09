@@ -83,6 +83,7 @@ private struct FlipReframeCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @State private var isFlipped = false
+    @State private var flipHaptic = 0
     @State private var showActions = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -102,7 +103,7 @@ private struct FlipReframeCard: View {
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture(perform: flip)
-        .sensoryFeedback(.impact(weight: .light), trigger: isFlipped)
+        .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             isFlipped
@@ -304,6 +305,8 @@ private struct FlipReframeCard: View {
     }
 
     private func flip() {
+        flipHaptic += 1
+
         if reduceMotion {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -341,31 +344,22 @@ private struct FlipStack<Front: View, Back: View>: View, Animatable {
 
     var body: some View {
         let showingBack = progress > 0.5
-        let isMidFlip = progress > 0.02 && progress < 0.98
 
-        Group {
-            if isMidFlip {
-                ZStack {
-                    front
-                        .compositingGroup()
-                        .opacity(showingBack ? 0 : 1)
-
-                    back
-                        .compositingGroup()
-                        .scaleEffect(x: -1, y: 1)
-                        .opacity(showingBack ? 1 : 0)
-                }
-                .rotation3DEffect(
-                    .radians(Double(progress) * .pi),
-                    axis: (x: 0, y: 1, z: 0),
-                    perspective: 0.55
-                )
+        ZStack {
+            front
                 .compositingGroup()
-            } else if showingBack {
-                back
-            } else {
-                front
-            }
+                .opacity(showingBack ? 0 : 1)
+
+            back
+                .compositingGroup()
+                .scaleEffect(x: -1, y: 1)
+                .opacity(showingBack ? 1 : 0)
         }
+        .rotation3DEffect(
+            .radians(Double(progress) * .pi),
+            axis: (x: 0, y: 1, z: 0),
+            perspective: 0.55
+        )
+        .compositingGroup()
     }
 }
