@@ -13,7 +13,7 @@ When you add or change a screen/feature:
 3. Move **Next up** to the following item.
 4. If you need a screen that is not listed, add it here *before* building it.
 
-Do not skip ahead. Do not invent extras (tabs, social, extra styles).
+Do not skip ahead. Do not invent extras (social, extra styles).
 
 Status values: `not started` · `in progress` · `done` · `skipped`
 
@@ -23,18 +23,19 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Core loop
 
-Navigation: stack only. **Compose → Results**. No tabs until History.
+Tab shell: **Home | Sparkle | Profile**. Sparkle opens the compose overlay. Profile is the private library. Home is an empty community placeholder.
 
 Loading and error are **states on Results**, not their own screens.
 
 | # | Item | Kind | Status | Files | Shipped |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Favorites strip (max 6) + mixed-style grid; answer-first flip; long-press Delete. |
-| 1b | Favorites | screen | done | `FavoritesView.swift`; `HomeView.swift` | Title opens a full favorites grid. In-memory only. |
+| 1b | Favorites | screen | done | `FavoritesView.swift`; `ProfileView.swift` | Title opens a full favorites grid. In-memory only. |
 | 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `RefineMock.swift` | Statement + kept questions; AI card with per-style recook; Start again. |
 | 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
 | 3 | Multi-style results | same screen as 2 | done | `ComposeSheetView.swift`; `ReframeCardView.swift` | Always all 4 styles. Answer-first carousels on home and overlay. |
 | 4 | Hook up fetching | feature | done | `ReframeService.swift`; `backend/src/routes/reframe.ts` | API contract exists. Overlay mocks on-device until a real LLM. |
+| 4b | Tabs + Profile shell | screen | done | `AnglesApp.swift`; `Root/RootTabBar.swift`; `HomeView.swift`; `ProfileView.swift`; `HomeCardGrid.swift` | Home empty + Settings; Sparkle compose; Profile library with spotlight filter. |
 | 5 | History | screen | not started | | |
 
 ### 1. Compose (home)
@@ -48,7 +49,7 @@ Home shell with a Favorites strip, the main card grid, Inspire me FAB, and heade
 
 ### 1b. Favorites
 
-Tappable Favorites title on home. Full grid of favorite cards (same heart/delete). In-memory only; History (SwiftData) is still next.
+Tappable Favorites title on Profile. Full grid of favorite cards (same heart/delete). In-memory only; History (SwiftData) is still next.
 
 ### 2. Results
 
@@ -62,7 +63,7 @@ One statement, then AI refine (not a chat transcript).
 
 ### 2a. Settings (appearance + accent)
 
-Header Settings sheet. Gradient chrome, large title that collapses to inline. Appearance is a popover. Accent and subscription stay sheets. Prefs in UserDefaults, not SwiftData.
+Home-tab Settings sheet. Gradient chrome, large title that collapses to inline. Appearance is a popover. Accent and subscription stay sheets. Prefs in UserDefaults, not SwiftData.
 
 ### 3. Multi-style results
 
@@ -72,11 +73,13 @@ Always all four styles. Style picker and per-style checkboxes are gone. Home car
 
 Not a new screen. `POST /reframe` is `{ text, followUps? }` → `clarify` or `ready` (always 4 styles). Overlay uses `RefineMock` on-device until a real LLM is wired through `ReframeService`.
 
+### 4b. Tabs + Profile shell
+
+Three-target bar: Home (empty community placeholder, Settings gear), Sparkle (existing compose overlay, not a page), Profile (private library). Favorites strip stays unfiltered. Header picker filters the grid by `spotlightStyle` only.
+
 ### 5. History
 
-List of past thoughts/reframes. **After fetching.** Needs SwiftData (or similar). Do not add persistence before this task.
-
-Tabs are allowed only once this screen exists (Compose + History).
+List of past thoughts/reframes. **After fetching.** Needs SwiftData (or similar). Do not add persistence before this task. Persists the Profile library; tabs already exist.
 
 ## Postponed (do not start)
 
@@ -85,12 +88,13 @@ Tabs are allowed only once this screen exists (Compose + History).
 | 6 | Onboarding taste | screen | not started | Reuses Compose + Results; one thought, all four styles, then paywall |
 | 7 | Paywall | screen | not started | StoreKit, hard gate after the taste |
 | 8 | Auth | feature | not started | Sign in with Apple / Better Auth; needed for restore, not for typing a thought |
+| 9 | Public opt-in / community Home | feature | not started | After History. Anonymous; user asks, AI writes; optional per-card publish into Home. No accounts or feed plumbing yet. |
 
 Account / auth settings wait until auth exists. Appearance + accent already shipped in 2a.
 
-## Out of scope (v1)
+## Out of scope (until listed)
 
-- Public feed / social
+- Public feed until postponed opt-in (row 9)
 - Extra reframe styles
 - Client-side LLM keys
 - Browser CORS
@@ -100,6 +104,8 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-10 — Native glass tab bar; Profile header fade, stable filter chip, space under the header.
+- 2026-09-10 — Tab shell: empty Home (Settings), Sparkle compose overlay, Profile library with spotlight-style filter.
 - 2026-09-10 — Favorites strip caps at 6 with a spring insert; Favorites title opens a grid; home cards mix starting styles; four dots; overlay New answer at the bottom.
 - 2026-09-10 — Answer-first flip (home + overlay); initials on the thought face; Start again; per-style New answer with mock variants.
 - 2026-09-10 — Overlay mocks on-device; questions stay with a chosen row; one 4-style carousel; heart + long-press Delete.

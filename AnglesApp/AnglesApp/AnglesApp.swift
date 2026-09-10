@@ -15,6 +15,8 @@ struct AnglesApp: App {
 struct AppRoot: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var isComposePresented = false
+    @State private var selectedTab: RootTab = .profile
+    @State private var lastContentTab: RootTab = .profile
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -26,15 +28,30 @@ struct AppRoot: View {
             theme.paper
                 .ignoresSafeArea()
 
-            NavigationStack {
-                HomeView(
-                    viewModel: viewModel,
-                    safeAreaInsets: homeSafeAreaInsets,
-                    isComposePresented: $isComposePresented
-                )
-                .ignoresSafeArea(.container, edges: .vertical)
+            TabView(selection: $selectedTab) {
+                NavigationStack {
+                    HomeView(safeAreaInsets: homeSafeAreaInsets)
+                }
+                .tabItem { Label("Home", systemImage: "house") }
+                .tag(RootTab.home)
+
+                Color.clear
+                    .tabItem { Label("Inspire me", systemImage: "sparkle") }
+                    .tag(RootTab.compose)
+
+                NavigationStack {
+                    ProfileView(
+                        safeAreaInsets: homeSafeAreaInsets,
+                        viewModel: viewModel
+                    )
+                }
+                .tabItem { Label("Profile", systemImage: "person") }
+                .tag(RootTab.profile)
             }
-            .background(Color.clear)
+            .tint(theme.ink)
+            .onChange(of: selectedTab) { _, newTab in
+                handleTabChange(newTab)
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.keyboard)
 
@@ -49,6 +66,10 @@ struct AppRoot: View {
                 isActive: isComposePresented,
                 onClose: {
                     isComposePresented = false
+                },
+                onSave: {
+                    lastContentTab = .profile
+                    selectedTab = .profile
                 }
             )
             .opacity(isComposePresented ? 1 : 0)
@@ -71,6 +92,29 @@ struct AppRoot: View {
             }
             .ignoresSafeArea(.keyboard)
         }
+    }
+
+    private func handleTabChange(_ newTab: RootTab) {
+        if newTab == .compose {
+            presentCompose()
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                selectedTab = lastContentTab
+            }
+            return
+        }
+
+        lastContentTab = newTab
+    }
+
+    private func presentCompose() {
+        guard !isComposePresented else {
+            return
+        }
+
+        viewModel.resetCompose()
+        isComposePresented = true
     }
 
     /// Keyboard bottom inset is hundreds of points; the home indicator is not.

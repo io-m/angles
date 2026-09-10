@@ -1,6 +1,6 @@
 # Angles — agent notes
 
-Paid-only private reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then always returns 1–3 sentences in all 4 styles. No public feed in v1. Onboarding: one free taste (all 4 styles), then a hard paywall.
+Paid-only private reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then always returns 1–3 sentences in all 4 styles. Private by default; anonymous opt-in to publish individual cards is postponed. The current shell has no public feed. Onboarding: one free taste (all 4 styles), then a hard paywall.
 
 ## Stack (this repo)
 
@@ -25,6 +25,11 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/lib/prompts.ts` — `SYSTEM_PROMPTS`
 - `backend/src/types/index.ts` — `Style`, request/response types
 - `AnglesApp/project.yml` — XcodeGen source of truth; run `xcodegen generate` after structural file changes
+- `AnglesApp/AnglesApp/AnglesApp.swift` — AppRoot: TabView (Home, Profile), compose overlay, shared `HomeViewModel`
+- `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
+- `AnglesApp/AnglesApp/Home/HomeView.swift` — empty Home tab + Settings
+- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library (favorites + filtered grid)
+- `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — 2-column card grid
 - `AnglesApp/AnglesApp/Home/RefineMock.swift` — on-device clarify vs ready until a real LLM
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
@@ -32,7 +37,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 
 ## Do not invent
 
-Follow `BUILD.md`. Do not add screens or features that are not the current item. No StoreKit, SwiftData, Drizzle, Better Auth, CORS “for browsers”, client-side LLM keys, or v2 social feed until that row in `BUILD.md` is next.
+Follow `BUILD.md`. Do not add screens or features that are not the current item. No StoreKit, SwiftData, Drizzle, Better Auth, CORS “for browsers”, client-side LLM keys, or community Home until that row in `BUILD.md` is next.
 
 ## Type sync
 

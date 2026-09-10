@@ -35,6 +35,7 @@ struct ComposeSheetView: View {
     @ObservedObject var viewModel: HomeViewModel
     var isActive: Bool = true
     var onClose: () -> Void = {}
+    var onSave: () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -523,7 +524,7 @@ struct ComposeSheetView: View {
         .padding(.bottom, 8)
         .background { composerGlow }
         .accessibilityLabel("Save")
-        .accessibilityHint("Adds all four answers to home and closes")
+        .accessibilityHint("Adds all four answers to Profile and closes")
     }
 
     private var composer: some View {
@@ -661,6 +662,7 @@ struct ComposeSheetView: View {
         }
 
         viewModel.publishSelected()
+        onSave()
         onClose()
     }
 

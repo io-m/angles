@@ -75,6 +75,33 @@ enum RefinePhase: Equatable {
     case error(String)
 }
 
+enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
+    case all
+    case stoic
+    case optimistic
+    case humorous
+    case toughLove
+
+    var title: String {
+        matchingStyle?.displayName ?? "All"
+    }
+
+    var matchingStyle: Style? {
+        switch self {
+        case .all:
+            return nil
+        case .stoic:
+            return .stoic
+        case .optimistic:
+            return .optimistic
+        case .humorous:
+            return .humorous
+        case .toughLove:
+            return .toughLove
+        }
+    }
+}
+
 @MainActor
 final class HomeViewModel: ObservableObject {
     @Published private(set) var cards: [HomeCard]
@@ -86,6 +113,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var clarifyRounds: [ClarifyRound] = []
     @Published private(set) var phase: RefinePhase = .composing
     @Published private(set) var cookHaptic = 0
+    @Published var profileGridFilter: ProfileGridFilter = .all
 
     private var refineTask: Task<Void, Never>?
 
@@ -103,6 +131,14 @@ final class HomeViewModel: ObservableObject {
 
     var stripFavoriteCards: [HomeCard] {
         Array(favoriteCards.prefix(Self.favoriteStripLimit))
+    }
+
+    var filteredProfileCards: [HomeCard] {
+        guard let style = profileGridFilter.matchingStyle else {
+            return cards
+        }
+
+        return cards.filter { $0.spotlightStyle == style }
     }
 
     var canSubmit: Bool {

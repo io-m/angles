@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Angles
 
-Private paid reframe app. No public feed in v1.
+Private paid reframe app. Private by default; community Home is postponed.
 
 - Backend: Hono + Node on Railway (`backend/`). Not Cloudflare Workers.
 - iOS: SwiftUI, iOS 17+, `URLSession` only (`AnglesApp/`). Run on **Joe’s iPhone**, not Simulator.
