@@ -1,13 +1,49 @@
 /**
- * Isolated LLM call. Swap the body of `generateReframe` when a provider is chosen.
- * The iOS app must never call an LLM provider directly.
+ * Isolated LLM call. The iOS app must never call an LLM provider directly.
+ * Do not log `text` or provider response bodies.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+applyLocalEnvFile();
+
 export const LLM_TIMEOUT_MS = 15_000;
+export const LLM_MAX_OUTPUT_TOKENS = 120;
+export const DEFAULT_LLM_MODEL = "mistral-small-latest";
+
+export const LLM_MODEL_IDS = [
+  "mistral-small-latest",
+  "gemini-3.8-flash",
+  "deepseek-flash",
+  "deepseek-v4-pro",
+] as const;
+
+export type LlmModelId = (typeof LLM_MODEL_IDS)[number];
+type LlmProvider = "mistral" | "gemini" | "deepseek";
+
+export const LLM_MODELS: Record<LlmModelId, { provider: LlmProvider }> = {
+  "mistral-small-latest": { provider: "mistral" },
+  "gemini-3.8-flash": { provider: "gemini" },
+  "deepseek-flash": { provider: "deepseek" },
+  "deepseek-v4-pro": { provider: "deepseek" },
+};
+
+const KEY_ENV: Record<LlmProvider, string> = {
+  mistral: "MISTRAL_API_KEY",
+  gemini: "GEMINI_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+};
+
+const CHAT_COMPLETIONS_URL: Record<Exclude<LlmProvider, "gemini">, string> = {
+  mistral: "https://api.mistral.ai/v1/chat/completions",
+  deepseek: "https://api.deepseek.com/chat/completions",
+};
 
 export type GenerateReframeInput = {
   text: string;
   systemPrompt: string;
+  model?: LlmModelId;
 };
 
 export class LlmError extends Error {
@@ -26,7 +62,7 @@ export async function generateReframe(
   }, LLM_TIMEOUT_MS);
 
   try {
-    return await mockGenerateReframe(input, controller.signal);
+    return await callProvider(input, controller.signal);
   } catch (error) {
     if (error instanceof LlmError) {
       throw error;
@@ -40,11 +76,32 @@ export async function generateReframe(
   }
 }
 
-/**
- * Placeholder until a provider/model is chosen.
- * Reads `LLM_API_KEY` only to prove env wiring; the mock does not call a network API.
- */
-async function mockGenerateReframe(
+function isLlmModelId(value: string): value is LlmModelId {
+  return (LLM_MODEL_IDS as readonly string[]).includes(value);
+}
+
+function resolveModel(requested?: LlmModelId): LlmModelId {
+  if (requested) {
+    return requested;
+  }
+
+  const raw = process.env.LLM_MODEL?.trim() || DEFAULT_LLM_MODEL;
+  if (!isLlmModelId(raw)) {
+    throw new LlmError("Unknown LLM_MODEL");
+  }
+  return raw;
+}
+
+function apiKeyFor(provider: LlmProvider): string {
+  const envName = KEY_ENV[provider];
+  const key = process.env[envName]?.trim() ?? "";
+  if (key.length === 0) {
+    throw new LlmError(`${envName} is not set`);
+  }
+  return key;
+}
+
+async function callProvider(
   input: GenerateReframeInput,
   signal: AbortSignal,
 ): Promise<string> {
@@ -52,15 +109,207 @@ async function mockGenerateReframe(
     throw new LlmError("LLM request aborted");
   }
 
-  void process.env.LLM_API_KEY;
-
   const trimmed = input.text.trim();
   if (trimmed.length === 0) {
     throw new LlmError("Cannot reframe empty text");
   }
 
-  const preview = trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
-  const toneMatch = input.systemPrompt.match(/in an? (.+?) tone/i);
-  const tone = toneMatch?.[1] ?? "Reframe";
-  return `[mock ${tone}] ${preview}`;
+  const model = resolveModel(input.model);
+  const provider = LLM_MODELS[model].provider;
+  const apiKey = apiKeyFor(provider);
+
+  if (provider === "gemini") {
+    return requestGemini({
+      model,
+      apiKey,
+      systemPrompt: input.systemPrompt,
+      text: trimmed,
+      signal,
+    });
+  }
+
+  return requestChatCompletions({
+    url: CHAT_COMPLETIONS_URL[provider],
+    apiKey,
+    model,
+    systemPrompt: input.systemPrompt,
+    text: trimmed,
+    signal,
+    extraBody:
+      provider === "mistral"
+        ? { reasoning_effort: "none" }
+        : { thinking: { type: "disabled" } },
+  });
+}
+
+type ChatMessageContent =
+  | string
+  | ReadonlyArray<{ type?: string; text?: string }>
+  | null
+  | undefined;
+
+type ChatCompletionResponse = {
+  choices?: Array<{
+    message?: {
+      content?: ChatMessageContent;
+    };
+  }>;
+};
+
+type GeminiPart = {
+  text?: string;
+  thought?: boolean;
+};
+
+type GeminiGenerateResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: GeminiPart[];
+    };
+  }>;
+};
+
+async function requestChatCompletions(options: {
+  url: string;
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  text: string;
+  signal: AbortSignal;
+  extraBody: Record<string, unknown>;
+}): Promise<string> {
+  const response = await fetch(options.url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${options.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: options.model,
+      messages: [
+        { role: "system", content: options.systemPrompt },
+        { role: "user", content: options.text },
+      ],
+      max_tokens: LLM_MAX_OUTPUT_TOKENS,
+      ...options.extraBody,
+    }),
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    throw new LlmError(`LLM HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as ChatCompletionResponse;
+  const content = extractChatContent(payload.choices?.[0]?.message?.content);
+  if (content.length === 0) {
+    throw new LlmError("LLM returned an empty reframe");
+  }
+  return content;
+}
+
+async function requestGemini(options: {
+  model: string;
+  apiKey: string;
+  systemPrompt: string;
+  text: string;
+  signal: AbortSignal;
+}): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.model}:generateContent`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": options.apiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: options.systemPrompt }],
+      },
+      contents: [{ role: "user", parts: [{ text: options.text }] }],
+      generationConfig: {
+        maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
+        thinkingConfig: {
+          thinkingLevel: "low",
+        },
+      },
+    }),
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    throw new LlmError(`LLM HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as GeminiGenerateResponse;
+  const content = extractGeminiText(payload.candidates?.[0]?.content?.parts);
+  if (content.length === 0) {
+    throw new LlmError("LLM returned an empty reframe");
+  }
+  return content;
+}
+
+function extractChatContent(content: ChatMessageContent): string {
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  return content
+    .map((part) => (typeof part.text === "string" ? part.text : ""))
+    .join("")
+    .trim();
+}
+
+function extractGeminiText(parts: GeminiPart[] | undefined): string {
+  if (!parts) {
+    return "";
+  }
+
+  return parts
+    .filter((part) => part.thought !== true)
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+}
+
+function applyLocalEnvFile(): void {
+  if (process.env.VITEST === "true") {
+    return;
+  }
+
+  let raw: string;
+  try {
+    raw = readFileSync(resolve(process.cwd(), ".env"), "utf8");
+  } catch {
+    return;
+  }
+
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const separator = trimmed.indexOf("=");
+    if (separator <= 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, separator).trim();
+    let value = trimmed.slice(separator + 1).trim();
+    if (
+      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
 }

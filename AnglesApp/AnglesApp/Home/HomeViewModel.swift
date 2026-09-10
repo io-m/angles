@@ -113,12 +113,32 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var clarifyRounds: [ClarifyRound] = []
     @Published private(set) var phase: RefinePhase = .composing
     @Published private(set) var cookHaptic = 0
+    @Published private(set) var recookingStyle: Style?
     @Published var profileGridFilter: ProfileGridFilter = .all
+    @Published var selectedModel: LlmModel {
+        didSet {
+            UserDefaults.standard.set(selectedModel.rawValue, forKey: Self.modelDefaultsKey)
+        }
+    }
 
+    private let reframeService: ReframeService
     private var refineTask: Task<Void, Never>?
 
-    init(cards: [HomeCard]? = nil) {
+    private static let modelDefaultsKey = "angles.llmModel"
+
+    init(cards: [HomeCard]? = nil, reframeService: ReframeService = ReframeService()) {
         self.cards = cards ?? Self.sampleCards
+        self.reframeService = reframeService
+        if let raw = UserDefaults.standard.string(forKey: Self.modelDefaultsKey),
+           let model = LlmModel(rawValue: raw) {
+            selectedModel = model
+        } else {
+            selectedModel = .mistral
+        }
+    }
+
+    var isModelLocked: Bool {
+        isCooking || recookingStyle != nil
     }
 
     static let favoriteStripLimit = 6
@@ -174,8 +194,14 @@ final class HomeViewModel: ObservableObject {
         clarifyRounds.last(where: { !$0.isAnswered })
     }
 
-    private var answeredFollowUpCount: Int {
-        clarifyRounds.filter(\.isAnswered).count
+    private var answeredFollowUps: [FollowUpAnswer] {
+        clarifyRounds.compactMap { round in
+            guard let answer = round.selectedAnswer else {
+                return nil
+            }
+
+            return FollowUpAnswer(question: round.question, answer: answer)
+        }
     }
 
     func submitStatement() {
@@ -273,16 +299,55 @@ final class HomeViewModel: ObservableObject {
     }
 
     func recookStyle(_ style: Style) {
-        guard case .ready(var results) = phase,
-              let index = results.firstIndex(where: { $0.style == style })
+        guard case .ready(let results) = phase,
+              recookingStyle == nil,
+              results.contains(where: { $0.style == style })
         else {
             return
         }
 
-        let next = RefineMock.nextVariant(style: style, after: results[index].reframe)
-        results[index] = ReframeResult(style: style, reframe: next)
-        phase = .ready(results)
-        cookHaptic += 1
+        recookingStyle = style
+        let text = statement
+        let followUps = answeredFollowUps
+        let model = selectedModel
+
+        refineTask?.cancel()
+        refineTask = Task { @MainActor in
+            defer {
+                if recookingStyle == style {
+                    recookingStyle = nil
+                }
+                refineTask = nil
+            }
+
+            do {
+                let response = try await reframeService.refine(
+                    text: text,
+                    followUps: followUps,
+                    styles: [style],
+                    model: model
+                )
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                guard case .ready(let incoming) = response,
+                      let replacement = incoming.first(where: { $0.style == style }) ?? incoming.first,
+                      case .ready(var current) = phase,
+                      let index = current.firstIndex(where: { $0.style == style })
+                else {
+                    return
+                }
+
+                current[index] = ReframeResult(style: style, reframe: replacement.reframe)
+                phase = .ready(current)
+                cookHaptic += 1
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+            }
+        }
     }
 
     func resetCompose() {
@@ -293,40 +358,50 @@ final class HomeViewModel: ObservableObject {
         isWritingNew = false
         statement = ""
         clarifyRounds = []
+        recookingStyle = nil
         phase = .composing
     }
 
     private func startRefine() {
         refineTask?.cancel()
+        recookingStyle = nil
         phase = .cooking
         let text = statement
-        let answered = answeredFollowUpCount
+        let followUps = answeredFollowUps
+        let model = selectedModel
 
         refineTask = Task { @MainActor in
             do {
-                try await Task.sleep(for: .milliseconds(700))
-            } catch {
-                return
-            }
-
-            guard !Task.isCancelled else {
-                return
-            }
-
-            switch RefineMock.decide(text: text, answeredFollowUps: answered) {
-            case .clarify(let question, let options):
-                clarifyRounds.append(
-                    ClarifyRound(
-                        id: UUID(),
-                        question: question,
-                        options: options
-                    )
+                let response = try await reframeService.refine(
+                    text: text,
+                    followUps: followUps,
+                    model: model
                 )
-                phase = .awaitingClarify
-            case .ready:
-                phase = .ready(RefineMock.results())
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                switch response {
+                case .clarify(let question, let options):
+                    clarifyRounds.append(
+                        ClarifyRound(
+                            id: UUID(),
+                            question: question,
+                            options: options
+                        )
+                    )
+                    phase = .awaitingClarify
+                case .ready(let results):
+                    phase = .ready(results)
+                }
+                cookHaptic += 1
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                phase = .error("Couldn't generate a reframe. Try again.")
             }
-            cookHaptic += 1
             refineTask = nil
         }
     }

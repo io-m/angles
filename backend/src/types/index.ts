@@ -10,6 +10,8 @@ export type FollowUpAnswer = {
 export type ReframeRequest = {
   text: string;
   followUps?: FollowUpAnswer[];
+  styles?: Style[];
+  model?: string;
 };
 
 export type ReframeResult = {

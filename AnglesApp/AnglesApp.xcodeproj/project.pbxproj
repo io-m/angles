@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		01A8AEC059C1A4D61340EAB5 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */; };
+		01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B6CE33C2217655B2170B5F3 /* LlmModel.swift */; };
 		1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3956722F5CD9FC2607E738A /* RootTabBar.swift */; };
 		23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */; };
 		26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */; };
@@ -51,6 +52,7 @@
 		657231FF50708210A4AA9FDD /* UserAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAppearance.swift; sourceTree = "<group>"; };
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
 		81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCardGrid.swift; sourceTree = "<group>"; };
+		9B6CE33C2217655B2170B5F3 /* LlmModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlmModel.swift; sourceTree = "<group>"; };
 		9F57743D37B0E0BE75EB3659 /* RefineMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefineMock.swift; sourceTree = "<group>"; };
 		A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleIcon.swift; sourceTree = "<group>"; };
@@ -128,6 +130,7 @@
 		B6B237C79F6DE4D015CCAE8C /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				9B6CE33C2217655B2170B5F3 /* LlmModel.swift */,
 				F2D55F6643C769B38928FD8B /* ReframeModels.swift */,
 			);
 			path = Models;
@@ -263,6 +266,7 @@
 				A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */,
 				C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */,
 				830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */,
+				01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
 				01A8AEC059C1A4D61340EAB5 /* ProfileView.swift in Sources */,
 				A8E5CE95B5569923D76BD7AD /* RefineMock.swift in Sources */,

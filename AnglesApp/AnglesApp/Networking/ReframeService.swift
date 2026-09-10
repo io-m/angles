@@ -7,10 +7,15 @@ struct ReframeService: Sendable {
         self.client = client
     }
 
-    func refine(text: String, followUps: [FollowUpAnswer]) async throws -> ReframeResponse {
+    func refine(
+        text: String,
+        followUps: [FollowUpAnswer] = [],
+        styles: [Style]? = nil,
+        model: LlmModel? = nil
+    ) async throws -> ReframeResponse {
         try await client.post(
             path: "reframe",
-            body: ReframeRequest(text: text, followUps: followUps)
+            body: ReframeRequest(text: text, followUps: followUps, styles: styles, model: model)
         )
     }
 }

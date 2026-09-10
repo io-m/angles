@@ -47,6 +47,7 @@ struct ComposeSheetView: View {
     @State private var scrollToken = 0
     @State private var headerStrip: CGFloat = 119
     @State private var showRestartAlert = false
+    @State private var showModelPicker = false
 
     private var isComposing: Bool {
         viewModel.phase == .composing
@@ -124,15 +125,19 @@ struct ComposeSheetView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Close without saving")
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            if hasStatement {
-                Button("Start again") {
-                    showRestartAlert = true
+            HStack(spacing: 12) {
+                if hasStatement {
+                    Button("Start again") {
+                        showRestartAlert = true
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                    .accessibilityHint("Wipes this session and starts a new thought")
                 }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.ink)
-                .accessibilityHint("Wipes this session and starts a new thought")
+
+                modelPickerButton
             }
         }
         .padding(.horizontal, edgePad)
@@ -141,6 +146,72 @@ struct ComposeSheetView: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.frame(in: .global).maxY
         } action: { headerStrip = $0 }
+    }
+
+    private var modelPickerButton: some View {
+        Button {
+            showModelPicker = true
+        } label: {
+            ModelLogoButton(
+                model: viewModel.selectedModel,
+                fill: theme.surface,
+                hairline: theme.cardHairline
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isModelLocked)
+        .opacity(viewModel.isModelLocked ? 0.45 : 1)
+        .accessibilityLabel("Model")
+        .accessibilityValue(viewModel.selectedModel.displayName)
+        .popover(isPresented: $showModelPicker, arrowEdge: .top) {
+            modelPicker
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private var modelPicker: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(LlmModel.allCases) { model in
+                let isSelected = viewModel.selectedModel == model
+
+                Button {
+                    viewModel.selectedModel = model
+                    showModelPicker = false
+                } label: {
+                    HStack(spacing: 12) {
+                        ModelLogo(model: model, side: 18)
+                            .frame(width: 22, alignment: .center)
+
+                        Text(model.displayName)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(theme.ink)
+
+                        Spacer(minLength: 12)
+
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(theme.ink)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+
+                if model != LlmModel.allCases.last {
+                    Rectangle()
+                        .fill(theme.line)
+                        .frame(height: 1)
+                        .padding(.leading, 50)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(minWidth: 220)
+        .background(theme.surface)
     }
 
     @ViewBuilder
@@ -243,6 +314,7 @@ struct ComposeSheetView: View {
                 OverlayProposalCard(
                     thought: viewModel.statement,
                     results: results,
+                    recookingStyle: viewModel.recookingStyle,
                     onRecook: { style in
                         viewModel.recookStyle(style)
                     }

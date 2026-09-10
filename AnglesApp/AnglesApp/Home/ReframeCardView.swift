@@ -269,6 +269,7 @@ struct ReframeCardView: View {
 struct OverlayProposalCard: View {
     let thought: String
     let results: [ReframeResult]
+    var recookingStyle: Style?
     var onRecook: (Style) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -421,12 +422,19 @@ struct OverlayProposalCard: View {
     }
 
     private func recookButton(for style: Style, ink: Color) -> some View {
-        Button {
+        let isRecooking = recookingStyle == style
+        return Button {
             onRecook(style)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: "sparkle")
-                    .font(.system(size: 11, weight: .semibold))
+                if isRecooking {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(ink)
+                } else {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 11, weight: .semibold))
+                }
                 Text("New answer")
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
@@ -438,6 +446,8 @@ struct OverlayProposalCard: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .disabled(recookingStyle != nil)
+        .opacity(recookingStyle == nil || isRecooking ? 1 : 0.45)
         .accessibilityLabel("New \(style.displayName) answer")
     }
 

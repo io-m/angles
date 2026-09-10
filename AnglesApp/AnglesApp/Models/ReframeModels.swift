@@ -17,6 +17,25 @@ struct FollowUpAnswer: Codable, Equatable, Sendable {
 struct ReframeRequest: Codable, Equatable, Sendable {
     let text: String
     let followUps: [FollowUpAnswer]
+    let styles: [Style]?
+    let model: LlmModel?
+
+    private enum CodingKeys: String, CodingKey {
+        case text
+        case followUps
+        case styles
+        case model
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+        if !followUps.isEmpty {
+            try container.encode(followUps, forKey: .followUps)
+        }
+        try container.encodeIfPresent(styles, forKey: .styles)
+        try container.encodeIfPresent(model, forKey: .model)
+    }
 }
 
 struct ReframeResult: Codable, Equatable, Sendable {

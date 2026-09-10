@@ -44,4 +44,5 @@ targets:
           - UIInterfaceOrientationPortrait
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Angles talks to the API on your Mac while developing.
     scheme: {}

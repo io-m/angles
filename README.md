@@ -17,27 +17,27 @@ Requires Node 22+ and pnpm.
 
 ```bash
 cd backend
-cp .env.example .env   # optional for the mock LLM
+cp .env.example .env   # set MISTRAL_API_KEY (default model)
 pnpm install
 pnpm dev
 ```
 
-API listens on `http://localhost:8787`.
+API listens on `http://localhost:8787` (bind `0.0.0.0`). A physical device must use the Mac LAN IP, not localhost.
 
 - `GET /health` → `{ "status": "ok" }`
-- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[] }` → `{ "kind": "clarify", "question", "options" }` or `{ "kind": "ready", "results": [{ "style", "reframe" }] }` (always all four styles).
+- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[], "styles"?: Style[] }` → `{ "kind": "clarify", "question", "options" }` or `{ "kind": "ready", "results": [{ "style", "reframe" }] }`. Omit `styles` for all four; recook may send one.
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm build`.
 
-The LLM lives behind `backend/src/lib/llmClient.ts` (`generateReframe`). It is a mock until a provider is chosen. The iOS app must never call an LLM with a client-side key.
+The LLM lives behind `backend/src/lib/llmClient.ts` (`generateReframe`). Default `LLM_MODEL` is `mistral-small-latest`. Also wired: `gemini-3.8-flash`, `deepseek-flash`, `deepseek-v4-pro`. The iOS app must never call an LLM with a client-side key.
 
 Native `URLSession` does not use browser CORS. This API does not send CORS headers.
 
 ## iOS app
 
-The overlay currently mocks refine on-device (`RefineMock`). `ReframeService` / `POST /reframe` stay for when a real LLM is wired.
+The overlay cooks through `ReframeService` / `POST /reframe`. `RefineMock` remains only for sample Profile cards.
 
-Debug `AppConfig.baseURL` is `http://localhost:8787`. `NSAllowsLocalNetworking` is enabled; do not turn on `NSAllowsArbitraryLoads`.
+Debug `AppConfig.baseURL` is the Mac LAN IP on port 8787 (devices cannot use localhost). `NSAllowsLocalNetworking` is enabled; do not turn on `NSAllowsArbitraryLoads`.
 
 Bundle ID placeholder: `app.angles.ios`. Attach your Apple team in Xcode before device runs.
 

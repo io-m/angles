@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { authStub } from "../lib/authStub.js";
 import { errorBody } from "../lib/http.js";
-import { generateReframe, LlmError } from "../lib/llmClient.js";
+import { generateReframe, LLM_MODEL_IDS, LlmError, type LlmModelId } from "../lib/llmClient.js";
 import { SYSTEM_PROMPTS } from "../lib/prompts.js";
 import {
   clarifyForFollowUps,
@@ -37,6 +37,8 @@ const followUpSchema = z.object({
     ),
 });
 
+const styleSchema = z.enum(STYLES);
+
 const reframeRequestSchema = z.object({
   text: z
     .string()
@@ -48,6 +50,8 @@ const reframeRequestSchema = z.object({
         .max(MAX_TEXT_LENGTH, `text must be at most ${MAX_TEXT_LENGTH} characters`),
     ),
   followUps: z.array(followUpSchema).max(MAX_FOLLOW_UPS, "followUps must contain at most 3 entries").optional(),
+  styles: z.array(styleSchema).min(1).max(STYLES.length).optional(),
+  model: z.enum(LLM_MODEL_IDS).optional(),
 });
 
 function validationErrorMessage(error: { issues: { message: string }[] }): string {
@@ -55,12 +59,30 @@ function validationErrorMessage(error: { issues: { message: string }[] }): strin
   return first?.message ?? "Invalid request";
 }
 
-async function generateAllStyles(text: string): Promise<ReadyResponse> {
+function uniqueStyles(styles: Style[]): Style[] {
+  const seen = new Set<Style>();
+  const unique: Style[] = [];
+  for (const style of styles) {
+    if (!seen.has(style)) {
+      seen.add(style);
+      unique.push(style);
+    }
+  }
+  return unique;
+}
+
+async function generateStyles(
+  text: string,
+  styles: readonly Style[],
+  model?: LlmModelId,
+): Promise<ReadyResponse> {
+  const requested = uniqueStyles([...styles]);
   const results = await Promise.all(
-    STYLES.map(async (style: Style) => {
+    requested.map(async (style: Style) => {
       const reframe = await generateReframe({
         text,
         systemPrompt: SYSTEM_PROMPTS[style],
+        model,
       });
       const trimmed = reframe.trim();
       if (trimmed.length === 0) {
@@ -84,13 +106,13 @@ reframeRoute.post(
     }
   }),
   async (c) => {
-    const { text, followUps: rawFollowUps } = c.req.valid("json");
+    const { text, followUps: rawFollowUps, styles, model } = c.req.valid("json");
     const followUps: FollowUpAnswer[] = rawFollowUps ?? [];
 
     try {
       let body: ReframeResponse;
       if (shouldReturnReady(text, followUps)) {
-        body = await generateAllStyles(composeLlmText(text, followUps));
+        body = await generateStyles(composeLlmText(text, followUps), styles ?? STYLES, model);
       } else {
         body = clarifyForFollowUps(followUps);
       }
