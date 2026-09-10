@@ -18,11 +18,11 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 
 - `backend/src/app.ts` — Hono app, middleware, error handler
 - `backend/src/index.ts` — `serve()`, `PORT` (default 8787), bind `0.0.0.0`
-- `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, clarify or `Promise.all` all styles
+- `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, decision call then `Promise.all` the chosen styles
 - `backend/src/routes/health.ts` — `GET /health`
-- `backend/src/lib/refineDecision.ts` — mock clarify vs ready
-- `backend/src/lib/llmClient.ts` — **only** file to change when picking an LLM provider
-- `backend/src/lib/prompts.ts` — `SYSTEM_PROMPTS`
+- `backend/src/lib/decision.ts` — the structured decision call: continue vs ready, cleaned thought, styles, metadata
+- `backend/src/lib/llmClient.ts` — **only** file to change when picking an LLM provider (`generateReframe`, `generateJson`)
+- `backend/src/lib/prompts.ts` — `DECISION_PROMPT`, `SYSTEM_PROMPTS`, length budgets
 - `backend/src/types/index.ts` — `Style`, request/response types
 - `AnglesApp/project.yml` — XcodeGen source of truth; run `xcodegen generate` after structural file changes
 - `AnglesApp/AnglesApp/AnglesApp.swift` — AppRoot: TabView (Home, Profile), compose overlay, shared `HomeViewModel`
@@ -30,7 +30,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Home/HomeView.swift` — empty Home tab + Settings
 - `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library (favorites + filtered grid)
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — 2-column card grid
-- `AnglesApp/AnglesApp/Home/RefineMock.swift` — on-device clarify vs ready until a real LLM
+- `AnglesApp/AnglesApp/Home/SampleCardCopy.swift` — seed copy for the in-memory library only
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
 - `BUILD.md` — **screen/feature order**. Update it in the same change as every new screen or feature.
@@ -38,6 +38,15 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 ## Do not invent
 
 Follow `BUILD.md`. Do not add screens or features that are not the current item. No StoreKit, SwiftData, Drizzle, Better Auth, CORS “for browsers”, client-side LLM keys, or community Home until that row in `BUILD.md` is next.
+
+## Reframe contract
+
+Every `POST /reframe` runs the decision call first — there is no local clarify bank and no word-count gate. It answers one of two shapes:
+
+- `{ kind: "continue", message, options, safety }` — the composer stays up; the user answers or says more.
+- `{ kind: "ready", thought, thoughtOriginal?, results (1–4), meta }` — `thought` is the cleaned English card copy.
+
+`meta` is `{ category, proposedCategory?, proposedLabel?, tags, intensity, timeframe, emotions, safety, inputLanguage, skippedStyles, matching }`. Categories are a closed set; anything else becomes `other` plus a proposal. Never reframe a thought flagged for safety. `followUps` caps at 6 and the decision is forced to land from the third.
 
 ## Type sync
 

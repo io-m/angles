@@ -10,9 +10,9 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 - `src/app.ts` — middleware, route mount, `onError`
 - `src/index.ts` — Node `serve()` only
 - `src/routes/reframe.ts` — `POST /reframe`
-- `src/lib/refineDecision.ts` — mock clarify vs ready
-- `src/lib/llmClient.ts` — `generateReframe({ text, systemPrompt })`
-- `src/lib/prompts.ts` — `SYSTEM_PROMPTS`
+- `src/lib/decision.ts` — decision call, JSON parsing, one repair retry, metadata mapping
+- `src/lib/llmClient.ts` — `generateReframe({ text, systemPrompt })`, `generateJson({ ... })`
+- `src/lib/prompts.ts` — `DECISION_PROMPT`, `SYSTEM_PROMPTS`, length budgets
 - `src/types/index.ts` — shared types; update Swift models in the same change
 
 ## Adding a route
@@ -22,9 +22,13 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 3. Zod at the boundary. Typed handler. `{ error, code }` on failure.
 4. Cover with `app.request()` in `src/app.test.ts` (or a colocated `*.test.ts`).
 
+## The reframe flow
+
+One decision call (`generateJson`) then one style call per chosen style. `continue` never runs a style call. Metadata and the cleaned English thought come from the decision only — the raw user text never reaches a style prompt, and neither is ever logged.
+
 ## Swapping the LLM
 
-Change only `src/lib/llmClient.ts`. Keep `generateReframe` and `LlmError`. Honor `LLM_TIMEOUT_MS` and `AbortSignal`. Do not send `LLM_API_KEY` to the client. Do not log `text`.
+Change only `src/lib/llmClient.ts`. Keep `generateReframe`, `generateJson`, and `LlmError`. A new provider needs a JSON mode. Honor `LLM_TIMEOUT_MS` and `AbortSignal`. Do not send `LLM_API_KEY` to the client. Do not log `text`.
 
 ## Auth / DB (not yet)
 

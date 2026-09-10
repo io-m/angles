@@ -18,12 +18,14 @@ Target: iOS 17+, bundle id `app.angles.ios` (placeholder). No SPM networking pac
 ## Networking
 
 - `APIClient.post(path:body:)` — JSON encode, `URLSession`, decode `Decodable`, map failures to `APIError`.
-- `ReframeService.refine(text:followUps:)` — `POST /reframe` only.
+- `ReframeService.refine(text:followUps:styles:model:)` — `POST /reframe` only. Answers `.continueTurn` or `.ready`.
 - Auth header: TODO on the request in `APIClient`. Do not invent a token store.
 
 ## Models
 
-Keep `Style` raw values identical to the backend: `stoic`, `optimistic`, `humorous`, `tough_love`.
+Keep `Style` raw values identical to the backend: `stoic`, `optimistic`, `humorous`, `tough_love`. `ThoughtCategory`, `Timeframe`, `SafetyFlag`, and `IntensityBand` decode unknown values to a safe case on purpose — a new backend value must not fail a whole cook.
+
+A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`). Never hide it on anything but a finished cook.
 
 ## Config
 

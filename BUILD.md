@@ -31,13 +31,14 @@ Loading and error are **states on Results**, not their own screens.
 | --- | --- | --- | --- | --- | --- |
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Favorites strip (max 6) + mixed-style grid; answer-first flip; long-press Delete. |
 | 1b | Favorites | screen | done | `FavoritesView.swift`; `ProfileView.swift` | Title opens a full favorites grid. In-memory only. |
-| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `RefineMock.swift` | Statement + kept questions; AI card with per-style recook; Start again. |
+| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `SampleCardCopy.swift` | Statement + kept questions; AI card with per-style recook; Start again. |
 | 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
 | 3 | Multi-style results | same screen as 2 | done | `ComposeSheetView.swift`; `ReframeCardView.swift` | Always all 4 styles. Answer-first carousels on home and overlay. |
 | 4 | Hook up fetching | feature | done | `ReframeService.swift`; `backend/src/routes/reframe.ts` | API contract exists. Overlay mocks on-device until a real LLM. |
 | 4b | Tabs + Profile shell | screen | done | `AnglesApp.swift`; `Root/RootTabBar.swift`; `HomeView.swift`; `ProfileView.swift`; `HomeCardGrid.swift` | Home empty + Settings; Sparkle compose; Profile library with spotlight filter. |
 | 4c | Real LLM | feature | done | `llmClient.ts`; `HomeViewModel.swift`; `AppConfig.swift` | Overlay calls `POST /reframe`. Default Mistral Small 4; Gemini 3.8 Flash and DeepSeek via `LLM_MODEL`. |
 | 4d | Model picker | feature | done | `ComposeSheetView.swift`; `LlmModel.swift`; `llmClient.ts` | Compose header picks Mistral / Gemini / DeepSeek; `POST /reframe` sends `model`. |
+| 4e | Core LLM contract | feature | done | `decision.ts`; `prompts.ts`; `reframe.ts`; `ReframeModels.swift`; `HomeViewModel.swift` | Every cook runs a JSON decision call; `continue` keeps the composer; card-fit English thought plus matching metadata. |
 | 5 | History | screen | not started | | |
 
 ### 1. Compose (home)
@@ -47,7 +48,7 @@ Home shell with a Favorites strip, the main card grid, Inspire me FAB, and heade
 - Front of each card is the 4-style carousel; tap flips to the original thought. Each card opens on a mixed spotlight style so the feed is not all stoic. Initials (mock JM) sit on the thought face so they flip with the card. Heart and date stay as overlay chrome.
 - Four dots sit under the card while the answer face is showing.
 - Long-press Delete. Heart toggles favorites in memory (newest-favorited first). The strip shows at most 6; Favorites opens the full grid.
-- Overlay starts with a focused composer. After send, the composer goes away.
+- Overlay starts with a focused composer. It stays up until a cook is ready, so the user can always answer or say more.
 
 ### 1b. Favorites
 
@@ -57,8 +58,8 @@ Tappable Favorites title on Profile. Full grid of favorite cards (same heart/del
 
 One statement, then AI refine (not a chat transcript).
 
-- On-device mock may ask up to 3 follow-ups (suggested answers + Write something new) or return all 4 styles. Questions stay on screen with the chosen row emphasized.
-- Four styles show in one answer-first carousel (AI sparkle avatar left, flippable card right). New answer sits at the bottom center. Loading and error live on this overlay.
+- The API may answer with `continue`: its message plus up to 3 chips. Turns and the user's replies stay on screen as a chat, and the composer never leaves.
+- The chosen styles show in one answer-first carousel (AI sparkle avatar left, flippable card right). New answer sits at the bottom center. Loading and error live on this overlay.
 - Each style has New answer (overlay only); recook requests that style from the API.
 - Start again (header) asks to confirm, then wipes the session and returns the composer. Overlay stays open.
 - Save (icon + label) sits where the composer was and publishes all 4. X discards.
@@ -73,7 +74,7 @@ Always all four styles. Style picker and per-style checkboxes are gone. Home car
 
 ### 4. Hook up fetching
 
-Not a new screen. `POST /reframe` is `{ text, followUps?, styles? }` → `clarify` or `ready`. Overlay used `RefineMock` until 4c.
+Not a new screen. `POST /reframe` is `{ text, followUps?, styles?, model? }` → `continue` or `ready` (was `clarify` until 4e). The overlay mocked on-device until 4c.
 
 ### 4b. Tabs + Profile shell
 
@@ -81,11 +82,21 @@ Three-target bar: Home (empty community placeholder, Settings gear), Sparkle (ex
 
 ### 4c. Real LLM
 
-Not a new screen. `generateReframe` calls a provider catalog (`mistral-small-latest` default, plus `gemini-3.8-flash`, `deepseek-flash`, `deepseek-v4-pro`). Overlay `startRefine` / recook use `ReframeService`. Clarify follow-ups stay the mock bank.
+Not a new screen. `generateReframe` calls a provider catalog (`mistral-small-latest` default, plus `gemini-3.8-flash`, `deepseek-flash`, `deepseek-v4-pro`). Overlay `startRefine` / recook use `ReframeService`. Follow-ups stayed the mock bank until 4e.
 
 ### 4d. Model picker
 
 Compose overlay header: trailing 40pt logo button (always visible) opens a compact popover. Sends optional `model` on `POST /reframe`. Missing `model` still uses env `LLM_MODEL`. DeepSeek Pro stays catalog-only, not in the picker.
+
+### 4e. Core LLM contract
+
+Not a new screen. Every `POST /reframe` runs one structured decision call (`decision.ts` + `DECISION_PROMPT`), then style calls for the styles it chose. The old mock gate (`refineDecision.ts` clarify bank, 24-word threshold) is gone.
+
+- Response is `continue` (`message`, `options`, `safety`) or `ready` (`thought`, optional `thoughtOriginal`, 1–4 `results`, `meta`).
+- `meta` carries the closed category, tags, intensity, timeframe, emotions, safety, input language, skipped styles, and an anonymous `matching` key. Cards keep it in memory; nothing is persisted until History.
+- Card copy is English and card-fit (thought 8–28 words, reframe 12–45 words). A non-English input also returns its own cleaned wording behind an Original toggle.
+- The composer stays up for every turn that is not a finished cook, so a `continue` is just the next message in the chat. `followUps` caps at 6; from the third the decision is told to land it, safety aside.
+- A recook of a style the decision skipped comes back as `continue` with that skip reason, not a bad joke.
 
 ### 5. History
 
@@ -114,6 +125,7 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-10 — Core LLM contract: every cook runs a structured decision call; `continue` keeps the composer; card-fit English thought, optional original, 1–4 styles, matching metadata.
 - 2026-09-10 — Compose model picker: Mistral / Gemini / DeepSeek logos; optional `model` on `POST /reframe`.
 - 2026-09-10 — Real LLM: overlay cooks via `POST /reframe`; default Mistral Small 4; optional `styles` for recook.
 - 2026-09-10 — Native glass tab bar; Profile header fade, stable filter chip, space under the header.

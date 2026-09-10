@@ -9,6 +9,7 @@ struct ReframeCardView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 226
     @State private var isFlipped = false
+    @State private var showingOriginal = false
     @State private var pagedSlideID: UUID?
     @State private var flipHaptic = 0
     @State private var favoriteHaptic = 0
@@ -120,13 +121,19 @@ struct ReframeCardView: View {
         VStack(alignment: .leading, spacing: 12) {
             InitialsAvatar(side: 32, fill: theme.ink, symbol: theme.paper)
 
-            Text(card.thought)
+            Text(showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
                 .lineLimit(6)
                 .minimumScaleFactor(0.82)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if hasOriginal {
+                OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
+                    showingOriginal.toggle()
+                }
+            }
 
             Spacer(minLength: 0)
         }
@@ -136,6 +143,14 @@ struct ReframeCardView: View {
         .padding(.trailing, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.surface)
+    }
+
+    private var hasOriginal: Bool {
+        guard let original = card.thoughtOriginal else {
+            return false
+        }
+
+        return original != card.thought
     }
 
     private var answerPager: some View {
@@ -268,6 +283,7 @@ struct ReframeCardView: View {
 
 struct OverlayProposalCard: View {
     let thought: String
+    var thoughtOriginal: String?
     let results: [ReframeResult]
     var recookingStyle: Style?
     var onRecook: (Style) -> Void = { _ in }
@@ -276,6 +292,7 @@ struct OverlayProposalCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 226
     @State private var isFlipped = false
+    @State private var showingOriginal = false
     @State private var pagedStyle: Style?
     @State private var flipHaptic = 0
 
@@ -350,25 +367,41 @@ struct OverlayProposalCard: View {
         return "\(result.style.displayName) reframe. \(result.reframe)"
     }
 
+    private var hasOriginal: Bool {
+        guard let thoughtOriginal else {
+            return false
+        }
+
+        return thoughtOriginal != thought
+    }
+
     private var thoughtFace: some View {
         VStack(alignment: .leading, spacing: 12) {
             InitialsAvatar(side: 32, fill: theme.ink, symbol: theme.paper)
 
-            Text(thought)
+            Text(showingOriginal ? (thoughtOriginal ?? thought) : thought)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
                 .lineLimit(6)
                 .minimumScaleFactor(0.82)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: flip)
+
+            if hasOriginal {
+                OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
+                    showingOriginal.toggle()
+                }
+            }
 
             Spacer(minLength: 0)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: flip)
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.surface)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: flip)
     }
 
     private var answerPager: some View {
@@ -480,6 +513,32 @@ struct OverlayProposalCard: View {
         withAnimation(.timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)) {
             isFlipped.toggle()
         }
+    }
+}
+
+/// Only shown when the cleaned original is in another language than the card copy.
+private struct OriginalToggle: View {
+    let showingOriginal: Bool
+    let ink: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "character.bubble")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(showingOriginal ? "English" : "Original")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(ink)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(ink.opacity(0.10), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(showingOriginal ? "Show the English version" : "Show the original wording")
     }
 }
 

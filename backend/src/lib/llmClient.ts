@@ -10,6 +10,7 @@ applyLocalEnvFile();
 
 export const LLM_TIMEOUT_MS = 15_000;
 export const LLM_MAX_OUTPUT_TOKENS = 120;
+export const DECISION_MAX_OUTPUT_TOKENS = 700;
 export const DEFAULT_LLM_MODEL = "mistral-small-latest";
 
 export const LLM_MODEL_IDS = [
@@ -46,6 +47,15 @@ export type GenerateReframeInput = {
   model?: LlmModelId;
 };
 
+export type GenerateJsonInput = GenerateReframeInput & {
+  maxOutputTokens?: number;
+};
+
+type ProviderCallInput = GenerateReframeInput & {
+  maxOutputTokens: number;
+  json: boolean;
+};
+
 export class LlmError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
@@ -56,6 +66,25 @@ export class LlmError extends Error {
 export async function generateReframe(
   input: GenerateReframeInput,
 ): Promise<string> {
+  return runWithTimeout({
+    ...input,
+    maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
+    json: false,
+  });
+}
+
+/** Structured decision call. Returns the raw model string; the caller parses and validates it. */
+export async function generateJson(input: GenerateJsonInput): Promise<string> {
+  return runWithTimeout({
+    text: input.text,
+    systemPrompt: input.systemPrompt,
+    model: input.model,
+    maxOutputTokens: input.maxOutputTokens ?? DECISION_MAX_OUTPUT_TOKENS,
+    json: true,
+  });
+}
+
+async function runWithTimeout(input: ProviderCallInput): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort();
@@ -102,7 +131,7 @@ function apiKeyFor(provider: LlmProvider): string {
 }
 
 async function callProvider(
-  input: GenerateReframeInput,
+  input: ProviderCallInput,
   signal: AbortSignal,
 ): Promise<string> {
   if (signal.aborted) {
@@ -125,6 +154,8 @@ async function callProvider(
       systemPrompt: input.systemPrompt,
       text: trimmed,
       signal,
+      maxOutputTokens: input.maxOutputTokens,
+      json: input.json,
     });
   }
 
@@ -135,10 +166,13 @@ async function callProvider(
     systemPrompt: input.systemPrompt,
     text: trimmed,
     signal,
-    extraBody:
-      provider === "mistral"
+    maxOutputTokens: input.maxOutputTokens,
+    extraBody: {
+      ...(provider === "mistral"
         ? { reasoning_effort: "none" }
-        : { thinking: { type: "disabled" } },
+        : { thinking: { type: "disabled" } }),
+      ...(input.json ? { response_format: { type: "json_object" } } : {}),
+    },
   });
 }
 
@@ -176,6 +210,7 @@ async function requestChatCompletions(options: {
   systemPrompt: string;
   text: string;
   signal: AbortSignal;
+  maxOutputTokens: number;
   extraBody: Record<string, unknown>;
 }): Promise<string> {
   const response = await fetch(options.url, {
@@ -190,7 +225,7 @@ async function requestChatCompletions(options: {
         { role: "system", content: options.systemPrompt },
         { role: "user", content: options.text },
       ],
-      max_tokens: LLM_MAX_OUTPUT_TOKENS,
+      max_tokens: options.maxOutputTokens,
       ...options.extraBody,
     }),
     signal: options.signal,
@@ -214,6 +249,8 @@ async function requestGemini(options: {
   systemPrompt: string;
   text: string;
   signal: AbortSignal;
+  maxOutputTokens: number;
+  json: boolean;
 }): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.model}:generateContent`;
   const response = await fetch(url, {
@@ -228,10 +265,11 @@ async function requestGemini(options: {
       },
       contents: [{ role: "user", parts: [{ text: options.text }] }],
       generationConfig: {
-        maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
+        maxOutputTokens: options.maxOutputTokens,
         thinkingConfig: {
           thinkingLevel: "low",
         },
+        ...(options.json ? { responseMimeType: "application/json" } : {}),
       },
     }),
     signal: options.signal,

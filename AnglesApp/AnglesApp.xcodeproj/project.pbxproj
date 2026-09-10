@@ -11,6 +11,7 @@
 		01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B6CE33C2217655B2170B5F3 /* LlmModel.swift */; };
 		1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3956722F5CD9FC2607E738A /* RootTabBar.swift */; };
 		23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */; };
+		25ED5A838687AC8A1273E475 /* SampleCardCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C44FA19D0E24FDF1F6A70CA /* SampleCardCopy.swift */; };
 		26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */; };
 		2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */; };
 		2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B602E536EA39A5C8524CE6 /* ReframeService.swift */; };
@@ -28,7 +29,6 @@
 		A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A473004998C2F650FCA971D /* DrawerStubView.swift */; };
 		A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = CECAAC54ED5DE586764B6970 /* HomePalette.swift */; };
 		A72468A7C749E204738C1D2C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B13ED3B345E39F024359E6C0 /* Assets.xcassets */; };
-		A8E5CE95B5569923D76BD7AD /* RefineMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F57743D37B0E0BE75EB3659 /* RefineMock.swift */; };
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
 		C7C3DDB068AD323DEEAB4E6C /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61A48E316801DBEEA30F09A /* FavoritesView.swift */; };
 		C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564F37666F47FDFD54D03D2D /* HomeView.swift */; };
@@ -39,6 +39,7 @@
 
 /* Begin PBXFileReference section */
 		03485114E1C729FE4BB7383D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1C44FA19D0E24FDF1F6A70CA /* SampleCardCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleCardCopy.swift; sourceTree = "<group>"; };
 		277F500C2565CC7DF5621C5A /* Angles.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Angles.icon; sourceTree = "<group>"; };
 		338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
 		3726E6089528365BA6EC3BA8 /* AnglesApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnglesApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -53,7 +54,6 @@
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
 		81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCardGrid.swift; sourceTree = "<group>"; };
 		9B6CE33C2217655B2170B5F3 /* LlmModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlmModel.swift; sourceTree = "<group>"; };
-		9F57743D37B0E0BE75EB3659 /* RefineMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefineMock.swift; sourceTree = "<group>"; };
 		A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleIcon.swift; sourceTree = "<group>"; };
 		B05847EC66A8A1B53179B539 /* ReframeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeCardView.swift; sourceTree = "<group>"; };
@@ -155,8 +155,8 @@
 				564F37666F47FDFD54D03D2D /* HomeView.swift */,
 				4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */,
 				A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */,
-				9F57743D37B0E0BE75EB3659 /* RefineMock.swift */,
 				B05847EC66A8A1B53179B539 /* ReframeCardView.swift */,
+				1C44FA19D0E24FDF1F6A70CA /* SampleCardCopy.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -269,11 +269,11 @@
 				01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
 				01A8AEC059C1A4D61340EAB5 /* ProfileView.swift in Sources */,
-				A8E5CE95B5569923D76BD7AD /* RefineMock.swift in Sources */,
 				327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */,
 				3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */,
 				2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */,
 				1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */,
+				25ED5A838687AC8A1273E475 /* SampleCardCopy.swift in Sources */,
 				ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */,
 				26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */,
 				978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */,

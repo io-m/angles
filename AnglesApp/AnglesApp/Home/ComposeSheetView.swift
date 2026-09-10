@@ -43,7 +43,6 @@ struct ComposeSheetView: View {
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     @FocusState private var composerFocused: Bool
-    @FocusState private var writeNewFocused: Bool
     @State private var scrollToken = 0
     @State private var headerStrip: CGFloat = 119
     @State private var showRestartAlert = false
@@ -59,7 +58,6 @@ struct ComposeSheetView: View {
 
     private let edgePad: CGFloat = 20
     private let insertAnimation = Animation.easeOut(duration: 0.32)
-    private let writeNewLabel = "Write something new"
 
     var body: some View {
         sessionLayout
@@ -72,24 +70,18 @@ struct ComposeSheetView: View {
             .onChange(of: isActive) { _, active in
                 if active {
                     composerFocused = viewModel.phase == .composing
-                    writeNewFocused = viewModel.isWritingNew
                 } else {
                     composerFocused = false
-                    writeNewFocused = false
                     resetAfterDismiss()
                 }
             }
             .onChange(of: viewModel.phase) { _, newPhase in
                 scrollToken += 1
-                if isActive, newPhase == .composing {
+                if isActive, newPhase == .composing || newPhase == .awaitingReply {
                     composerFocused = true
                 }
             }
-            .onChange(of: viewModel.isWritingNew) { _, writing in
-                writeNewFocused = writing && isActive
-                scrollToken += 1
-            }
-            .onChange(of: viewModel.clarifyRounds) { _, _ in
+            .onChange(of: viewModel.turns) { _, _ in
                 scrollToken += 1
             }
             .alert("Start again?", isPresented: $showRestartAlert) {
@@ -268,9 +260,14 @@ struct ComposeSheetView: View {
                         userRow(viewModel.statement)
                             .transition(insertTransition(isAI: false))
 
-                        ForEach(viewModel.clarifyRounds) { round in
-                            clarifyBlock(round)
+                        ForEach(viewModel.turns) { turn in
+                            turnBlock(turn)
                                 .transition(insertTransition(isAI: true))
+
+                            if let reply = turn.reply {
+                                userRow(reply)
+                                    .transition(insertTransition(isAI: false))
+                            }
                         }
 
                         refineTail
@@ -284,8 +281,7 @@ struct ComposeSheetView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 12)
                 .animation(reduceMotion ? nil : insertAnimation, value: viewModel.phase)
-                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.clarifyRounds)
-                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.isWritingNew)
+                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.turns)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.never)
@@ -302,25 +298,35 @@ struct ComposeSheetView: View {
     @ViewBuilder
     private var refineTail: some View {
         switch viewModel.phase {
-        case .composing, .awaitingClarify:
+        case .composing, .awaitingReply:
             EmptyView()
         case .cooking:
             cookingRow
                 .transition(insertTransition(isAI: true))
-        case .ready(let results):
+        case .ready(let cook):
             HStack(alignment: .bottom, spacing: 10) {
                 aiAvatar
 
-                OverlayProposalCard(
-                    thought: viewModel.statement,
-                    results: results,
-                    recookingStyle: viewModel.recookingStyle,
-                    onRecook: { style in
-                        viewModel.recookStyle(style)
+                VStack(alignment: .leading, spacing: 8) {
+                    OverlayProposalCard(
+                        thought: cook.thought,
+                        thoughtOriginal: cook.thoughtOriginal,
+                        results: cook.results,
+                        recookingStyle: viewModel.recookingStyle,
+                        onRecook: { style in
+                            viewModel.recookStyle(style)
+                        }
+                    )
+                    .id("overlay-proposal")
+
+                    if let notice = viewModel.recookNotice {
+                        Text(notice)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                )
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .id("overlay-proposal")
             }
             .transition(insertTransition(isAI: true))
         case .error(let message):
@@ -329,28 +335,32 @@ struct ComposeSheetView: View {
         }
     }
 
-    private func clarifyBlock(_ round: ClarifyRound) -> some View {
+    /// A `continue` turn: what the AI said, plus optional chips while it is unanswered.
+    private func turnBlock(_ turn: RefineTurn) -> some View {
         HStack(alignment: .bottom, spacing: 10) {
             aiAvatar
 
             VStack(alignment: .leading, spacing: 12) {
-                Text(round.question)
-                    .font(.callout.weight(.semibold))
+                Text(turn.message)
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(theme.ink)
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(spacing: 8) {
-                    ForEach(round.options, id: \.self) { option in
-                        optionRow(
-                            option,
-                            state: optionState(option, in: round)
-                        ) {
-                            viewModel.answerClarify(option)
+                if turn.safety.needsCare {
+                    Text("If you are in danger right now, call or text 988.")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if !turn.isAnswered, !turn.options.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(turn.options, id: \.self) { option in
+                            optionRow(option) {
+                                viewModel.chooseOption(option)
+                            }
                         }
                     }
-
-                    writeNewRow(for: round)
                 }
             }
             .padding(16)
@@ -362,99 +372,20 @@ struct ComposeSheetView: View {
             .shadow(color: theme.shadowSoft, radius: 10, y: 3)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(round.question)
+        .accessibilityLabel(turn.message)
     }
 
-    private func optionState(_ option: String, in round: ClarifyRound) -> OptionRowState {
-        guard let selected = round.selectedAnswer else {
-            return .idle
-        }
-
-        if !round.selectedIsCustom, selected == option {
-            return .chosen
-        }
-
-        return .rejected
-    }
-
-    private enum OptionRowState {
-        case idle
-        case chosen
-        case rejected
-    }
-
-    private func optionRow(
-        _ title: String,
-        state: OptionRowState,
-        action: @escaping () -> Void
-    ) -> some View {
+    private func optionRow(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.subheadline.weight(state == .chosen ? .semibold : .medium))
-                .strikethrough(state == .rejected)
-                .foregroundStyle(state == .rejected ? theme.muted : theme.ink)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .background(optionBackground(state), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(theme.grey, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(state != .idle)
-        .accessibilityAddTraits(state == .chosen ? .isSelected : [])
-    }
-
-    private func optionBackground(_ state: OptionRowState) -> Color {
-        switch state {
-        case .idle:
-            return theme.grey
-        case .chosen:
-            return theme.ink.opacity(colorScheme == .dark ? 0.22 : 0.08)
-        case .rejected:
-            return theme.grey.opacity(0.55)
-        }
-    }
-
-    @ViewBuilder
-    private func writeNewRow(for round: ClarifyRound) -> some View {
-        if round.isAnswered {
-            if round.selectedIsCustom, let answer = round.selectedAnswer {
-                optionRow(answer, state: .chosen, action: {})
-            } else {
-                optionRow(writeNewLabel, state: .rejected, action: {})
-            }
-        } else if viewModel.isWritingNew {
-            HStack(alignment: .center, spacing: 8) {
-                TextField(writeNewLabel, text: $viewModel.writeNewText, axis: .vertical)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(theme.ink)
-                    .textInputAutocapitalization(.sentences)
-                    .focused($writeNewFocused)
-                    .lineLimit(1...4)
-                    .submitLabel(.send)
-                    .onSubmit(submitWriteNew)
-
-                Button(action: submitWriteNew) {
-                    CircleIcon(
-                        systemName: "arrow.up",
-                        fill: theme.ink,
-                        symbol: theme.paper,
-                        weight: .semibold
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(!viewModel.canSubmitWriteNew)
-                .opacity(viewModel.canSubmitWriteNew ? 1 : 0.35)
-                .accessibilityLabel("Send")
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 8)
-            .padding(.vertical, 8)
-            .background(theme.grey, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        } else {
-            optionRow(writeNewLabel, state: .idle) {
-                viewModel.beginWriteNew()
-            }
-        }
     }
 
     private func insertTransition(isAI: Bool) -> AnyTransition {
@@ -557,7 +488,7 @@ struct ComposeSheetView: View {
 
     @ViewBuilder
     private var bottomChrome: some View {
-        if isComposing {
+        if viewModel.isComposerVisible {
             composer
         } else if viewModel.canPublish {
             saveBar
@@ -646,10 +577,14 @@ struct ComposeSheetView: View {
         return theme.surface
     }
 
+    private var composerPlaceholder: String {
+        viewModel.openTurn == nil ? "Tell me what's on your mind..." : "Say more..."
+    }
+
     private var composerBar: some View {
         HStack(alignment: .center, spacing: 0) {
             TextField(
-                "Tell me what's on your mind...",
+                composerPlaceholder,
                 text: $viewModel.composeText,
                 axis: .vertical
             )
@@ -721,7 +656,6 @@ struct ComposeSheetView: View {
 
     private func dismissKeyboard() {
         composerFocused = false
-        writeNewFocused = false
     }
 
     private func leaveNow() {
@@ -741,7 +675,6 @@ struct ComposeSheetView: View {
     private func restartSession() {
         viewModel.resetCompose()
         composerFocused = true
-        writeNewFocused = false
     }
 
     private func resetAfterDismiss() {
@@ -762,18 +695,7 @@ struct ComposeSheetView: View {
 
         composerFocused = false
         withAnimation(insertAnimation) {
-            viewModel.submitStatement()
-        }
-    }
-
-    private func submitWriteNew() {
-        guard viewModel.canSubmitWriteNew else {
-            return
-        }
-
-        writeNewFocused = false
-        withAnimation(insertAnimation) {
-            viewModel.submitWriteNew()
+            viewModel.sendComposer()
         }
     }
 

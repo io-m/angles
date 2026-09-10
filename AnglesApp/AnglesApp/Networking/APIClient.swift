@@ -37,8 +37,9 @@ final class APIClient: @unchecked Sendable {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 30
-            configuration.timeoutIntervalForResource = 60
+            // A cook is a decision call plus up to four style calls.
+            configuration.timeoutIntervalForRequest = 45
+            configuration.timeoutIntervalForResource = 90
             configuration.httpAdditionalHeaders = ["Accept": "application/json"]
             self.session = URLSession(configuration: configuration)
         }

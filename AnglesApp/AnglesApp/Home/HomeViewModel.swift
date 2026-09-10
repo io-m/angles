@@ -14,6 +14,10 @@ struct HomeCard: Identifiable, Equatable {
     var isFavorite: Bool
     var spotlightStyle: Style
     var favoritedAt: Date?
+    /// Cleaned thought in the language it was typed in, when that is not English.
+    var thoughtOriginal: String?
+    /// In memory only until History (SwiftData) lands. Shape exists now for matching later.
+    var meta: ReframeMeta?
 
     init(
         id: UUID = UUID(),
@@ -21,7 +25,9 @@ struct HomeCard: Identifiable, Equatable {
         slides: [HomeCardSlide],
         isFavorite: Bool = false,
         spotlightStyle: Style = .stoic,
-        favoritedAt: Date? = nil
+        favoritedAt: Date? = nil,
+        thoughtOriginal: String? = nil,
+        meta: ReframeMeta? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -29,6 +35,8 @@ struct HomeCard: Identifiable, Equatable {
         self.isFavorite = isFavorite
         self.spotlightStyle = spotlightStyle
         self.favoritedAt = favoritedAt
+        self.thoughtOriginal = thoughtOriginal
+        self.meta = meta
     }
 
     var thought: String {
@@ -55,23 +63,33 @@ extension Style {
     }
 }
 
-struct ClarifyRound: Identifiable, Equatable {
+/// One `kind: "continue"` turn from the API plus whatever the user sent back.
+struct RefineTurn: Identifiable, Equatable {
     let id: UUID
-    let question: String
+    let message: String
     let options: [String]
-    var selectedAnswer: String?
-    var selectedIsCustom: Bool = false
+    let safety: SafetyFlag
+    var reply: String?
+    var replyWasChip: Bool = false
 
     var isAnswered: Bool {
-        selectedAnswer != nil
+        reply != nil
     }
+}
+
+struct ReadyCook: Equatable {
+    var thought: String
+    var thoughtOriginal: String?
+    var results: [ReframeResult]
+    var meta: ReframeMeta
 }
 
 enum RefinePhase: Equatable {
     case composing
     case cooking
-    case awaitingClarify
-    case ready([ReframeResult])
+    /// The AI asked for more. The composer stays up.
+    case awaitingReply
+    case ready(ReadyCook)
     case error(String)
 }
 
@@ -107,13 +125,13 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var cards: [HomeCard]
 
     @Published var composeText = ""
-    @Published var writeNewText = ""
-    @Published var isWritingNew = false
     @Published private(set) var statement = ""
-    @Published private(set) var clarifyRounds: [ClarifyRound] = []
+    @Published private(set) var turns: [RefineTurn] = []
     @Published private(set) var phase: RefinePhase = .composing
     @Published private(set) var cookHaptic = 0
     @Published private(set) var recookingStyle: Style?
+    /// Set when a recook comes back as `continue` (that style no longer fits).
+    @Published private(set) var recookNotice: String?
     @Published var profileGridFilter: ProfileGridFilter = .all
     @Published var selectedModel: LlmModel {
         didSet {
@@ -161,22 +179,24 @@ final class HomeViewModel: ObservableObject {
         return cards.filter { $0.spotlightStyle == style }
     }
 
+    /// The composer stays alive for every turn that is not a finished cook.
+    var isComposerVisible: Bool {
+        switch phase {
+        case .composing, .awaitingReply, .error:
+            return true
+        case .cooking, .ready:
+            return false
+        }
+    }
+
     var canSubmit: Bool {
-        phase == .composing
+        isComposerVisible
             && !composeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    var canSubmitWriteNew: Bool {
-        guard case .awaitingClarify = phase, openRound != nil else {
-            return false
-        }
-
-        return !writeNewText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
     var canPublish: Bool {
-        if case .ready(let results) = phase {
-            return results.count == Style.allCases.count
+        if case .ready(let cook) = phase {
+            return !cook.results.isEmpty
         }
 
         return false
@@ -190,65 +210,53 @@ final class HomeViewModel: ObservableObject {
         return false
     }
 
-    private var openRound: ClarifyRound? {
-        clarifyRounds.last(where: { !$0.isAnswered })
+    var openTurn: RefineTurn? {
+        turns.last(where: { !$0.isAnswered })
     }
 
     private var answeredFollowUps: [FollowUpAnswer] {
-        clarifyRounds.compactMap { round in
-            guard let answer = round.selectedAnswer else {
+        turns.compactMap { turn in
+            guard let reply = turn.reply else {
                 return nil
             }
 
-            return FollowUpAnswer(question: round.question, answer: answer)
+            return FollowUpAnswer(question: turn.message, answer: reply)
         }
     }
 
-    func submitStatement() {
-        let thought = composeText.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// One entry point for the composer: first thought, reply to a question, or
+    /// extra context after an error.
+    func sendComposer() {
+        let text = composeText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSubmit else {
             return
         }
 
-        statement = thought
         composeText = ""
-        clarifyRounds = []
-        isWritingNew = false
-        writeNewText = ""
+        send(text, isChip: false)
+    }
+
+    func chooseOption(_ option: String) {
+        let trimmed = option.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard case .awaitingReply = phase, !trimmed.isEmpty else {
+            return
+        }
+
+        send(trimmed, isChip: true)
+    }
+
+    private func send(_ text: String, isChip: Bool) {
+        if statement.isEmpty {
+            statement = text
+            turns = []
+        } else if let index = turns.lastIndex(where: { !$0.isAnswered }) {
+            turns[index].reply = text
+            turns[index].replyWasChip = isChip
+        } else {
+            statement = "\(statement)\n\n\(text)"
+        }
+
         startRefine()
-    }
-
-    func answerClarify(_ answer: String, isCustom: Bool = false) {
-        let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard case .awaitingClarify = phase,
-              !trimmed.isEmpty,
-              let index = clarifyRounds.lastIndex(where: { !$0.isAnswered })
-        else {
-            return
-        }
-
-        clarifyRounds[index].selectedAnswer = trimmed
-        clarifyRounds[index].selectedIsCustom = isCustom
-        isWritingNew = false
-        writeNewText = ""
-        startRefine()
-    }
-
-    func submitWriteNew() {
-        guard canSubmitWriteNew else {
-            return
-        }
-
-        answerClarify(writeNewText, isCustom: true)
-    }
-
-    func beginWriteNew() {
-        guard case .awaitingClarify = phase, openRound != nil else {
-            return
-        }
-
-        isWritingNew = true
-        writeNewText = ""
     }
 
     func retryRefine() {
@@ -260,21 +268,23 @@ final class HomeViewModel: ObservableObject {
     }
 
     func publishSelected() {
-        guard case .ready(let results) = phase, !statement.isEmpty else {
+        guard case .ready(let cook) = phase, !cook.results.isEmpty else {
             return
         }
 
-        let slides = results.map { result in
-            HomeCardSlide(id: UUID(), thought: statement, result: result)
+        let slides = cook.results.map { result in
+            HomeCardSlide(id: UUID(), thought: cook.thought, result: result)
         }
-        let styles = Style.allCases
+        let styles = cook.results.map(\.style)
         let spotlight = styles[cards.count % styles.count]
 
         cards.insert(
             HomeCard(
                 createdAt: Date(),
                 slides: slides,
-                spotlightStyle: spotlight
+                spotlightStyle: spotlight,
+                thoughtOriginal: cook.thoughtOriginal,
+                meta: cook.meta
             ),
             at: 0
         )
@@ -299,16 +309,17 @@ final class HomeViewModel: ObservableObject {
     }
 
     func recookStyle(_ style: Style) {
-        guard case .ready(let results) = phase,
+        guard case .ready(let cook) = phase,
               recookingStyle == nil,
-              results.contains(where: { $0.style == style })
+              cook.results.contains(where: { $0.style == style })
         else {
             return
         }
 
         recookingStyle = style
-        let text = statement
-        let followUps = answeredFollowUps
+        recookNotice = nil
+        // Recook works from the cleaned English thought, not the raw paste.
+        let text = cook.thought
         let model = selectedModel
 
         refineTask?.cancel()
@@ -323,7 +334,6 @@ final class HomeViewModel: ObservableObject {
             do {
                 let response = try await reframeService.refine(
                     text: text,
-                    followUps: followUps,
                     styles: [style],
                     model: model
                 )
@@ -331,17 +341,22 @@ final class HomeViewModel: ObservableObject {
                     return
                 }
 
-                guard case .ready(let incoming) = response,
-                      let replacement = incoming.first(where: { $0.style == style }) ?? incoming.first,
-                      case .ready(var current) = phase,
-                      let index = current.firstIndex(where: { $0.style == style })
-                else {
-                    return
-                }
+                switch response {
+                case .continueTurn(let message, _, _):
+                    // That style no longer fits this thought; keep what we have.
+                    recookNotice = message
+                case .ready(_, _, let incoming, _):
+                    guard let replacement = incoming.first(where: { $0.style == style }) ?? incoming.first,
+                          case .ready(var current) = phase,
+                          let index = current.results.firstIndex(where: { $0.style == style })
+                    else {
+                        return
+                    }
 
-                current[index] = ReframeResult(style: style, reframe: replacement.reframe)
-                phase = .ready(current)
-                cookHaptic += 1
+                    current.results[index] = ReframeResult(style: style, reframe: replacement.reframe)
+                    phase = .ready(current)
+                    cookHaptic += 1
+                }
             } catch {
                 guard !Task.isCancelled else {
                     return
@@ -354,17 +369,17 @@ final class HomeViewModel: ObservableObject {
         refineTask?.cancel()
         refineTask = nil
         composeText = ""
-        writeNewText = ""
-        isWritingNew = false
         statement = ""
-        clarifyRounds = []
+        turns = []
         recookingStyle = nil
+        recookNotice = nil
         phase = .composing
     }
 
     private func startRefine() {
         refineTask?.cancel()
         recookingStyle = nil
+        recookNotice = nil
         phase = .cooking
         let text = statement
         let followUps = answeredFollowUps
@@ -382,17 +397,25 @@ final class HomeViewModel: ObservableObject {
                 }
 
                 switch response {
-                case .clarify(let question, let options):
-                    clarifyRounds.append(
-                        ClarifyRound(
+                case .continueTurn(let message, let options, let safety):
+                    turns.append(
+                        RefineTurn(
                             id: UUID(),
-                            question: question,
-                            options: options
+                            message: message,
+                            options: options,
+                            safety: safety
                         )
                     )
-                    phase = .awaitingClarify
-                case .ready(let results):
-                    phase = .ready(results)
+                    phase = .awaitingReply
+                case .ready(let thought, let thoughtOriginal, let results, let meta):
+                    phase = .ready(
+                        ReadyCook(
+                            thought: thought,
+                            thoughtOriginal: thoughtOriginal,
+                            results: results,
+                            meta: meta
+                        )
+                    )
                 }
                 cookHaptic += 1
             } catch {
@@ -451,7 +474,7 @@ final class HomeViewModel: ObservableObject {
             if style == highlight {
                 reframe = highlightText
             } else {
-                reframe = RefineMock.cannedReframes[style] ?? highlightText
+                reframe = SampleCardCopy.reframes[style] ?? highlightText
             }
 
             return HomeCardSlide(
