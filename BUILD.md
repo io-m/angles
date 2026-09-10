@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**4. Hook up fetching** — Compose → `ReframeService.getReframes` → Results.
+**5. History** — List of past thoughts/reframes. Needs SwiftData (or similar).
 
 ## Core loop
 
@@ -29,31 +29,36 @@ Loading and error are **states on Results**, not their own screens.
 
 | # | Item | Kind | Status | Files | Shipped |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Frosted overlay, inverted bubbles, pill composer, and header style popover. |
-| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift` | Overlay session of thought + style-wash card; Send appends; header style applies to the next send only. |
+| 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Favorites strip (max 6) + mixed-style grid; answer-first flip; long-press Delete. |
+| 1b | Favorites | screen | done | `FavoritesView.swift`; `HomeView.swift` | Title opens a full favorites grid. In-memory only. |
+| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `RefineMock.swift` | Statement + kept questions; AI card with per-style recook; Start again. |
 | 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
-| 3 | Multi-style results | same screen as 2 | skipped | | Per-send single style. Checkbox to select; floating Save above composer publishes. Carousel when 2+ saved. In-memory only. |
-| 4 | Hook up fetching | feature | not started | | |
+| 3 | Multi-style results | same screen as 2 | done | `ComposeSheetView.swift`; `ReframeCardView.swift` | Always all 4 styles. Answer-first carousels on home and overlay. |
+| 4 | Hook up fetching | feature | done | `ReframeService.swift`; `backend/src/routes/reframe.ts` | API contract exists. Overlay mocks on-device until a real LLM. |
 | 5 | History | screen | not started | | |
 
 ### 1. Compose (home)
 
-Home shell with a scrollable fake-history card grid, composer dock, and header Settings.
+Home shell with a Favorites strip, the main card grid, Inspire me FAB, and header Settings.
 
-- Cards flip between the original thought and a hardcoded `ReframeResult`.
-- Composer overlay validates empty thought and no style selected, then cooks a hardcoded response in place.
-- Settings is a dismissible sheet from a circular header control; header scrolls with the feed; appearance is a popover.
-- Use existing `Style` / `ReframeResult` models. Do not invent a parallel JSON shape.
-- No API or persistence. No paywall. App launches here.
+- Front of each card is the 4-style carousel; tap flips to the original thought. Each card opens on a mixed spotlight style so the feed is not all stoic. Initials (mock JM) sit on the thought face so they flip with the card. Heart and date stay as overlay chrome.
+- Four dots sit under the card while the answer face is showing.
+- Long-press Delete. Heart toggles favorites in memory (newest-favorited first). The strip shows at most 6; Favorites opens the full grid.
+- Overlay starts with a focused composer. After send, the composer goes away.
+
+### 1b. Favorites
+
+Tappable Favorites title on home. Full grid of favorite cards (same heart/delete). In-memory only; History (SwiftData) is still next.
 
 ### 2. Results
 
-Original thought + reframe for the chosen style.
+One statement, then AI refine (not a chat transcript).
 
-- Pick another style in the header; it applies to the next send, not a recook of the latest thought.
-- Send another thought from the composer to append a new cook; earlier pairs stay.
-- Loading and error live on this screen.
-- Still fake data.
+- On-device mock may ask up to 3 follow-ups (suggested answers + Write something new) or return all 4 styles. Questions stay on screen with the chosen row emphasized.
+- Four styles show in one answer-first carousel (AI sparkle avatar left, flippable card right). New answer sits at the bottom center. Loading and error live on this overlay.
+- Each style has New answer (overlay only); mock cycles canned variants for that style.
+- Start again (header) asks to confirm, then wipes the session and returns the composer. Overlay stays open.
+- Save (icon + label) sits where the composer was and publishes all 4. X discards.
 
 ### 2a. Settings (appearance + accent)
 
@@ -61,15 +66,11 @@ Header Settings sheet. Gradient chrome, large title that collapses to inline. Ap
 
 ### 3. Multi-style results
 
-Skipped. Stacked multi-style on one send was rejected. Header style is single-select and binds at Send. Checkbox selects replies; a floating Save chip above the composer publishes them to home (carousel when 2+). X closes without saving.
+Always all four styles. Style picker and per-style checkboxes are gone. Home cards store four slides; the carousel is the default face.
 
 ### 4. Hook up fetching
 
-Not a new screen. Compose → `ReframeService.getReframes` → Results.
-
-- Simulator + local API (`pnpm dev`, `http://localhost:8787`).
-- Loading/error become real.
-- Physical device: Mac LAN IP in `AppConfig` (localhost is the phone).
+Not a new screen. `POST /reframe` is `{ text, followUps? }` → `clarify` or `ready` (always 4 styles). Overlay uses `RefineMock` on-device until a real LLM is wired through `ReframeService`.
 
 ### 5. History
 
@@ -99,6 +100,10 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-10 — Favorites strip caps at 6 with a spring insert; Favorites title opens a grid; home cards mix starting styles; four dots; overlay New answer at the bottom.
+- 2026-09-10 — Answer-first flip (home + overlay); initials on the thought face; Start again; per-style New answer with mock variants.
+- 2026-09-10 — Overlay mocks on-device; questions stay with a chosen row; one 4-style carousel; heart + long-press Delete.
+- 2026-09-10 — Refine: statement + up to 3 follow-ups, then all 4 styles; Save CTA; Favorites row; dots under the card.
 - 2026-09-09 — Home: chat composer sits on the keyboard again; home layer still ignores it so the FAB does not slide.
 - 2026-09-09 — Home: FAB stays put when chat closes; card flip no longer hitches or double-taps haptics.
 - 2026-09-09 — Home: shorter bottom fade so it stays around the FAB.

@@ -33,7 +33,6 @@ enum ComposeMotion {
 
 struct ComposeSheetView: View {
     @ObservedObject var viewModel: HomeViewModel
-    var safeAreaInsets: EdgeInsets = EdgeInsets()
     var isActive: Bool = true
     var onClose: () -> Void = {}
 
@@ -43,48 +42,69 @@ struct ComposeSheetView: View {
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     @FocusState private var composerFocused: Bool
-    @State private var showStylePicker = false
+    @FocusState private var writeNewFocused: Bool
     @State private var scrollToken = 0
     @State private var headerStrip: CGFloat = 119
+    @State private var showRestartAlert = false
 
-    private var hasTranscript: Bool {
-        !viewModel.turns.isEmpty
+    private var isComposing: Bool {
+        viewModel.phase == .composing
+    }
+
+    private var hasStatement: Bool {
+        !viewModel.statement.isEmpty
     }
 
     private let edgePad: CGFloat = 20
     private let insertAnimation = Animation.easeOut(duration: 0.32)
-    private let saveCloudAnimation = Animation.easeOut(duration: 0.14)
+    private let writeNewLabel = "Write something new"
 
     var body: some View {
-        chatLayout
+        sessionLayout
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
             .sensoryFeedback(.impact(weight: .light), trigger: viewModel.cookHaptic)
             .onAppear {
-                composerFocused = isActive
+                composerFocused = isActive && isComposing
             }
             .onChange(of: isActive) { _, active in
-                composerFocused = active
-                if !active {
-                    showStylePicker = false
+                if active {
+                    composerFocused = viewModel.phase == .composing
+                    writeNewFocused = viewModel.isWritingNew
+                } else {
+                    composerFocused = false
+                    writeNewFocused = false
                     resetAfterDismiss()
                 }
             }
-            .onChange(of: viewModel.turns) { _, _ in
+            .onChange(of: viewModel.phase) { _, newPhase in
+                scrollToken += 1
+                if isActive, newPhase == .composing {
+                    composerFocused = true
+                }
+            }
+            .onChange(of: viewModel.isWritingNew) { _, writing in
+                writeNewFocused = writing && isActive
                 scrollToken += 1
             }
-            .onChange(of: viewModel.isCooking) { _, _ in
+            .onChange(of: viewModel.clarifyRounds) { _, _ in
                 scrollToken += 1
+            }
+            .alert("Start again?", isPresented: $showRestartAlert) {
+                Button("Start again", role: .destructive, action: restartSession)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This wipes the current thought and answers. You can’t undo it.")
             }
     }
 
-    private var chatLayout: some View {
+    private var sessionLayout: some View {
         canvas
             .safeAreaInset(edge: .top, spacing: 0) {
                 header
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                composer
+                bottomChrome
             }
             .overlay { welcomeHero }
     }
@@ -105,7 +125,14 @@ struct ComposeSheetView: View {
 
             Spacer()
 
-            stylePill
+            if hasStatement {
+                Button("Start again") {
+                    showRestartAlert = true
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.ink)
+                .accessibilityHint("Wipes this session and starts a new thought")
+            }
         }
         .padding(.horizontal, edgePad)
         .padding(.top, 6)
@@ -115,86 +142,9 @@ struct ComposeSheetView: View {
         } action: { headerStrip = $0 }
     }
 
-    private var stylePill: some View {
-        Button {
-            showStylePicker = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: stylePillIcon)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(stylePillLabel)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(theme.ink)
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .background(theme.surface, in: Capsule())
-            .overlay {
-                Capsule().strokeBorder(theme.cardHairline, lineWidth: 0.5)
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Style")
-        .accessibilityValue(stylePillLabel)
-        .popover(isPresented: $showStylePicker) {
-            stylePicker
-                .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private var stylePillIcon: String {
-        CardStyleAppearance(style: viewModel.selectedStyle).systemImage
-    }
-
-    private var stylePillLabel: String {
-        viewModel.selectedStyle.displayName
-    }
-
-    private var stylePicker: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(Style.allCases, id: \.self) { style in
-                let appearance = CardStyleAppearance(style: style)
-                let isSelected = viewModel.selectedStyle == style
-
-                Button {
-                    showStylePicker = false
-                    viewModel.selectStyle(style)
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: appearance.systemImage)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(appearance.ink)
-                            .frame(width: 22, alignment: .center)
-
-                        Text(style.displayName)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(theme.ink)
-
-                        Spacer(minLength: 12)
-
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(theme.ink)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
-            }
-        }
-        .padding(.vertical, 8)
-        .frame(minWidth: 220)
-    }
-
     @ViewBuilder
     private var welcomeHero: some View {
-        if !hasTranscript {
+        if isComposing && !hasStatement {
             GeometryReader { geo in
                 VStack(spacing: 20) {
                     Image(systemName: "sparkle")
@@ -241,23 +191,17 @@ struct ComposeSheetView: View {
     private var thread: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    ForEach(viewModel.turns) { turn in
-                        VStack(alignment: .leading, spacing: 10) {
-                            userRow(turn.thought)
-                                .transition(insertTransition(isAI: false))
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    if hasStatement {
+                        userRow(viewModel.statement)
+                            .transition(insertTransition(isAI: false))
 
-                            if viewModel.isCookingTurn(turn) {
-                                cookingRow
-                                    .transition(insertTransition(isAI: true))
-                            } else if let error = turn.error {
-                                errorRow(error)
-                                    .transition(insertTransition(isAI: true))
-                            } else if let result = turn.result {
-                                resultRow(result, turnID: turn.id)
-                                    .transition(insertTransition(isAI: true))
-                            }
+                        ForEach(viewModel.clarifyRounds) { round in
+                            clarifyBlock(round)
+                                .transition(insertTransition(isAI: true))
                         }
+
+                        refineTail
                     }
 
                     Color.clear
@@ -267,8 +211,9 @@ struct ComposeSheetView: View {
                 .padding(.horizontal, edgePad)
                 .padding(.top, 4)
                 .padding(.bottom, 12)
-                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.turns)
-                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.isCooking)
+                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.phase)
+                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.clarifyRounds)
+                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.isWritingNew)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.never)
@@ -278,6 +223,163 @@ struct ComposeSheetView: View {
                 withAnimation(.easeOut(duration: 0.24)) {
                     proxy.scrollTo("compose-end", anchor: .bottom)
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var refineTail: some View {
+        switch viewModel.phase {
+        case .composing, .awaitingClarify:
+            EmptyView()
+        case .cooking:
+            cookingRow
+                .transition(insertTransition(isAI: true))
+        case .ready(let results):
+            HStack(alignment: .bottom, spacing: 10) {
+                aiAvatar
+
+                OverlayProposalCard(
+                    thought: viewModel.statement,
+                    results: results,
+                    onRecook: { style in
+                        viewModel.recookStyle(style)
+                    }
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .id("overlay-proposal")
+            }
+            .transition(insertTransition(isAI: true))
+        case .error(let message):
+            errorRow(message)
+                .transition(insertTransition(isAI: true))
+        }
+    }
+
+    private func clarifyBlock(_ round: ClarifyRound) -> some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            aiAvatar
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text(round.question)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(spacing: 8) {
+                    ForEach(round.options, id: \.self) { option in
+                        optionRow(
+                            option,
+                            state: optionState(option, in: round)
+                        ) {
+                            viewModel.answerClarify(option)
+                        }
+                    }
+
+                    writeNewRow(for: round)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                theme.surface,
+                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            )
+            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(round.question)
+    }
+
+    private func optionState(_ option: String, in round: ClarifyRound) -> OptionRowState {
+        guard let selected = round.selectedAnswer else {
+            return .idle
+        }
+
+        if !round.selectedIsCustom, selected == option {
+            return .chosen
+        }
+
+        return .rejected
+    }
+
+    private enum OptionRowState {
+        case idle
+        case chosen
+        case rejected
+    }
+
+    private func optionRow(
+        _ title: String,
+        state: OptionRowState,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(state == .chosen ? .semibold : .medium))
+                .strikethrough(state == .rejected)
+                .foregroundStyle(state == .rejected ? theme.muted : theme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(optionBackground(state), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(state != .idle)
+        .accessibilityAddTraits(state == .chosen ? .isSelected : [])
+    }
+
+    private func optionBackground(_ state: OptionRowState) -> Color {
+        switch state {
+        case .idle:
+            return theme.grey
+        case .chosen:
+            return theme.ink.opacity(colorScheme == .dark ? 0.22 : 0.08)
+        case .rejected:
+            return theme.grey.opacity(0.55)
+        }
+    }
+
+    @ViewBuilder
+    private func writeNewRow(for round: ClarifyRound) -> some View {
+        if round.isAnswered {
+            if round.selectedIsCustom, let answer = round.selectedAnswer {
+                optionRow(answer, state: .chosen, action: {})
+            } else {
+                optionRow(writeNewLabel, state: .rejected, action: {})
+            }
+        } else if viewModel.isWritingNew {
+            HStack(alignment: .center, spacing: 8) {
+                TextField(writeNewLabel, text: $viewModel.writeNewText, axis: .vertical)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(theme.ink)
+                    .textInputAutocapitalization(.sentences)
+                    .focused($writeNewFocused)
+                    .lineLimit(1...4)
+                    .submitLabel(.send)
+                    .onSubmit(submitWriteNew)
+
+                Button(action: submitWriteNew) {
+                    CircleIcon(
+                        systemName: "arrow.up",
+                        fill: theme.ink,
+                        symbol: theme.paper,
+                        weight: .semibold
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(!viewModel.canSubmitWriteNew)
+                .opacity(viewModel.canSubmitWriteNew ? 1 : 0.35)
+                .accessibilityLabel("Send")
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 8)
+            .padding(.vertical, 8)
+            .background(theme.grey, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            optionRow(writeNewLabel, state: .idle) {
+                viewModel.beginWriteNew()
             }
         }
     }
@@ -326,49 +428,6 @@ struct ComposeSheetView: View {
         .accessibilityLabel("Cooking")
     }
 
-    private func resultRow(_ result: ReframeResult, turnID: UUID) -> some View {
-        let appearance = CardStyleAppearance(style: result.style)
-        let isSaved = viewModel.isSaved(turnID: turnID)
-
-        return HStack(alignment: .bottom, spacing: 10) {
-            aiAvatar
-
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 8) {
-                    styleIconBadge(appearance)
-
-                    Text(result.style.displayName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(appearance.ink)
-                        .lineLimit(1)
-                        .frame(height: 40)
-
-                    Spacer(minLength: 4)
-
-                    saveCheckbox(isSaved: isSaved, ink: appearance.ink) {
-                        viewModel.toggleSave(turnID: turnID)
-                    }
-                }
-
-                Text(result.reframe)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(theme.ink)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                appearance.washFill(over: theme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            }
-            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("\(result.style.displayName) reframe. \(result.reframe)")
-        }
-    }
-
     private func errorRow(_ message: String) -> some View {
         HStack(alignment: .bottom, spacing: 10) {
             aiAvatar
@@ -381,7 +440,7 @@ struct ComposeSheetView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button("Retry", action: retryCook)
+                Button("Retry", action: retryRefine)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(theme.ink)
             }
@@ -397,40 +456,9 @@ struct ComposeSheetView: View {
         }
     }
 
-    private func styleIconBadge(_ appearance: CardStyleAppearance) -> some View {
-        Image(systemName: appearance.systemImage)
-            .symbolRenderingMode(.hierarchical)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(appearance.ink)
-            .frame(width: 40, height: 40)
-            .background(
-                appearance.ink.opacity(0.10),
-                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-            )
-            .accessibilityHidden(true)
-    }
-
-    private func saveCheckbox(isSaved: Bool, ink: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: isSaved ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(ink)
-                .frame(width: 40, height: 40)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isSaved ? "Deselect" : "Select to save")
-        .accessibilityAddTraits(isSaved ? .isSelected : [])
-    }
-
     private var userAvatar: some View {
-        CircleIcon(
-            systemName: "person.fill",
-            fill: theme.ink,
-            symbol: theme.paper,
-            weight: .semibold
-        )
-        .accessibilityHidden(true)
+        InitialsAvatar(side: 40, fill: theme.ink, symbol: theme.paper)
+            .accessibilityHidden(true)
     }
 
     private var aiAvatar: some View {
@@ -454,31 +482,16 @@ struct ComposeSheetView: View {
         )
     }
 
-    private var composer: some View {
-        VStack(spacing: 10) {
-            saveCloud
-                .opacity(viewModel.canPublish ? 1 : 0)
-                .scaleEffect(viewModel.canPublish ? 1 : 0.96)
-                .offset(y: viewModel.canPublish ? 0 : 6)
-                .allowsHitTesting(viewModel.canPublish)
-                .accessibilityHidden(!viewModel.canPublish)
-                .compositingGroup()
-
-            composerBar
+    @ViewBuilder
+    private var bottomChrome: some View {
+        if isComposing {
+            composer
+        } else if viewModel.canPublish {
+            saveBar
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .background {
-            composerGlow
-        }
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.08) : saveCloudAnimation,
-            value: viewModel.canPublish
-        )
     }
 
-    private var saveCloud: some View {
+    private var saveBar: some View {
         Button(action: publishAndLeave) {
             HStack(spacing: 8) {
                 Image(systemName: "icloud.and.arrow.up")
@@ -487,22 +500,40 @@ struct ComposeSheetView: View {
                     .font(.subheadline.weight(.semibold))
             }
             .foregroundStyle(theme.ink)
-            .padding(.horizontal, 16)
-            .frame(height: 40)
-            .background(theme.surface, in: Capsule())
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .background(
+                theme.surface,
+                in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+            )
             .overlay {
-                Capsule().strokeBorder(theme.cardHairline, lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(theme.cardHairline, lineWidth: 0.5)
             }
             .shadow(color: theme.shadowSoft, radius: 2, y: 1)
             .shadow(
                 color: theme.shadowLift,
-                radius: colorScheme == .dark ? 16 : 10,
+                radius: colorScheme == .dark ? 18 : 10,
                 y: colorScheme == .dark ? 0 : 4
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Save selected")
-        .accessibilityHint("Adds checked replies to home and closes the chat")
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background { composerGlow }
+        .accessibilityLabel("Save")
+        .accessibilityHint("Adds all four answers to home and closes")
+    }
+
+    private var composer: some View {
+        composerBar
+            .padding(.horizontal, 18)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background {
+                composerGlow
+            }
     }
 
     private var composerGlow: some View {
@@ -608,15 +639,16 @@ struct ComposeSheetView: View {
     }
 
     private func handleCanvasTap() {
-        if hasTranscript {
-            dismissKeyboard()
-        } else {
+        if isComposing && !hasStatement {
             leaveNow()
+        } else {
+            dismissKeyboard()
         }
     }
 
     private func dismissKeyboard() {
         composerFocused = false
+        writeNewFocused = false
     }
 
     private func leaveNow() {
@@ -630,6 +662,12 @@ struct ComposeSheetView: View {
 
         viewModel.publishSelected()
         onClose()
+    }
+
+    private func restartSession() {
+        viewModel.resetCompose()
+        composerFocused = true
+        writeNewFocused = false
     }
 
     private func resetAfterDismiss() {
@@ -648,14 +686,26 @@ struct ComposeSheetView: View {
             return
         }
 
+        composerFocused = false
         withAnimation(insertAnimation) {
-            viewModel.submitCompose(animatedDelay: !reduceMotion)
+            viewModel.submitStatement()
         }
     }
 
-    private func retryCook() {
+    private func submitWriteNew() {
+        guard viewModel.canSubmitWriteNew else {
+            return
+        }
+
+        writeNewFocused = false
         withAnimation(insertAnimation) {
-            viewModel.retryCook(animatedDelay: !reduceMotion)
+            viewModel.submitWriteNew()
+        }
+    }
+
+    private func retryRefine() {
+        withAnimation(insertAnimation) {
+            viewModel.retryRefine()
         }
     }
 }

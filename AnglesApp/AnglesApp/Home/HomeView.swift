@@ -15,7 +15,9 @@ struct HomeView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accentPalette) private var accentPalette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var themeStore: ThemeStore
+    @ScaledMetric(relativeTo: .body) private var favoriteRowHeight: CGFloat = 252
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -56,19 +58,25 @@ struct HomeView: View {
                 AnglesCanvasBackground()
 
                 ScrollView {
-                    VStack(spacing: 18) {
+                    VStack(alignment: .leading, spacing: 12) {
                         header
+                            .padding(.horizontal, Layout.horizontalPadding)
+
+                        if !viewModel.favoriteCards.isEmpty {
+                            favoritesSection(pageWidth: geometry.size.width)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
 
                         HomeCardGrid(
                             cards: viewModel.cards,
                             usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
                             spacing: Layout.gridSpacing,
-                            onEdit: editCard,
-                            onDelete: deleteCard
+                            onDelete: deleteCard,
+                            onToggleFavorite: toggleFavorite
                         )
                         .equatable()
+                        .padding(.horizontal, Layout.horizontalPadding)
                     }
-                    .padding(.horizontal, Layout.horizontalPadding)
                     .padding(.top, safeTop + 6)
                     .padding(.bottom, safeBottom + 80)
                 }
@@ -103,6 +111,59 @@ struct HomeView: View {
             .accessibilityLabel("Settings")
         }
         .frame(minHeight: Layout.headerHeight, alignment: .center)
+    }
+
+    private func favoritesSection(pageWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            NavigationLink {
+                FavoritesView(
+                    viewModel: viewModel,
+                    onDelete: deleteCard,
+                    onToggleFavorite: toggleFavorite
+                )
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Favorites")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(theme.muted)
+
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, Layout.horizontalPadding)
+            .accessibilityHint("Shows all favorite cards")
+
+            ScrollView(.horizontal) {
+                HStack(spacing: Layout.gridSpacing) {
+                    ForEach(viewModel.stripFavoriteCards) { card in
+                        ReframeCardView(
+                            card: card,
+                            onDelete: { deleteCard(card) },
+                            onToggleFavorite: { toggleFavorite(card) }
+                        )
+                        .frame(width: min(pageWidth * 0.78, 300))
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .leading).combined(with: .opacity),
+                                removal: .opacity.combined(with: .scale(scale: 0.96))
+                            )
+                        )
+                    }
+                }
+                .padding(.leading, Layout.horizontalPadding)
+                .padding(.trailing, Layout.horizontalPadding)
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .frame(height: favoriteRowHeight)
+        }
     }
 
     private func topFade(safeTop: CGFloat) -> some View {
@@ -188,14 +249,21 @@ struct HomeView: View {
         isComposePresented = true
     }
 
-    private func editCard(_ card: HomeCard) {
-        viewModel.beginEdit(card)
-        isComposePresented = true
-    }
-
     private func deleteCard(_ card: HomeCard) {
         withAnimation(.easeInOut(duration: 0.22)) {
             viewModel.deleteCard(card.id)
+        }
+    }
+
+    private var favoriteLayoutAnimation: Animation {
+        reduceMotion
+            ? .linear(duration: 0.01)
+            : .spring(response: 0.42, dampingFraction: 0.86)
+    }
+
+    private func toggleFavorite(_ card: HomeCard) {
+        withAnimation(favoriteLayoutAnimation) {
+            viewModel.toggleFavorite(card.id)
         }
     }
 }
@@ -251,12 +319,12 @@ private struct RotatingHomeTitle: View {
     }
 }
 
-private struct HomeCardGrid: View, Equatable {
+struct HomeCardGrid: View, Equatable {
     let cards: [HomeCard]
     let usesSingleColumn: Bool
     let spacing: CGFloat
-    var onEdit: (HomeCard) -> Void = { _ in }
     var onDelete: (HomeCard) -> Void = { _ in }
+    var onToggleFavorite: (HomeCard) -> Void = { _ in }
 
     static func == (lhs: HomeCardGrid, rhs: HomeCardGrid) -> Bool {
         lhs.cards == rhs.cards
@@ -280,8 +348,8 @@ private struct HomeCardGrid: View, Equatable {
             ForEach(cards) { card in
                 ReframeCardView(
                     card: card,
-                    onEdit: { onEdit(card) },
-                    onDelete: { onDelete(card) }
+                    onDelete: { onDelete(card) },
+                    onToggleFavorite: { onToggleFavorite(card) }
                 )
             }
         }

@@ -1,6 +1,6 @@
 # Angles — agent notes
 
-Paid-only private reframe app (iOS). User submits a negative thought; the backend LLM returns 1–3 sentences in a chosen style. No public feed in v1. Onboarding: one free taste (all 4 styles in parallel), then a hard paywall.
+Paid-only private reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then always returns 1–3 sentences in all 4 styles. No public feed in v1. Onboarding: one free taste (all 4 styles), then a hard paywall.
 
 ## Stack (this repo)
 
@@ -18,12 +18,14 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 
 - `backend/src/app.ts` — Hono app, middleware, error handler
 - `backend/src/index.ts` — `serve()`, `PORT` (default 8787), bind `0.0.0.0`
-- `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, `Promise.all` per style
+- `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, clarify or `Promise.all` all styles
 - `backend/src/routes/health.ts` — `GET /health`
+- `backend/src/lib/refineDecision.ts` — mock clarify vs ready
 - `backend/src/lib/llmClient.ts` — **only** file to change when picking an LLM provider
 - `backend/src/lib/prompts.ts` — `SYSTEM_PROMPTS`
 - `backend/src/types/index.ts` — `Style`, request/response types
 - `AnglesApp/project.yml` — XcodeGen source of truth; run `xcodegen generate` after structural file changes
+- `AnglesApp/AnglesApp/Home/RefineMock.swift` — on-device clarify vs ready until a real LLM
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
 - `BUILD.md` — **screen/feature order**. Update it in the same change as every new screen or feature.

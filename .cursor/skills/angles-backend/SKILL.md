@@ -10,6 +10,7 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 - `src/app.ts` — middleware, route mount, `onError`
 - `src/index.ts` — Node `serve()` only
 - `src/routes/reframe.ts` — `POST /reframe`
+- `src/lib/refineDecision.ts` — mock clarify vs ready
 - `src/lib/llmClient.ts` — `generateReframe({ text, systemPrompt })`
 - `src/lib/prompts.ts` — `SYSTEM_PROMPTS`
 - `src/types/index.ts` — shared types; update Swift models in the same change

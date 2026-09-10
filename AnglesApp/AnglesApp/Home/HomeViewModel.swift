@@ -10,20 +10,33 @@ struct HomeCardSlide: Identifiable, Equatable {
 struct HomeCard: Identifiable, Equatable {
     let id: UUID
     let createdAt: Date
-    let slides: [HomeCardSlide]
+    var slides: [HomeCardSlide]
+    var isFavorite: Bool
+    var spotlightStyle: Style
+    var favoritedAt: Date?
 
-    init(id: UUID = UUID(), createdAt: Date = Date(), slides: [HomeCardSlide]) {
+    init(
+        id: UUID = UUID(),
+        createdAt: Date = Date(),
+        slides: [HomeCardSlide],
+        isFavorite: Bool = false,
+        spotlightStyle: Style = .stoic,
+        favoritedAt: Date? = nil
+    ) {
         self.id = id
         self.createdAt = createdAt
         self.slides = slides
+        self.isFavorite = isFavorite
+        self.spotlightStyle = spotlightStyle
+        self.favoritedAt = favoritedAt
     }
 
-    init(id: UUID = UUID(), createdAt: Date = Date(), thought: String, result: ReframeResult) {
-        self.id = id
-        self.createdAt = createdAt
-        self.slides = [
-            HomeCardSlide(id: id, thought: thought, result: result)
-        ]
+    var thought: String {
+        slides.first?.thought ?? ""
+    }
+
+    var spotlightSlideID: UUID? {
+        slides.first(where: { $0.result.style == spotlightStyle })?.id ?? slides.first?.id
     }
 }
 
@@ -42,13 +55,24 @@ extension Style {
     }
 }
 
-struct ComposeTurn: Identifiable, Equatable {
+struct ClarifyRound: Identifiable, Equatable {
     let id: UUID
-    let thought: String
-    let style: Style
-    var result: ReframeResult?
-    var isSaved: Bool = true
-    var error: String?
+    let question: String
+    let options: [String]
+    var selectedAnswer: String?
+    var selectedIsCustom: Bool = false
+
+    var isAnswered: Bool {
+        selectedAnswer != nil
+    }
+}
+
+enum RefinePhase: Equatable {
+    case composing
+    case cooking
+    case awaitingClarify
+    case ready([ReframeResult])
+    case error(String)
 }
 
 @MainActor
@@ -56,204 +80,219 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var cards: [HomeCard]
 
     @Published var composeText = ""
-    @Published var selectedStyle: Style = .optimistic
-    @Published private(set) var turns: [ComposeTurn] = []
-    @Published private(set) var isCooking = false
+    @Published var writeNewText = ""
+    @Published var isWritingNew = false
+    @Published private(set) var statement = ""
+    @Published private(set) var clarifyRounds: [ClarifyRound] = []
+    @Published private(set) var phase: RefinePhase = .composing
     @Published private(set) var cookHaptic = 0
 
-    private var cookTask: Task<Void, Never>?
-    private var cookingTurnID: UUID?
-    private var editingCardID: UUID?
+    private var refineTask: Task<Void, Never>?
 
     init(cards: [HomeCard]? = nil) {
         self.cards = cards ?? Self.sampleCards
     }
 
+    static let favoriteStripLimit = 6
+
+    var favoriteCards: [HomeCard] {
+        cards
+            .filter(\.isFavorite)
+            .sorted { ($0.favoritedAt ?? .distantPast) > ($1.favoritedAt ?? .distantPast) }
+    }
+
+    var stripFavoriteCards: [HomeCard] {
+        Array(favoriteCards.prefix(Self.favoriteStripLimit))
+    }
+
     var canSubmit: Bool {
-        !composeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !isCooking
+        phase == .composing
+            && !composeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func selectStyle(_ style: Style) {
-        selectedStyle = style
-    }
-
-    func submitCompose(animatedDelay: Bool) {
-        let thought = composeText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !thought.isEmpty, !isCooking else {
-            return
+    var canSubmitWriteNew: Bool {
+        guard case .awaitingClarify = phase, openRound != nil else {
+            return false
         }
 
-        let turn = ComposeTurn(
-            id: UUID(),
-            thought: thought,
-            style: selectedStyle
-        )
-        turns.append(turn)
-        composeText = ""
-        beginCook(animatedDelay: animatedDelay, turnID: turn.id)
-    }
-
-    func retryCook(animatedDelay: Bool) {
-        guard let last = turns.last, !isCooking else {
-            return
-        }
-
-        beginCook(animatedDelay: animatedDelay, turnID: last.id)
-    }
-
-    func toggleSave(turnID: UUID) {
-        updateTurn(turnID) { turn in
-            guard turn.result != nil else {
-                return
-            }
-
-            turn.isSaved.toggle()
-        }
-    }
-
-    func isSaved(turnID: UUID) -> Bool {
-        turns.first(where: { $0.id == turnID })?.isSaved == true
+        return !writeNewText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var canPublish: Bool {
-        turns.contains { $0.isSaved && $0.result != nil }
-    }
-
-    func publishSelected() {
-        let slides: [HomeCardSlide] = turns.compactMap { turn in
-            guard turn.isSaved, let result = turn.result else {
-                return nil
-            }
-
-            return HomeCardSlide(
-                id: turn.id,
-                thought: turn.thought,
-                result: result
-            )
+        if case .ready(let results) = phase {
+            return results.count == Style.allCases.count
         }
 
-        guard !slides.isEmpty else {
+        return false
+    }
+
+    var isCooking: Bool {
+        if case .cooking = phase {
+            return true
+        }
+
+        return false
+    }
+
+    private var openRound: ClarifyRound? {
+        clarifyRounds.last(where: { !$0.isAnswered })
+    }
+
+    private var answeredFollowUpCount: Int {
+        clarifyRounds.filter(\.isAnswered).count
+    }
+
+    func submitStatement() {
+        let thought = composeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canSubmit else {
             return
         }
 
-        if let editingCardID,
-           let index = cards.firstIndex(where: { $0.id == editingCardID })
-        {
-            cards[index] = HomeCard(
-                id: editingCardID,
-                createdAt: cards[index].createdAt,
-                slides: slides
-            )
-        } else {
-            cards.insert(HomeCard(createdAt: Date(), slides: slides), at: 0)
-        }
-    }
-
-    func beginEdit(_ card: HomeCard) {
-        cookTask?.cancel()
-        cookTask = nil
-        cookingTurnID = nil
+        statement = thought
         composeText = ""
-        isCooking = false
-        editingCardID = card.id
-        turns = card.slides.map { slide in
-            ComposeTurn(
-                id: slide.id,
-                thought: slide.thought,
-                style: slide.result.style,
-                result: slide.result,
-                isSaved: true
-            )
-        }
-        selectedStyle = turns.last?.style ?? .optimistic
+        clarifyRounds = []
+        isWritingNew = false
+        writeNewText = ""
+        startRefine()
     }
 
-    func deleteCard(_ id: UUID) {
-        cards.removeAll { $0.id == id }
-        if editingCardID == id {
-            resetCompose()
-        }
-    }
-
-    func resetCompose() {
-        cookTask?.cancel()
-        cookTask = nil
-        cookingTurnID = nil
-        editingCardID = nil
-        composeText = ""
-        selectedStyle = .optimistic
-        turns = []
-        isCooking = false
-    }
-
-    private func beginCook(animatedDelay: Bool, turnID: UUID? = nil) {
-        let targetID = turnID ?? turns.last?.id
-        guard let targetID,
-              let turn = turns.first(where: { $0.id == targetID })
+    func answerClarify(_ answer: String, isCustom: Bool = false) {
+        let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard case .awaitingClarify = phase,
+              !trimmed.isEmpty,
+              let index = clarifyRounds.lastIndex(where: { !$0.isAnswered })
         else {
             return
         }
 
-        let style = turn.style
+        clarifyRounds[index].selectedAnswer = trimmed
+        clarifyRounds[index].selectedIsCustom = isCustom
+        isWritingNew = false
+        writeNewText = ""
+        startRefine()
+    }
 
-        cookTask?.cancel()
-        cookingTurnID = targetID
-        updateTurn(targetID) { turn in
-            turn.result = nil
-            turn.error = nil
+    func submitWriteNew() {
+        guard canSubmitWriteNew else {
+            return
         }
-        isCooking = true
 
-        cookTask = Task { @MainActor in
-            if animatedDelay {
-                do {
-                    try await Task.sleep(for: .seconds(1))
-                } catch {
-                    return
-                }
+        answerClarify(writeNewText, isCustom: true)
+    }
+
+    func beginWriteNew() {
+        guard case .awaitingClarify = phase, openRound != nil else {
+            return
+        }
+
+        isWritingNew = true
+        writeNewText = ""
+    }
+
+    func retryRefine() {
+        guard case .error = phase, !statement.isEmpty else {
+            return
+        }
+
+        startRefine()
+    }
+
+    func publishSelected() {
+        guard case .ready(let results) = phase, !statement.isEmpty else {
+            return
+        }
+
+        let slides = results.map { result in
+            HomeCardSlide(id: UUID(), thought: statement, result: result)
+        }
+        let styles = Style.allCases
+        let spotlight = styles[cards.count % styles.count]
+
+        cards.insert(
+            HomeCard(
+                createdAt: Date(),
+                slides: slides,
+                spotlightStyle: spotlight
+            ),
+            at: 0
+        )
+    }
+
+    func deleteCard(_ id: UUID) {
+        cards.removeAll { $0.id == id }
+    }
+
+    func toggleFavorite(_ id: UUID) {
+        guard let index = cards.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        if cards[index].isFavorite {
+            cards[index].isFavorite = false
+            cards[index].favoritedAt = nil
+        } else {
+            cards[index].isFavorite = true
+            cards[index].favoritedAt = Date()
+        }
+    }
+
+    func recookStyle(_ style: Style) {
+        guard case .ready(var results) = phase,
+              let index = results.firstIndex(where: { $0.style == style })
+        else {
+            return
+        }
+
+        let next = RefineMock.nextVariant(style: style, after: results[index].reframe)
+        results[index] = ReframeResult(style: style, reframe: next)
+        phase = .ready(results)
+        cookHaptic += 1
+    }
+
+    func resetCompose() {
+        refineTask?.cancel()
+        refineTask = nil
+        composeText = ""
+        writeNewText = ""
+        isWritingNew = false
+        statement = ""
+        clarifyRounds = []
+        phase = .composing
+    }
+
+    private func startRefine() {
+        refineTask?.cancel()
+        phase = .cooking
+        let text = statement
+        let answered = answeredFollowUpCount
+
+        refineTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(700))
+            } catch {
+                return
             }
 
             guard !Task.isCancelled else {
                 return
             }
 
-            updateTurn(targetID) { turn in
-                turn.result = ReframeResult(
-                    style: style,
-                    reframe: Self.fakeReframe(for: style)
+            switch RefineMock.decide(text: text, answeredFollowUps: answered) {
+            case .clarify(let question, let options):
+                clarifyRounds.append(
+                    ClarifyRound(
+                        id: UUID(),
+                        question: question,
+                        options: options
+                    )
                 )
-                turn.error = nil
+                phase = .awaitingClarify
+            case .ready:
+                phase = .ready(RefineMock.results())
             }
-            isCooking = false
-            cookingTurnID = nil
             cookHaptic += 1
-            cookTask = nil
+            refineTask = nil
         }
-    }
-
-    private func updateTurn(_ id: UUID, mutate: (inout ComposeTurn) -> Void) {
-        guard let index = turns.firstIndex(where: { $0.id == id }) else {
-            return
-        }
-
-        mutate(&turns[index])
-    }
-
-    func isCookingTurn(_ turn: ComposeTurn) -> Bool {
-        isCooking && cookingTurnID == turn.id
-    }
-
-    private static func minutesAgo(_ minutes: Int) -> Date {
-        Date().addingTimeInterval(TimeInterval(-minutes * 60))
-    }
-
-    private static func hoursAgo(_ hours: Int) -> Date {
-        Date().addingTimeInterval(TimeInterval(-hours * 3600))
-    }
-
-    private static func daysAgo(_ days: Int) -> Date {
-        Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
     }
 
     static func dateLabel(for date: Date, now: Date = Date()) -> String {
@@ -279,128 +318,129 @@ final class HomeViewModel: ObservableObject {
         return formatter.string(from: date)
     }
 
-    private static func fakeReframe(for style: Style) -> String {
-        switch style {
-        case .stoic:
-            return "You cannot control the outcome, only how you meet the moment."
-        case .optimistic:
-            return "This is one hard moment, not the shape of everything ahead."
-        case .humorous:
-            return "Your brain has submitted a dramatic first draft. Edits are allowed."
-        case .toughLove:
-            return "Stop waiting for certainty. Take the smallest useful step now."
+    private static func minutesAgo(_ minutes: Int) -> Date {
+        Date().addingTimeInterval(TimeInterval(-minutes * 60))
+    }
+
+    private static func hoursAgo(_ hours: Int) -> Date {
+        Date().addingTimeInterval(TimeInterval(-hours * 3600))
+    }
+
+    private static func daysAgo(_ days: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+    }
+
+    private static func slides(
+        thought: String,
+        highlight: Style,
+        highlightText: String
+    ) -> [HomeCardSlide] {
+        Style.allCases.map { style in
+            let reframe: String
+            if style == highlight {
+                reframe = highlightText
+            } else {
+                reframe = RefineMock.cannedReframes[style] ?? highlightText
+            }
+
+            return HomeCardSlide(
+                id: UUID(),
+                thought: thought,
+                result: ReframeResult(style: style, reframe: reframe)
+            )
         }
     }
 
+    private static func sampleCard(
+        createdAt: Date,
+        thought: String,
+        highlight: Style,
+        highlightText: String,
+        isFavorite: Bool = false
+    ) -> HomeCard {
+        HomeCard(
+            createdAt: createdAt,
+            slides: slides(thought: thought, highlight: highlight, highlightText: highlightText),
+            isFavorite: isFavorite,
+            spotlightStyle: highlight,
+            favoritedAt: isFavorite ? createdAt : nil
+        )
+    }
+
     private static let sampleCards: [HomeCard] = [
-        HomeCard(
+        sampleCard(
             createdAt: minutesAgo(18),
-            slides: [
-                HomeCardSlide(
-                    id: UUID(),
-                    thought: "I bombed my job interview today.",
-                    result: ReframeResult(
-                        style: .stoic,
-                        reframe: "You can't control the outcome, only how you showed up."
-                    )
-                ),
-                HomeCardSlide(
-                    id: UUID(),
-                    thought: "I bombed my job interview today.",
-                    result: ReframeResult(
-                        style: .optimistic,
-                        reframe: "This is one hard moment, not the shape of everything ahead."
-                    )
-                ),
-            ]
+            thought: "I bombed my job interview today.",
+            highlight: .stoic,
+            highlightText: "You can't control the outcome, only how you showed up.",
+            isFavorite: true
         ),
-        HomeCard(
+        sampleCard(
             createdAt: hoursAgo(4),
             thought: "My friend cancelled on me again.",
-            result: ReframeResult(
-                style: .humorous,
-                reframe: "Congrats, you've joined the club of every human who's sweated through this."
-            )
+            highlight: .humorous,
+            highlightText: "Congrats, you've joined the club of every human who's sweated through this.",
+            isFavorite: true
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(2),
             thought: "I keep procrastinating on my project.",
-            result: ReframeResult(
-                style: .toughLove,
-                reframe: "Stop waiting to feel ready. Start now and feel ready later."
-            )
+            highlight: .toughLove,
+            highlightText: "Stop waiting to feel ready. Start now and feel ready later."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(3),
             thought: "I feel behind compared to my peers.",
-            result: ReframeResult(
-                style: .optimistic,
-                reframe: "Different pace, same direction. You're not behind, you're on your own clock."
-            )
+            highlight: .optimistic,
+            highlightText: "Different pace, same direction. You're not behind, you're on your own clock."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(4),
             thought: "I replayed that awkward meeting all night.",
-            result: ReframeResult(
-                style: .stoic,
-                reframe: "The moment has passed. What remains is how you choose to respond now."
-            )
+            highlight: .stoic,
+            highlightText: "The moment has passed. What remains is how you choose to respond now."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(5),
             thought: "They ended the text with a period.",
-            result: ReframeResult(
-                style: .humorous,
-                reframe: "Your brain wrote a twelve-season drama from one punctuation mark."
-            )
+            highlight: .humorous,
+            highlightText: "Your brain wrote a twelve-season drama from one punctuation mark."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(6),
             thought: "I missed two days of my new habit.",
-            result: ReframeResult(
-                style: .optimistic,
-                reframe: "Two missed days do not erase every day you chose to begin."
-            )
+            highlight: .optimistic,
+            highlightText: "Two missed days do not erase every day you chose to begin."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(7),
             thought: "I keep avoiding a difficult conversation.",
-            result: ReframeResult(
-                style: .toughLove,
-                reframe: "Avoiding it is still a choice. Choose the conversation that moves you forward."
-            )
+            highlight: .toughLove,
+            highlightText: "Avoiding it is still a choice. Choose the conversation that moves you forward."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(8),
             thought: "I stumbled over my presentation.",
-            result: ReframeResult(
-                style: .humorous,
-                reframe: "A few words tripped. The presentation survived, and so did everyone in the room."
-            )
+            highlight: .humorous,
+            highlightText: "A few words tripped. The presentation survived, and so did everyone in the room."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(9),
             thought: "This week has not gone to plan.",
-            result: ReframeResult(
-                style: .stoic,
-                reframe: "The plan changed. Your ability to choose the next useful action did not."
-            )
+            highlight: .stoic,
+            highlightText: "The plan changed. Your ability to choose the next useful action did not."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(10),
             thought: "Starting over feels like failure.",
-            result: ReframeResult(
-                style: .optimistic,
-                reframe: "Starting over means you know more this time than you did the first."
-            )
+            highlight: .optimistic,
+            highlightText: "Starting over means you know more this time than you did the first."
         ),
-        HomeCard(
+        sampleCard(
             createdAt: daysAgo(11),
             thought: "I have been waiting for motivation.",
-            result: ReframeResult(
-                style: .toughLove,
-                reframe: "Motivation can catch up. Give it something in motion to follow."
-            )
+            highlight: .toughLove,
+            highlightText: "Motivation can catch up. Give it something in motion to follow."
         ),
     ]
 }

@@ -60,5 +60,7 @@ async function mockGenerateReframe(
   }
 
   const preview = trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
-  return `[mock] ${preview}`;
+  const toneMatch = input.systemPrompt.match(/in an? (.+?) tone/i);
+  const tone = toneMatch?.[1] ?? "Reframe";
+  return `[mock ${tone}] ${preview}`;
 }

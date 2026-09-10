@@ -2,9 +2,14 @@ export const STYLES = ["stoic", "optimistic", "humorous", "tough_love"] as const
 
 export type Style = (typeof STYLES)[number];
 
+export type FollowUpAnswer = {
+  question: string;
+  answer: string;
+};
+
 export type ReframeRequest = {
   text: string;
-  styles: Style[];
+  followUps?: FollowUpAnswer[];
 };
 
 export type ReframeResult = {
@@ -12,9 +17,18 @@ export type ReframeResult = {
   reframe: string;
 };
 
-export type ReframeResponse = {
+export type ClarifyResponse = {
+  kind: "clarify";
+  question: string;
+  options: string[];
+};
+
+export type ReadyResponse = {
+  kind: "ready";
   results: ReframeResult[];
 };
+
+export type ReframeResponse = ClarifyResponse | ReadyResponse;
 
 export type ApiErrorBody = {
   error: string;

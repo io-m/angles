@@ -3,7 +3,6 @@ import Foundation
 enum AppConfig {
     static var baseURL: URL {
         #if DEBUG
-        // Simulator: localhost reaches the Mac. Physical device: use the Mac's LAN IP.
         return URL(string: "http://localhost:8787")!
         #else
         // TODO: replace with the Railway production URL once deployed.

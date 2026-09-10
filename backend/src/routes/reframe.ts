@@ -5,9 +5,37 @@ import { authStub } from "../lib/authStub.js";
 import { errorBody } from "../lib/http.js";
 import { generateReframe, LlmError } from "../lib/llmClient.js";
 import { SYSTEM_PROMPTS } from "../lib/prompts.js";
-import { STYLES, type ReframeResponse, type Style } from "../types/index.js";
+import {
+  clarifyForFollowUps,
+  composeLlmText,
+  shouldReturnReady,
+} from "../lib/refineDecision.js";
+import {
+  STYLES,
+  type FollowUpAnswer,
+  type ReadyResponse,
+  type ReframeResponse,
+  type Style,
+} from "../types/index.js";
 
 const MAX_TEXT_LENGTH = 2000;
+const MAX_FOLLOW_UPS = 3;
+
+const followUpSchema = z.object({
+  question: z
+    .string()
+    .transform((value) => value.trim())
+    .pipe(z.string().min(1, "question must not be empty").max(500)),
+  answer: z
+    .string()
+    .transform((value) => value.trim())
+    .pipe(
+      z
+        .string()
+        .min(1, "answer must not be empty")
+        .max(MAX_TEXT_LENGTH, `answer must be at most ${MAX_TEXT_LENGTH} characters`),
+    ),
+});
 
 const reframeRequestSchema = z.object({
   text: z
@@ -19,18 +47,30 @@ const reframeRequestSchema = z.object({
         .min(1, "text must not be empty")
         .max(MAX_TEXT_LENGTH, `text must be at most ${MAX_TEXT_LENGTH} characters`),
     ),
-  styles: z
-    .array(z.enum(STYLES))
-    .min(1, "styles must contain at least one style")
-    .max(STYLES.length, "styles contains too many entries")
-    .refine((items) => new Set(items).size === items.length, {
-      message: "styles must not contain duplicates",
-    }),
+  followUps: z.array(followUpSchema).max(MAX_FOLLOW_UPS, "followUps must contain at most 3 entries").optional(),
 });
 
 function validationErrorMessage(error: { issues: { message: string }[] }): string {
   const first = error.issues[0];
   return first?.message ?? "Invalid request";
+}
+
+async function generateAllStyles(text: string): Promise<ReadyResponse> {
+  const results = await Promise.all(
+    STYLES.map(async (style: Style) => {
+      const reframe = await generateReframe({
+        text,
+        systemPrompt: SYSTEM_PROMPTS[style],
+      });
+      const trimmed = reframe.trim();
+      if (trimmed.length === 0) {
+        throw new LlmError("LLM returned an empty reframe");
+      }
+      return { style, reframe: trimmed };
+    }),
+  );
+
+  return { kind: "ready", results };
 }
 
 export const reframeRoute = new Hono();
@@ -44,28 +84,20 @@ reframeRoute.post(
     }
   }),
   async (c) => {
-    const { text, styles } = c.req.valid("json");
+    const { text, followUps: rawFollowUps } = c.req.valid("json");
+    const followUps: FollowUpAnswer[] = rawFollowUps ?? [];
 
     try {
-      const results = await Promise.all(
-        styles.map(async (style: Style) => {
-          const reframe = await generateReframe({
-            text,
-            systemPrompt: SYSTEM_PROMPTS[style],
-          });
-          const trimmed = reframe.trim();
-          if (trimmed.length === 0) {
-            throw new LlmError("LLM returned an empty reframe");
-          }
-          return { style, reframe: trimmed };
-        }),
-      );
-
-      const body: ReframeResponse = { results };
+      let body: ReframeResponse;
+      if (shouldReturnReady(text, followUps)) {
+        body = await generateAllStyles(composeLlmText(text, followUps));
+      } else {
+        body = clarifyForFollowUps(followUps);
+      }
       return c.json(body);
     } catch (error) {
       const reason = error instanceof LlmError ? error.message : "unknown";
-      console.error("reframe_failed", { styleCount: styles.length, reason });
+      console.error("reframe_failed", { followUpCount: followUps.length, reason });
       return c.json(errorBody("Failed to generate reframe", "LLM_ERROR"), 500);
     }
   },

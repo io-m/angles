@@ -18,7 +18,7 @@ Target: iOS 17+, bundle id `app.angles.ios` (placeholder). No SPM networking pac
 ## Networking
 
 - `APIClient.post(path:body:)` — JSON encode, `URLSession`, decode `Decodable`, map failures to `APIError`.
-- `ReframeService.getReframes(text:styles:)` — `POST /reframe` only.
+- `ReframeService.refine(text:followUps:)` — `POST /reframe` only.
 - Auth header: TODO on the request in `APIClient`. Do not invent a token store.
 
 ## Models

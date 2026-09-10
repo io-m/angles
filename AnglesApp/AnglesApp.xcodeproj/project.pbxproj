@@ -24,7 +24,9 @@
 		A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A473004998C2F650FCA971D /* DrawerStubView.swift */; };
 		A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = CECAAC54ED5DE586764B6970 /* HomePalette.swift */; };
 		A72468A7C749E204738C1D2C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B13ED3B345E39F024359E6C0 /* Assets.xcassets */; };
+		A8E5CE95B5569923D76BD7AD /* RefineMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F57743D37B0E0BE75EB3659 /* RefineMock.swift */; };
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
+		C7C3DDB068AD323DEEAB4E6C /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61A48E316801DBEEA30F09A /* FavoritesView.swift */; };
 		C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564F37666F47FDFD54D03D2D /* HomeView.swift */; };
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
 		EBDA2E1E27376A11583D19E9 /* AccentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */; };
@@ -45,6 +47,7 @@
 		564F37666F47FDFD54D03D2D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		657231FF50708210A4AA9FDD /* UserAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAppearance.swift; sourceTree = "<group>"; };
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
+		9F57743D37B0E0BE75EB3659 /* RefineMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefineMock.swift; sourceTree = "<group>"; };
 		A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleIcon.swift; sourceTree = "<group>"; };
 		B05847EC66A8A1B53179B539 /* ReframeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeCardView.swift; sourceTree = "<group>"; };
 		B13ED3B345E39F024359E6C0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -54,6 +57,7 @@
 		C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeStore.swift; sourceTree = "<group>"; };
 		CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
 		CECAAC54ED5DE586764B6970 /* HomePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomePalette.swift; sourceTree = "<group>"; };
+		D61A48E316801DBEEA30F09A /* FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesView.swift; sourceTree = "<group>"; };
 		DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentPalette.swift; sourceTree = "<group>"; };
 		F2D55F6643C769B38928FD8B /* ReframeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -128,9 +132,11 @@
 			children = (
 				338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */,
 				6A473004998C2F650FCA971D /* DrawerStubView.swift */,
+				D61A48E316801DBEEA30F09A /* FavoritesView.swift */,
 				CECAAC54ED5DE586764B6970 /* HomePalette.swift */,
 				564F37666F47FDFD54D03D2D /* HomeView.swift */,
 				4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */,
+				9F57743D37B0E0BE75EB3659 /* RefineMock.swift */,
 				B05847EC66A8A1B53179B539 /* ReframeCardView.swift */,
 			);
 			path = Home;
@@ -235,10 +241,12 @@
 				F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */,
 				729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */,
 				A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */,
+				C7C3DDB068AD323DEEAB4E6C /* FavoritesView.swift in Sources */,
 				A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */,
 				C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */,
 				830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
+				A8E5CE95B5569923D76BD7AD /* RefineMock.swift in Sources */,
 				327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */,
 				3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */,
 				2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */,

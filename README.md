@@ -25,7 +25,7 @@ pnpm dev
 API listens on `http://localhost:8787`.
 
 - `GET /health` → `{ "status": "ok" }`
-- `POST /reframe` → `{ "text": string, "styles": string[] }` → `{ "results": [{ "style", "reframe" }] }`
+- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[] }` → `{ "kind": "clarify", "question", "options" }` or `{ "kind": "ready", "results": [{ "style", "reframe" }] }` (always all four styles).
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm build`.
 
@@ -33,12 +33,11 @@ The LLM lives behind `backend/src/lib/llmClient.ts` (`generateReframe`). It is a
 
 Native `URLSession` does not use browser CORS. This API does not send CORS headers.
 
-## iOS app → local backend
+## iOS app
 
-1. Start the backend (`pnpm dev` in `backend/`).
-2. Open `AnglesApp/AnglesApp.xcodeproj` (or run `xcodegen generate` in `AnglesApp/` if the project file is missing).
-3. Run on the **iOS Simulator**. Debug builds use `http://localhost:8787` (`AppConfig.swift`).
-4. On a **physical device**, localhost is the phone. Temporarily point `AppConfig` at your Mac's LAN IP (e.g. `http://192.168.x.x:8787`). `NSAllowsLocalNetworking` is enabled; do not turn on `NSAllowsArbitraryLoads`.
+The overlay currently mocks refine on-device (`RefineMock`). `ReframeService` / `POST /reframe` stay for when a real LLM is wired.
+
+Debug `AppConfig.baseURL` is `http://localhost:8787`. `NSAllowsLocalNetworking` is enabled; do not turn on `NSAllowsArbitraryLoads`.
 
 Bundle ID placeholder: `app.angles.ios`. Attach your Apple team in Xcode before device runs.
 

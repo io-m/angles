@@ -18,10 +18,12 @@ struct AnglesCanvasBackground: View {
 }
 
 struct CardStyleAppearance {
+    let style: Style
     let systemImage: String
     let ink: Color
 
     init(style: Style) {
+        self.style = style
         switch style {
         case .stoic:
             systemImage = "mountain.2.fill"
