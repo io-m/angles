@@ -5,7 +5,7 @@ description: Edit Angles reframe system prompts and style tone. Use when changin
 
 # Angles LLM prompts
 
-All prompt copy lives in `backend/src/lib/prompts.ts`: `DECISION_PROMPT` (triage), `SYSTEM_PROMPTS: Record<Style, string>` (the four reframes), plus the repair and force-ready fragments.
+All prompt copy lives in `backend/src/lib/prompts.ts`: `DECISION_PROMPT` (triage), `STYLE_BATCH_PROMPT` (one JSON object with the chosen styles), `SYSTEM_PROMPTS: Record<Style, string>` (single-style recook / retry), plus the repair and force-ready fragments.
 
 ## DECISION_PROMPT
 
@@ -21,6 +21,10 @@ Load-bearing rules, do not weaken them casually:
 ## Length budgets
 
 Exported as constants so the route can enforce them: thought 8–22 words / 40–140 chars (hard reject past 32 words or 180 chars), reframe 12–32 words / 80–190 chars (retry once past 250 chars, then trim). `thought_original_cleaned` shares the thought budget and must fit the same card.
+
+## STYLE_BATCH_PROMPT
+
+After a ready decision, one JSON call writes every chosen style. Distinctive rule: each field is that style only — humorous must not sound like tough_love. Joke is on the situation or the brain, never the person. Omit skipped styles. Recook and a missing-field retry still use `SYSTEM_PROMPTS`.
 
 ## Shared rules (keep in every style)
 

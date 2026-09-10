@@ -10,7 +10,7 @@ alwaysApply: false
 - Errors: `{ error, code }` and a correct HTTP status. Do not leak stack traces.
 - Isolate provider calls in `llmClient.ts` (`generateReframe`). Swap that file only for a real LLM.
 - Style keys: `stoic`, `optimistic`, `humorous`, `tough_love`. Prompt copy lives in `prompts.ts`.
-- Multiple styles → `Promise.all`. One failure fails the whole request.
+- Multiple styles → one batched JSON style call after the decision. Recook is a single `generateReframe`. One failure fails the whole request.
 - Bind `0.0.0.0` and `process.env.PORT || 8787`. Health: `GET /health` (include a cheap DB probe).
 - Drizzle + `postgres` (postgres.js) live in `src/db/`. Do not add Better Auth until that task (`src/auth.ts`).
 - Tests use `app.request()` (Vitest). Do not start `serve()` in tests.

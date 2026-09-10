@@ -4,6 +4,7 @@ struct HomeCardGrid: View, Equatable {
     let cards: [HomeCard]
     let usesSingleColumn: Bool
     let spacing: CGFloat
+    var openingStyle: Style? = nil
     var onDelete: (HomeCard) -> Void = { _ in }
     var onToggleFavorite: (HomeCard) -> Void = { _ in }
 
@@ -11,6 +12,7 @@ struct HomeCardGrid: View, Equatable {
         lhs.cards == rhs.cards
             && lhs.usesSingleColumn == rhs.usesSingleColumn
             && lhs.spacing == rhs.spacing
+            && lhs.openingStyle == rhs.openingStyle
     }
 
     private var columns: [GridItem] {
@@ -29,9 +31,11 @@ struct HomeCardGrid: View, Equatable {
             ForEach(cards) { card in
                 ReframeCardView(
                     card: card,
+                    openingStyle: openingStyle,
                     onDelete: { onDelete(card) },
                     onToggleFavorite: { onToggleFavorite(card) }
                 )
+                .id("\(card.id.uuidString)-\(openingStyle?.rawValue ?? "all")")
             }
         }
     }

@@ -18,20 +18,20 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 
 - `backend/src/app.ts` — Hono app, middleware, error handler
 - `backend/src/index.ts` — `serve()`, `PORT` (default 8787), bind `0.0.0.0`, schema check, pool shutdown
-- `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, decision call then `Promise.all` the chosen styles
+- `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, decision call then one batched style JSON (recook is a single style)
 - `backend/src/routes/cards.ts` — `POST/GET/PATCH/DELETE /cards`
 - `backend/src/routes/health.ts` — `GET /health` (includes a DB probe)
 - `backend/src/db/schema.ts` — Drizzle tables
 - `backend/src/db/cards.ts` — SQL seam for the library
 - `backend/src/lib/decision.ts` — the structured decision call: continue vs ready, cleaned thought, styles, metadata
 - `backend/src/lib/llmClient.ts` — **only** file to change when picking an LLM provider (`generateReframe`, `generateJson`)
-- `backend/src/lib/prompts.ts` — `DECISION_PROMPT`, `SYSTEM_PROMPTS`, length budgets
+- `backend/src/lib/prompts.ts` — `DECISION_PROMPT`, `STYLE_BATCH_PROMPT`, `SYSTEM_PROMPTS`, length budgets
 - `backend/src/types/index.ts` — `Style`, request/response types
 - `AnglesApp/project.yml` — XcodeGen source of truth; run `xcodegen generate` after structural file changes
 - `AnglesApp/AnglesApp/AnglesApp.swift` — AppRoot: TabView (Home, Profile), compose overlay, shared `HomeViewModel`
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
 - `AnglesApp/AnglesApp/Home/HomeView.swift` — empty Home tab + Settings
-- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library (favorites + filtered grid)
+- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library (favorites + grid). Style chips keep cards that have that angle and open on it; All mixes covers.
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — 2-column card grid
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`, `CardsService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly

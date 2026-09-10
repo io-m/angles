@@ -26,7 +26,7 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 
 ## The reframe flow
 
-One decision call (`generateJson`) then one style call per chosen style. `continue` never runs a style call. Metadata and the cleaned English thought come from the decision only — the raw user text never reaches a style prompt, and neither is ever logged.
+One decision call (`generateJson`) then one batched style JSON call (`STYLE_BATCH_PROMPT`) for the chosen styles. Recook (`styles` length 1) uses `generateReframe`. `continue` never runs a style call. Metadata and the cleaned English thought come from the decision only — the raw user text never reaches a style prompt, and neither is ever logged. Cap concurrent provider calls at 3. A cook has a 10s wall deadline; a hung provider times out at 8s. Abort the provider fetch if the client disconnects.
 
 ## Swapping the LLM
 

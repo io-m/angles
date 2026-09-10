@@ -306,6 +306,7 @@ struct ProfileView: View {
                         cards: viewModel.filteredProfileCards,
                         usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
                         spacing: Layout.gridSpacing,
+                        openingStyle: viewModel.profileGridFilter.matchingStyle,
                         onDelete: deleteCard,
                         onToggleFavorite: toggleFavorite
                     )
@@ -437,7 +438,7 @@ struct ProfileView: View {
         case .all:
             return "No cards yet"
         case .stoic, .optimistic, .humorous, .toughLove:
-            return "No \(viewModel.profileGridFilter.title) cards yet"
+            return "No cards with a \(viewModel.profileGridFilter.title) angle yet"
         }
     }
 

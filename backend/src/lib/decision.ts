@@ -21,7 +21,7 @@ import {
   type Style,
   type Timeframe,
 } from "../types/index.js";
-import { generateJson, LlmError, type LlmModelId } from "./llmClient.js";
+import { generateJson, LlmError, timeoutMsUntil, type LlmModelId } from "./llmClient.js";
 import {
   DECISION_FORCE_READY,
   DECISION_PROMPT,
@@ -55,6 +55,8 @@ export type RunDecisionInput = {
   followUps: FollowUpAnswer[];
   model?: LlmModelId;
   forceReady: boolean;
+  deadlineAt?: number;
+  abortSignal?: AbortSignal;
 };
 
 const MAX_OPTIONS = 3;
@@ -331,10 +333,16 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
     : DECISION_PROMPT;
   const conversation = composeConversation(input.text, input.followUps);
 
+  const callOptions = {
+    model: input.model,
+    abortSignal: input.abortSignal,
+    ...(input.deadlineAt !== undefined ? { timeoutMs: timeoutMsUntil(input.deadlineAt) } : {}),
+  };
+
   const first = await generateJson({
     text: conversation,
     systemPrompt,
-    model: input.model,
+    ...callOptions,
   });
 
   try {
@@ -349,6 +357,8 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
     text: `${conversation}\n\n---\nYour previous reply, which was rejected:\n${first.slice(0, MAX_ECHOED_OUTPUT)}`,
     systemPrompt: `${systemPrompt}\n\n${DECISION_REPAIR_PROMPT}`,
     model: input.model,
+    abortSignal: input.abortSignal,
+    ...(input.deadlineAt !== undefined ? { timeoutMs: timeoutMsUntil(input.deadlineAt) } : {}),
   });
 
   try {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
+import { STYLE_BATCH_PROMPT, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
 import { CATEGORIES, STYLES, type Style } from "./types/index.js";
 
 vi.mock("./lib/llmClient.js", async (importOriginal) => {
@@ -31,7 +31,7 @@ vi.mock("./db/client.js", () => ({
 }));
 
 const { app } = await import("./app.js");
-const { generateJson, generateReframe } = await import("./lib/llmClient.js");
+const { generateJson, generateReframe, STYLE_BATCH_MAX_OUTPUT_TOKENS } = await import("./lib/llmClient.js");
 const { probeDatabase } = await import("./db/client.js");
 
 const SHORT_TEXT = "I bombed my job interview today.";
@@ -84,9 +84,46 @@ function continueDecision(overrides: DecisionOverrides = {}): string {
   });
 }
 
+function styleBatch(overrides: Partial<Record<Style, string | undefined>> = {}): string {
+  const body: Record<string, string> = {
+    stoic: "stoic reframe",
+    optimistic: "optimistic reframe",
+    humorous: "humorous reframe",
+    tough_love: "tough love reframe",
+  };
+  for (const [style, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete body[style];
+    } else {
+      body[style] = value;
+    }
+  }
+  return JSON.stringify(body);
+}
+
+function isStyleBatchPrompt(systemPrompt: string): boolean {
+  return systemPrompt.includes("Each JSON field is that style only");
+}
+
+let batchQueue: string[] | undefined;
+
+function stubStyleBatch(...replies: string[]): void {
+  batchQueue = [...replies];
+}
+
 function stubDecision(...replies: string[]): void {
   const queue = [...replies];
-  vi.mocked(generateJson).mockImplementation(async () => {
+  vi.mocked(generateJson).mockImplementation(async ({ systemPrompt }) => {
+    if (isStyleBatchPrompt(systemPrompt)) {
+      if (batchQueue !== undefined) {
+        const next = batchQueue.shift();
+        if (next === undefined) {
+          throw new Error("generateJson style batch called more times than stubbed");
+        }
+        return next;
+      }
+      return styleBatch();
+    }
     const next = queue.shift();
     if (next === undefined) {
       throw new Error("generateJson called more times than stubbed");
@@ -152,6 +189,10 @@ describe("SYSTEM_PROMPTS", () => {
       expect(SYSTEM_PROMPTS[style].length).toBeGreaterThan(0);
     }
   });
+
+  it("defines a batched style prompt", () => {
+    expect(STYLE_BATCH_PROMPT).toContain("Each JSON field is that style only");
+  });
 });
 
 describe("GET /health", () => {
@@ -174,6 +215,7 @@ describe("POST /reframe", () => {
   beforeEach(() => {
     vi.mocked(generateJson).mockReset();
     vi.mocked(generateReframe).mockReset();
+    batchQueue = undefined;
     stubReframes();
   });
 
@@ -183,7 +225,7 @@ describe("POST /reframe", () => {
     const response = await post({ text: SHORT_TEXT });
 
     expect(response.status).toBe(200);
-    expect(generateJson).toHaveBeenCalledTimes(1);
+    expect(generateJson).toHaveBeenCalledTimes(2);
     const body = (await jsonOf(response)) as ReadyBody;
     expect(body.kind).toBe("ready");
     expect(JSON.stringify(body)).not.toContain("What stings most about this?");
@@ -264,7 +306,12 @@ describe("POST /reframe", () => {
       tags: ["job_interview", "shame", "rejection"],
       intensityBand: "high",
     });
-    expect(generateReframe).toHaveBeenCalledTimes(4);
+    expect(generateJson).toHaveBeenCalledTimes(2);
+    expect(generateReframe).not.toHaveBeenCalled();
+    const batchCall = vi.mocked(generateJson).mock.calls.find(([call]) =>
+      isStyleBatchPrompt(call.systemPrompt),
+    );
+    expect(batchCall?.[0].maxOutputTokens).toBe(STYLE_BATCH_MAX_OUTPUT_TOKENS);
   });
 
   it("keeps the cleaned original when the input was not English", async () => {
@@ -303,7 +350,8 @@ describe("POST /reframe", () => {
     expect(body.meta.skippedStyles).toEqual([
       { style: "humorous", reason: "A joke would land wrong on a loss this fresh." },
     ]);
-    expect(generateReframe).toHaveBeenCalledTimes(3);
+    expect(generateJson).toHaveBeenCalledTimes(2);
+    expect(generateReframe).not.toHaveBeenCalled();
   });
 
   it("keeps category inside the closed set", async () => {
@@ -328,7 +376,7 @@ describe("POST /reframe", () => {
     const response = await post({ text: LONG_TEXT });
 
     expect(response.status).toBe(200);
-    expect(generateJson).toHaveBeenCalledTimes(2);
+    expect(generateJson).toHaveBeenCalledTimes(3);
     const body = (await jsonOf(response)) as ReadyBody;
     expect(body.kind).toBe("ready");
   });
@@ -351,11 +399,12 @@ describe("POST /reframe", () => {
     const response = await post({ text: LONG_TEXT });
 
     expect(response.status).toBe(200);
-    expect(generateJson).toHaveBeenCalledTimes(2);
+    expect(generateJson).toHaveBeenCalledTimes(3);
   });
 
   it("retries a style once when the reframe is way too long", async () => {
     stubDecision(readyDecision({ styles: ["stoic"], skipped_styles: [] }));
+    stubStyleBatch(styleBatch({ stoic: "word ".repeat(120) }));
     vi.mocked(generateReframe).mockImplementation(async ({ systemPrompt }) =>
       systemPrompt.includes("too long for the card")
         ? "You cannot control the panel, only how you show up next time."
@@ -364,7 +413,8 @@ describe("POST /reframe", () => {
 
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
 
-    expect(generateReframe).toHaveBeenCalledTimes(2);
+    expect(generateJson).toHaveBeenCalledTimes(2);
+    expect(generateReframe).toHaveBeenCalledTimes(1);
     expect(body.results).toEqual([
       { style: "stoic", reframe: "You cannot control the panel, only how you show up next time." },
     ]);
@@ -373,6 +423,7 @@ describe("POST /reframe", () => {
   it("trims at a sentence boundary when the retry is still too long", async () => {
     stubDecision(readyDecision({ styles: ["stoic"], skipped_styles: [] }));
     const sentence = "You control the next attempt. ";
+    stubStyleBatch(styleBatch({ stoic: sentence.repeat(20) }));
     vi.mocked(generateReframe).mockImplementation(async () => sentence.repeat(20));
 
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
@@ -439,7 +490,7 @@ describe("POST /reframe", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(generateJson).toHaveBeenCalledTimes(2);
+    expect(generateJson).toHaveBeenCalledTimes(3);
     const body = (await jsonOf(response)) as ReadyBody;
     expect(body.kind).toBe("ready");
     const [firstCall] = vi.mocked(generateJson).mock.calls;
@@ -465,9 +516,18 @@ describe("POST /reframe", () => {
     const response = await post({ text: LONG_TEXT, model: "gemini-3.8-flash" });
 
     expect(response.status).toBe(200);
-    expect(generateJson).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gemini-3.8-flash" }),
-    );
+    expect(
+      vi.mocked(generateJson).mock.calls.every(([call]) => call.model === "gemini-3.8-flash"),
+    ).toBe(true);
+
+    vi.mocked(generateJson).mockClear();
+    vi.mocked(generateReframe).mockClear();
+    stubReframes();
+    stubDecision(readyDecision());
+
+    await post({ text: LONG_TEXT, styles: ["humorous"], model: "gemini-3.8-flash" });
+
+    expect(vi.mocked(generateJson).mock.calls[0]?.[0].model).toBe("gemini-3.8-flash");
     expect(generateReframe).toHaveBeenCalledWith(
       expect.objectContaining({ model: "gemini-3.8-flash" }),
     );
@@ -479,7 +539,7 @@ describe("POST /reframe", () => {
     await post({ text: LONG_TEXT });
 
     expect(vi.mocked(generateJson).mock.calls[0]?.[0].model).toBeUndefined();
-    expect(vi.mocked(generateReframe).mock.calls[0]?.[0].model).toBeUndefined();
+    expect(generateReframe).not.toHaveBeenCalled();
   });
 
   it("never sends the raw text to a style call", async () => {
@@ -487,10 +547,15 @@ describe("POST /reframe", () => {
 
     await post({ text: LONG_TEXT });
 
-    for (const [call] of vi.mocked(generateReframe).mock.calls) {
+    const batchCalls = vi.mocked(generateJson).mock.calls.filter(([call]) =>
+      isStyleBatchPrompt(call.systemPrompt),
+    );
+    expect(batchCalls.length).toBe(1);
+    for (const [call] of batchCalls) {
       expect(call.text).not.toContain("shaky answer proved");
       expect(call.text).toContain("I bombed my interview");
     }
+    expect(generateReframe).not.toHaveBeenCalled();
   });
 
   it("rejects empty text", async () => {
@@ -548,13 +613,22 @@ describe("POST /reframe", () => {
     });
   });
 
-  it("fails the whole request when one style call fails", async () => {
+  it("retries only the missing style from a batch", async () => {
     stubDecision(readyDecision());
-    vi.mocked(generateReframe).mockImplementation(async ({ systemPrompt }) => {
-      if (systemPrompt.includes("Humorous")) {
-        throw new Error("provider exploded");
-      }
-      return "a reframe";
+    stubStyleBatch(styleBatch({ humorous: undefined }));
+
+    const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+
+    expect(generateReframe).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(generateReframe).mock.calls[0]?.[0].systemPrompt).toContain("Humorous");
+    expect(body.results.map((item) => item.style)).toEqual([...STYLES]);
+  });
+
+  it("fails the whole request when a style retry fails", async () => {
+    stubDecision(readyDecision());
+    stubStyleBatch(styleBatch({ humorous: undefined }));
+    vi.mocked(generateReframe).mockImplementation(async () => {
+      throw new Error("provider exploded");
     });
 
     const response = await post({ text: LONG_TEXT });

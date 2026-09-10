@@ -7,10 +7,15 @@ import { loadLocalEnvFile } from "./loadEnv.js";
 
 loadLocalEnvFile({ skipWhenVitest: true });
 
-export const LLM_TIMEOUT_MS = 15_000;
+export const LLM_TIMEOUT_MS = 8_000;
 export const LLM_MAX_OUTPUT_TOKENS = 120;
 export const DECISION_MAX_OUTPUT_TOKENS = 700;
+/** Four short reframes as JSON: ~4 × 60 tokens plus keys. */
+export const STYLE_BATCH_MAX_OUTPUT_TOKENS = 280;
+export const COOK_DEADLINE_MS = 10_000;
+export const MIN_LLM_CALL_MS = 800;
 export const DEFAULT_LLM_MODEL = "mistral-small-latest";
+const MAX_IN_FLIGHT = 3;
 
 export const LLM_MODEL_IDS = [
   "mistral-small-latest",
@@ -40,11 +45,16 @@ const CHAT_COMPLETIONS_URL: Record<Exclude<LlmProvider, "gemini">, string> = {
   deepseek: "https://api.deepseek.com/chat/completions",
 };
 
+export type LlmCallOptions = {
+  timeoutMs?: number;
+  abortSignal?: AbortSignal;
+};
+
 export type GenerateReframeInput = {
   text: string;
   systemPrompt: string;
   model?: LlmModelId;
-};
+} & LlmCallOptions;
 
 export type GenerateJsonInput = GenerateReframeInput & {
   maxOutputTokens?: number;
@@ -54,6 +64,33 @@ type ProviderCallInput = GenerateReframeInput & {
   maxOutputTokens: number;
   json: boolean;
 };
+
+let inFlight = 0;
+const waiters: Array<() => void> = [];
+
+async function withConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
+  while (inFlight >= MAX_IN_FLIGHT) {
+    await new Promise<void>((resolve) => {
+      waiters.push(resolve);
+    });
+  }
+  inFlight += 1;
+  try {
+    return await fn();
+  } finally {
+    inFlight -= 1;
+    waiters.shift()?.();
+  }
+}
+
+/** Remaining time until a cook deadline, capped at the per-call timeout. */
+export function timeoutMsUntil(deadlineAt: number): number {
+  const remaining = deadlineAt - Date.now();
+  if (remaining < MIN_LLM_CALL_MS) {
+    throw new LlmError("Cook deadline exceeded");
+  }
+  return Math.min(LLM_TIMEOUT_MS, remaining);
+}
 
 export class LlmError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -72,36 +109,53 @@ export async function generateReframe(
   });
 }
 
-/** Structured decision call. Returns the raw model string; the caller parses and validates it. */
+/** Structured JSON call (decision or style batch). Returns the raw model string; the caller parses. */
 export async function generateJson(input: GenerateJsonInput): Promise<string> {
   return runWithTimeout({
     text: input.text,
     systemPrompt: input.systemPrompt,
     model: input.model,
+    timeoutMs: input.timeoutMs,
+    abortSignal: input.abortSignal,
     maxOutputTokens: input.maxOutputTokens ?? DECISION_MAX_OUTPUT_TOKENS,
     json: true,
   });
 }
 
 async function runWithTimeout(input: ProviderCallInput): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, LLM_TIMEOUT_MS);
+  return withConcurrencyLimit(async () => {
+    const timeoutMs = Math.min(input.timeoutMs ?? LLM_TIMEOUT_MS, LLM_TIMEOUT_MS);
+    const timeoutController = new AbortController();
+    const timer = setTimeout(() => {
+      timeoutController.abort();
+    }, timeoutMs);
 
-  try {
-    return await callProvider(input, controller.signal);
-  } catch (error) {
-    if (error instanceof LlmError) {
-      throw error;
+    const clientSignal = input.abortSignal;
+    const signal =
+      clientSignal === undefined
+        ? timeoutController.signal
+        : AbortSignal.any([timeoutController.signal, clientSignal]);
+
+    try {
+      if (clientSignal?.aborted) {
+        throw new LlmError("LLM request aborted");
+      }
+      return await callProvider(input, signal);
+    } catch (error) {
+      if (error instanceof LlmError) {
+        throw error;
+      }
+      if (clientSignal?.aborted) {
+        throw new LlmError("LLM request aborted", { cause: error });
+      }
+      if (timeoutController.signal.aborted) {
+        throw new LlmError("LLM request timed out", { cause: error });
+      }
+      throw new LlmError("LLM request failed", { cause: error });
+    } finally {
+      clearTimeout(timer);
     }
-    if (controller.signal.aborted) {
-      throw new LlmError("LLM request timed out", { cause: error });
-    }
-    throw new LlmError("LLM request failed", { cause: error });
-  } finally {
-    clearTimeout(timer);
-  }
+  });
 }
 
 function isLlmModelId(value: string): value is LlmModelId {

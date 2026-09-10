@@ -195,7 +195,15 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       filters.push(eq(cards.category, query.category));
     }
     if (query.style) {
-      filters.push(eq(cards.spotlightStyle, query.style));
+      filters.push(
+        inArray(
+          cards.id,
+          getDb()
+            .select({ id: cardReframes.cardId })
+            .from(cardReframes)
+            .where(eq(cardReframes.style, query.style)),
+        ),
+      );
     }
     if (query.favorite === true) {
       filters.push(eq(cards.isFavorite, true));

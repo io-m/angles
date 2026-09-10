@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { generateReframe, LLM_MAX_OUTPUT_TOKENS, LlmError } from "./llmClient.js";
+import { generateJson, generateReframe, LLM_MAX_OUTPUT_TOKENS, LlmError, MIN_LLM_CALL_MS, STYLE_BATCH_MAX_OUTPUT_TOKENS, timeoutMsUntil } from "./llmClient.js";
 
 const INPUT = {
   text: "I bombed my job interview today and cannot stop replaying every pause.",
@@ -204,5 +204,46 @@ describe("generateReframe", () => {
     await expect(generateReframe(INPUT)).rejects.toThrow(
       expect.not.stringContaining("bombed my job interview"),
     );
+  });
+});
+
+describe("timeoutMsUntil", () => {
+  it("caps at the per-call timeout", () => {
+    expect(timeoutMsUntil(Date.now() + 60_000)).toBe(8_000);
+  });
+
+  it("fails when the cook budget is gone", () => {
+    expect(() => timeoutMsUntil(Date.now() + MIN_LLM_CALL_MS - 1)).toThrow("Cook deadline exceeded");
+  });
+});
+
+describe("generateJson", () => {
+  beforeEach(() => {
+    vi.stubEnv("LLM_MODEL", "mistral-small-latest");
+    vi.stubEnv("MISTRAL_API_KEY", "mistral-test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("sends a tight max_tokens for a style batch", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        choices: [{ message: { content: '{"stoic":"Keep the next attempt."}' } }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateJson({
+      text: "I bombed my interview.",
+      systemPrompt: "Each JSON field is that style only",
+      maxOutputTokens: STYLE_BATCH_MAX_OUTPUT_TOKENS,
+    });
+
+    const { body } = lastRequest(fetchMock);
+    expect(body.max_tokens).toBe(STYLE_BATCH_MAX_OUTPUT_TOKENS);
+    expect(body.response_format).toEqual({ type: "json_object" });
   });
 });

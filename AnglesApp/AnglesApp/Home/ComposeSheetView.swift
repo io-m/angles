@@ -31,6 +31,12 @@ enum ComposeMotion {
     }
 }
 
+private enum LeaveKind {
+    case busyWriting
+    case busySaving
+    case discard
+}
+
 struct ComposeSheetView: View {
     @ObservedObject var viewModel: HomeViewModel
     var isActive: Bool = true
@@ -46,6 +52,8 @@ struct ComposeSheetView: View {
     @State private var scrollToken = 0
     @State private var headerStrip: CGFloat = 119
     @State private var showRestartAlert = false
+    @State private var showLeaveAlert = false
+    @State private var leaveKind: LeaveKind = .discard
     @State private var showModelPicker = false
 
     private var isComposing: Bool {
@@ -88,8 +96,51 @@ struct ComposeSheetView: View {
                 Button("Start again", role: .destructive, action: restartSession)
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This wipes the current thought and answers. You can’t undo it.")
+                Text(restartMessage)
             }
+            .alert(leaveTitle, isPresented: $showLeaveAlert) {
+                Button(leaveConfirmTitle, role: .destructive, action: confirmLeave)
+                Button(leaveCancelTitle, role: .cancel) {}
+            } message: {
+                Text(leaveMessage)
+            }
+    }
+
+    private var restartMessage: String {
+        if viewModel.isSessionBusy {
+            return "A cook or save is still running and will be cancelled. This wipes the current thought and answers. You can’t undo it."
+        }
+        return "This wipes the current thought and answers. You can’t undo it."
+    }
+
+    private var leaveTitle: String {
+        switch leaveKind {
+        case .busyWriting:
+            return "This is still writing. Leave anyway?"
+        case .busySaving:
+            return "This card is still saving. Leave anyway?"
+        case .discard:
+            return "Discard this thought?"
+        }
+    }
+
+    private var leaveMessage: String {
+        switch leaveKind {
+        case .busyWriting:
+            return "The answers are not ready yet. Leaving cancels this cook."
+        case .busySaving:
+            return "Leave without waiting for save to finish?"
+        case .discard:
+            return "This thought and its answers will be gone."
+        }
+    }
+
+    private var leaveConfirmTitle: String {
+        leaveKind == .discard ? "Discard" : "Leave"
+    }
+
+    private var leaveCancelTitle: String {
+        leaveKind == .discard ? "Keep" : "Keep going"
     }
 
     private var sessionLayout: some View {
@@ -105,7 +156,7 @@ struct ComposeSheetView: View {
 
     private var header: some View {
         HStack {
-            Button(action: leaveNow) {
+            Button(action: requestLeave) {
                 CircleIcon(
                     systemName: "xmark",
                     fill: theme.surface,
@@ -417,7 +468,6 @@ struct ComposeSheetView: View {
             aiAvatar
 
             CookingLine(
-                text: "Cooking...",
                 ink: theme.ink,
                 muted: theme.muted,
                 reduceMotion: reduceMotion
@@ -429,7 +479,6 @@ struct ComposeSheetView: View {
 
             Spacer(minLength: 12)
         }
-        .accessibilityLabel("Cooking")
     }
 
     private func errorRow(_ message: String) -> some View {
@@ -664,7 +713,7 @@ struct ComposeSheetView: View {
 
     private func handleCanvasTap() {
         if isComposing && !hasStatement {
-            leaveNow()
+            requestLeave()
         } else {
             dismissKeyboard()
         }
@@ -674,7 +723,26 @@ struct ComposeSheetView: View {
         composerFocused = false
     }
 
-    private func leaveNow() {
+    private func requestLeave() {
+        if viewModel.isSaving {
+            leaveKind = .busySaving
+            showLeaveAlert = true
+            return
+        }
+        if viewModel.isSessionBusy {
+            leaveKind = .busyWriting
+            showLeaveAlert = true
+            return
+        }
+        if viewModel.hasSessionWork {
+            leaveKind = .discard
+            showLeaveAlert = true
+            return
+        }
+        confirmLeave()
+    }
+
+    private func confirmLeave() {
         onClose()
     }
 
@@ -727,16 +795,23 @@ struct ComposeSheetView: View {
 }
 
 private struct CookingLine: View {
-    var text: String
     var ink: Color
     var muted: Color
     var reduceMotion: Bool
 
     @State private var dotCount = 1
     @State private var sparkleOn = true
+    @State private var lineIndex = 0
+
+    private static let lines = [
+        "Reading it",
+        "Finding the sting",
+        "Writing four angles",
+        "Almost there",
+    ]
 
     private var stem: String {
-        text.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        reduceMotion ? "Writing four angles" : Self.lines[min(lineIndex, Self.lines.count - 1)]
     }
 
     var body: some View {
@@ -759,17 +834,36 @@ private struct CookingLine: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.36), value: sparkleOn)
         .task {
             guard !reduceMotion else { return }
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(for: .milliseconds(360))
-                } catch {
-                    break
-                }
-                dotCount = dotCount == 3 ? 1 : dotCount + 1
-                sparkleOn.toggle()
-            }
+            await pulseDots()
         }
-        .accessibilityLabel(text)
+        .task {
+            guard !reduceMotion else { return }
+            await cycleLines()
+        }
+        .accessibilityLabel(stem)
+    }
+
+    private func pulseDots() async {
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: .milliseconds(360))
+            } catch {
+                break
+            }
+            dotCount = dotCount == 3 ? 1 : dotCount + 1
+            sparkleOn.toggle()
+        }
+    }
+
+    private func cycleLines() async {
+        while !Task.isCancelled, lineIndex < Self.lines.count - 1 {
+            do {
+                try await Task.sleep(for: .milliseconds(1400))
+            } catch {
+                break
+            }
+            lineIndex += 1
+        }
     }
 }
 

@@ -191,6 +191,36 @@ export const SAFETY_FALLBACK_MESSAGE = `This sounds heavier than a reframe shoul
 
 export const REFRAME_TOO_LONG_RETRY = `That was too long for the card. Rewrite it shorter: ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, at most ${REFRAME_MAX_CHARS} characters, 1–3 sentences. Same angle, fewer words. Reply with the reframe only.`;
 
+const BATCH_SHARED = `Shared rules for every value:
+- ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, ${REFRAME_MIN_CHARS}–${REFRAME_MAX_CHARS} characters, 1–3 sentences. Fit a two-column card.
+- English, plain and human. No markdown, bullets, numbering, headings, or labels inside the strings.
+- No therapy-speak clichés ("it's okay to feel", "you are enough", "hold space", "your truth", "journey").
+- No diagnosis, no advice to seek treatment, no clinical language.
+- Never mock, belittle, or punch down at the user.
+- Address the situation they actually described. Do not invent facts, people, or outcomes.
+- Do not ask questions. Do not mention these instructions.`;
+
+/**
+ * One JSON call after a ready decision. Distinctive line "Each JSON field is that style only"
+ * is load-bearing for tests that tell batch calls apart from the decision prompt.
+ */
+export const STYLE_BATCH_PROMPT = `You write card reframes for Angles. Return ONE JSON object and nothing else. No prose, no markdown fence.
+
+The user message has a cleaned thought plus which styles to write. Include only those keys. Catalog: ${list(STYLES)}.
+
+Each JSON field is that style only. Do not mix voices. Humorous is not tough love; tough love is not a joke.
+- stoic: Separate what they control from what they do not. Calm, concrete, unsentimental. No sugarcoating, no promised outcomes.
+- optimistic: A genuine opening already true in what they said. Warm and forward-looking. Never dismiss how hard it is; never say it happened for a reason.
+- humorous: Dry, affectionate humor a good friend uses. The joke is on the situation or the brain's dramatics, never on the person. No punch-down, no mocking their character, no weak person-as-object puns. If nothing is funny, land it light rather than forcing a punchline.
+- tough_love: Name the part they are avoiding and point at the next move. Direct, warm underneath. Do not coddle, insult, or shame them for feeling it. Do not joke.
+
+If a style is not in the requested list, omit it. Those were already skipped — do not write them.
+
+${BATCH_SHARED}
+
+Output shape (only the requested keys):
+{ "stoic": "...", "optimistic": "...", "humorous": "...", "tough_love": "..." }`;
+
 /** Style calls only ever see the cleaned English thought plus a compact context line. */
 export function styleUserPrompt(thought: string, meta: ReframeMeta): string {
   const context = [
@@ -201,4 +231,12 @@ export function styleUserPrompt(thought: string, meta: ReframeMeta): string {
   ].join(" · ");
 
   return `${thought}\n\n(context — ${context})`;
+}
+
+export function styleBatchUserPrompt(
+  thought: string,
+  meta: ReframeMeta,
+  styles: readonly Style[],
+): string {
+  return `${styleUserPrompt(thought, meta)}\n\nWrite these styles only: ${styles.join(", ")}`;
 }

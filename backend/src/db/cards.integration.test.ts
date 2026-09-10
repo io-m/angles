@@ -160,4 +160,30 @@ describe.skipIf(!testUrl)("cards integration", () => {
     const leftover = await db.select({ id: cards.id }).from(cards);
     expect(leftover).toHaveLength(0);
   });
+
+  it("lists by whether a style exists on the card, not by spotlight", async () => {
+    const withHumor = await createCard(baseInput);
+    await createCard({
+      ...baseInput,
+      thought: "I keep waiting for the offer that is not coming.",
+      results: [
+        { style: "stoic", reframe: "A stoic take on waiting." },
+        { style: "optimistic", reframe: "An optimistic take on waiting." },
+      ],
+      spotlightStyle: "optimistic",
+      meta: {
+        ...baseInput.meta,
+        skippedStyles: [
+          { style: "humorous", reason: "A joke would land wrong on a wait this raw." },
+          { style: "tough_love", reason: "Pushing would punch down." },
+        ],
+      },
+    });
+
+    const humorous = await listCards({ limit: 50, style: "humorous" });
+    expect(humorous.map((card) => card.id)).toEqual([withHumor.id]);
+
+    const optimistic = await listCards({ limit: 50, style: "optimistic" });
+    expect(optimistic).toHaveLength(2);
+  });
 });

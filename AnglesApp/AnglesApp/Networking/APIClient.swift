@@ -37,9 +37,9 @@ final class APIClient: @unchecked Sendable {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
-            // A cook is a decision call plus up to four style calls.
-            configuration.timeoutIntervalForRequest = 45
-            configuration.timeoutIntervalForResource = 90
+            // Server cook budget is 10s; this is slack for the network, not a hang.
+            configuration.timeoutIntervalForRequest = 15
+            configuration.timeoutIntervalForResource = 30
             configuration.httpAdditionalHeaders = ["Accept": "application/json"]
             self.session = URLSession(configuration: configuration)
         }
@@ -120,6 +120,10 @@ final class APIClient: @unchecked Sendable {
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw urlError
         } catch {
             throw APIError.network(error.localizedDescription)
         }

@@ -2,12 +2,13 @@ import SwiftUI
 
 struct ReframeCardView: View {
     let card: HomeCard
+    var openingStyle: Style? = nil
     var onDelete: () -> Void = {}
     var onToggleFavorite: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 226
+    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 248
     @State private var isFlipped = false
     @State private var showingOriginal = false
     @State private var pagedSlideID: UUID?
@@ -47,9 +48,10 @@ struct ReframeCardView: View {
                 .accessibilityHidden(true)
         }
         .onAppear {
-            if pagedSlideID == nil {
-                pagedSlideID = card.spotlightSlideID
-            }
+            pagedSlideID = card.openingSlideID(preferring: openingStyle)
+        }
+        .onChange(of: openingStyle) { _, style in
+            pagedSlideID = card.openingSlideID(preferring: style)
         }
         .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
         .sensoryFeedback(.impact(weight: .light), trigger: favoriteHaptic)
@@ -122,7 +124,7 @@ struct ReframeCardView: View {
             InitialsAvatar(side: 32, fill: theme.ink, symbol: theme.paper)
 
             Text(showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought)
-                .font(.title3.weight(.semibold))
+                .font(.title3.weight(.regular))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
                 .minimumScaleFactor(0.72)
@@ -282,7 +284,7 @@ struct OverlayProposalCard: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 226
+    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 248
     @State private var isFlipped = false
     @State private var showingOriginal = false
     @State private var pagedStyle: Style?
@@ -323,6 +325,7 @@ struct OverlayProposalCard: View {
                         showingOriginal.toggle()
                     }
                     .padding(12)
+                    .zIndex(2)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -379,7 +382,7 @@ struct OverlayProposalCard: View {
             InitialsAvatar(side: 32, fill: theme.ink, symbol: theme.paper)
 
             Text(showingOriginal ? (thoughtOriginal ?? thought) : thought)
-                .font(.title3.weight(.semibold))
+                .font(.title3.weight(.regular))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
                 .minimumScaleFactor(0.72)
@@ -456,7 +459,7 @@ struct OverlayProposalCard: View {
                     Image(systemName: "sparkle")
                         .font(.system(size: 11, weight: .semibold))
                 }
-                Text("New answer")
+                Text(isRecooking ? "New \(style.displayName.lowercased()) angle…" : "New answer")
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
             }
@@ -469,7 +472,11 @@ struct OverlayProposalCard: View {
         .buttonStyle(.plain)
         .disabled(recookingStyle != nil)
         .opacity(recookingStyle == nil || isRecooking ? 1 : 0.45)
-        .accessibilityLabel("New \(style.displayName) answer")
+        .accessibilityLabel(
+            isRecooking
+                ? "New \(style.displayName.lowercased()) angle"
+                : "New \(style.displayName) answer"
+        )
     }
 
     private var dots: some View {
@@ -512,18 +519,12 @@ private struct OriginalToggle: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: "character.bubble")
-                    .font(.system(size: 11, weight: .semibold))
-                Text(showingOriginal ? "English" : "Original")
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(ink)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(ink.opacity(0.10), in: Capsule())
-            .contentShape(Capsule())
+            Image(systemName: showingOriginal ? "character.bubble.fill" : "character.bubble")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(ink)
+                .frame(width: 32, height: 32)
+                .background(ink.opacity(0.10), in: Circle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(showingOriginal ? "Show the English version" : "Show the original wording")

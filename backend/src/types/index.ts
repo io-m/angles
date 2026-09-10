@@ -152,6 +152,7 @@ export type CardListQuery = {
   limit: number;
   before?: Date;
   category?: Category;
+  /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
   style?: Style;
   favorite?: boolean;
 };

@@ -68,6 +68,18 @@ struct HomeCard: Identifiable, Equatable {
     var spotlightSlideID: UUID? {
         slides.first(where: { $0.result.style == spotlightStyle })?.id ?? slides.first?.id
     }
+
+    func hasStyle(_ style: Style) -> Bool {
+        slides.contains { $0.result.style == style }
+    }
+
+    func openingSlideID(preferring style: Style?) -> UUID? {
+        if let style {
+            return slides.first(where: { $0.result.style == style })?.id ?? spotlightSlideID
+        }
+
+        return spotlightSlideID
+    }
 }
 
 extension Style {
@@ -174,6 +186,7 @@ final class HomeViewModel: ObservableObject {
     private let reframeService: ReframeService
     private let cardsService: CardsService
     private var refineTask: Task<Void, Never>?
+    private var saveTask: Task<Bool, Never>?
     private var libraryTask: Task<Void, Never>?
     private var favoriteTasks: [UUID: Task<Void, Never>] = [:]
     private var deleteTasks: [UUID: Task<Void, Never>] = [:]
@@ -219,7 +232,7 @@ final class HomeViewModel: ObservableObject {
             return cards
         }
 
-        return cards.filter { $0.spotlightStyle == style }
+        return cards.filter { $0.hasStyle(style) }
     }
 
     /// The composer stays alive for every turn that is not a finished cook.
@@ -251,6 +264,25 @@ final class HomeViewModel: ObservableObject {
         }
 
         return false
+    }
+
+    var isSessionBusy: Bool {
+        isCooking || recookingStyle != nil || isSaving
+    }
+
+    var hasSessionWork: Bool {
+        if isSessionBusy {
+            return true
+        }
+        if !statement.isEmpty || !turns.isEmpty {
+            return true
+        }
+        switch phase {
+        case .ready, .error:
+            return true
+        case .composing, .awaitingReply, .cooking:
+            return !statement.isEmpty
+        }
     }
 
     var openTurn: RefineTurn? {
@@ -319,28 +351,40 @@ final class HomeViewModel: ObservableObject {
         saveError = nil
         let styles = cook.results.map(\.style)
         let spotlight = styles[cards.count % styles.count]
-
-        do {
-            let stored = try await cardsService.create(
-                CreateCardRequest(
-                    thought: cook.thought,
-                    thoughtOriginal: cook.thoughtOriginal,
-                    results: cook.results,
-                    meta: cook.meta,
-                    model: cook.model.rawValue,
-                    spotlightStyle: spotlight
+        let task = Task { @MainActor in
+            do {
+                let stored = try await cardsService.create(
+                    CreateCardRequest(
+                        thought: cook.thought,
+                        thoughtOriginal: cook.thoughtOriginal,
+                        results: cook.results,
+                        meta: cook.meta,
+                        model: cook.model.rawValue,
+                        spotlightStyle: spotlight
+                    )
                 )
-            )
-            if let card = HomeCard(stored: stored) {
-                cards.insert(card, at: 0)
+                guard !Task.isCancelled else {
+                    isSaving = false
+                    return false
+                }
+                if let card = HomeCard(stored: stored) {
+                    cards.insert(card, at: 0)
+                }
+                isSaving = false
+                return true
+            } catch {
+                isSaving = false
+                guard !Task.isCancelled, !Self.isCancellation(error) else {
+                    return false
+                }
+                saveError = "Couldn't save this card. Try again."
+                return false
             }
-            isSaving = false
-            return true
-        } catch {
-            saveError = "Couldn't save this card. Try again."
-            isSaving = false
-            return false
         }
+        saveTask = task
+        let saved = await task.value
+        saveTask = nil
+        return saved
     }
 
     func loadLibrary() async {
@@ -478,7 +522,7 @@ final class HomeViewModel: ObservableObject {
                     cookHaptic += 1
                 }
             } catch {
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled, !Self.isCancellation(error) else {
                     return
                 }
             }
@@ -488,12 +532,15 @@ final class HomeViewModel: ObservableObject {
     func resetCompose() {
         refineTask?.cancel()
         refineTask = nil
+        saveTask?.cancel()
+        saveTask = nil
         composeText = ""
         statement = ""
         turns = []
         recookingStyle = nil
         recookNotice = nil
         saveError = nil
+        isSaving = false
         phase = .composing
     }
 
@@ -541,7 +588,7 @@ final class HomeViewModel: ObservableObject {
                 }
                 cookHaptic += 1
             } catch {
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled, !Self.isCancellation(error) else {
                     return
                 }
 
@@ -572,5 +619,15 @@ final class HomeViewModel: ObservableObject {
             formatter.setLocalizedDateFormatFromTemplate("MMMdyyyy")
         }
         return formatter.string(from: date)
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if let urlError = error as? URLError, urlError.code == .cancelled {
+            return true
+        }
+        return false
     }
 }

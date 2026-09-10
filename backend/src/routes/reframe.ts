@@ -4,11 +4,23 @@ import { z } from "zod";
 import { authStub } from "../lib/authStub.js";
 import { runDecision, type ReadyDecision } from "../lib/decision.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
-import { generateReframe, LLM_MODEL_IDS, LlmError, type LlmModelId } from "../lib/llmClient.js";
+import {
+  COOK_DEADLINE_MS,
+  generateJson,
+  generateReframe,
+  LLM_MODEL_IDS,
+  LlmError,
+  STYLE_BATCH_MAX_OUTPUT_TOKENS,
+  timeoutMsUntil,
+  type LlmCallOptions,
+  type LlmModelId,
+} from "../lib/llmClient.js";
 import {
   REFRAME_HARD_MAX_CHARS,
   REFRAME_TOO_LONG_RETRY,
+  STYLE_BATCH_PROMPT,
   SYSTEM_PROMPTS,
+  styleBatchUserPrompt,
   styleUserPrompt,
 } from "../lib/prompts.js";
 import {
@@ -62,6 +74,18 @@ const reframeRequestSchema = z.object({
   model: z.enum(LLM_MODEL_IDS).optional(),
 });
 
+type CookCallOptions = LlmCallOptions & {
+  deadlineAt: number;
+  model?: LlmModelId;
+};
+
+class StyleBatchParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StyleBatchParseError";
+  }
+}
+
 function uniqueStyles(styles: readonly Style[]): Style[] {
   const seen = new Set<Style>();
   const unique: Style[] = [];
@@ -87,14 +111,66 @@ function trimToSentence(reframe: string): string {
   return `${clipped.trim().replace(/[,;:\s]+$/, "")}…`;
 }
 
+function callOptions(options: CookCallOptions): LlmCallOptions & { model?: LlmModelId } {
+  return {
+    model: options.model,
+    abortSignal: options.abortSignal,
+    timeoutMs: timeoutMsUntil(options.deadlineAt),
+  };
+}
+
+function extractJsonObject(raw: string): string {
+  const withoutFence = raw.replace(/```[a-zA-Z]*\s*/g, "").replace(/```/g, "").trim();
+  const start = withoutFence.indexOf("{");
+  const end = withoutFence.lastIndexOf("}");
+  if (start === -1 || end <= start) {
+    throw new StyleBatchParseError("style batch reply was not JSON");
+  }
+  return withoutFence.slice(start, end + 1);
+}
+
+function parseStyleBatch(raw: string, chosen: readonly Style[]): Partial<Record<Style, string>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJsonObject(raw));
+  } catch (error) {
+    if (error instanceof StyleBatchParseError) {
+      throw error;
+    }
+    throw new StyleBatchParseError("style batch reply was not JSON");
+  }
+
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new StyleBatchParseError("style batch reply was not an object");
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const out: Partial<Record<Style, string>> = {};
+  for (const style of chosen) {
+    const value = record[style];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        out[style] = trimmed;
+      }
+    }
+  }
+  return out;
+}
+
 async function generateStyle(
   decision: ReadyDecision,
   style: Style,
-  model?: LlmModelId,
+  options: CookCallOptions,
 ): Promise<ReframeResult> {
   const prompt = styleUserPrompt(decision.thought, decision.meta);
-  const first = (await generateReframe({ text: prompt, systemPrompt: SYSTEM_PROMPTS[style], model }))
-    .trim();
+  const first = (
+    await generateReframe({
+      text: prompt,
+      systemPrompt: SYSTEM_PROMPTS[style],
+      ...callOptions(options),
+    })
+  ).trim();
   if (first.length === 0) {
     throw new LlmError("LLM returned an empty reframe");
   }
@@ -102,11 +178,19 @@ async function generateStyle(
     return { style, reframe: first };
   }
 
+  return finishLongReframe(prompt, style, options);
+}
+
+async function finishLongReframe(
+  prompt: string,
+  style: Style,
+  options: CookCallOptions,
+): Promise<ReframeResult> {
   const retried = (
     await generateReframe({
       text: prompt,
       systemPrompt: `${SYSTEM_PROMPTS[style]}\n\n${REFRAME_TOO_LONG_RETRY}`,
-      model,
+      ...callOptions(options),
     })
   ).trim();
   if (retried.length === 0) {
@@ -117,6 +201,68 @@ async function generateStyle(
     style,
     reframe: retried.length <= REFRAME_HARD_MAX_CHARS ? retried : trimToSentence(retried),
   };
+}
+
+async function requestStyleBatch(
+  decision: ReadyDecision,
+  chosen: Style[],
+  options: CookCallOptions,
+): Promise<string> {
+  return generateJson({
+    text: styleBatchUserPrompt(decision.thought, decision.meta, chosen),
+    systemPrompt: STYLE_BATCH_PROMPT,
+    maxOutputTokens: STYLE_BATCH_MAX_OUTPUT_TOKENS,
+    ...callOptions(options),
+  });
+}
+
+async function generateStyleBatch(
+  decision: ReadyDecision,
+  chosen: Style[],
+  options: CookCallOptions,
+): Promise<ReframeResult[]> {
+  let raw: string;
+  try {
+    raw = await requestStyleBatch(decision, chosen, options);
+  } catch (error) {
+    if (error instanceof LlmError) {
+      throw error;
+    }
+    throw new LlmError("Style batch failed", { cause: error });
+  }
+
+  let parsed: Partial<Record<Style, string>>;
+  try {
+    parsed = parseStyleBatch(raw, chosen);
+  } catch (error) {
+    if (!(error instanceof StyleBatchParseError)) {
+      throw error;
+    }
+    try {
+      const retried = await requestStyleBatch(decision, chosen, options);
+      parsed = parseStyleBatch(retried, chosen);
+    } catch {
+      throw new LlmError("Style batch reply could not be parsed");
+    }
+  }
+
+  const results: ReframeResult[] = [];
+  const prompt = styleUserPrompt(decision.thought, decision.meta);
+
+  for (const style of chosen) {
+    const fromBatch = parsed[style];
+    if (fromBatch === undefined) {
+      results.push(await generateStyle(decision, style, options));
+      continue;
+    }
+    if (fromBatch.length <= REFRAME_HARD_MAX_CHARS) {
+      results.push({ style, reframe: fromBatch });
+      continue;
+    }
+    results.push(await finishLongReframe(prompt, style, options));
+  }
+
+  return results;
 }
 
 /** A style the decision refused is answered with its reason, never with a bad joke. */
@@ -143,6 +289,8 @@ reframeRoute.post(
   async (c) => {
     const { text, followUps: rawFollowUps, styles: requestedStyles, model } = c.req.valid("json");
     const followUps: FollowUpAnswer[] = rawFollowUps ?? [];
+    const deadlineAt = Date.now() + COOK_DEADLINE_MS;
+    const abortSignal = c.req.raw.signal;
 
     try {
       const decision = await runDecision({
@@ -150,6 +298,8 @@ reframeRoute.post(
         followUps,
         model,
         forceReady: followUps.length >= FORCE_READY_AFTER,
+        deadlineAt,
+        abortSignal,
       });
 
       if (decision.kind === "continue") {
@@ -180,9 +330,11 @@ reframeRoute.post(
         );
       }
 
-      const results = await Promise.all(
-        chosen.map((style) => generateStyle(decision, style, model)),
-      );
+      const options: CookCallOptions = { deadlineAt, abortSignal, model };
+      const recookStyle = requestedStyles !== undefined && chosen.length === 1 ? chosen[0] : undefined;
+      const results = recookStyle
+        ? [await generateStyle(decision, recookStyle, options)]
+        : await generateStyleBatch(decision, chosen, options);
 
       const body: ReframeResponse = {
         kind: "ready",

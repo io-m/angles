@@ -34,7 +34,7 @@ A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`).
 
 ## UI
 
-Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData.
+Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Profile style chips keep cards that have that style and open the carousel on it; All still uses mixed `spotlightStyle`.
 
 ## Device
 
