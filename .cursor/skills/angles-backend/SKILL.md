@@ -8,8 +8,10 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 ## Layout
 
 - `src/app.ts` — middleware, route mount, `onError`
-- `src/index.ts` — Node `serve()` only
+- `src/index.ts` — Node `serve()`, schema check, pool shutdown
 - `src/routes/reframe.ts` — `POST /reframe`
+- `src/routes/cards.ts` — card CRUD
+- `src/db/schema.ts` / `src/db/cards.ts` — Drizzle schema and SQL seam
 - `src/lib/decision.ts` — decision call, JSON parsing, one repair retry, metadata mapping
 - `src/lib/llmClient.ts` — `generateReframe({ text, systemPrompt })`, `generateJson({ ... })`
 - `src/lib/prompts.ts` — `DECISION_PROMPT`, `SYSTEM_PROMPTS`, length budgets
@@ -30,9 +32,9 @@ One decision call (`generateJson`) then one style call per chosen style. `contin
 
 Change only `src/lib/llmClient.ts`. Keep `generateReframe`, `generateJson`, and `LlmError`. A new provider needs a JSON mode. Honor `LLM_TIMEOUT_MS` and `AbortSignal`. Do not send `LLM_API_KEY` to the client. Do not log `text`.
 
-## Auth / DB (not yet)
+## Auth / DB
 
-Replace `authStub` with Better Auth. Schema via Drizzle + Railway Postgres using `postgres` (postgres.js), not Neon. Apple Sign In is required on iOS if other social providers ship.
+`authStub.getOwnerUserId()` is the owner seam (seeded local user today). Replace `authStub` with Better Auth later. Schema is Drizzle + local Postgres using `postgres` (postgres.js), not Neon. Apple Sign In is required on iOS if other social providers ship.
 
 ## Deploy
 

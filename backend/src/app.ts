@@ -2,7 +2,9 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
+import { DbError } from "./db/client.js";
 import { errorBody } from "./lib/http.js";
+import { cardsRoute } from "./routes/cards.js";
 import { healthRoute } from "./routes/health.js";
 import { reframeRoute } from "./routes/reframe.js";
 
@@ -22,10 +24,14 @@ export function createApp(): Hono {
 
   app.route("/health", healthRoute);
   app.route("/reframe", reframeRoute);
+  app.route("/cards", cardsRoute);
 
   app.notFound((c) => c.json(errorBody("Not found", "NOT_FOUND"), 404));
 
   app.onError((err, c) => {
+    if (err instanceof DbError) {
+      return c.json(errorBody("Database error", "DB_ERROR"), 500);
+    }
     if (err instanceof HTTPException) {
       const status = err.status;
       if (status === 400) {

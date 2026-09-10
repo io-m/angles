@@ -9,25 +9,25 @@ import {
 } from "../types/index.js";
 
 export const THOUGHT_MIN_WORDS = 8;
-export const THOUGHT_MAX_WORDS = 28;
+export const THOUGHT_MAX_WORDS = 22;
 export const THOUGHT_MIN_CHARS = 40;
-export const THOUGHT_MAX_CHARS = 160;
+export const THOUGHT_MAX_CHARS = 140;
 /** Past this the decision is rejected and repaired rather than trimmed. */
-export const THOUGHT_HARD_MAX_WORDS = 40;
-export const THOUGHT_HARD_MAX_CHARS = 220;
+export const THOUGHT_HARD_MAX_WORDS = 32;
+export const THOUGHT_HARD_MAX_CHARS = 180;
 
 export const REFRAME_MIN_WORDS = 12;
-export const REFRAME_MAX_WORDS = 45;
+export const REFRAME_MAX_WORDS = 32;
 export const REFRAME_MIN_CHARS = 80;
-export const REFRAME_MAX_CHARS = 240;
+export const REFRAME_MAX_CHARS = 190;
 /** Past this the style call is retried once, then trimmed at a sentence boundary. */
-export const REFRAME_HARD_MAX_CHARS = 320;
+export const REFRAME_HARD_MAX_CHARS = 250;
 
 const list = (values: readonly string[]): string => values.join(" | ");
 
 const STYLE_LENGTH_BUDGET = `Length budget (hard):
 - ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, ${REFRAME_MIN_CHARS}–${REFRAME_MAX_CHARS} characters, 1–3 sentences.
-- The text has to fit on a small card. Going long is a failure, not thoroughness.`;
+- The text has to fit on a two-column card. Going long is a failure, not thoroughness.`;
 
 const SHARED_CONSTRAINTS = `Output rules (always):
 - Reply with the reframe only. No preamble, no label, no quotes around it.
@@ -107,9 +107,9 @@ If the thought involves suicide, self-harm, harming someone else, or ongoing abu
 
 ## Cleaning the thought (ready only)
 
-- "thought_en": the thought in clean English, as they would say it. Fix typos and grammar, cut rambling and repetition, keep the sting and every fact they stated. Never invent facts, names, or outcomes. Never soften it into something they did not mean. First person. ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words, ${THOUGHT_MIN_CHARS}–${THOUGHT_MAX_CHARS} characters, 1–3 short sentences, no bullets, no quotes around it.
-- "thought_original_cleaned": the same cleanup in their own input language, same meaning, same budget. Actually clean it — capitalisation, punctuation, typos, rambling — never paste their raw text back. If they wrote in English, use null.
-- Never echo a long or messy paste. This string is printed on a card.
+- "thought_en": the thought in clean English, as they would say it. Fix typos and grammar, cut rambling and repetition, keep the sting and every fact they stated. Never invent facts, names, or outcomes. Never soften it into something they did not mean. First person. ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words, ${THOUGHT_MIN_CHARS}–${THOUGHT_MAX_CHARS} characters, 1–3 short sentences, no bullets, no quotes around it. If they ramble, compress to the sting plus every fact — do not drop facts to hit the cap.
+- "thought_original_cleaned": the same cleanup in their own input language, same meaning, same budget. It must fit the same card as thought_en. Actually clean it — capitalisation, punctuation, typos, rambling — never paste their raw text back. If they wrote in English, use null.
+- Never echo a long or messy paste. This string is printed on a two-column card.
 
 ## Styles
 
@@ -181,7 +181,7 @@ export const DECISION_REPAIR_PROMPT = `Your previous reply was not accepted. Ret
   "emotions": string[]
 }
 
-Rules you must respect: "styles" is 1–4 of ${list(STYLES)}; "category" is one of ${list(CATEGORIES)}; "timeframe" is one of ${list(TIMEFRAMES)}; "emotions" are 1–3 of ${list(EMOTIONS)}; "tags" are 3–8 lowercase slugs; "intensity" is 1–5; "thought_en" is ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words and at most ${THOUGHT_MAX_CHARS} characters. Use null for fields that do not apply.`;
+Rules you must respect: "styles" is 1–4 of ${list(STYLES)}; "category" is one of ${list(CATEGORIES)}; "timeframe" is one of ${list(TIMEFRAMES)}; "emotions" are 1–3 of ${list(EMOTIONS)}; "tags" are 3–8 lowercase slugs; "intensity" is 1–5; "thought_en" and "thought_original_cleaned" are ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words and at most ${THOUGHT_MAX_CHARS} characters and must fit the same card. Compress rambling to the sting plus every fact; do not drop facts to hit the cap. Use null for fields that do not apply.`;
 
 /**
  * Last resort only: the model tried to reframe a thought it had flagged as unsafe,

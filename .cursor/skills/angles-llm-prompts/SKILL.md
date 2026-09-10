@@ -20,7 +20,7 @@ Load-bearing rules, do not weaken them casually:
 
 ## Length budgets
 
-Exported as constants so the route can enforce them: thought 8–28 words / 40–160 chars (hard reject past 40 words or 220 chars), reframe 12–45 words / 80–240 chars (retry once past 320 chars, then trim).
+Exported as constants so the route can enforce them: thought 8–22 words / 40–140 chars (hard reject past 32 words or 180 chars), reframe 12–32 words / 80–190 chars (retry once past 250 chars, then trim). `thought_original_cleaned` shares the thought budget and must fit the same card.
 
 ## Shared rules (keep in every style)
 

@@ -26,6 +26,7 @@ struct ProfileView: View {
     let safeAreaInsets: EdgeInsets
 
     @ObservedObject var viewModel: HomeViewModel
+    var onInspire: () -> Void = {}
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
@@ -76,10 +77,7 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: Layout.headerContentGap) {
                         scrollingHeader
 
-                        if !viewModel.favoriteCards.isEmpty {
-                            favoritesSection(pageWidth: geometry.size.width)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
+                        favoritesBlock(pageWidth: geometry.size.width)
 
                         gridSection
                     }
@@ -107,6 +105,9 @@ struct ProfileView: View {
         .ignoresSafeArea(.container, edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
+        .task {
+            await viewModel.loadLibrary()
+        }
     }
 
     private var scrollingHeader: some View {
@@ -269,30 +270,164 @@ struct ProfileView: View {
         return CardStyleAppearance(style: style).ink
     }
 
+    private var showsEmptyHero: Bool {
+        guard case .loaded = viewModel.libraryLoadState else {
+            return false
+        }
+
+        return viewModel.profileGridFilter == .all && viewModel.cards.isEmpty
+    }
+
     private var gridSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(viewModel.profileGridFilter.title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(theme.ink)
-                .padding(.horizontal, Layout.horizontalPadding)
-                .accessibilityAddTraits(.isHeader)
+            if !showsEmptyHero {
+                Text(viewModel.profileGridFilter.title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                    .padding(.horizontal, Layout.horizontalPadding)
+                    .accessibilityAddTraits(.isHeader)
+            }
 
-            if viewModel.filteredProfileCards.isEmpty {
-                Text(emptyFilterMessage)
+            switch viewModel.libraryLoadState {
+            case .loading:
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                    .accessibilityLabel("Loading cards")
+            case .failed(let message):
+                libraryError(message)
+            case .loaded:
+                if showsEmptyHero {
+                    emptyLibraryHero
+                } else if viewModel.filteredProfileCards.isEmpty {
+                    emptyFilterCopy
+                } else {
+                    HomeCardGrid(
+                        cards: viewModel.filteredProfileCards,
+                        usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
+                        spacing: Layout.gridSpacing,
+                        onDelete: deleteCard,
+                        onToggleFavorite: toggleFavorite
+                    )
+                    .equatable()
+                    .padding(.horizontal, Layout.horizontalPadding)
+                }
+            }
+        }
+    }
+
+    private var emptyLibraryHero: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            CircleIcon(
+                systemName: "sparkle",
+                fill: theme.paper,
+                symbol: theme.ink,
+                size: .big,
+                weight: .semibold,
+                hairline: theme.cardHairline
+            )
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Your library is empty")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Write what's stuck. We'll turn it into four angles.")
                     .font(.body.weight(.medium))
                     .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button(action: onInspire) {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Inspire me")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(theme.paper)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(theme.ink, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Inspire me")
+            .accessibilityHint("Opens the composer to write your first thought")
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(theme.cardHairline, lineWidth: 1)
+        }
+        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+        .padding(.horizontal, Layout.horizontalPadding)
+        .padding(.top, 8)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var emptyFilterCopy: some View {
+        Text(emptyFilterMessage)
+            .font(.body.weight(.medium))
+            .foregroundStyle(theme.muted)
+            .padding(.horizontal, Layout.horizontalPadding)
+            .padding(.top, 8)
+    }
+
+    private func libraryError(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(message)
+                .font(.body.weight(.medium))
+                .foregroundStyle(theme.muted)
+            Button("Retry") {
+                viewModel.retryLoadLibrary()
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(theme.ink)
+        }
+        .padding(.horizontal, Layout.horizontalPadding)
+        .padding(.top, 8)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func favoritesBlock(pageWidth: CGFloat) -> some View {
+        switch viewModel.libraryLoadState {
+        case .loading:
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Favorites")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.ink)
                     .padding(.horizontal, Layout.horizontalPadding)
-                    .padding(.top, 8)
-            } else {
-                HomeCardGrid(
-                    cards: viewModel.filteredProfileCards,
-                    usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
-                    spacing: Layout.gridSpacing,
-                    onDelete: deleteCard,
-                    onToggleFavorite: toggleFavorite
-                )
-                .equatable()
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: favoriteRowHeight)
+                    .accessibilityLabel("Loading favorites")
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Favorites")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                    .padding(.horizontal, Layout.horizontalPadding)
+                HStack {
+                    Text(message)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.muted)
+                    Button("Retry") {
+                        viewModel.retryLoadLibrary()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                }
                 .padding(.horizontal, Layout.horizontalPadding)
+            }
+        case .loaded:
+            if !viewModel.favoriteCards.isEmpty {
+                favoritesSection(pageWidth: pageWidth)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
     }

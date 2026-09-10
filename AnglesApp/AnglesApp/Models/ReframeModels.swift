@@ -105,6 +105,32 @@ struct ReframeMeta: Codable, Equatable, Sendable {
     let skippedStyles: [SkippedStyle]
     let matching: MatchingKey
 
+    init(
+        category: ThoughtCategory,
+        proposedCategory: String? = nil,
+        proposedLabel: String? = nil,
+        tags: [String],
+        intensity: Int,
+        timeframe: Timeframe,
+        emotions: [Emotion],
+        safety: SafetyFlag,
+        inputLanguage: String,
+        skippedStyles: [SkippedStyle],
+        matching: MatchingKey
+    ) {
+        self.category = category
+        self.proposedCategory = proposedCategory
+        self.proposedLabel = proposedLabel
+        self.tags = tags
+        self.intensity = intensity
+        self.timeframe = timeframe
+        self.emotions = emotions
+        self.safety = safety
+        self.inputLanguage = inputLanguage
+        self.skippedStyles = skippedStyles
+        self.matching = matching
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         category = try container.decode(ThoughtCategory.self, forKey: .category)
@@ -125,7 +151,7 @@ struct ReframeMeta: Codable, Equatable, Sendable {
 }
 
 /// Keeps one unrecognised element from throwing away the whole array.
-private struct Failable<Wrapped: Decodable>: Decodable {
+struct Failable<Wrapped: Decodable>: Decodable {
     let value: Wrapped?
 
     init(from decoder: Decoder) throws {
@@ -207,5 +233,175 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
                 debugDescription: "Unknown reframe kind \(kind)"
             )
         }
+    }
+}
+
+struct StoredCardTag: Codable, Equatable, Sendable {
+    let slug: String
+    let label: String
+}
+
+struct StoredCard: Decodable, Equatable, Sendable {
+    let id: String
+    let thought: String
+    let thoughtOriginal: String?
+    let inputLanguage: String
+    let category: ThoughtCategory
+    let proposedCategory: String?
+    let proposedLabel: String?
+    let tags: [StoredCardTag]
+    let intensity: Int
+    let intensityBand: IntensityBand
+    let timeframe: Timeframe
+    let emotions: [Emotion]
+    let safety: SafetyFlag
+    let skippedStyles: [SkippedStyle]
+    let matching: MatchingKey
+    let results: [ReframeResult]
+    let model: String
+    let spotlightStyle: Style
+    let isFavorite: Bool
+    let favoritedAt: String?
+    let createdAt: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case thought
+        case thoughtOriginal
+        case inputLanguage
+        case category
+        case proposedCategory
+        case proposedLabel
+        case tags
+        case intensity
+        case intensityBand
+        case timeframe
+        case emotions
+        case safety
+        case skippedStyles
+        case matching
+        case results
+        case model
+        case spotlightStyle
+        case isFavorite
+        case favoritedAt
+        case createdAt
+    }
+
+    var reframeMeta: ReframeMeta {
+        ReframeMeta(
+            category: category,
+            proposedCategory: proposedCategory,
+            proposedLabel: proposedLabel,
+            tags: tags.map(\.slug),
+            intensity: intensity,
+            timeframe: timeframe,
+            emotions: emotions,
+            safety: safety,
+            inputLanguage: inputLanguage,
+            skippedStyles: skippedStyles,
+            matching: matching
+        )
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        thought = try container.decode(String.self, forKey: .thought)
+        thoughtOriginal = try container.decodeIfPresent(String.self, forKey: .thoughtOriginal)
+        inputLanguage = try container.decodeIfPresent(String.self, forKey: .inputLanguage) ?? "en"
+        category = try container.decode(ThoughtCategory.self, forKey: .category)
+        proposedCategory = try container.decodeIfPresent(String.self, forKey: .proposedCategory)
+        proposedLabel = try container.decodeIfPresent(String.self, forKey: .proposedLabel)
+        tags = (try container.decodeIfPresent([Failable<StoredCardTag>].self, forKey: .tags) ?? [])
+            .compactMap(\.value)
+        intensity = try container.decodeIfPresent(Int.self, forKey: .intensity) ?? 3
+        intensityBand = try container.decodeIfPresent(IntensityBand.self, forKey: .intensityBand) ?? .mid
+        timeframe = try container.decodeIfPresent(Timeframe.self, forKey: .timeframe) ?? .ongoing
+        emotions = (try container.decodeIfPresent([String].self, forKey: .emotions) ?? [])
+            .compactMap(Emotion.init(rawValue:))
+        safety = try container.decodeIfPresent(SafetyFlag.self, forKey: .safety) ?? .none
+        skippedStyles = (
+            try container.decodeIfPresent([Failable<SkippedStyle>].self, forKey: .skippedStyles) ?? []
+        ).compactMap(\.value)
+        results = (try container.decodeIfPresent([Failable<ReframeResult>].self, forKey: .results) ?? [])
+            .compactMap(\.value)
+        guard !results.isEmpty else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .results,
+                in: container,
+                debugDescription: "Stored card had no usable reframes"
+            )
+        }
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
+        spotlightStyle = try container.decode(Style.self, forKey: .spotlightStyle)
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        favoritedAt = try container.decodeIfPresent(String.self, forKey: .favoritedAt)
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        matching = try container.decodeIfPresent(MatchingKey.self, forKey: .matching)
+            ?? MatchingKey(
+                category: category,
+                tags: tags.map(\.slug),
+                intensityBand: intensityBand
+            )
+    }
+}
+
+struct CreateCardRequest: Encodable, Equatable, Sendable {
+    let thought: String
+    let thoughtOriginal: String?
+    let results: [ReframeResult]
+    let meta: ReframeMeta
+    let model: String
+    let spotlightStyle: Style
+
+    private enum CodingKeys: String, CodingKey {
+        case thought
+        case thoughtOriginal
+        case results
+        case meta
+        case model
+        case spotlightStyle
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(thought, forKey: .thought)
+        try container.encodeIfPresent(thoughtOriginal, forKey: .thoughtOriginal)
+        try container.encode(results, forKey: .results)
+        try container.encode(meta, forKey: .meta)
+        try container.encode(model, forKey: .model)
+        try container.encode(spotlightStyle, forKey: .spotlightStyle)
+    }
+}
+
+struct PatchCardRequest: Encodable, Equatable, Sendable {
+    let isFavorite: Bool
+}
+
+struct CardListResponse: Decodable, Equatable, Sendable {
+    let cards: [StoredCard]
+
+    private enum CodingKeys: String, CodingKey {
+        case cards
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
+        cards = raw.compactMap(\.value)
+    }
+}
+
+enum ISO8601Dates {
+    static func date(from raw: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) {
+            return date
+        }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: raw)
     }
 }

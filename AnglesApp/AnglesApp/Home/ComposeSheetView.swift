@@ -491,16 +491,30 @@ struct ComposeSheetView: View {
         if viewModel.isComposerVisible {
             composer
         } else if viewModel.canPublish {
-            saveBar
+            VStack(spacing: 8) {
+                if let saveError = viewModel.saveError {
+                    Text(saveError)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 18)
+                        .accessibilityLabel(saveError)
+                }
+                saveBar
+            }
         }
     }
 
     private var saveBar: some View {
         Button(action: publishAndLeave) {
             HStack(spacing: 8) {
-                Image(systemName: "icloud.and.arrow.up")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("Save")
+                if viewModel.isSaving {
+                    ProgressView()
+                } else {
+                    Image(systemName: "icloud.and.arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                Text(viewModel.isSaving ? "Saving" : "Save")
                     .font(.subheadline.weight(.semibold))
             }
             .foregroundStyle(theme.ink)
@@ -522,6 +536,8 @@ struct ComposeSheetView: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(viewModel.isSaving)
+        .opacity(viewModel.isSaving ? 0.55 : 1)
         .padding(.horizontal, 18)
         .padding(.top, 8)
         .padding(.bottom, 8)
@@ -663,13 +679,17 @@ struct ComposeSheetView: View {
     }
 
     private func publishAndLeave() {
-        guard viewModel.canPublish else {
+        guard viewModel.canPublish, !viewModel.isSaving else {
             return
         }
 
-        viewModel.publishSelected()
-        onSave()
-        onClose()
+        Task {
+            let saved = await viewModel.saveCook()
+            if saved {
+                onSave()
+                onClose()
+            }
+        }
     }
 
     private func restartSession() {

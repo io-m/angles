@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SYSTEM_PROMPTS } from "./lib/prompts.js";
+import { SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
 import { CATEGORIES, STYLES, type Style } from "./types/index.js";
 
 vi.mock("./lib/llmClient.js", async (importOriginal) => {
@@ -11,8 +11,28 @@ vi.mock("./lib/llmClient.js", async (importOriginal) => {
   };
 });
 
+class DbError extends Error {
+  readonly code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "DbError";
+    this.code = code;
+  }
+}
+
+vi.mock("./db/client.js", () => ({
+  probeDatabase: vi.fn(async () => "ok" as const),
+  DbError,
+  getDb: vi.fn(),
+  getSql: vi.fn(),
+  closePool: vi.fn(),
+  assertSchemaCurrent: vi.fn(),
+  wrapDbError: vi.fn(),
+}));
+
 const { app } = await import("./app.js");
 const { generateJson, generateReframe } = await import("./lib/llmClient.js");
+const { probeDatabase } = await import("./db/client.js");
 
 const SHORT_TEXT = "I bombed my job interview today.";
 const LONG_TEXT =
@@ -135,10 +155,18 @@ describe("SYSTEM_PROMPTS", () => {
 });
 
 describe("GET /health", () => {
-  it("returns ok", async () => {
+  it("returns ok when the database is up", async () => {
+    vi.mocked(probeDatabase).mockResolvedValueOnce("ok");
     const response = await app.request("/health");
     expect(response.status).toBe(200);
-    await expect(jsonOf(response)).resolves.toEqual({ status: "ok" });
+    await expect(jsonOf(response)).resolves.toEqual({ status: "ok", db: "ok" });
+  });
+
+  it("returns 503 when the database is down", async () => {
+    vi.mocked(probeDatabase).mockResolvedValueOnce("down");
+    const response = await app.request("/health");
+    expect(response.status).toBe(503);
+    await expect(jsonOf(response)).resolves.toEqual({ status: "error", db: "down" });
   });
 });
 
@@ -226,9 +254,9 @@ describe("POST /reframe", () => {
 
     expect(body.kind).toBe("ready");
     const words = body.thought.split(/\s+/).length;
-    expect(words).toBeGreaterThanOrEqual(8);
-    expect(words).toBeLessThanOrEqual(28);
-    expect(body.thought.length).toBeLessThanOrEqual(160);
+    expect(words).toBeGreaterThanOrEqual(THOUGHT_MIN_WORDS);
+    expect(words).toBeLessThanOrEqual(THOUGHT_MAX_WORDS);
+    expect(body.thought.length).toBeLessThanOrEqual(THOUGHT_MAX_CHARS);
     expect(body.thoughtOriginal).toBeUndefined();
     expect(body.results.map((item) => item.style)).toEqual([...STYLES]);
     expect(body.meta.matching).toEqual({
@@ -349,7 +377,7 @@ describe("POST /reframe", () => {
 
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
     const reframe = body.results[0]?.reframe ?? "";
-    expect(reframe.length).toBeLessThanOrEqual(320);
+    expect(reframe.length).toBeLessThanOrEqual(REFRAME_HARD_MAX_CHARS);
     expect(reframe.endsWith(".")).toBe(true);
   });
 

@@ -110,6 +110,52 @@ export type ApiErrorBody = {
   code: string;
 };
 
+export type StoredCardTag = {
+  slug: string;
+  label: string;
+};
+
+export type StoredCard = {
+  id: string;
+  thought: string;
+  thoughtOriginal?: string;
+  inputLanguage: string;
+  category: Category;
+  proposedCategory?: string;
+  proposedLabel?: string;
+  tags: StoredCardTag[];
+  intensity: number;
+  intensityBand: IntensityBand;
+  timeframe: Timeframe;
+  emotions: Emotion[];
+  safety: SafetyFlag;
+  skippedStyles: SkippedStyle[];
+  matching: MatchingKey;
+  results: ReframeResult[];
+  model: string;
+  spotlightStyle: Style;
+  isFavorite: boolean;
+  favoritedAt?: string;
+  createdAt: string;
+};
+
+export type CreateCardInput = {
+  thought: string;
+  thoughtOriginal?: string;
+  results: ReframeResult[];
+  meta: Omit<ReframeMeta, "matching">;
+  model: string;
+  spotlightStyle: Style;
+};
+
+export type CardListQuery = {
+  limit: number;
+  before?: Date;
+  category?: Category;
+  style?: Style;
+  favorite?: boolean;
+};
+
 const STYLE_SET: ReadonlySet<string> = new Set(STYLES);
 
 export function isStyle(value: string): value is Style {

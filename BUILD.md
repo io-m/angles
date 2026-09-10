@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**5. History** — List of past thoughts/reframes. Needs SwiftData (or similar).
+**6. Onboarding taste** — Reuses Compose + Results; one thought, all four styles, then paywall.
 
 ## Core loop
 
@@ -30,7 +30,7 @@ Loading and error are **states on Results**, not their own screens.
 | # | Item | Kind | Status | Files | Shipped |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Favorites strip (max 6) + mixed-style grid; answer-first flip; long-press Delete. |
-| 1b | Favorites | screen | done | `FavoritesView.swift`; `ProfileView.swift` | Title opens a full favorites grid. In-memory only. |
+| 1b | Favorites | screen | done | `FavoritesView.swift`; `ProfileView.swift` | Title opens a full favorites grid. Server-backed with the library. |
 | 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `SampleCardCopy.swift` | Statement + kept questions; AI card with per-style recook; Start again. |
 | 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
 | 3 | Multi-style results | same screen as 2 | done | `ComposeSheetView.swift`; `ReframeCardView.swift` | Always all 4 styles. Answer-first carousels on home and overlay. |
@@ -39,7 +39,7 @@ Loading and error are **states on Results**, not their own screens.
 | 4c | Real LLM | feature | done | `llmClient.ts`; `HomeViewModel.swift`; `AppConfig.swift` | Overlay calls `POST /reframe`. Default Mistral Small 4; Gemini 3.8 Flash and DeepSeek via `LLM_MODEL`. |
 | 4d | Model picker | feature | done | `ComposeSheetView.swift`; `LlmModel.swift`; `llmClient.ts` | Compose header picks Mistral / Gemini / DeepSeek; `POST /reframe` sends `model`. |
 | 4e | Core LLM contract | feature | done | `decision.ts`; `prompts.ts`; `reframe.ts`; `ReframeModels.swift`; `HomeViewModel.swift` | Every cook runs a JSON decision call; `continue` keeps the composer; card-fit English thought plus matching metadata. |
-| 5 | History | screen | not started | | |
+| 5 | Card persistence | feature | done | `docker-compose.yml`; `backend/src/db/*`; `CardsService.swift`; `HomeViewModel.swift` | Profile library reads Postgres; Save writes the full cook; categories and tags are first-class. |
 
 ### 1. Compose (home)
 
@@ -47,12 +47,12 @@ Home shell with a Favorites strip, the main card grid, Inspire me FAB, and heade
 
 - Front of each card is the 4-style carousel; tap flips to the original thought. Each card opens on a mixed spotlight style so the feed is not all stoic. Initials (mock JM) sit on the thought face so they flip with the card. Heart and date stay as overlay chrome.
 - Four dots sit under the card while the answer face is showing.
-- Long-press Delete. Heart toggles favorites in memory (newest-favorited first). The strip shows at most 6; Favorites opens the full grid.
+- Long-press Delete. Heart toggles favorites (newest-favorited first). The strip shows at most 6; Favorites opens the full grid.
 - Overlay starts with a focused composer. It stays up until a cook is ready, so the user can always answer or say more.
 
 ### 1b. Favorites
 
-Tappable Favorites title on Profile. Full grid of favorite cards (same heart/delete). In-memory only; History (SwiftData) is still next.
+Tappable Favorites title on Profile. Full grid of favorite cards (same heart/delete). Library is server-backed.
 
 ### 2. Results
 
@@ -93,14 +93,14 @@ Compose overlay header: trailing 40pt logo button (always visible) opens a compa
 Not a new screen. Every `POST /reframe` runs one structured decision call (`decision.ts` + `DECISION_PROMPT`), then style calls for the styles it chose. The old mock gate (`refineDecision.ts` clarify bank, 24-word threshold) is gone.
 
 - Response is `continue` (`message`, `options`, `safety`) or `ready` (`thought`, optional `thoughtOriginal`, 1–4 `results`, `meta`).
-- `meta` carries the closed category, tags, intensity, timeframe, emotions, safety, input language, skipped styles, and an anonymous `matching` key. Cards keep it in memory; nothing is persisted until History.
-- Card copy is English and card-fit (thought 8–28 words, reframe 12–45 words). A non-English input also returns its own cleaned wording behind an Original toggle.
+- `meta` carries the closed category, tags, intensity, timeframe, emotions, safety, input language, skipped styles, and an anonymous `matching` key. Save writes that cook to Postgres; a discarded overlay is never stored.
+- Card copy is English and card-fit (thought 8–22 words / 140 chars, reframe 12–32 words / 190 chars). A non-English input also returns its own cleaned wording behind an Original toggle.
 - The composer stays up for every turn that is not a finished cook, so a `continue` is just the next message in the chat. `followUps` caps at 6; from the third the decision is told to land it, safety aside.
 - A recook of a style the decision skipped comes back as `continue` with that skip reason, not a bad joke.
 
-### 5. History
+### 5. Card persistence
 
-List of past thoughts/reframes. **After fetching.** Needs SwiftData (or similar). Do not add persistence before this task. Persists the Profile library; tabs already exist.
+Not a new screen. Local Postgres in Docker (host 5433) + Drizzle. Profile is the private library and reads from `GET /cards`. Save posts the kept cook to `POST /cards`; X still discards. Categories are an enum column; tags have their own table. `POST /reframe` still never writes. No SwiftData.
 
 ## Postponed (do not start)
 
@@ -109,7 +109,7 @@ List of past thoughts/reframes. **After fetching.** Needs SwiftData (or similar)
 | 6 | Onboarding taste | screen | not started | Reuses Compose + Results; one thought, all four styles, then paywall |
 | 7 | Paywall | screen | not started | StoreKit, hard gate after the taste |
 | 8 | Auth | feature | not started | Sign in with Apple / Better Auth; needed for restore, not for typing a thought |
-| 9 | Public opt-in / community Home | feature | not started | After History. Anonymous; user asks, AI writes; optional per-card publish into Home. No accounts or feed plumbing yet. |
+| 9 | Public opt-in / community Home | feature | not started | After persistence. Anonymous; user asks, AI writes; optional per-card publish into Home. No accounts or feed plumbing yet. |
 
 Account / auth settings wait until auth exists. Appearance + accent already shipped in 2a.
 
@@ -125,6 +125,8 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-10 — Empty Profile hero opens compose; Original sits on card chrome; thought and reframe budgets match the two-column card.
+- 2026-09-10 — Card persistence: local Postgres + Drizzle; Profile library loads from the API; Save writes the full cook; categories and tags are first-class.
 - 2026-09-10 — Core LLM contract: every cook runs a structured decision call; `continue` keeps the composer; card-fit English thought, optional original, 1–4 styles, matching metadata.
 - 2026-09-10 — Compose model picker: Mistral / Gemini / DeepSeek logos; optional `model` on `POST /reframe`.
 - 2026-09-10 — Real LLM: overlay cooks via `POST /reframe`; default Mistral Small 4; optional `styles` for recook.

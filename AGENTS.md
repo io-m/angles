@@ -8,18 +8,21 @@ Paid-only private reframe app (iOS). User submits a negative thought; the backen
 | --- | --- |
 | iOS | Swift, SwiftUI, iOS 17+, MVVM when screens exist, native `URLSession` only |
 | API | Hono on Node (`@hono/node-server`), pnpm, Railway |
-| LLM | Server-side only, isolated in `backend/src/lib/llmClient.ts` (mock today) |
-| Auth (later) | Better Auth, social logins. iOS must also offer Sign in with Apple (Guideline 4.8) if any other social login ships. Hook: `backend/src/lib/authStub.ts` |
-| DB (later) | Postgres on Railway, Drizzle. Use the `postgres` (postgres.js) driver — not a serverless Neon adapter. Planned paths: `backend/src/db/`, `backend/drizzle.config.ts` |
+| LLM | Server-side only, isolated in `backend/src/lib/llmClient.ts` |
+| Auth (later) | Better Auth, social logins. iOS must also offer Sign in with Apple (Guideline 4.8) if any other social login ships. Hook: `backend/src/lib/authStub.ts` (`getOwnerUserId`) |
+| DB | Local Postgres in Docker (host 5433) + Drizzle, `postgres` (postgres.js) driver — not a serverless Neon adapter. Paths: `backend/src/db/`, `backend/drizzle.config.ts` |
 
 Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated for new Railway services).
 
 ## Layout
 
 - `backend/src/app.ts` — Hono app, middleware, error handler
-- `backend/src/index.ts` — `serve()`, `PORT` (default 8787), bind `0.0.0.0`
+- `backend/src/index.ts` — `serve()`, `PORT` (default 8787), bind `0.0.0.0`, schema check, pool shutdown
 - `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, decision call then `Promise.all` the chosen styles
-- `backend/src/routes/health.ts` — `GET /health`
+- `backend/src/routes/cards.ts` — `POST/GET/PATCH/DELETE /cards`
+- `backend/src/routes/health.ts` — `GET /health` (includes a DB probe)
+- `backend/src/db/schema.ts` — Drizzle tables
+- `backend/src/db/cards.ts` — SQL seam for the library
 - `backend/src/lib/decision.ts` — the structured decision call: continue vs ready, cleaned thought, styles, metadata
 - `backend/src/lib/llmClient.ts` — **only** file to change when picking an LLM provider (`generateReframe`, `generateJson`)
 - `backend/src/lib/prompts.ts` — `DECISION_PROMPT`, `SYSTEM_PROMPTS`, length budgets
@@ -30,14 +33,13 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Home/HomeView.swift` — empty Home tab + Settings
 - `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library (favorites + filtered grid)
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — 2-column card grid
-- `AnglesApp/AnglesApp/Home/SampleCardCopy.swift` — seed copy for the in-memory library only
-- `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`
+- `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`, `CardsService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
 - `BUILD.md` — **screen/feature order**. Update it in the same change as every new screen or feature.
 
 ## Do not invent
 
-Follow `BUILD.md`. Do not add screens or features that are not the current item. No StoreKit, SwiftData, Drizzle, Better Auth, CORS “for browsers”, client-side LLM keys, or community Home until that row in `BUILD.md` is next.
+Follow `BUILD.md`. Do not add screens or features that are not the current item. No StoreKit, SwiftData, Better Auth, CORS “for browsers”, client-side LLM keys, or community Home until that row in `BUILD.md` is next.
 
 ## Reframe contract
 
@@ -48,6 +50,8 @@ Every `POST /reframe` runs the decision call first — there is no local clarify
 
 `meta` is `{ category, proposedCategory?, proposedLabel?, tags, intensity, timeframe, emotions, safety, inputLanguage, skippedStyles, matching }`. Categories are a closed set; anything else becomes `other` plus a proposal. Never reframe a thought flagged for safety. `followUps` caps at 6 and the decision is forced to land from the third.
 
+Save writes that cook to `POST /cards`. `POST /reframe` never writes.
+
 ## Type sync
 
 `Style` JSON values: `stoic`, `optimistic`, `humorous`, `tough_love`.
@@ -56,7 +60,7 @@ If you change `backend/src/types/index.ts`, update `ReframeModels.swift` in the 
 
 ## API errors
 
-JSON body `{ "error": string, "code": string }`. Validation → 400 `VALIDATION_ERROR`. Bad JSON → 400 `INVALID_JSON`. Oversize body → 413 `PAYLOAD_TOO_LARGE`. LLM failure → 500 `LLM_ERROR`. Do not log the user's thought text.
+JSON body `{ "error": string, "code": string }`. Validation → 400 `VALIDATION_ERROR`. Bad JSON → 400 `INVALID_JSON`. Oversize body → 413 `PAYLOAD_TOO_LARGE`. LLM failure → 500 `LLM_ERROR`. Missing card → 404 `NOT_FOUND`. Database failure → 500 `DB_ERROR`. Do not log the user's thought text.
 
 ## CORS
 

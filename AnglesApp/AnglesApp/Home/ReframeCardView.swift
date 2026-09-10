@@ -125,22 +125,12 @@ struct ReframeCardView: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
-                .lineLimit(6)
-                .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if hasOriginal {
-                OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
-                    showingOriginal.toggle()
-                }
-            }
-
-            Spacer(minLength: 0)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
         .padding(.bottom, 36)
-        .padding(.trailing, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.surface)
     }
@@ -188,16 +178,12 @@ struct ReframeCardView: View {
                 .font(.callout.weight(.medium))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
-                .lineLimit(7)
-                .minimumScaleFactor(0.85)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Spacer(minLength: 0)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
         .padding(.bottom, 36)
-        .padding(.trailing, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             appearance.washFill(over: theme.surface)
@@ -224,6 +210,12 @@ struct ReframeCardView: View {
 
                 Spacer(minLength: 0)
                     .allowsHitTesting(false)
+
+                if showingThought && hasOriginal {
+                    OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
+                        showingOriginal.toggle()
+                    }
+                }
             }
         }
         .padding(12)
@@ -317,7 +309,7 @@ struct OverlayProposalCard: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            ZStack {
+            ZStack(alignment: .topTrailing) {
                 FlipStack(progress: isFlipped ? 1 : 0) {
                     answerPager
                 } back: {
@@ -325,6 +317,13 @@ struct OverlayProposalCard: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
+
+                if showingThought && hasOriginal {
+                    OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
+                        showingOriginal.toggle()
+                    }
+                    .padding(12)
+                }
             }
             .frame(maxWidth: .infinity)
             .frame(height: cardHeight)
@@ -383,25 +382,16 @@ struct OverlayProposalCard: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
-                .lineLimit(6)
-                .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: flip)
-
-            if hasOriginal {
-                OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
-                    showingOriginal.toggle()
-                }
-            }
-
-            Spacer(minLength: 0)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: flip)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 36)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.surface)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: flip)
     }
 
     private var answerPager: some View {
@@ -433,13 +423,11 @@ struct OverlayProposalCard: View {
                     .font(.callout.weight(.medium))
                     .foregroundStyle(theme.ink)
                     .multilineTextAlignment(.leading)
-                    .lineLimit(6)
-                    .minimumScaleFactor(0.85)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Spacer(minLength: 0)
+                    .minimumScaleFactor(0.72)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
             .padding(.bottom, 40)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .contentShape(Rectangle())

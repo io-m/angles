@@ -17,8 +17,9 @@ Target: iOS 17+, bundle id `app.angles.ios` (placeholder). No SPM networking pac
 
 ## Networking
 
-- `APIClient.post(path:body:)` — JSON encode, `URLSession`, decode `Decodable`, map failures to `APIError`.
+- `APIClient` — JSON `URLSession` verbs (`GET`, `POST`, `PATCH`, `DELETE`), decode `Decodable`, map failures to `APIError`.
 - `ReframeService.refine(text:followUps:styles:model:)` — `POST /reframe` only. Answers `.continueTurn` or `.ready`.
+- `CardsService` — `POST/GET/PATCH/DELETE /cards`. Profile library source of truth.
 - Auth header: TODO on the request in `APIClient`. Do not invent a token store.
 
 ## Models
@@ -33,7 +34,7 @@ A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`).
 
 ## UI
 
-Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData until History.
+Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData.
 
 ## Device
 

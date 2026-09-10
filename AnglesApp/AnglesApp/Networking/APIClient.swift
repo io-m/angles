@@ -51,15 +51,70 @@ final class APIClient: @unchecked Sendable {
         path: String,
         body: Body
     ) async throws -> Response {
-        guard let url = resolvedURL(path: path) else {
+        try await decode(try await send(path: path, method: "POST", body: body))
+    }
+
+    func get<Response: Decodable>(
+        path: String,
+        queryItems: [URLQueryItem] = []
+    ) async throws -> Response {
+        try await decode(try await send(path: path, method: "GET", queryItems: queryItems))
+    }
+
+    func patch<Body: Encodable, Response: Decodable>(
+        path: String,
+        body: Body
+    ) async throws -> Response {
+        try await decode(try await send(path: path, method: "PATCH", body: body))
+    }
+
+    func delete(path: String) async throws {
+        _ = try await send(path: path, method: "DELETE")
+    }
+
+    private func decode<Response: Decodable>(_ data: Data) throws -> Response {
+        do {
+            return try decoder.decode(Response.self, from: data)
+        } catch {
+            throw APIError.decoding(error.localizedDescription)
+        }
+    }
+
+    private func send(path: String, method: String, queryItems: [URLQueryItem] = []) async throws -> Data {
+        try await perform(path: path, method: method, queryItems: queryItems, bodyData: nil)
+    }
+
+    private func send<Body: Encodable>(
+        path: String,
+        method: String,
+        queryItems: [URLQueryItem] = [],
+        body: Body
+    ) async throws -> Data {
+        try await perform(
+            path: path,
+            method: method,
+            queryItems: queryItems,
+            bodyData: try encoder.encode(body)
+        )
+    }
+
+    private func perform(
+        path: String,
+        method: String,
+        queryItems: [URLQueryItem],
+        bodyData: Data?
+    ) async throws -> Data {
+        guard let url = resolvedURL(path: path, queryItems: queryItems) else {
             throw APIError.invalidURL
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpMethod = method
         // TODO(auth): attach Authorization from the Better Auth session once auth exists
-        request.httpBody = try encoder.encode(body)
+        if let bodyData {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = bodyData
+        }
 
         let data: Data
         let response: URLResponse
@@ -78,18 +133,28 @@ final class APIClient: @unchecked Sendable {
             throw APIError.httpStatus(http.statusCode, message)
         }
 
-        do {
-            return try decoder.decode(Response.self, from: data)
-        } catch {
-            throw APIError.decoding(error.localizedDescription)
-        }
+        return data
     }
 
-    private func resolvedURL(path: String) -> URL? {
+    private func resolvedURL(path: String, queryItems: [URLQueryItem] = []) -> URL? {
         let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !trimmed.isEmpty else {
             return nil
         }
-        return baseURL.appending(path: trimmed)
+        let url = baseURL.appending(path: trimmed)
+        let items = queryItems.filter { item in
+            guard let value = item.value else {
+                return false
+            }
+            return !value.isEmpty
+        }
+        guard !items.isEmpty else {
+            return url
+        }
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.queryItems = items
+        return components.url
     }
 }

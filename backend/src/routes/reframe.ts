@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { authStub } from "../lib/authStub.js";
 import { runDecision, type ReadyDecision } from "../lib/decision.js";
-import { errorBody } from "../lib/http.js";
+import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { generateReframe, LLM_MODEL_IDS, LlmError, type LlmModelId } from "../lib/llmClient.js";
 import {
   REFRAME_HARD_MAX_CHARS,
@@ -61,11 +61,6 @@ const reframeRequestSchema = z.object({
   styles: z.array(styleSchema).min(1).max(STYLES.length).optional(),
   model: z.enum(LLM_MODEL_IDS).optional(),
 });
-
-function validationErrorMessage(error: { issues: { message: string }[] }): string {
-  const first = error.issues[0];
-  return first?.message ?? "Invalid request";
-}
 
 function uniqueStyles(styles: readonly Style[]): Style[] {
   const seen = new Set<Style>();

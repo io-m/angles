@@ -39,6 +39,28 @@ struct HomeCard: Identifiable, Equatable {
         self.meta = meta
     }
 
+    init?(stored: StoredCard) {
+        guard let id = UUID(uuidString: stored.id) else {
+            return nil
+        }
+        let slides = stored.results.map { result in
+            HomeCardSlide(id: UUID(), thought: stored.thought, result: result)
+        }
+        guard !slides.isEmpty else {
+            return nil
+        }
+        self.init(
+            id: id,
+            createdAt: ISO8601Dates.date(from: stored.createdAt) ?? Date(),
+            slides: slides,
+            isFavorite: stored.isFavorite,
+            spotlightStyle: stored.spotlightStyle,
+            favoritedAt: stored.favoritedAt.flatMap { ISO8601Dates.date(from: $0) },
+            thoughtOriginal: stored.thoughtOriginal,
+            meta: stored.reframeMeta
+        )
+    }
+
     var thought: String {
         slides.first?.thought ?? ""
     }
@@ -82,6 +104,13 @@ struct ReadyCook: Equatable {
     var thoughtOriginal: String?
     var results: [ReframeResult]
     var meta: ReframeMeta
+    var model: LlmModel
+}
+
+enum LibraryLoadState: Equatable {
+    case loading
+    case loaded
+    case failed(String)
 }
 
 enum RefinePhase: Equatable {
@@ -138,15 +167,29 @@ final class HomeViewModel: ObservableObject {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: Self.modelDefaultsKey)
         }
     }
+    @Published private(set) var libraryLoadState: LibraryLoadState
+    @Published private(set) var isSaving = false
+    @Published private(set) var saveError: String?
 
     private let reframeService: ReframeService
+    private let cardsService: CardsService
     private var refineTask: Task<Void, Never>?
+    private var libraryTask: Task<Void, Never>?
+    private var favoriteTasks: [UUID: Task<Void, Never>] = [:]
+    private var deleteTasks: [UUID: Task<Void, Never>] = [:]
 
     private static let modelDefaultsKey = "angles.llmModel"
 
-    init(cards: [HomeCard]? = nil, reframeService: ReframeService = ReframeService()) {
-        self.cards = cards ?? Self.sampleCards
+    init(
+        cards: [HomeCard] = [],
+        reframeService: ReframeService = ReframeService(),
+        cardsService: CardsService = CardsService(),
+        libraryLoadState: LibraryLoadState = .loading
+    ) {
+        self.cards = cards
         self.reframeService = reframeService
+        self.cardsService = cardsService
+        self.libraryLoadState = libraryLoadState
         if let raw = UserDefaults.standard.string(forKey: Self.modelDefaultsKey),
            let model = LlmModel(rawValue: raw) {
             selectedModel = model
@@ -267,31 +310,83 @@ final class HomeViewModel: ObservableObject {
         startRefine()
     }
 
-    func publishSelected() {
-        guard case .ready(let cook) = phase, !cook.results.isEmpty else {
-            return
+    func saveCook() async -> Bool {
+        guard case .ready(let cook) = phase, !cook.results.isEmpty, !isSaving else {
+            return false
         }
 
-        let slides = cook.results.map { result in
-            HomeCardSlide(id: UUID(), thought: cook.thought, result: result)
-        }
+        isSaving = true
+        saveError = nil
         let styles = cook.results.map(\.style)
         let spotlight = styles[cards.count % styles.count]
 
-        cards.insert(
-            HomeCard(
-                createdAt: Date(),
-                slides: slides,
-                spotlightStyle: spotlight,
-                thoughtOriginal: cook.thoughtOriginal,
-                meta: cook.meta
-            ),
-            at: 0
-        )
+        do {
+            let stored = try await cardsService.create(
+                CreateCardRequest(
+                    thought: cook.thought,
+                    thoughtOriginal: cook.thoughtOriginal,
+                    results: cook.results,
+                    meta: cook.meta,
+                    model: cook.model.rawValue,
+                    spotlightStyle: spotlight
+                )
+            )
+            if let card = HomeCard(stored: stored) {
+                cards.insert(card, at: 0)
+            }
+            isSaving = false
+            return true
+        } catch {
+            saveError = "Couldn't save this card. Try again."
+            isSaving = false
+            return false
+        }
+    }
+
+    func loadLibrary() async {
+        libraryTask?.cancel()
+        libraryLoadState = .loading
+        do {
+            let stored = try await cardsService.list(limit: 100)
+            guard !Task.isCancelled else {
+                return
+            }
+            cards = stored.compactMap { HomeCard(stored: $0) }
+            libraryLoadState = .loaded
+        } catch {
+            guard !Task.isCancelled else {
+                return
+            }
+            libraryLoadState = .failed("Couldn't load your cards.")
+        }
+    }
+
+    func retryLoadLibrary() {
+        libraryTask?.cancel()
+        libraryTask = Task { @MainActor in
+            await loadLibrary()
+        }
     }
 
     func deleteCard(_ id: UUID) {
-        cards.removeAll { $0.id == id }
+        guard let index = cards.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let removed = cards.remove(at: index)
+        deleteTasks[id]?.cancel()
+        deleteTasks[id] = Task { @MainActor in
+            defer { deleteTasks[id] = nil }
+            do {
+                try await cardsService.delete(id: id.uuidString.lowercased())
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+                let insertAt = min(index, cards.count)
+                cards.insert(removed, at: insertAt)
+            }
+        }
     }
 
     func toggleFavorite(_ id: UUID) {
@@ -299,12 +394,37 @@ final class HomeViewModel: ObservableObject {
             return
         }
 
-        if cards[index].isFavorite {
-            cards[index].isFavorite = false
-            cards[index].favoritedAt = nil
-        } else {
-            cards[index].isFavorite = true
-            cards[index].favoritedAt = Date()
+        let previousFavorite = cards[index].isFavorite
+        let previousFavoritedAt = cards[index].favoritedAt
+        let nextFavorite = !previousFavorite
+        cards[index].isFavorite = nextFavorite
+        cards[index].favoritedAt = nextFavorite ? Date() : nil
+
+        favoriteTasks[id]?.cancel()
+        favoriteTasks[id] = Task { @MainActor in
+            defer { favoriteTasks[id] = nil }
+            do {
+                let stored = try await cardsService.setFavorite(
+                    id: id.uuidString.lowercased(),
+                    isFavorite: nextFavorite
+                )
+                guard !Task.isCancelled else {
+                    return
+                }
+                if let updated = HomeCard(stored: stored),
+                   let current = cards.firstIndex(where: { $0.id == id }) {
+                    cards[current].isFavorite = updated.isFavorite
+                    cards[current].favoritedAt = updated.favoritedAt
+                }
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+                if let current = cards.firstIndex(where: { $0.id == id }) {
+                    cards[current].isFavorite = previousFavorite
+                    cards[current].favoritedAt = previousFavoritedAt
+                }
+            }
         }
     }
 
@@ -373,6 +493,7 @@ final class HomeViewModel: ObservableObject {
         turns = []
         recookingStyle = nil
         recookNotice = nil
+        saveError = nil
         phase = .composing
     }
 
@@ -413,7 +534,8 @@ final class HomeViewModel: ObservableObject {
                             thought: thought,
                             thoughtOriginal: thoughtOriginal,
                             results: results,
-                            meta: meta
+                            meta: meta,
+                            model: model
                         )
                     )
                 }
@@ -451,130 +573,4 @@ final class HomeViewModel: ObservableObject {
         }
         return formatter.string(from: date)
     }
-
-    private static func minutesAgo(_ minutes: Int) -> Date {
-        Date().addingTimeInterval(TimeInterval(-minutes * 60))
-    }
-
-    private static func hoursAgo(_ hours: Int) -> Date {
-        Date().addingTimeInterval(TimeInterval(-hours * 3600))
-    }
-
-    private static func daysAgo(_ days: Int) -> Date {
-        Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-    }
-
-    private static func slides(
-        thought: String,
-        highlight: Style,
-        highlightText: String
-    ) -> [HomeCardSlide] {
-        Style.allCases.map { style in
-            let reframe: String
-            if style == highlight {
-                reframe = highlightText
-            } else {
-                reframe = SampleCardCopy.reframes[style] ?? highlightText
-            }
-
-            return HomeCardSlide(
-                id: UUID(),
-                thought: thought,
-                result: ReframeResult(style: style, reframe: reframe)
-            )
-        }
-    }
-
-    private static func sampleCard(
-        createdAt: Date,
-        thought: String,
-        highlight: Style,
-        highlightText: String,
-        isFavorite: Bool = false
-    ) -> HomeCard {
-        HomeCard(
-            createdAt: createdAt,
-            slides: slides(thought: thought, highlight: highlight, highlightText: highlightText),
-            isFavorite: isFavorite,
-            spotlightStyle: highlight,
-            favoritedAt: isFavorite ? createdAt : nil
-        )
-    }
-
-    private static let sampleCards: [HomeCard] = [
-        sampleCard(
-            createdAt: minutesAgo(18),
-            thought: "I bombed my job interview today.",
-            highlight: .stoic,
-            highlightText: "You can't control the outcome, only how you showed up.",
-            isFavorite: true
-        ),
-        sampleCard(
-            createdAt: hoursAgo(4),
-            thought: "My friend cancelled on me again.",
-            highlight: .humorous,
-            highlightText: "Congrats, you've joined the club of every human who's sweated through this.",
-            isFavorite: true
-        ),
-        sampleCard(
-            createdAt: daysAgo(2),
-            thought: "I keep procrastinating on my project.",
-            highlight: .toughLove,
-            highlightText: "Stop waiting to feel ready. Start now and feel ready later."
-        ),
-        sampleCard(
-            createdAt: daysAgo(3),
-            thought: "I feel behind compared to my peers.",
-            highlight: .optimistic,
-            highlightText: "Different pace, same direction. You're not behind, you're on your own clock."
-        ),
-        sampleCard(
-            createdAt: daysAgo(4),
-            thought: "I replayed that awkward meeting all night.",
-            highlight: .stoic,
-            highlightText: "The moment has passed. What remains is how you choose to respond now."
-        ),
-        sampleCard(
-            createdAt: daysAgo(5),
-            thought: "They ended the text with a period.",
-            highlight: .humorous,
-            highlightText: "Your brain wrote a twelve-season drama from one punctuation mark."
-        ),
-        sampleCard(
-            createdAt: daysAgo(6),
-            thought: "I missed two days of my new habit.",
-            highlight: .optimistic,
-            highlightText: "Two missed days do not erase every day you chose to begin."
-        ),
-        sampleCard(
-            createdAt: daysAgo(7),
-            thought: "I keep avoiding a difficult conversation.",
-            highlight: .toughLove,
-            highlightText: "Avoiding it is still a choice. Choose the conversation that moves you forward."
-        ),
-        sampleCard(
-            createdAt: daysAgo(8),
-            thought: "I stumbled over my presentation.",
-            highlight: .humorous,
-            highlightText: "A few words tripped. The presentation survived, and so did everyone in the room."
-        ),
-        sampleCard(
-            createdAt: daysAgo(9),
-            thought: "This week has not gone to plan.",
-            highlight: .stoic,
-            highlightText: "The plan changed. Your ability to choose the next useful action did not."
-        ),
-        sampleCard(
-            createdAt: daysAgo(10),
-            thought: "Starting over feels like failure.",
-            highlight: .optimistic,
-            highlightText: "Starting over means you know more this time than you did the first."
-        ),
-        sampleCard(
-            createdAt: daysAgo(11),
-            thought: "I have been waiting for motivation.",
-            highlight: .toughLove,
-            highlightText: "Motivation can catch up. Give it something in motion to follow."
-        ),
-    ]
 }

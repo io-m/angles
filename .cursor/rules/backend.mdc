@@ -11,6 +11,6 @@ alwaysApply: false
 - Isolate provider calls in `llmClient.ts` (`generateReframe`). Swap that file only for a real LLM.
 - Style keys: `stoic`, `optimistic`, `humorous`, `tough_love`. Prompt copy lives in `prompts.ts`.
 - Multiple styles → `Promise.all`. One failure fails the whole request.
-- Bind `0.0.0.0` and `process.env.PORT || 8787`. Health: `GET /health`.
-- Do not install Drizzle or Better Auth until that task. When you do: `src/db/`, `src/auth.ts`, postgres.js (not Neon HTTP).
+- Bind `0.0.0.0` and `process.env.PORT || 8787`. Health: `GET /health` (include a cheap DB probe).
+- Drizzle + `postgres` (postgres.js) live in `src/db/`. Do not add Better Auth until that task (`src/auth.ts`).
 - Tests use `app.request()` (Vitest). Do not start `serve()` in tests.

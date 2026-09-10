@@ -42,7 +42,8 @@ struct AppRoot: View {
                 NavigationStack {
                     ProfileView(
                         safeAreaInsets: homeSafeAreaInsets,
-                        viewModel: viewModel
+                        viewModel: viewModel,
+                        onInspire: presentCompose
                     )
                 }
                 .tabItem { Label("Profile", systemImage: "person") }

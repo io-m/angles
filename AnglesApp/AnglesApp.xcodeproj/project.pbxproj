@@ -9,9 +9,9 @@
 /* Begin PBXBuildFile section */
 		01A8AEC059C1A4D61340EAB5 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */; };
 		01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B6CE33C2217655B2170B5F3 /* LlmModel.swift */; };
+		17CBFD4C422D6640341241AA /* CardsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91621A647BBA93B4181D3EB3 /* CardsService.swift */; };
 		1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3956722F5CD9FC2607E738A /* RootTabBar.swift */; };
 		23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */; };
-		25ED5A838687AC8A1273E475 /* SampleCardCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C44FA19D0E24FDF1F6A70CA /* SampleCardCopy.swift */; };
 		26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */; };
 		2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */; };
 		2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B602E536EA39A5C8524CE6 /* ReframeService.swift */; };
@@ -39,7 +39,6 @@
 
 /* Begin PBXFileReference section */
 		03485114E1C729FE4BB7383D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		1C44FA19D0E24FDF1F6A70CA /* SampleCardCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleCardCopy.swift; sourceTree = "<group>"; };
 		277F500C2565CC7DF5621C5A /* Angles.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Angles.icon; sourceTree = "<group>"; };
 		338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
 		3726E6089528365BA6EC3BA8 /* AnglesApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnglesApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -53,6 +52,7 @@
 		657231FF50708210A4AA9FDD /* UserAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAppearance.swift; sourceTree = "<group>"; };
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
 		81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCardGrid.swift; sourceTree = "<group>"; };
+		91621A647BBA93B4181D3EB3 /* CardsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardsService.swift; sourceTree = "<group>"; };
 		9B6CE33C2217655B2170B5F3 /* LlmModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlmModel.swift; sourceTree = "<group>"; };
 		A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleIcon.swift; sourceTree = "<group>"; };
@@ -75,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				B1EBC59EB491832949278518 /* APIClient.swift */,
+				91621A647BBA93B4181D3EB3 /* CardsService.swift */,
 				40B602E536EA39A5C8524CE6 /* ReframeService.swift */,
 			);
 			path = Networking;
@@ -156,7 +157,6 @@
 				4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */,
 				A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */,
 				B05847EC66A8A1B53179B539 /* ReframeCardView.swift */,
-				1C44FA19D0E24FDF1F6A70CA /* SampleCardCopy.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -257,6 +257,7 @@
 				48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */,
 				9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */,
 				7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */,
+				17CBFD4C422D6640341241AA /* CardsService.swift in Sources */,
 				475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */,
 				F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */,
 				729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */,
@@ -273,7 +274,6 @@
 				3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */,
 				2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */,
 				1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */,
-				25ED5A838687AC8A1273E475 /* SampleCardCopy.swift in Sources */,
 				ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */,
 				26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */,
 				978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */,

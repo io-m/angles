@@ -1,0 +1,137 @@
+import { relations, sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import {
+  CATEGORIES,
+  EMOTIONS,
+  INTENSITY_BANDS,
+  SAFETY_FLAGS,
+  STYLES,
+  TIMEFRAMES,
+  type SkippedStyle,
+} from "../types/index.js";
+
+export const styleEnum = pgEnum("style", [...STYLES]);
+export const categoryEnum = pgEnum("category", [...CATEGORIES]);
+export const emotionEnum = pgEnum("emotion", [...EMOTIONS]);
+export const timeframeEnum = pgEnum("timeframe", [...TIMEFRAMES]);
+export const safetyFlagEnum = pgEnum("safety_flag", [...SAFETY_FLAGS]);
+export const intensityBandEnum = pgEnum("intensity_band", [...INTENSITY_BANDS]);
+
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+export const cards = pgTable(
+  "cards",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    thoughtEn: text("thought_en").notNull(),
+    thoughtOriginal: text("thought_original"),
+    inputLanguage: text("input_language").notNull(),
+    category: categoryEnum("category").notNull(),
+    proposedCategory: text("proposed_category"),
+    proposedLabel: text("proposed_label"),
+    intensity: integer("intensity").notNull(),
+    intensityBand: intensityBandEnum("intensity_band").notNull(),
+    timeframe: timeframeEnum("timeframe").notNull(),
+    safety: safetyFlagEnum("safety").notNull(),
+    emotions: emotionEnum("emotions").array().notNull(),
+    skippedStyles: jsonb("skipped_styles").$type<SkippedStyle[]>().notNull(),
+    model: text("model").notNull(),
+    spotlightStyle: styleEnum("spotlight_style").notNull(),
+    isFavorite: boolean("is_favorite").notNull().default(false),
+    favoritedAt: timestamp("favorited_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("cards_user_created_idx").on(table.userId, table.createdAt.desc()),
+    index("cards_category_idx").on(table.category),
+    check("cards_intensity_range", sql`intensity between 1 and 5`),
+  ],
+);
+
+export const cardReframes = pgTable(
+  "card_reframes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    style: styleEnum("style").notNull(),
+    reframe: text("reframe").notNull(),
+    position: integer("position").notNull(),
+  },
+  (table) => [uniqueIndex("card_reframes_card_style_idx").on(table.cardId, table.style)],
+);
+
+export const tags = pgTable("tags", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  label: text("label").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+export const cardTags = pgTable(
+  "card_tags",
+  {
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.cardId, table.tagId] }),
+    index("card_tags_tag_id_idx").on(table.tagId),
+  ],
+);
+
+export const categoryProposals = pgTable("category_proposals", {
+  slug: text("slug").primaryKey(),
+  label: text("label").notNull(),
+  seenCount: integer("seen_count").notNull().default(0),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+export const cardsRelations = relations(cards, ({ many }) => ({
+  reframes: many(cardReframes),
+  cardTags: many(cardTags),
+}));
+
+export const cardReframesRelations = relations(cardReframes, ({ one }) => ({
+  card: one(cards, { fields: [cardReframes.cardId], references: [cards.id] }),
+}));
+
+export const tagsRelations = relations(tags, ({ many }) => ({
+  cardTags: many(cardTags),
+}));
+
+export const cardTagsRelations = relations(cardTags, ({ one }) => ({
+  card: one(cards, { fields: [cardTags.cardId], references: [cards.id] }),
+  tag: one(tags, { fields: [cardTags.tagId], references: [tags.id] }),
+}));
+
+export type CardRow = typeof cards.$inferSelect;
+export type CardReframeRow = typeof cardReframes.$inferSelect;
+export type TagRow = typeof tags.$inferSelect;
