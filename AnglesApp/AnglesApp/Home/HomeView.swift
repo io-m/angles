@@ -79,8 +79,8 @@ struct HomeView: View {
     private var headerFade: some View {
         LinearGradient(
             stops: [
-                Gradient.Stop(color: theme.paper.opacity(0.86), location: 0),
-                Gradient.Stop(color: theme.paper.opacity(0.43), location: 0.55),
+                Gradient.Stop(color: theme.paper.opacity(1), location: 0),
+                Gradient.Stop(color: theme.paper.opacity(0.88), location: 0.52),
                 Gradient.Stop(color: .clear, location: 1),
             ],
             startPoint: .top,

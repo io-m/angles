@@ -1,5 +1,15 @@
 import SwiftUI
 
+private struct ScrollDistanceKey: PreferenceKey {
+    static var defaultValue: CGFloat?
+
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        if let next = nextValue() {
+            value = next
+        }
+    }
+}
+
 struct ProfileView: View {
     private enum Layout {
         static let horizontalPadding: CGFloat = 16
@@ -7,6 +17,10 @@ struct ProfileView: View {
         static let headerHeight: CGFloat = 44
         static let headerTopPad: CGFloat = 6
         static let headerContentGap: CGFloat = 18
+        static let restFadeDistance: CGFloat = 44
+        static let collapsedRevealDistance: CGFloat = 36
+        static let collapseSlide: CGFloat = 10
+        static let greetings = ["Hey", "Welcome back", "Hi there", "Good to see you"]
     }
 
     let safeAreaInsets: EdgeInsets
@@ -18,7 +32,9 @@ struct ProfileView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var favoriteRowHeight: CGFloat = 252
 
-    @State private var showFilterPicker = false
+    @State private var scrolledDistance: CGFloat = 0
+    @State private var showRestFilter = false
+    @State private var showCollapsedFilter = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -26,8 +42,29 @@ struct ProfileView: View {
         safeAreaInsets.top + Layout.headerTopPad + Layout.headerHeight
     }
 
-    private var scrollTopInset: CGFloat {
-        headerOverlayHeight + Layout.headerContentGap
+    private var greeting: String {
+        let day = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 1
+        return Layout.greetings[(day - 1) % Layout.greetings.count]
+    }
+
+    private var restProgress: CGFloat {
+        unitProgress(scrolledDistance / Layout.restFadeDistance)
+    }
+
+    private var restOpacity: CGFloat {
+        1 - restProgress
+    }
+
+    private var collapsedProgress: CGFloat {
+        unitProgress((scrolledDistance - Layout.restFadeDistance) / Layout.collapsedRevealDistance)
+    }
+
+    private func unitProgress(_ raw: CGFloat) -> CGFloat {
+        let clamped = min(1, max(0, raw))
+        if reduceMotion {
+            return clamped > 0.5 ? 1 : 0
+        }
+        return clamped
     }
 
     var body: some View {
@@ -36,7 +73,9 @@ struct ProfileView: View {
                 AnglesCanvasBackground()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: Layout.headerContentGap) {
+                        scrollingHeader
+
                         if !viewModel.favoriteCards.isEmpty {
                             favoritesSection(pageWidth: geometry.size.width)
                                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -44,12 +83,25 @@ struct ProfileView: View {
 
                         gridSection
                     }
-                    .padding(.top, scrollTopInset)
+                    .padding(.top, safeAreaInsets.top + Layout.headerTopPad)
                     .padding(.bottom, 20)
+                    .background(alignment: .top) {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: ScrollDistanceKey.self,
+                                value: proxy.frame(in: .named("profileScroll")).minY
+                            )
+                        }
+                        .frame(height: 0)
+                    }
                 }
                 .scrollIndicators(.hidden)
+                .coordinateSpace(name: "profileScroll")
+                .modifier(ProfileScrollDistance(distance: $scrolledDistance))
 
-                headerChrome
+                headerFade
+
+                collapsedHeader
             }
         }
         .ignoresSafeArea(.container, edges: .top)
@@ -57,45 +109,100 @@ struct ProfileView: View {
         .tint(theme.ink)
     }
 
-    private var headerChrome: some View {
-        ZStack(alignment: .top) {
-            headerFade
+    private var scrollingHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(greeting)
+                .font(.title.bold())
+                .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .accessibilityAddTraits(.isHeader)
 
-            header
-                .padding(.horizontal, Layout.horizontalPadding)
-                .padding(.top, safeAreaInsets.top + Layout.headerTopPad)
+            Spacer(minLength: 8)
+
+            Button {
+                showRestFilter = true
+            } label: {
+                CircleIcon(
+                    systemName: filterSystemImage(viewModel.profileGridFilter),
+                    fill: theme.surface,
+                    symbol: filterSymbolColor(viewModel.profileGridFilter),
+                    weight: .semibold,
+                    hairline: theme.cardHairline
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Filter")
+            .accessibilityValue(viewModel.profileGridFilter.title)
+            .popover(isPresented: $showRestFilter, arrowEdge: .top) {
+                filterPicker
+                    .presentationCompactAdaptation(.popover)
+            }
         }
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            InitialsAvatar(side: 40, fill: theme.ink, symbol: theme.paper)
-
-            Spacer(minLength: 0)
-
-            filterButton
-        }
+        .padding(.horizontal, Layout.horizontalPadding)
         .frame(minHeight: Layout.headerHeight, alignment: .center)
+        .opacity(restOpacity)
+        .animation(nil, value: scrolledDistance)
+        .allowsHitTesting(restOpacity > 0.4)
+        .accessibilityHidden(restOpacity <= 0.4)
     }
 
-    private var filterButton: some View {
-        Button {
-            showFilterPicker = true
-        } label: {
-            CircleIcon(
-                systemName: filterSystemImage(viewModel.profileGridFilter),
-                fill: theme.surface,
-                symbol: filterSymbolColor(viewModel.profileGridFilter),
-                hairline: theme.cardHairline
-            )
+    private var collapsedHeader: some View {
+        let progress = collapsedProgress
+
+        return VStack(spacing: 0) {
+            Color.clear
+                .frame(height: safeAreaInsets.top + Layout.headerTopPad)
+                .allowsHitTesting(false)
+
+            HStack {
+                Spacer(minLength: 0)
+                    .allowsHitTesting(false)
+
+                Button {
+                    showCollapsedFilter = true
+                } label: {
+                    collapsedTitleLabel
+                }
+                .buttonStyle(.plain)
+                .opacity(progress)
+                .offset(y: reduceMotion ? 0 : Layout.collapseSlide * (1 - progress))
+                .animation(nil, value: scrolledDistance)
+                .accessibilityLabel("Filter")
+                .accessibilityValue(viewModel.profileGridFilter.title)
+                .accessibilityHidden(progress <= 0.4)
+                .popover(isPresented: $showCollapsedFilter, arrowEdge: .top) {
+                    filterPicker
+                        .presentationCompactAdaptation(.popover)
+                }
+                .allowsHitTesting(progress > 0.4)
+
+                Spacer(minLength: 0)
+                    .allowsHitTesting(false)
+            }
+            .frame(height: Layout.headerHeight)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Filter")
-        .accessibilityValue(viewModel.profileGridFilter.title)
-        .popover(isPresented: $showFilterPicker, arrowEdge: .top) {
-            filterPicker
-                .presentationCompactAdaptation(.popover)
+        .frame(height: headerOverlayHeight, alignment: .top)
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(progress > 0.4)
+    }
+
+    private var collapsedTitleLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: filterSystemImage(viewModel.profileGridFilter))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(filterSymbolColor(viewModel.profileGridFilter))
+
+            Text(viewModel.profileGridFilter.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.ink)
+                .lineLimit(1)
+
+            Image(systemName: "chevron.down")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.muted)
         }
+        .contentShape(Rectangle())
     }
 
     private var filterPicker: some View {
@@ -105,7 +212,8 @@ struct ProfileView: View {
 
                 Button {
                     viewModel.profileGridFilter = filter
-                    showFilterPicker = false
+                    showRestFilter = false
+                    showCollapsedFilter = false
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: filterSystemImage(filter))
@@ -252,20 +360,27 @@ struct ProfileView: View {
     }
 
     private var headerFade: some View {
-        LinearGradient(
-            stops: [
-                Gradient.Stop(color: theme.paper.opacity(0.86), location: 0),
-                Gradient.Stop(color: theme.paper.opacity(0.43), location: 0.55),
-                Gradient.Stop(color: .clear, location: 1),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(height: headerOverlayHeight + 12)
+        let progress = restProgress
+
+        return VStack(spacing: 0) {
+            theme.paper
+                .frame(height: safeAreaInsets.top)
+
+            LinearGradient(
+                stops: [
+                    Gradient.Stop(color: theme.paper.opacity(progress), location: 0),
+                    Gradient.Stop(color: theme.paper.opacity(0.88 * progress), location: 0.52),
+                    Gradient.Stop(color: .clear, location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: Layout.headerTopPad + Layout.headerHeight + 12)
+        }
         .frame(maxWidth: .infinity)
-        .ignoresSafeArea(edges: .top)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .animation(nil, value: scrolledDistance)
     }
 
     private func deleteCard(_ card: HomeCard) {
@@ -295,4 +410,33 @@ struct ProfileView: View {
         )
     }
     .environmentObject(ThemeStore())
+}
+
+private struct ProfileScrollDistance: ViewModifier {
+    @Binding var distance: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geometry in
+                max(0, geometry.contentOffset.y)
+            } action: { _, newValue in
+                update(newValue)
+            }
+        } else {
+            content.onPreferenceChange(ScrollDistanceKey.self) { minY in
+                guard let minY else { return }
+                update(max(0, -minY))
+            }
+        }
+    }
+
+    private func update(_ newValue: CGFloat) {
+        guard abs(distance - newValue) > 0.5 else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            distance = newValue
+        }
+    }
 }
