@@ -38,8 +38,28 @@ struct HomeCardStrip: View, Equatable {
         }
     }
 
+    private var cardHaloPadding: CGFloat {
+        ReframeCardElevation.ambientPadding(isDark: theme.isDark)
+    }
+
+    private var stripOuterPadding: EdgeInsets {
+        let halo = cardHaloPadding
+        let horizontal = max(16, halo)
+        switch presentation {
+        case .favoriteAngles:
+            // Dots sit under the strip; keep top/side halo, tighten space below cards.
+            return EdgeInsets(top: halo, leading: horizontal, bottom: 8, trailing: horizontal)
+        case .library:
+            return EdgeInsets(top: halo, leading: horizontal, bottom: halo, trailing: horizontal)
+        }
+    }
+
+    private var dotsSpacing: CGFloat {
+        presentation == .favoriteAngles ? 4 : 16
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: dotsSpacing) {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(cards) { card in
@@ -65,9 +85,10 @@ struct HomeCardStrip: View, Equatable {
                         )
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(stripOuterPadding)
                 .scrollTargetLayout()
             }
+            .scrollClipDisabled()
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $scrollID)

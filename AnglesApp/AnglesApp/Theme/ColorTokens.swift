@@ -11,8 +11,8 @@ struct ColorTokens {
     static let lineLight = Color(red: 0xED / 255, green: 0xE6 / 255, blue: 0xD7 / 255)
 
     // Dark — near-black charcoal with a hint of warmth, not sepia brown
-    static let paperDark = Color(red: 0x13 / 255, green: 0x12 / 255, blue: 0x11 / 255)
-    static let greyDark = Color(red: 0x1C / 255, green: 0x1B / 255, blue: 0x1A / 255)
+    static let paperDark = Color(red: 0x15 / 255, green: 0x14 / 255, blue: 0x13 / 255)
+    static let greyDark = Color(red: 0x1E / 255, green: 0x1D / 255, blue: 0x1C / 255)
     static let inkDark = Color(red: 0xF4 / 255, green: 0xF3 / 255, blue: 0xF1 / 255)
     static let ink2Dark = Color(red: 0xE4 / 255, green: 0xE2 / 255, blue: 0xDE / 255)
     static let subDark = Color(red: 0xC4 / 255, green: 0xC2 / 255, blue: 0xBE / 255)
@@ -20,12 +20,12 @@ struct ColorTokens {
     static let faintDark = Color(red: 0x5E / 255, green: 0x5C / 255, blue: 0x59 / 255)
     static let lineDark = Color.white.opacity(0.10)
     static let surfaceLight = Color.white
-    static let surfaceDark = Color(red: 0x27 / 255, green: 0x26 / 255, blue: 0x25 / 255)
+    static let surfaceDark = Color(red: 0x29 / 255, green: 0x28 / 255, blue: 0x27 / 255)
 
     static let paperLightRGB = (253.0 / 255, 251.0 / 255, 248.0 / 255)
     static let greyLightRGB = (240.0 / 255, 239.0 / 255, 236.0 / 255)
-    static let paperDarkRGB = (19.0 / 255, 18.0 / 255, 17.0 / 255)
-    static let greyDarkRGB = (28.0 / 255, 27.0 / 255, 26.0 / 255)
+    static let paperDarkRGB = (21.0 / 255, 20.0 / 255, 19.0 / 255)
+    static let greyDarkRGB = (30.0 / 255, 29.0 / 255, 28.0 / 255)
 
     struct Theme {
         var paper: Color
@@ -39,6 +39,9 @@ struct ColorTokens {
         var line: Color
         var shadowSoft: Color
         var shadowLift: Color
+        /// Omnidirectional card lift (wide + core, both centered — no cheap drop).
+        var cardAmbientShadow: Color
+        var cardAmbientCore: Color
         var cardHairline: Color
         var isDark: Bool
     }
@@ -57,7 +60,9 @@ struct ColorTokens {
                 line: lineDark,
                 shadowSoft: Color.white.opacity(0.04),
                 shadowLift: Color.white.opacity(0.07),
-                cardHairline: Color.white.opacity(0.035),
+                cardAmbientShadow: Color.white.opacity(0.042),
+                cardAmbientCore: Color.white.opacity(0.018),
+                cardHairline: Color.white.opacity(0.048),
                 isDark: true
             )
         }
@@ -73,7 +78,9 @@ struct ColorTokens {
             line: lineLight,
             shadowSoft: Color.black.opacity(0.025),
             shadowLift: Color.black.opacity(0.06),
-            cardHairline: Color.black.opacity(0.042),
+            cardAmbientShadow: Color.black.opacity(0.036),
+            cardAmbientCore: Color.black.opacity(0.018),
+            cardHairline: Color.black.opacity(0.048),
             isDark: false
         )
     }

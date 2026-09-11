@@ -199,11 +199,7 @@ struct ReframeCardView: View, Equatable {
             activeAppearance.washFill(over: theme.surface)
         }
         .clipShape(cardShape)
-        .overlay {
-            cardShape.strokeBorder(theme.cardHairline, lineWidth: 0.5)
-                .allowsHitTesting(false)
-        }
-        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+        .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
     }
 
     private var favoriteFlipCard: some View {
@@ -227,11 +223,7 @@ struct ReframeCardView: View, Equatable {
             activeAppearance.washFill(over: theme.surface)
         }
         .clipShape(cardShape)
-        .overlay {
-            cardShape.strokeBorder(theme.cardHairline, lineWidth: 0.5)
-                .allowsHitTesting(false)
-        }
-        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+        .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
         .accessibilityHint(isFavoriteFlipped ? "Shows the selected answer" : "Shows the thought")
         .accessibilityAction(named: isFavoriteFlipped ? "Show answer" : "Show thought") {
             flipFavorite()
@@ -603,11 +595,7 @@ struct OverlayProposalCard: View {
             activeAppearance.washFill(over: theme.surface)
         }
         .clipShape(cardShape)
-        .overlay {
-            cardShape.strokeBorder(theme.cardHairline, lineWidth: 0.5)
-                .allowsHitTesting(false)
-        }
-        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+        .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
         .onAppear {
             if selectedStyle == nil {
                 setSelectedStyleWithoutAnimation(results.first?.style)
@@ -833,15 +821,21 @@ private struct StyleChipRow: View {
                         )
                 }
             }
-            .foregroundStyle(isSelected ? appearance.ink : faint)
+            .foregroundStyle(
+                isSelected
+                    ? appearance.ink
+                    : appearance.ink.opacity(appearance.chipUnselectedInkOpacity(for: colorScheme))
+            )
             .padding(.horizontal, isSelected ? 10 : 0)
             .frame(width: isSelected ? nil : side, height: side, alignment: .center)
             .background {
                 Capsule(style: .continuous)
                     .fill(
-                        isSelected
-                            ? appearance.ink.opacity(appearance.chipFillOpacity(for: colorScheme))
-                            : faint.opacity(0.08)
+                        appearance.ink.opacity(
+                            isSelected
+                                ? appearance.chipFillOpacity(for: colorScheme)
+                                : appearance.chipUnselectedFillOpacity(for: colorScheme)
+                        )
                     )
             }
             .padding(slop)

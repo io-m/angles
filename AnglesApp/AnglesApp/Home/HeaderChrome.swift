@@ -33,6 +33,30 @@ enum HeaderCollapse {
         }
         return clamped
     }
+
+    static func topFadeHeight(safeTop: CGFloat) -> CGFloat {
+        safeTop + headerTopPad + headerHeight + 12
+    }
+}
+
+/// Shared edge fades over `AnglesCanvasBackground` — softer than a solid bar, aligned with the tab-area gradient.
+enum CanvasEdgeFade {
+    static func topStops(theme: ColorTokens.Theme, strength: CGFloat) -> [Gradient.Stop] {
+        [
+            .init(color: theme.paper.opacity(0.86 * strength), location: 0),
+            .init(color: theme.paper.opacity(0.52 * strength), location: 0.42),
+            .init(color: theme.grey.opacity(0.28 * strength), location: 0.72),
+            .init(color: .clear, location: 1),
+        ]
+    }
+
+    static func bottomStops(theme: ColorTokens.Theme) -> [Gradient.Stop] {
+        [
+            .init(color: .clear, location: 0),
+            .init(color: theme.grey.opacity(0.58), location: 0.58),
+            .init(color: theme.grey.opacity(0.86), location: 1),
+        ]
+    }
 }
 
 /// Scroll state is retained by the screen, but only the small header views read it.
@@ -167,21 +191,12 @@ struct CollapsingHeaderFade: View {
             reduceMotion: reduceMotion
         )
 
-        VStack(spacing: 0) {
-            theme.paper
-                .frame(height: safeTop)
-
-            LinearGradient(
-                stops: [
-                    Gradient.Stop(color: theme.paper.opacity(progress), location: 0),
-                    Gradient.Stop(color: theme.paper.opacity(0.88 * progress), location: 0.52),
-                    Gradient.Stop(color: .clear, location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: HeaderCollapse.headerTopPad + HeaderCollapse.headerHeight + 12)
-        }
+        LinearGradient(
+            stops: CanvasEdgeFade.topStops(theme: theme, strength: progress),
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: HeaderCollapse.topFadeHeight(safeTop: safeTop))
         .frame(maxWidth: .infinity)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
