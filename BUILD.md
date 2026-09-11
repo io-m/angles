@@ -171,7 +171,7 @@ Not a new screen. Polish on 9c.
 
 Not a new screen. Polish on 9d.
 
-- **Measured cause.** An Animation Hitches recording on Joe’s iPhone showed baseline main-thread interaction delays up to 131.66ms. Steady Home scrolling was already smooth; reproduction isolated the visible jitter to a shelf page arriving while the user was at the list edge. One offscreen-render event was not correlated, so card shadows, gradients, and flip visuals stayed unchanged.
+- **Measured cause/result.** An Animation Hitches recording on Joe’s iPhone showed baseline main-thread interaction delays up to 131.66ms. Steady Home scrolling was already smooth; reproduction isolated the visible jitter to a shelf page arriving while the user was at the list edge. In the final 20s pagination capture, over-budget rendered hitches fell from 21 to 13 and the worst rendered hitch fell from 125.03ms to 25.01ms. One offscreen-render event was not correlated, so card shadows, gradients, and flip visuals stayed unchanged.
 - **Observation boundary.** `HomeViewModel` uses iOS 17 Observation instead of one broad Combine publisher, so subset paging does not invalidate Home, Profile, compose, and unrelated shelves. Subset content receives explicit load state instead of observing the whole model.
 - **Header.** Collapse distance lives in header-only state and caps at 80pt. Long flings stop publishing after the header is fully collapsed; feed and library content never read that progress.
 - **Pagination.** Shelf pushes retain their six seeded cards and exact server cursor. The next page appends directly instead of re-fetching/replacing page one, deduplicates incrementally, prefetches six rows early on long lists, and keeps a fixed-height loading footer so arrival does not move the scroll edge.
