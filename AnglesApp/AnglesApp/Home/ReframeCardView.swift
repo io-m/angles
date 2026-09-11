@@ -12,8 +12,20 @@ enum ReframeCardMenuRole: Equatable {
 }
 
 enum ReframeCardMetrics {
-    static let storedMinimumHeight: CGFloat = 300
-    static let overlayMinimumHeight: CGFloat = 260
+    static let storedMinimumHeight: CGFloat = 284
+    /// Flip-only favorites: answer on front, thought on back — grows with copy.
+    static let favoriteStripMinHeight: CGFloat = 168
+    /// Horizontal strip caps height; copy scrolls inside instead of clipping.
+    static let favoriteStripMaxHeight: CGFloat = 288
+    static let favoriteChromeInset: CGFloat = 12
+    /// Header + footer chrome reserved when sizing the strip scroll region.
+    static let favoriteStripChromeHeight: CGFloat = 96
+    static let overlayMinimumHeight: CGFloat = 248
+    static let thoughtFont: Font = .callout.weight(.regular)
+    /// Flip-back thought: solo on the card, so a step up from stacked secondary copy.
+    static let favoriteThoughtFont: Font = .body.weight(.medium)
+    static let answerFont: Font = .body.weight(.semibold)
+    static let answerLineSpacing: CGFloat = 2
     static let chromeInset: CGFloat = 16
     static let controlSize: CGFloat = 44
     static let avatarSize: CGFloat = 36
@@ -29,6 +41,8 @@ struct ReframeCardView: View, Equatable {
     var presentation: ReframeCardPresentation = .library
     var menuRole: ReframeCardMenuRole = .owner
     var openingStyle: Style? = nil
+    /// Profile favorite carousel: cap height and scroll long copy instead of clipping.
+    var limitsFavoriteCopyHeight: Bool = false
     var onDelete: () -> Void = {}
     var onToggleFavorite: (Style) -> Void = { _ in }
     var onSetPublic: (Bool) -> Void = { _ in }
@@ -37,8 +51,12 @@ struct ReframeCardView: View, Equatable {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @ScaledMetric(relativeTo: .body) private var favoriteCardHeight: CGFloat =
-        ReframeCardMetrics.storedMinimumHeight
+    @ScaledMetric(relativeTo: .body) private var favoriteCardMinHeight: CGFloat =
+        ReframeCardMetrics.favoriteStripMinHeight
+    @ScaledMetric(relativeTo: .body) private var favoriteCardMaxHeight: CGFloat =
+        ReframeCardMetrics.favoriteStripMaxHeight
+    @ScaledMetric(relativeTo: .body) private var favoriteStripChromeHeight: CGFloat =
+        ReframeCardMetrics.favoriteStripChromeHeight
     @State private var showingOriginal = false
     @State private var selectedStyle: Style?
     @State private var favoriteHaptic = 0
@@ -51,6 +69,7 @@ struct ReframeCardView: View, Equatable {
             && lhs.presentation == rhs.presentation
             && lhs.menuRole == rhs.menuRole
             && lhs.openingStyle == rhs.openingStyle
+            && lhs.limitsFavoriteCopyHeight == rhs.limitsFavoriteCopyHeight
     }
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -169,7 +188,8 @@ struct ReframeCardView: View, Equatable {
 
             ReframeCopyStack(
                 thought: displayedThought,
-                answer: activeSlide?.result.reframe
+                answer: activeSlide?.result.reframe,
+                answerColor: activeAppearance.responseInk
             )
 
             storedFooter
@@ -180,7 +200,7 @@ struct ReframeCardView: View, Equatable {
         }
         .clipShape(cardShape)
         .overlay {
-            cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
+            cardShape.strokeBorder(theme.cardHairline, lineWidth: 0.5)
                 .allowsHitTesting(false)
         }
         .shadow(color: theme.shadowSoft, radius: 10, y: 3)
@@ -190,25 +210,25 @@ struct ReframeCardView: View, Equatable {
         FlipStack(progress: isFavoriteFlipped ? 1 : 0) {
             favoriteFace(
                 copy: activeSlide?.result.reframe ?? "",
-                font: .title3.weight(.semibold),
-                foreground: theme.ink
+                font: ReframeCardMetrics.answerFont,
+                foreground: activeAppearance.responseInk
             )
         } back: {
             favoriteFace(
                 copy: displayedThought,
-                font: .body.weight(.medium),
-                foreground: theme.ink.opacity(0.72)
+                font: ReframeCardMetrics.favoriteThoughtFont,
+                foreground: theme.sub
             )
         }
         .frame(maxWidth: .infinity)
-        .frame(height: favoriteCardHeight)
-        .clipped()
+        .frame(minHeight: favoriteCardMinHeight)
+        .frame(maxHeight: limitsFavoriteCopyHeight ? favoriteCardMaxHeight : nil)
         .background {
             activeAppearance.washFill(over: theme.surface)
         }
         .clipShape(cardShape)
         .overlay {
-            cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
+            cardShape.strokeBorder(theme.cardHairline, lineWidth: 0.5)
                 .allowsHitTesting(false)
         }
         .shadow(color: theme.shadowSoft, radius: 10, y: 3)
@@ -224,21 +244,39 @@ struct ReframeCardView: View, Equatable {
         foreground: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            storedHeader
+            favoriteHeader
 
-            Text(copy)
-                .font(font)
-                .foregroundStyle(foreground)
-                .lineSpacing(3)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(ReframeCardMetrics.chromeInset)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: flipFavorite)
+            favoriteCopyBlock(copy: copy, font: font, foreground: foreground)
+
+            Spacer(minLength: 0)
 
             favoriteFooter
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func favoriteCopyBlock(copy: String, font: Font, foreground: Color) -> some View {
+        let text = Text(copy)
+            .font(font)
+            .foregroundStyle(foreground)
+            .lineSpacing(ReframeCardMetrics.answerLineSpacing)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(ReframeCardMetrics.favoriteChromeInset)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: flipFavorite)
+
+        if limitsFavoriteCopyHeight {
+            let scrollCap = max(72, favoriteCardMaxHeight - favoriteStripChromeHeight)
+            ScrollView(.vertical, showsIndicators: false) {
+                text
+            }
+            .frame(maxHeight: scrollCap)
+        } else {
+            text
+        }
     }
 
     private var storedHeader: some View {
@@ -277,6 +315,41 @@ struct ReframeCardView: View, Equatable {
         .padding(.leading, ReframeCardMetrics.chromeInset)
         .padding(.trailing, 10)
         .padding(.top, 12)
+    }
+
+    private var favoriteHeader: some View {
+        HStack(spacing: 8) {
+            InitialsAvatar(
+                letters: card.authorInitials,
+                side: 32,
+                fill: theme.ink,
+                symbol: theme.paper
+            )
+
+            Text(HomeViewModel.dateLabel(for: card.createdAt))
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(theme.muted)
+                .lineLimit(1)
+
+            Spacer(minLength: 6)
+
+            if showsMenu {
+                Menu {
+                    cardMenuItems
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(theme.muted)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Card actions")
+            }
+        }
+        .padding(.leading, ReframeCardMetrics.favoriteChromeInset)
+        .padding(.trailing, 8)
+        .padding(.top, 10)
     }
 
     private var storedFooter: some View {
@@ -318,9 +391,9 @@ struct ReframeCardView: View, Equatable {
             .buttonStyle(.plain)
             .accessibilityLabel(isFavoriteFlipped ? "Show selected answer" : "Show thought")
         }
-        .padding(.leading, ReframeCardMetrics.chromeInset)
+        .padding(.leading, ReframeCardMetrics.favoriteChromeInset)
         .padding(.trailing, 6)
-        .padding(.bottom, 12)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -519,7 +592,8 @@ struct OverlayProposalCard: View {
 
             ReframeCopyStack(
                 thought: displayedThought,
-                answer: activeResult?.reframe
+                answer: activeResult?.reframe,
+                answerColor: activeAppearance.responseInk
             )
 
             overlayFooter
@@ -530,7 +604,7 @@ struct OverlayProposalCard: View {
         }
         .clipShape(cardShape)
         .overlay {
-            cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
+            cardShape.strokeBorder(theme.cardHairline, lineWidth: 0.5)
                 .allowsHitTesting(false)
         }
         .shadow(color: theme.shadowSoft, radius: 10, y: 3)
@@ -627,16 +701,21 @@ struct OverlayProposalCard: View {
 private struct ReframeCopyStack: View {
     let thought: String
     let answer: String?
+    var answerColor: Color?
 
     @Environment(\.colorScheme) private var colorScheme
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
+    private var resolvedAnswerColor: Color {
+        answerColor ?? theme.ink
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(thought)
-                .font(.body.weight(.medium))
-                .foregroundStyle(theme.ink.opacity(0.72))
+                .font(ReframeCardMetrics.thoughtFont)
+                .foregroundStyle(theme.muted)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -651,13 +730,14 @@ private struct ReframeCopyStack: View {
 
             if let answer {
                 Text(answer)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(theme.ink)
-                    .lineSpacing(3)
+                    .font(ReframeCardMetrics.answerFont)
+                    .foregroundStyle(resolvedAnswerColor)
+                    .lineSpacing(ReframeCardMetrics.answerLineSpacing)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(ReframeCardMetrics.chromeInset)
+                    .padding(.horizontal, ReframeCardMetrics.chromeInset)
+                    .padding(.vertical, 14)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -697,6 +777,7 @@ private struct StyleChipRow: View {
     let onSelect: (Style) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var selectHaptic = 0
 
     var body: some View {
@@ -757,7 +838,11 @@ private struct StyleChipRow: View {
             .frame(width: isSelected ? nil : side, height: side, alignment: .center)
             .background {
                 Capsule(style: .continuous)
-                    .fill(isSelected ? appearance.ink.opacity(0.14) : faint.opacity(0.08))
+                    .fill(
+                        isSelected
+                            ? appearance.ink.opacity(appearance.chipFillOpacity(for: colorScheme))
+                            : faint.opacity(0.08)
+                    )
             }
             .padding(slop)
             .contentShape(Capsule())
@@ -769,23 +854,36 @@ private struct StyleChipRow: View {
     }
 }
 
-fileprivate func stylePill(_ appearance: CardStyleAppearance) -> some View {
-    HStack(spacing: 6) {
-        Image(systemName: appearance.systemImage)
-            .symbolRenderingMode(.hierarchical)
-            .font(.system(size: 12, weight: .semibold))
+fileprivate struct StylePill: View {
+    let appearance: CardStyleAppearance
 
-        Text(appearance.style.displayName)
-            .font(.caption.weight(.semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.82)
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: appearance.systemImage)
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 12, weight: .semibold))
+
+            Text(appearance.style.displayName)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .foregroundStyle(appearance.ink)
+        .padding(.leading, 8)
+        .padding(.trailing, 10)
+        .padding(.vertical, 5)
+        .background(
+            appearance.ink.opacity(appearance.chipFillOpacity(for: colorScheme)),
+            in: Capsule()
+        )
+        .accessibilityHidden(true)
     }
-    .foregroundStyle(appearance.ink)
-    .padding(.leading, 8)
-    .padding(.trailing, 10)
-    .padding(.vertical, 5)
-    .background(appearance.ink.opacity(0.14), in: Capsule())
-    .accessibilityHidden(true)
+}
+
+fileprivate func stylePill(_ appearance: CardStyleAppearance) -> some View {
+    StylePill(appearance: appearance)
 }
 
 /// Favorite angles keep equal-height faces so their horizontal strip stays level.

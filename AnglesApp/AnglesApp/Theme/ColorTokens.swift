@@ -57,7 +57,7 @@ struct ColorTokens {
                 line: lineDark,
                 shadowSoft: Color.white.opacity(0.04),
                 shadowLift: Color.white.opacity(0.07),
-                cardHairline: Color.white.opacity(0.07),
+                cardHairline: Color.white.opacity(0.035),
                 isDark: true
             )
         }
@@ -73,7 +73,7 @@ struct ColorTokens {
             line: lineLight,
             shadowSoft: Color.black.opacity(0.025),
             shadowLift: Color.black.opacity(0.06),
-            cardHairline: Color.black.opacity(0.05),
+            cardHairline: Color.black.opacity(0.042),
             isDark: false
         )
     }

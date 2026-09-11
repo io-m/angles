@@ -57,6 +57,7 @@ struct HomeFilterSheet: View {
                         ForEach(Emotion.allCases, id: \.self) { emotion in
                             filterRow(
                                 title: emotion.displayName,
+                                systemImage: emotion.systemImage,
                                 isSelected: draft.emotions.contains(emotion)
                             ) {
                                 toggle(emotion, in: &draft.emotions)

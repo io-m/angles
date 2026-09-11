@@ -30,7 +30,12 @@ struct HomeCardStrip: View, Equatable {
     /// A concrete width, not `containerRelativeFrame`: nested in a strip that would
     /// resolve against the wrong container.
     private var cardWidth: CGFloat {
-        min(pageWidth * 0.84, 340)
+        switch presentation {
+        case .favoriteAngles:
+            return min(pageWidth * 0.76, 300)
+        case .library:
+            return min(pageWidth * 0.84, 340)
+        }
     }
 
     var body: some View {
@@ -43,6 +48,7 @@ struct HomeCardStrip: View, Equatable {
                             presentation: presentation,
                             menuRole: menuRole(card),
                             openingStyle: openingStyle,
+                            limitsFavoriteCopyHeight: presentation == .favoriteAngles,
                             onDelete: { onDelete(card) },
                             onToggleFavorite: { style in onToggleFavorite(card, style) },
                             onSetPublic: { isPublic in onSetPublic(card, isPublic) },

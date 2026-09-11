@@ -86,6 +86,20 @@ enum Emotion: String, Codable, CaseIterable, Hashable, Sendable {
         case .hope: return "Hope"
         }
     }
+
+    var systemImage: String {
+        switch self {
+        case .anger: return "flame.fill"
+        case .shame: return "eye.slash.fill"
+        case .fear: return "exclamationmark.triangle.fill"
+        case .sadness: return "cloud.rain.fill"
+        case .envy: return "eye.fill"
+        case .loneliness: return "moon.fill"
+        case .overwhelm: return "square.stack.3d.up.fill"
+        case .numbness: return "circle.dotted"
+        case .hope: return "sunrise.fill"
+        }
+    }
 }
 
 enum Timeframe: String, Codable, CaseIterable, Sendable {
