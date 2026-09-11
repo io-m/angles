@@ -30,7 +30,7 @@ Loading and error are **states on Results**, not their own screens.
 | # | Item | Kind | Status | Files | Shipped |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Favorites strip (max 6) + mixed-style grid; answer-first flip; long-press Delete. |
-| 1b | Favorites | screen | done | `FavoritesView.swift`; `ProfileView.swift` | Title opens a full favorites grid. Server-backed with the library. |
+| 1b | Favorites | screen | done | `FavoritesView.swift`; `ProfileSubsetView.swift`; `ProfileView.swift` | Title opens a full favorites grid. Server-backed with the library. |
 | 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `SampleCardCopy.swift` | Statement + kept questions; AI card with per-style recook; Start again. |
 | 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
 | 3 | Multi-style results | same screen as 2 | done | `ComposeSheetView.swift`; `ReframeCardView.swift` | Always all 4 styles. Answer-first carousels on home and overlay. |
@@ -40,6 +40,11 @@ Loading and error are **states on Results**, not their own screens.
 | 4d | Model picker | feature | done | `ComposeSheetView.swift`; `LlmModel.swift`; `llmClient.ts` | Compose header picks Mistral / Gemini / DeepSeek; `POST /reframe` sends `model`. |
 | 4e | Core LLM contract | feature | done | `decision.ts`; `prompts.ts`; `reframe.ts`; `ReframeModels.swift`; `HomeViewModel.swift` | Every cook runs a JSON decision call; `continue` keeps the composer; card-fit English thought plus matching metadata. |
 | 5 | Card persistence | feature | done | `docker-compose.yml`; `backend/src/db/*`; `CardsService.swift`; `HomeViewModel.swift` | Profile library reads Postgres; Save writes the full cook; categories and tags are first-class. |
+| 5b | Favorite angles | feature | done | `schema.ts`; `cards.ts`; `ReframeCardView.swift`; `ProfileView.swift`; `FavoritesView.swift`; `ProfileSubsetView.swift` | Per-style hearts; Profile strip (max 6) plus full Favorite angles grid; liked styles only in that carousel. |
+| 5c | Pinned posts | feature | done | `schema.ts`; `cards.ts`; `ProfileView.swift`; `ProfileSubsetView.swift`; `FavoritesView.swift`; `HomeViewModel.swift` | Thought-first strip (max 6) plus Pins screen from the title; pin is independent of hearts. |
+| 5d | Owner ⋯ menu | feature | done | `ReframeCardView.swift`; `cards.ts` | Ellipsis replaces long-press Delete; confirm delete, privacy flag, original-vs-English; menu rows have leading icons. |
+| 5e | Thought type + card height | polish | done | `ReframeCardView.swift` | Thought is slightly smaller and heavier; height hugs max thought/reframe plus chrome. |
+| 5f | List and in-card chrome | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `ProfileView.swift` | Strip list-dots; compact in-card dots on the answer face; tighter grid rows. |
 
 ### 1. Compose (home)
 
@@ -102,6 +107,26 @@ Not a new screen. Every `POST /reframe` runs one structured decision call (`deci
 
 Not a new screen. Local Postgres in Docker (host 5433) + Drizzle. Profile is the private library and reads from `GET /cards`. Save posts the kept cook to `POST /cards`; X still discards. Categories are an enum column; tags have their own table. `POST /reframe` still never writes. No SwiftData.
 
+### 5b. Favorite angles
+
+Heart is per style, not per cook. Profile has a tappable **Favorite angles** title plus a landscape strip (max 6, list dots), and FavoritesView is the full 2-column grid of liked angles. Front is the liked angle; flip is the thought. One liked style has no in-card carousel; two or more liked styles on the same post share one card. Un-hearting the last liked style removes it from this list. Style chips do not filter this strip or grid.
+
+### 5c. Pinned posts
+
+Pin is the thought/post, independent of hearts. Profile **Pinned** is a thought-first horizontal strip (max 6, newest pin first) with a tappable title into a Pins screen of every pinned post. Flip shows all cooked styles. The same post may appear in Pinned, Favorite angles, and the library. The strip stays unfiltered.
+
+### 5d. Owner ⋯ menu
+
+Top-trailing ellipsis on the owner's library cards replaces long-press Delete. Menu: Delete (confirm), Make public / Make private (`isPublic`, default false, no Home feed), Language when a cleaned original exists (client toggle, no new translate). Heart (current style) and pin stay on the card.
+
+### 5e. Thought type + card height
+
+Thought face is slightly smaller and heavier than title3 regular, still distinct from the answer (`.callout` / `.medium`). Card height hugs max cleaned thought and max reframe plus chrome. Overlay uses the same metrics. Prompt budgets stay unless the card cannot fit them.
+
+### 5f. List and in-card chrome
+
+Pinned and Favorite angles strips have page-dots for which **card** is in view; cards in those strips have no list-dots. In-card AI carousel uses compact dots at the bottom center of the answer face when there is more than one AI page. Thought face has no pager chrome. Grid rows are slightly tighter than the strip's horizontal gap.
+
 ## Postponed (do not start)
 
 | # | Item | Kind | Status | Why later |
@@ -125,6 +150,7 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 Newest first. Add a line when something moves to `done`.
 
+- 2026-09-10 — Profile pins, per-style favorite angles, owner ⋯ menu, tighter thought type, list vs in-card chrome.
 - 2026-09-10 — Profile style filter keeps every card that has that angle and opens the carousel on it; All still mixes covers.
 - 2026-09-10 — Cook latency polish: one batched style JSON after the decision; 10s cook budget; cycling cooking copy; icon-only Original; leave confirms while a cook or unsaved session is open.
 - 2026-09-10 — Empty Profile hero opens compose; Original sits on card chrome; thought and reframe budgets match the two-column card.

@@ -31,7 +31,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/AnglesApp.swift` — AppRoot: TabView (Home, Profile), compose overlay, shared `HomeViewModel`
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
 - `AnglesApp/AnglesApp/Home/HomeView.swift` — empty Home tab + Settings
-- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library (favorites + grid). Style chips keep cards that have that angle and open on it; All mixes covers.
+- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library: pinned strip, favorite-angles grid, All/style library. Style chips keep cards that have that angle and open on it; All mixes covers. Pinned and Favorite angles stay unfiltered.
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — 2-column card grid
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`, `CardsService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
@@ -50,7 +50,7 @@ Every `POST /reframe` runs the decision call first — there is no local clarify
 
 `meta` is `{ category, proposedCategory?, proposedLabel?, tags, intensity, timeframe, emotions, safety, inputLanguage, skippedStyles, matching }`. Categories are a closed set; anything else becomes `other` plus a proposal. Never reframe a thought flagged for safety. `followUps` caps at 6 and the decision is forced to land from the third.
 
-Save writes that cook to `POST /cards`. `POST /reframe` never writes.
+Save writes that cook to `POST /cards`. Hearts are per style on `card_reframes`; pin and `isPublic` (default false) sit on the card. `POST /reframe` never writes.
 
 ## Type sync
 

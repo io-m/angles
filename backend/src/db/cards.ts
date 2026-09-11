@@ -1,11 +1,13 @@
-import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { normalizeTagSlugs, titleCase } from "../lib/slugs.js";
 import {
   intensityBand,
   type CreateCardInput,
   type CardListQuery,
+  type PatchCardInput,
   type StoredCard,
+  type StoredReframeResult,
 } from "../types/index.js";
 import { getDb, wrapDbError, DbError } from "./client.js";
 import {
@@ -29,9 +31,19 @@ function toStoredCard(row: CardLoaded): StoredCard {
     slug: join.tag.slug,
     label: join.tag.label,
   }));
-  const results = [...row.reframes]
+  const results: StoredReframeResult[] = [...row.reframes]
     .sort((left, right) => left.position - right.position)
-    .map((item) => ({ style: item.style, reframe: item.reframe }));
+    .map((item) => {
+      const stored: StoredReframeResult = {
+        style: item.style,
+        reframe: item.reframe,
+        isFavorite: item.isFavorite,
+      };
+      if (item.favoritedAt) {
+        stored.favoritedAt = item.favoritedAt.toISOString();
+      }
+      return stored;
+    });
 
   const stored: StoredCard = {
     id: row.id,
@@ -53,7 +65,8 @@ function toStoredCard(row: CardLoaded): StoredCard {
     results,
     model: row.model,
     spotlightStyle: row.spotlightStyle,
-    isFavorite: row.isFavorite,
+    isPinned: row.isPinned,
+    isPublic: row.isPublic,
     createdAt: row.createdAt.toISOString(),
   };
 
@@ -66,8 +79,8 @@ function toStoredCard(row: CardLoaded): StoredCard {
   if (row.proposedLabel) {
     stored.proposedLabel = row.proposedLabel;
   }
-  if (row.favoritedAt) {
-    stored.favoritedAt = row.favoritedAt.toISOString();
+  if (row.pinnedAt) {
+    stored.pinnedAt = row.pinnedAt.toISOString();
   }
 
   return stored;
@@ -206,9 +219,30 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       );
     }
     if (query.favorite === true) {
-      filters.push(eq(cards.isFavorite, true));
+      filters.push(
+        inArray(
+          cards.id,
+          getDb()
+            .select({ id: cardReframes.cardId })
+            .from(cardReframes)
+            .where(eq(cardReframes.isFavorite, true)),
+        ),
+      );
     } else if (query.favorite === false) {
-      filters.push(eq(cards.isFavorite, false));
+      filters.push(
+        notInArray(
+          cards.id,
+          getDb()
+            .select({ id: cardReframes.cardId })
+            .from(cardReframes)
+            .where(eq(cardReframes.isFavorite, true)),
+        ),
+      );
+    }
+    if (query.pinned === true) {
+      filters.push(eq(cards.isPinned, true));
+    } else if (query.pinned === false) {
+      filters.push(eq(cards.isPinned, false));
     }
     if (query.before) {
       filters.push(lt(cards.createdAt, query.before));
@@ -244,26 +278,68 @@ export async function getCard(id: string): Promise<StoredCard | null> {
   }
 }
 
-export async function setFavorite(id: string, isFavorite: boolean): Promise<StoredCard | null> {
-  try {
-    const updated = await getDb()
-      .update(cards)
-      .set({
-        isFavorite,
-        favoritedAt: isFavorite ? new Date() : null,
-      })
-      .where(and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())))
-      .returning({ id: cards.id });
+export type PatchCardResult =
+  | { ok: true; card: StoredCard }
+  | { ok: false; reason: "not_found" | "unknown_style" };
 
-    if (!updated[0]) {
-      return null;
-    }
-    return await loadCard(getDb(), id);
+export async function patchCard(id: string, patch: PatchCardInput): Promise<PatchCardResult> {
+  try {
+    return await getDb().transaction(async (tx) => {
+      const existing = await tx.query.cards.findFirst({
+        where: and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())),
+        columns: { id: true },
+        with: {
+          reframes: { columns: { style: true } },
+        },
+      });
+      if (!existing) {
+        return { ok: false, reason: "not_found" };
+      }
+
+      if (patch.isFavorite !== undefined) {
+        const style = patch.style;
+        if (!style || !existing.reframes.some((item) => item.style === style)) {
+          return { ok: false, reason: "unknown_style" };
+        }
+        await tx
+          .update(cardReframes)
+          .set({
+            isFavorite: patch.isFavorite,
+            favoritedAt: patch.isFavorite ? new Date() : null,
+          })
+          .where(and(eq(cardReframes.cardId, id), eq(cardReframes.style, style)));
+      }
+
+      const cardSet: {
+        isPinned?: boolean;
+        pinnedAt?: Date | null;
+        isPublic?: boolean;
+      } = {};
+      if (patch.isPinned !== undefined) {
+        cardSet.isPinned = patch.isPinned;
+        cardSet.pinnedAt = patch.isPinned ? new Date() : null;
+      }
+      if (patch.isPublic !== undefined) {
+        cardSet.isPublic = patch.isPublic;
+      }
+      if (Object.keys(cardSet).length > 0) {
+        await tx
+          .update(cards)
+          .set(cardSet)
+          .where(and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())));
+      }
+
+      const loaded = await loadCard(tx, id);
+      if (!loaded) {
+        return { ok: false, reason: "not_found" };
+      }
+      return { ok: true, card: loaded };
+    });
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
     }
-    throw wrapDbError(error, "setFavorite");
+    throw wrapDbError(error, "patchCard");
   }
 }
 

@@ -13,7 +13,9 @@ private struct ScrollDistanceKey: PreferenceKey {
 struct ProfileView: View {
     private enum Layout {
         static let horizontalPadding: CGFloat = 16
-        static let gridSpacing: CGFloat = 12
+        static let gridColumnSpacing: CGFloat = 12
+        static let gridRowSpacing: CGFloat = 8
+        static let sectionContentGap: CGFloat = 16
         static let headerHeight: CGFloat = 44
         static let headerTopPad: CGFloat = 6
         static let headerContentGap: CGFloat = 18
@@ -31,11 +33,13 @@ struct ProfileView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var favoriteRowHeight: CGFloat = 252
+    @ScaledMetric(relativeTo: .body) private var cardRowHeight: CGFloat = ReframeCardMetrics.baseHeight
 
     @State private var scrolledDistance: CGFloat = 0
     @State private var showRestFilter = false
     @State private var showCollapsedFilter = false
+    @State private var pinnedCardID: UUID?
+    @State private var favoriteCardID: UUID?
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -77,7 +81,7 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: Layout.headerContentGap) {
                         scrollingHeader
 
-                        favoritesBlock(pageWidth: geometry.size.width)
+                        pinnedAndFavorites(pageWidth: geometry.size.width)
 
                         gridSection
                     }
@@ -281,11 +285,7 @@ struct ProfileView: View {
     private var gridSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !showsEmptyHero {
-                Text(viewModel.profileGridFilter.title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(theme.ink)
-                    .padding(.horizontal, Layout.horizontalPadding)
-                    .accessibilityAddTraits(.isHeader)
+                librarySubtitle
             }
 
             switch viewModel.libraryLoadState {
@@ -305,10 +305,14 @@ struct ProfileView: View {
                     HomeCardGrid(
                         cards: viewModel.filteredProfileCards,
                         usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
-                        spacing: Layout.gridSpacing,
+                        columnSpacing: Layout.gridColumnSpacing,
+                        rowSpacing: Layout.gridRowSpacing,
+                        presentation: .library,
                         openingStyle: viewModel.profileGridFilter.matchingStyle,
                         onDelete: deleteCard,
-                        onToggleFavorite: toggleFavorite
+                        onToggleFavorite: toggleFavorite,
+                        onTogglePin: togglePinned,
+                        onSetPublic: setPublic
                     )
                     .equatable()
                     .padding(.horizontal, Layout.horizontalPadding)
@@ -394,41 +398,18 @@ struct ProfileView: View {
     }
 
     @ViewBuilder
-    private func favoritesBlock(pageWidth: CGFloat) -> some View {
-        switch viewModel.libraryLoadState {
-        case .loading:
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Favorites")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(theme.ink)
-                    .padding(.horizontal, Layout.horizontalPadding)
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: favoriteRowHeight)
-                    .accessibilityLabel("Loading favorites")
-            }
-        case .failed(let message):
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Favorites")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(theme.ink)
-                    .padding(.horizontal, Layout.horizontalPadding)
-                HStack {
-                    Text(message)
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(theme.muted)
-                    Button("Retry") {
-                        viewModel.retryLoadLibrary()
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(theme.ink)
+    private func pinnedAndFavorites(pageWidth: CGFloat) -> some View {
+        if case .loaded = viewModel.libraryLoadState {
+            VStack(alignment: .leading, spacing: Layout.headerContentGap) {
+                if !viewModel.pinnedCards.isEmpty {
+                    pinnedSection(pageWidth: pageWidth)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                .padding(.horizontal, Layout.horizontalPadding)
-            }
-        case .loaded:
-            if !viewModel.favoriteCards.isEmpty {
-                favoritesSection(pageWidth: pageWidth)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+
+                if !viewModel.favoriteAngleCards.isEmpty {
+                    favoriteAnglesSection(pageWidth: pageWidth)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
         }
     }
@@ -442,57 +423,103 @@ struct ProfileView: View {
         }
     }
 
-    private func favoritesSection(pageWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            NavigationLink {
+    private var librarySubtitle: some View {
+        HStack(spacing: 10) {
+            CircleIcon(
+                systemName: filterSystemImage(viewModel.profileGridFilter),
+                fill: theme.surface,
+                symbol: filterSymbolColor(viewModel.profileGridFilter),
+                weight: .semibold,
+                hairline: theme.cardHairline
+            )
+
+            Text(viewModel.profileGridFilter.title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(theme.ink)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, Layout.horizontalPadding)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel(viewModel.profileGridFilter.title)
+    }
+
+    private func pinnedSection(pageWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: Layout.sectionContentGap) {
+            subsetSectionTitle("Pinned", hint: "Shows all pinned posts") {
+                PinsView(
+                    viewModel: viewModel,
+                    onDelete: deleteCard,
+                    onToggleFavorite: toggleFavorite,
+                    onTogglePin: togglePinned,
+                    onSetPublic: setPublic
+                )
+            }
+
+            ProfileCardStrip(
+                cards: viewModel.stripPinnedCards,
+                pageWidth: pageWidth,
+                presentation: .pinned,
+                cardRowHeight: cardRowHeight,
+                scrollID: $pinnedCardID,
+                onDelete: deleteCard,
+                onToggleFavorite: toggleFavorite,
+                onTogglePin: togglePinned,
+                onSetPublic: setPublic
+            )
+        }
+    }
+
+    private func favoriteAnglesSection(pageWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: Layout.sectionContentGap) {
+            subsetSectionTitle("Favorite angles", hint: "Shows all favorite angles") {
                 FavoritesView(
                     viewModel: viewModel,
                     onDelete: deleteCard,
-                    onToggleFavorite: toggleFavorite
+                    onToggleFavorite: toggleFavorite,
+                    onTogglePin: togglePinned,
+                    onSetPublic: setPublic
                 )
-            } label: {
-                HStack(spacing: 6) {
-                    Text("Favorites")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(theme.ink)
-
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(theme.muted)
-
-                    Spacer(minLength: 0)
-                }
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, Layout.horizontalPadding)
-            .accessibilityHint("Shows all favorite cards")
 
-            ScrollView(.horizontal) {
-                HStack(spacing: Layout.gridSpacing) {
-                    ForEach(viewModel.stripFavoriteCards) { card in
-                        ReframeCardView(
-                            card: card,
-                            onDelete: { deleteCard(card) },
-                            onToggleFavorite: { toggleFavorite(card) }
-                        )
-                        .frame(width: min(pageWidth * 0.78, 300))
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: .leading).combined(with: .opacity),
-                                removal: .opacity.combined(with: .scale(scale: 0.96))
-                            )
-                        )
-                    }
-                }
-                .padding(.leading, Layout.horizontalPadding)
-                .padding(.trailing, Layout.horizontalPadding)
-                .scrollTargetLayout()
-            }
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.viewAligned)
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .frame(height: favoriteRowHeight)
+            ProfileCardStrip(
+                cards: viewModel.stripFavoriteCards,
+                pageWidth: pageWidth,
+                presentation: .favoriteAngles,
+                cardRowHeight: cardRowHeight,
+                scrollID: $favoriteCardID,
+                onDelete: deleteCard,
+                onToggleFavorite: toggleFavorite,
+                onTogglePin: togglePinned,
+                onSetPublic: setPublic
+            )
         }
+    }
+
+    private func subsetSectionTitle<Destination: View>(
+        _ title: String,
+        hint: String,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(theme.muted)
+
+                Spacer(minLength: 0)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Layout.horizontalPadding)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityHint(hint)
     }
 
     private var headerFade: some View {
@@ -531,10 +558,20 @@ struct ProfileView: View {
             : .spring(response: 0.42, dampingFraction: 0.86)
     }
 
-    private func toggleFavorite(_ card: HomeCard) {
+    private func toggleFavorite(_ card: HomeCard, _ style: Style) {
         withAnimation(favoriteLayoutAnimation) {
-            viewModel.toggleFavorite(card.id)
+            viewModel.toggleFavorite(card.id, style: style)
         }
+    }
+
+    private func togglePinned(_ card: HomeCard) {
+        withAnimation(favoriteLayoutAnimation) {
+            viewModel.togglePinned(card.id)
+        }
+    }
+
+    private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
+        viewModel.setPublic(card.id, isPublic: isPublic)
     }
 }
 
@@ -574,5 +611,88 @@ private struct ProfileScrollDistance: ViewModifier {
         withTransaction(transaction) {
             distance = newValue
         }
+    }
+}
+
+private struct ProfileCardStrip: View {
+    let cards: [HomeCard]
+    let pageWidth: CGFloat
+    let presentation: ReframeCardPresentation
+    let cardRowHeight: CGFloat
+    @Binding var scrollID: UUID?
+    var onDelete: (HomeCard) -> Void
+    var onToggleFavorite: (HomeCard, Style) -> Void
+    var onTogglePin: (HomeCard) -> Void
+    var onSetPublic: (HomeCard, Bool) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    private var cardWidth: CGFloat {
+        min(pageWidth * 0.78, 300)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 12) {
+                    ForEach(cards) { card in
+                        ReframeCardView(
+                            card: card,
+                            presentation: presentation,
+                            onDelete: { onDelete(card) },
+                            onToggleFavorite: { style in onToggleFavorite(card, style) },
+                            onTogglePin: { onTogglePin(card) },
+                            onSetPublic: { isPublic in onSetPublic(card, isPublic) }
+                        )
+                        .frame(width: cardWidth)
+                        .id(card.id)
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .leading).combined(with: .opacity),
+                                removal: .opacity.combined(with: .scale(scale: 0.96))
+                            )
+                        )
+                    }
+                }
+                .padding(.horizontal, 16)
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $scrollID)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .frame(height: cardRowHeight)
+            .onAppear {
+                if scrollID == nil {
+                    scrollID = cards.first?.id
+                }
+            }
+            .onChange(of: cards.map(\.id)) { _, ids in
+                if let scrollID, ids.contains(scrollID) {
+                    return
+                }
+                scrollID = ids.first
+            }
+
+            if cards.count > 1 {
+                stripPageDots
+            }
+        }
+    }
+
+    private var stripPageDots: some View {
+        let activeID = scrollID ?? cards.first?.id
+        return HStack(spacing: 5) {
+            ForEach(cards) { card in
+                let isActive = card.id == activeID
+                Capsule()
+                    .fill(isActive ? theme.ink : theme.faint)
+                    .frame(width: isActive ? 18 : 6, height: 6)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityHidden(true)
     }
 }

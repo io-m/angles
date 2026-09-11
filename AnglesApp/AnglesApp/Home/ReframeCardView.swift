@@ -1,36 +1,66 @@
 import SwiftUI
 
+enum ReframeCardPresentation: String, Equatable {
+    case library
+    case pinned
+    case favoriteAngles
+}
+
+enum ReframeCardMetrics {
+    /// Two-column cell on iPhone 14 Pro Max (~193pt) plus chrome (pill, date, heart/pin/menu, initials)
+    /// fits max thought (140) and max reframe (190) at the thought type below, with min-scale for Dynamic Type.
+    static let baseHeight: CGFloat = 260
+    /// Slightly smaller and heavier than `.title3.regular` (20pt); still larger than the answer (`.callout.medium`).
+    static let thoughtSize: CGFloat = 18
+    static let chromeInset: CGFloat = 16
+    static let controlSize: CGFloat = 32
+
+    static var contentBottomPad: CGFloat { chromeInset + controlSize }
+}
+
 struct ReframeCardView: View {
     let card: HomeCard
+    var presentation: ReframeCardPresentation = .library
     var openingStyle: Style? = nil
     var onDelete: () -> Void = {}
-    var onToggleFavorite: () -> Void = {}
+    var onToggleFavorite: (Style) -> Void = { _ in }
+    var onTogglePin: () -> Void = {}
+    var onSetPublic: (Bool) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 248
+    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = ReframeCardMetrics.baseHeight
+    @ScaledMetric(relativeTo: .title3) private var thoughtSize: CGFloat = ReframeCardMetrics.thoughtSize
     @State private var isFlipped = false
     @State private var showingOriginal = false
     @State private var pagedSlideID: UUID?
     @State private var flipHaptic = 0
     @State private var favoriteHaptic = 0
-    @State private var deleteHaptic = 0
-    @State private var showDelete = false
+    @State private var pinHaptic = 0
+    @State private var showDeleteConfirm = false
+    @State private var didSetInitialFace = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var cardShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
     }
 
-    private let dotsHeight: CGFloat = 18
-
     private var showingThought: Bool {
         isFlipped
     }
 
+    private var visibleSlides: [HomeCardSlide] {
+        switch presentation {
+        case .library, .pinned:
+            return card.slides
+        case .favoriteAngles:
+            return card.slides.filter(\.isFavorite)
+        }
+    }
+
     private var activeSlideIndex: Int {
         guard let pagedSlideID,
-              let index = card.slides.firstIndex(where: { $0.id == pagedSlideID })
+              let index = visibleSlides.firstIndex(where: { $0.id == pagedSlideID })
         else {
             return 0
         }
@@ -39,27 +69,38 @@ struct ReframeCardView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            clippedCard
+        clippedCard
+            .onAppear(perform: syncPresentation)
+            .onChange(of: openingStyle) { _, _ in
+                syncPager()
+            }
+            .onChange(of: presentation) { _, _ in
+                didSetInitialFace = false
+                syncPresentation()
+            }
+            .onChange(of: visibleSlideIDs) { _, ids in
+                if let pagedSlideID, ids.contains(pagedSlideID) {
+                    return
+                }
+                self.pagedSlideID = ids.first
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
+            .sensoryFeedback(.impact(weight: .light), trigger: favoriteHaptic)
+            .sensoryFeedback(.impact(weight: .light), trigger: pinHaptic)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(showingThought ? "Shows the answers" : "Shows the original thought")
+            .accessibilityAction(named: showingThought ? "Show answers" : "Show original thought") {
+                flip()
+            }
+            .confirmationDialog("Delete this card?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+                Button("Delete", role: .destructive, action: onDelete)
+                Button("Cancel", role: .cancel) {}
+            }
+    }
 
-            pageDots
-                .frame(height: dotsHeight)
-                .opacity(!showingThought && card.slides.count > 1 ? 1 : 0)
-                .accessibilityHidden(true)
-        }
-        .onAppear {
-            pagedSlideID = card.openingSlideID(preferring: openingStyle)
-        }
-        .onChange(of: openingStyle) { _, style in
-            pagedSlideID = card.openingSlideID(preferring: style)
-        }
-        .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
-        .sensoryFeedback(.impact(weight: .light), trigger: favoriteHaptic)
-        .sensoryFeedback(.impact(weight: .medium), trigger: deleteHaptic)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(showingThought ? "Shows the answers" : "Shows the original thought")
-        .accessibilityAddTraits(.isButton)
+    private var visibleSlideIDs: [UUID] {
+        visibleSlides.map(\.id)
     }
 
     private var accessibilityLabel: String {
@@ -67,7 +108,10 @@ struct ReframeCardView: View {
             return card.thought
         }
 
-        if let slide = card.slides[safe: activeSlideIndex] {
+        if let slide = visibleSlides[safe: activeSlideIndex] {
+            if visibleSlides.count > 1 {
+                return "\(slide.result.style.displayName) answer, \(activeSlideIndex + 1) of \(visibleSlides.count). \(slide.result.reframe)"
+            }
             return "\(slide.result.style.displayName) answer. \(slide.result.reframe)"
         }
 
@@ -75,66 +119,54 @@ struct ReframeCardView: View {
     }
 
     private var clippedCard: some View {
-        ZStack {
-            FlipStack(progress: isFlipped ? 1 : 0) {
-                answerPager
-            } back: {
-                thoughtFace
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-
-            chromeOverlay
+        FlipStack(progress: isFlipped ? 1 : 0) {
+            answerPager
+        } back: {
+            thoughtFace
         }
         .frame(maxWidth: .infinity)
         .frame(height: cardHeight)
+        .clipped()
         .clipShape(cardShape)
         .overlay {
             cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-        .contentShape(cardShape)
-        .onTapGesture(perform: flip)
-        .onLongPressGesture(minimumDuration: 0.45) {
-            deleteHaptic += 1
-            showDelete = true
+        .overlay(alignment: .topTrailing) {
+            ownerMenu
+                .padding(ReframeCardMetrics.chromeInset)
         }
-        .popover(isPresented: $showDelete) {
-            Button(role: .destructive) {
-                showDelete = false
-                onDelete()
-            } label: {
-                Text("Delete")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            bottomChrome
+        }
+        .overlay(alignment: .bottom) {
+            if !showingThought && visibleSlides.count > 1 {
+                inCardPageDots
+                    .padding(.bottom, 8)
+                    .allowsHitTesting(false)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .frame(minWidth: 140)
-            .presentationCompactAdaptation(.popover)
         }
     }
 
     private var thoughtFace: some View {
         VStack(alignment: .leading, spacing: 12) {
-            InitialsAvatar(side: 32, fill: theme.ink, symbol: theme.paper)
+            InitialsAvatar(side: ReframeCardMetrics.controlSize, fill: theme.ink, symbol: theme.paper)
 
             Text(showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought)
-                .font(.title3.weight(.regular))
+                .font(.system(size: thoughtSize, weight: .medium))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 36)
+        .padding(.horizontal, ReframeCardMetrics.chromeInset)
+        .padding(.top, ReframeCardMetrics.chromeInset)
+        .padding(.bottom, ReframeCardMetrics.contentBottomPad)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.surface)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: flip)
     }
 
     private var hasOriginal: Bool {
@@ -147,10 +179,10 @@ struct ReframeCardView: View {
 
     private var answerPager: some View {
         Group {
-            if card.slides.count > 1 {
+            if visibleSlides.count > 1 {
                 ScrollView(.horizontal) {
                     HStack(spacing: 0) {
-                        ForEach(card.slides) { slide in
+                        ForEach(visibleSlides) { slide in
                             answerPage(slide.result)
                                 .containerRelativeFrame(.horizontal)
                                 .id(slide.id)
@@ -162,7 +194,7 @@ struct ReframeCardView: View {
                 .scrollTargetBehavior(.paging)
                 .scrollPosition(id: $pagedSlideID)
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            } else if let slide = card.slides.first {
+            } else if let slide = visibleSlides.first {
                 answerPage(slide.result)
             }
         }
@@ -170,11 +202,46 @@ struct ReframeCardView: View {
         .clipped()
     }
 
+    private var bottomChrome: some View {
+        HStack(alignment: .center, spacing: 0) {
+            Text(HomeViewModel.dateLabel(for: card.createdAt))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(theme.muted)
+                .lineLimit(1)
+                .frame(height: ReframeCardMetrics.controlSize, alignment: .leading)
+                .onTapGesture(perform: flip)
+
+            Spacer(minLength: 0)
+                .allowsHitTesting(false)
+
+            if showingThought {
+                pinButton
+            } else if let style = visibleSlides[safe: activeSlideIndex]?.result.style {
+                favoriteButton(for: style)
+            }
+        }
+        .padding(ReframeCardMetrics.chromeInset)
+    }
+
+    private var inCardPageDots: some View {
+        let indices = ReframePageDots.visibleIndices(count: visibleSlides.count)
+        return HStack(spacing: 3) {
+            ForEach(indices, id: \.self) { index in
+                let isActive = index == activeSlideIndex
+                Capsule()
+                    .fill(isActive ? theme.ink : theme.faint)
+                    .frame(width: isActive ? 10 : 4, height: 4)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
     private func answerPage(_ result: ReframeResult) -> some View {
         let appearance = CardStyleAppearance(style: result.style)
 
         return VStack(alignment: .leading, spacing: 12) {
             stylePill(appearance)
+                .onTapGesture(perform: flip)
 
             Text(result.reframe)
                 .font(.callout.weight(.medium))
@@ -182,79 +249,111 @@ struct ReframeCardView: View {
                 .multilineTextAlignment(.leading)
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .onTapGesture(perform: flip)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 36)
+        .padding(.horizontal, ReframeCardMetrics.chromeInset)
+        .padding(.top, ReframeCardMetrics.chromeInset)
+        .padding(.bottom, ReframeCardMetrics.contentBottomPad)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             appearance.washFill(over: theme.surface)
         }
     }
 
-    private var chromeOverlay: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer(minLength: 0)
-                    .allowsHitTesting(false)
-                favoriteButton
-            }
-
-            Spacer(minLength: 0)
-                .allowsHitTesting(false)
-
-            HStack {
-                Text(HomeViewModel.dateLabel(for: card.createdAt))
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
-
-                Spacer(minLength: 0)
-                    .allowsHitTesting(false)
-
-                if showingThought && hasOriginal {
-                    OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
-                        showingOriginal.toggle()
+    private var ownerMenu: some View {
+        Menu {
+            if hasOriginal {
+                Button {
+                    showingOriginal.toggle()
+                    if !showingThought {
+                        flip()
                     }
+                } label: {
+                    Label(
+                        showingOriginal ? "Show English" : "Show original",
+                        systemImage: showingOriginal ? "character.bubble.fill" : "character.bubble"
+                    )
                 }
             }
-        }
-        .padding(12)
-    }
 
-    private var favoriteButton: some View {
-        Button {
-            favoriteHaptic += 1
-            onToggleFavorite()
+            Button {
+                onSetPublic(!card.isPublic)
+            } label: {
+                Label(
+                    card.isPublic ? "Make private" : "Make public",
+                    systemImage: card.isPublic ? "lock.fill" : "globe"
+                )
+            }
+
+            Button("Delete", systemImage: "trash", role: .destructive) {
+                showDeleteConfirm = true
+            }
         } label: {
-            Image(systemName: card.isFavorite ? "heart.fill" : "heart")
+            Image(systemName: "ellipsis")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(card.isFavorite ? theme.ink : theme.muted)
-                .frame(width: 32, height: 32)
+                .foregroundStyle(theme.muted)
+                .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(card.isFavorite ? "Remove from favorites" : "Add to favorites")
-        .accessibilityAddTraits(card.isFavorite ? .isSelected : [])
+        .accessibilityLabel("Card actions")
     }
 
-    private var pageDots: some View {
-        let indices = visibleDotIndices
-        return HStack(spacing: 5) {
-            ForEach(indices, id: \.self) { index in
-                let isActive = index == activeSlideIndex
-                Capsule()
-                    .fill(isActive ? theme.ink : theme.faint)
-                    .frame(width: isActive ? 18 : 6, height: 6)
-            }
+    private func favoriteButton(for style: Style) -> some View {
+        let isFavorite = card.isStyleFavorited(style)
+        return Button {
+            favoriteHaptic += 1
+            onToggleFavorite(style)
+        } label: {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isFavorite ? theme.ink : theme.muted)
+                .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
+                .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: 6)
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            isFavorite ? "Remove from favorite angles" : "Add to favorite angles"
+        )
+        .accessibilityAddTraits(isFavorite ? .isSelected : [])
     }
 
-    private var visibleDotIndices: [Int] {
-        ReframePageDots.visibleIndices(count: card.slides.count)
+    private var pinButton: some View {
+        Button {
+            pinHaptic += 1
+            onTogglePin()
+        } label: {
+            Image(systemName: card.isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(card.isPinned ? theme.ink : theme.muted)
+                .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(card.isPinned ? "Unpin this post" : "Pin this post")
+        .accessibilityAddTraits(card.isPinned ? .isSelected : [])
+    }
+
+    private func syncPresentation() {
+        if !didSetInitialFace {
+            isFlipped = presentation == .pinned
+            didSetInitialFace = true
+        }
+        syncPager()
+    }
+
+    private func syncPager() {
+        switch presentation {
+        case .favoriteAngles:
+            if let preferred = card.latestFavoriteStyle,
+               let match = visibleSlides.first(where: { $0.result.style == preferred }) {
+                pagedSlideID = match.id
+            } else {
+                pagedSlideID = visibleSlides.first?.id
+            }
+        case .library, .pinned:
+            pagedSlideID = card.openingSlideID(preferring: openingStyle)
+        }
     }
 
     private func flip() {
@@ -284,7 +383,8 @@ struct OverlayProposalCard: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 248
+    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = ReframeCardMetrics.baseHeight
+    @ScaledMetric(relativeTo: .title3) private var thoughtSize: CGFloat = ReframeCardMetrics.thoughtSize
     @State private var isFlipped = false
     @State private var showingOriginal = false
     @State private var pagedStyle: Style?
@@ -324,7 +424,7 @@ struct OverlayProposalCard: View {
                     OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
                         showingOriginal.toggle()
                     }
-                    .padding(12)
+                    .padding(ReframeCardMetrics.chromeInset)
                     .zIndex(2)
                 }
             }
@@ -379,18 +479,18 @@ struct OverlayProposalCard: View {
 
     private var thoughtFace: some View {
         VStack(alignment: .leading, spacing: 12) {
-            InitialsAvatar(side: 32, fill: theme.ink, symbol: theme.paper)
+            InitialsAvatar(side: ReframeCardMetrics.controlSize, fill: theme.ink, symbol: theme.paper)
 
             Text(showingOriginal ? (thoughtOriginal ?? thought) : thought)
-                .font(.title3.weight(.regular))
+                .font(.system(size: thoughtSize, weight: .medium))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.leading)
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 36)
+        .padding(.horizontal, ReframeCardMetrics.chromeInset)
+        .padding(.top, ReframeCardMetrics.chromeInset)
+        .padding(.bottom, ReframeCardMetrics.contentBottomPad)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.surface)
         .contentShape(Rectangle())
@@ -421,6 +521,7 @@ struct OverlayProposalCard: View {
         return ZStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
                 stylePill(appearance)
+                    .onTapGesture(perform: flip)
 
                 Text(result.reframe)
                     .font(.callout.weight(.medium))
@@ -428,16 +529,15 @@ struct OverlayProposalCard: View {
                     .multilineTextAlignment(.leading)
                     .minimumScaleFactor(0.72)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .onTapGesture(perform: flip)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 40)
+            .padding(.horizontal, ReframeCardMetrics.chromeInset)
+            .padding(.top, ReframeCardMetrics.chromeInset)
+            .padding(.bottom, ReframeCardMetrics.contentBottomPad)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: flip)
 
             recookButton(for: result.style, ink: appearance.ink)
-                .padding(.bottom, 12)
+                .padding(.bottom, ReframeCardMetrics.chromeInset)
                 .zIndex(1)
         }
         .background {
@@ -522,7 +622,7 @@ private struct OriginalToggle: View {
             Image(systemName: showingOriginal ? "character.bubble.fill" : "character.bubble")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(ink)
-                .frame(width: 32, height: 32)
+                .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
                 .background(ink.opacity(0.10), in: Circle())
                 .contentShape(Circle())
         }

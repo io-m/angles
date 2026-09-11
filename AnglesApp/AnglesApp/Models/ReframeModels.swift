@@ -193,6 +193,28 @@ struct ReframeResult: Codable, Equatable, Sendable {
     let reframe: String
 }
 
+struct StoredReframeResult: Decodable, Equatable, Sendable {
+    let style: Style
+    let reframe: String
+    let isFavorite: Bool
+    let favoritedAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case style
+        case reframe
+        case isFavorite
+        case favoritedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        style = try container.decode(Style.self, forKey: .style)
+        reframe = try container.decode(String.self, forKey: .reframe)
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        favoritedAt = try container.decodeIfPresent(String.self, forKey: .favoritedAt)
+    }
+}
+
 enum ReframeResponse: Decodable, Equatable, Sendable {
     /// Not ready to cook: the composer stays up and the user can answer or say more.
     case continueTurn(message: String, options: [String], safety: SafetyFlag)
@@ -257,11 +279,12 @@ struct StoredCard: Decodable, Equatable, Sendable {
     let safety: SafetyFlag
     let skippedStyles: [SkippedStyle]
     let matching: MatchingKey
-    let results: [ReframeResult]
+    let results: [StoredReframeResult]
     let model: String
     let spotlightStyle: Style
-    let isFavorite: Bool
-    let favoritedAt: String?
+    let isPinned: Bool
+    let pinnedAt: String?
+    let isPublic: Bool
     let createdAt: String
 
     private enum CodingKeys: String, CodingKey {
@@ -283,8 +306,9 @@ struct StoredCard: Decodable, Equatable, Sendable {
         case results
         case model
         case spotlightStyle
-        case isFavorite
-        case favoritedAt
+        case isPinned
+        case pinnedAt
+        case isPublic
         case createdAt
     }
 
@@ -324,7 +348,7 @@ struct StoredCard: Decodable, Equatable, Sendable {
         skippedStyles = (
             try container.decodeIfPresent([Failable<SkippedStyle>].self, forKey: .skippedStyles) ?? []
         ).compactMap(\.value)
-        results = (try container.decodeIfPresent([Failable<ReframeResult>].self, forKey: .results) ?? [])
+        results = (try container.decodeIfPresent([Failable<StoredReframeResult>].self, forKey: .results) ?? [])
             .compactMap(\.value)
         guard !results.isEmpty else {
             throw DecodingError.dataCorruptedError(
@@ -335,8 +359,9 @@ struct StoredCard: Decodable, Equatable, Sendable {
         }
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
         spotlightStyle = try container.decode(Style.self, forKey: .spotlightStyle)
-        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
-        favoritedAt = try container.decodeIfPresent(String.self, forKey: .favoritedAt)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        pinnedAt = try container.decodeIfPresent(String.self, forKey: .pinnedAt)
+        isPublic = try container.decodeIfPresent(Bool.self, forKey: .isPublic) ?? false
         createdAt = try container.decode(String.self, forKey: .createdAt)
         matching = try container.decodeIfPresent(MatchingKey.self, forKey: .matching)
             ?? MatchingKey(
@@ -376,7 +401,25 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
 }
 
 struct PatchCardRequest: Encodable, Equatable, Sendable {
-    let isFavorite: Bool
+    var isFavorite: Bool?
+    var style: Style?
+    var isPinned: Bool?
+    var isPublic: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case isFavorite
+        case style
+        case isPinned
+        case isPublic
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(isFavorite, forKey: .isFavorite)
+        try container.encodeIfPresent(style, forKey: .style)
+        try container.encodeIfPresent(isPinned, forKey: .isPinned)
+        try container.encodeIfPresent(isPublic, forKey: .isPublic)
+    }
 }
 
 struct CardListResponse: Decodable, Equatable, Sendable {

@@ -32,6 +32,7 @@
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
 		C7C3DDB068AD323DEEAB4E6C /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D61A48E316801DBEEA30F09A /* FavoritesView.swift */; };
 		C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564F37666F47FDFD54D03D2D /* HomeView.swift */; };
+		CCB8C34FC1CA2412594F919B /* ProfileSubsetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 264105CAC2B9A307A6D73E70 /* ProfileSubsetView.swift */; };
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
 		EBDA2E1E27376A11583D19E9 /* AccentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */; };
 		F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551EA9251B494B0E82C36D47 /* ColorTokens.swift */; };
@@ -39,6 +40,7 @@
 
 /* Begin PBXFileReference section */
 		03485114E1C729FE4BB7383D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		264105CAC2B9A307A6D73E70 /* ProfileSubsetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSubsetView.swift; sourceTree = "<group>"; };
 		277F500C2565CC7DF5621C5A /* Angles.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Angles.icon; sourceTree = "<group>"; };
 		338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
 		3726E6089528365BA6EC3BA8 /* AnglesApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnglesApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -155,6 +157,7 @@
 				CECAAC54ED5DE586764B6970 /* HomePalette.swift */,
 				564F37666F47FDFD54D03D2D /* HomeView.swift */,
 				4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */,
+				264105CAC2B9A307A6D73E70 /* ProfileSubsetView.swift */,
 				A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */,
 				B05847EC66A8A1B53179B539 /* ReframeCardView.swift */,
 			);
@@ -269,6 +272,7 @@
 				830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */,
 				01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
+				CCB8C34FC1CA2412594F919B /* ProfileSubsetView.swift in Sources */,
 				01A8AEC059C1A4D61340EAB5 /* ProfileView.swift in Sources */,
 				327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */,
 				3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */,

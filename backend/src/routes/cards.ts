@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
-import { createCard, deleteCard, getCard, listCards, setFavorite } from "../db/cards.js";
+import { createCard, deleteCard, getCard, listCards, patchCard } from "../db/cards.js";
 import { authStub } from "../lib/authStub.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { LLM_MODEL_IDS } from "../lib/llmClient.js";
@@ -83,15 +83,31 @@ const listQuerySchema = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((value) => (value === undefined ? undefined : value === "true")),
+  pinned: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value === "true")),
 });
 
 const idParamSchema = z.object({
   id: z.uuid(),
 });
 
-const patchCardSchema = z.object({
-  isFavorite: z.boolean(),
-});
+const patchCardSchema = z
+  .object({
+    isFavorite: z.boolean().optional(),
+    style: z.enum(STYLES).optional(),
+    isPinned: z.boolean().optional(),
+    isPublic: z.boolean().optional(),
+  })
+  .refine(
+    (body) =>
+      body.isFavorite !== undefined || body.isPinned !== undefined || body.isPublic !== undefined,
+    { message: "patch must set isFavorite, isPinned, or isPublic" },
+  )
+  .refine((body) => body.isFavorite === undefined || body.style !== undefined, {
+    message: "style is required when setting isFavorite",
+  });
 
 export const cardsRoute = new Hono();
 
@@ -126,6 +142,7 @@ cardsRoute.get(
       category: query.category,
       style: query.style,
       favorite: query.favorite,
+      pinned: query.pinned,
     });
     return c.json({ cards: cardList });
   },
@@ -164,12 +181,15 @@ cardsRoute.patch(
   }),
   async (c) => {
     const { id } = c.req.valid("param");
-    const { isFavorite } = c.req.valid("json");
-    const card = await setFavorite(id, isFavorite);
-    if (!card) {
-      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+    const patch = c.req.valid("json");
+    const result = await patchCard(id, patch);
+    if (!result.ok) {
+      if (result.reason === "not_found") {
+        return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+      }
+      return c.json(errorBody("style must be one of the card results", "VALIDATION_ERROR"), 400);
     }
-    return c.json(card);
+    return c.json(result.card);
   },
 );
 

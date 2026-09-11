@@ -42,7 +42,7 @@ if (testUrl) {
 }
 
 const { closePool, getSql } = await import("./client.js");
-const { createCard, deleteCard, getCard, listCards } = await import("./cards.js");
+const { createCard, deleteCard, getCard, listCards, patchCard } = await import("./cards.js");
 const { cardReframes, cards, tags } = await import("./schema.js");
 
 const baseInput: CreateCardInput = {
@@ -90,6 +90,9 @@ describe.skipIf(!testUrl)("cards integration", () => {
       intensityBand: "high",
     });
     expect(stored.thoughtOriginal).toBeUndefined();
+    expect(stored.isPinned).toBe(false);
+    expect(stored.isPublic).toBe(false);
+    expect(stored.results.every((item) => item.isFavorite === false)).toBe(true);
 
     const listed = await listCards({ limit: 50 });
     expect(listed).toHaveLength(1);
@@ -185,5 +188,43 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
     const optimistic = await listCards({ limit: 50, style: "optimistic" });
     expect(optimistic).toHaveLength(2);
+  });
+
+  it("patches per-style favorite, pin, and public independently", async () => {
+    const stored = await createCard(baseInput);
+    const liked = await patchCard(stored.id, { isFavorite: true, style: "stoic" });
+    expect(liked.ok).toBe(true);
+    if (!liked.ok) {
+      return;
+    }
+    expect(liked.card.results.find((item) => item.style === "stoic")?.isFavorite).toBe(true);
+    expect(liked.card.results.find((item) => item.style === "optimistic")?.isFavorite).toBe(false);
+
+    const pinned = await patchCard(stored.id, { isPinned: true, isPublic: true });
+    expect(pinned.ok).toBe(true);
+    if (!pinned.ok) {
+      return;
+    }
+    expect(pinned.card.isPinned).toBe(true);
+    expect(pinned.card.isPublic).toBe(true);
+    expect(pinned.card.results.find((item) => item.style === "stoic")?.isFavorite).toBe(true);
+
+    const favorites = await listCards({ limit: 50, favorite: true });
+    expect(favorites.map((card) => card.id)).toEqual([stored.id]);
+
+    const pins = await listCards({ limit: 50, pinned: true });
+    expect(pins.map((card) => card.id)).toEqual([stored.id]);
+
+    const slim = await createCard({
+      ...baseInput,
+      thought: "I keep waiting for the offer that is not coming.",
+      results: [
+        { style: "stoic", reframe: "A stoic take on waiting." },
+        { style: "optimistic", reframe: "An optimistic take on waiting." },
+      ],
+      spotlightStyle: "optimistic",
+    });
+    const missing = await patchCard(slim.id, { isFavorite: true, style: "humorous" });
+    expect(missing).toEqual({ ok: false, reason: "unknown_style" });
   });
 });

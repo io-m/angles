@@ -34,7 +34,7 @@ A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`).
 
 ## UI
 
-Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Profile style chips keep cards that have that style and open the carousel on it; All still uses mixed `spotlightStyle`.
+Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Profile style chips keep cards that have that style and open the carousel on it; All still uses mixed `spotlightStyle`. Pinned and Favorite angles strips stay unfiltered (max 6); titles open Pins and Favorite angles grids. Heart sits on each answer page (that style); pin is on the thought face only. Owner ⋯ replaces long-press Delete on own cards. Flip misses ⋯, heart, and pin.
 
 ## Device
 

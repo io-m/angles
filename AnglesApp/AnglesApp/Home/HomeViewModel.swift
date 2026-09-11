@@ -4,18 +4,21 @@ import Foundation
 struct HomeCardSlide: Identifiable, Equatable {
     let id: UUID
     let thought: String
-    let result: ReframeResult
+    var result: ReframeResult
+    var isFavorite: Bool
+    var favoritedAt: Date?
 }
 
 struct HomeCard: Identifiable, Equatable {
     let id: UUID
     let createdAt: Date
     var slides: [HomeCardSlide]
-    var isFavorite: Bool
     var spotlightStyle: Style
-    var favoritedAt: Date?
     /// Cleaned thought in the language it was typed in, when that is not English.
     var thoughtOriginal: String?
+    var isPinned: Bool
+    var pinnedAt: Date?
+    var isPublic: Bool
     /// In memory only until History (SwiftData) lands. Shape exists now for matching later.
     var meta: ReframeMeta?
 
@@ -23,19 +26,21 @@ struct HomeCard: Identifiable, Equatable {
         id: UUID = UUID(),
         createdAt: Date = Date(),
         slides: [HomeCardSlide],
-        isFavorite: Bool = false,
         spotlightStyle: Style = .stoic,
-        favoritedAt: Date? = nil,
         thoughtOriginal: String? = nil,
+        isPinned: Bool = false,
+        pinnedAt: Date? = nil,
+        isPublic: Bool = false,
         meta: ReframeMeta? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
         self.slides = slides
-        self.isFavorite = isFavorite
         self.spotlightStyle = spotlightStyle
-        self.favoritedAt = favoritedAt
         self.thoughtOriginal = thoughtOriginal
+        self.isPinned = isPinned
+        self.pinnedAt = pinnedAt
+        self.isPublic = isPublic
         self.meta = meta
     }
 
@@ -44,7 +49,13 @@ struct HomeCard: Identifiable, Equatable {
             return nil
         }
         let slides = stored.results.map { result in
-            HomeCardSlide(id: UUID(), thought: stored.thought, result: result)
+            HomeCardSlide(
+                id: UUID(),
+                thought: stored.thought,
+                result: ReframeResult(style: result.style, reframe: result.reframe),
+                isFavorite: result.isFavorite,
+                favoritedAt: result.favoritedAt.flatMap { ISO8601Dates.date(from: $0) }
+            )
         }
         guard !slides.isEmpty else {
             return nil
@@ -53,16 +64,33 @@ struct HomeCard: Identifiable, Equatable {
             id: id,
             createdAt: ISO8601Dates.date(from: stored.createdAt) ?? Date(),
             slides: slides,
-            isFavorite: stored.isFavorite,
             spotlightStyle: stored.spotlightStyle,
-            favoritedAt: stored.favoritedAt.flatMap { ISO8601Dates.date(from: $0) },
             thoughtOriginal: stored.thoughtOriginal,
+            isPinned: stored.isPinned,
+            pinnedAt: stored.pinnedAt.flatMap { ISO8601Dates.date(from: $0) },
+            isPublic: stored.isPublic,
             meta: stored.reframeMeta
         )
     }
 
     var thought: String {
         slides.first?.thought ?? ""
+    }
+
+    var hasFavoriteAngle: Bool {
+        slides.contains(where: \.isFavorite)
+    }
+
+    var latestFavoritedAt: Date? {
+        slides.compactMap(\.favoritedAt).max()
+    }
+
+    var latestFavoriteStyle: Style? {
+        slides
+            .filter(\.isFavorite)
+            .max { ($0.favoritedAt ?? .distantPast) < ($1.favoritedAt ?? .distantPast) }?
+            .result
+            .style
     }
 
     var spotlightSlideID: UUID? {
@@ -73,12 +101,32 @@ struct HomeCard: Identifiable, Equatable {
         slides.contains { $0.result.style == style }
     }
 
+    func isStyleFavorited(_ style: Style) -> Bool {
+        slides.first(where: { $0.result.style == style })?.isFavorite ?? false
+    }
+
     func openingSlideID(preferring style: Style?) -> UUID? {
         if let style {
             return slides.first(where: { $0.result.style == style })?.id ?? spotlightSlideID
         }
 
         return spotlightSlideID
+    }
+
+    mutating func apply(_ stored: StoredCard) {
+        isPinned = stored.isPinned
+        pinnedAt = stored.pinnedAt.flatMap { ISO8601Dates.date(from: $0) }
+        isPublic = stored.isPublic
+        thoughtOriginal = stored.thoughtOriginal
+        for index in slides.indices {
+            let style = slides[index].result.style
+            guard let match = stored.results.first(where: { $0.style == style }) else {
+                continue
+            }
+            slides[index].result = ReframeResult(style: match.style, reframe: match.reframe)
+            slides[index].isFavorite = match.isFavorite
+            slides[index].favoritedAt = match.favoritedAt.flatMap { ISO8601Dates.date(from: $0) }
+        }
     }
 }
 
@@ -188,7 +236,9 @@ final class HomeViewModel: ObservableObject {
     private var refineTask: Task<Void, Never>?
     private var saveTask: Task<Bool, Never>?
     private var libraryTask: Task<Void, Never>?
-    private var favoriteTasks: [UUID: Task<Void, Never>] = [:]
+    private var favoriteTasks: [String: Task<Void, Never>] = [:]
+    private var pinTasks: [UUID: Task<Void, Never>] = [:]
+    private var publicTasks: [UUID: Task<Void, Never>] = [:]
     private var deleteTasks: [UUID: Task<Void, Never>] = [:]
 
     private static let modelDefaultsKey = "angles.llmModel"
@@ -215,16 +265,26 @@ final class HomeViewModel: ObservableObject {
         isCooking || recookingStyle != nil
     }
 
-    static let favoriteStripLimit = 6
+    static let stripLimit = 6
 
-    var favoriteCards: [HomeCard] {
+    var favoriteAngleCards: [HomeCard] {
         cards
-            .filter(\.isFavorite)
-            .sorted { ($0.favoritedAt ?? .distantPast) > ($1.favoritedAt ?? .distantPast) }
+            .filter(\.hasFavoriteAngle)
+            .sorted { ($0.latestFavoritedAt ?? .distantPast) > ($1.latestFavoritedAt ?? .distantPast) }
+    }
+
+    var pinnedCards: [HomeCard] {
+        cards
+            .filter(\.isPinned)
+            .sorted { ($0.pinnedAt ?? .distantPast) > ($1.pinnedAt ?? .distantPast) }
+    }
+
+    var stripPinnedCards: [HomeCard] {
+        Array(pinnedCards.prefix(Self.stripLimit))
     }
 
     var stripFavoriteCards: [HomeCard] {
-        Array(favoriteCards.prefix(Self.favoriteStripLimit))
+        Array(favoriteAngleCards.prefix(Self.stripLimit))
     }
 
     var filteredProfileCards: [HomeCard] {
@@ -433,43 +493,119 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    func toggleFavorite(_ id: UUID) {
-        guard let index = cards.firstIndex(where: { $0.id == id }) else {
+    func toggleFavorite(_ id: UUID, style: Style) {
+        guard let index = cards.firstIndex(where: { $0.id == id }),
+              let slideIndex = cards[index].slides.firstIndex(where: { $0.result.style == style })
+        else {
             return
         }
 
-        let previousFavorite = cards[index].isFavorite
-        let previousFavoritedAt = cards[index].favoritedAt
+        let previousFavorite = cards[index].slides[slideIndex].isFavorite
+        let previousFavoritedAt = cards[index].slides[slideIndex].favoritedAt
         let nextFavorite = !previousFavorite
-        cards[index].isFavorite = nextFavorite
-        cards[index].favoritedAt = nextFavorite ? Date() : nil
+        cards[index].slides[slideIndex].isFavorite = nextFavorite
+        cards[index].slides[slideIndex].favoritedAt = nextFavorite ? Date() : nil
 
-        favoriteTasks[id]?.cancel()
-        favoriteTasks[id] = Task { @MainActor in
-            defer { favoriteTasks[id] = nil }
+        let key = Self.favoriteTaskKey(id: id, style: style)
+        favoriteTasks[key]?.cancel()
+        favoriteTasks[key] = Task { @MainActor in
+            defer { favoriteTasks[key] = nil }
             do {
-                let stored = try await cardsService.setFavorite(
+                let stored = try await cardsService.patch(
                     id: id.uuidString.lowercased(),
-                    isFavorite: nextFavorite
+                    PatchCardRequest(isFavorite: nextFavorite, style: style)
                 )
                 guard !Task.isCancelled else {
                     return
                 }
-                if let updated = HomeCard(stored: stored),
-                   let current = cards.firstIndex(where: { $0.id == id }) {
-                    cards[current].isFavorite = updated.isFavorite
-                    cards[current].favoritedAt = updated.favoritedAt
+                if let current = cards.firstIndex(where: { $0.id == id }) {
+                    cards[current].apply(stored)
+                }
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+                if let current = cards.firstIndex(where: { $0.id == id }),
+                   let currentSlide = cards[current].slides.firstIndex(where: { $0.result.style == style }) {
+                    cards[current].slides[currentSlide].isFavorite = previousFavorite
+                    cards[current].slides[currentSlide].favoritedAt = previousFavoritedAt
+                }
+            }
+        }
+    }
+
+    func togglePinned(_ id: UUID) {
+        guard let index = cards.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let previousPinned = cards[index].isPinned
+        let previousPinnedAt = cards[index].pinnedAt
+        let nextPinned = !previousPinned
+        cards[index].isPinned = nextPinned
+        cards[index].pinnedAt = nextPinned ? Date() : nil
+
+        pinTasks[id]?.cancel()
+        pinTasks[id] = Task { @MainActor in
+            defer { pinTasks[id] = nil }
+            do {
+                let stored = try await cardsService.patch(
+                    id: id.uuidString.lowercased(),
+                    PatchCardRequest(isPinned: nextPinned)
+                )
+                guard !Task.isCancelled else {
+                    return
+                }
+                if let current = cards.firstIndex(where: { $0.id == id }) {
+                    cards[current].apply(stored)
                 }
             } catch {
                 guard !Task.isCancelled else {
                     return
                 }
                 if let current = cards.firstIndex(where: { $0.id == id }) {
-                    cards[current].isFavorite = previousFavorite
-                    cards[current].favoritedAt = previousFavoritedAt
+                    cards[current].isPinned = previousPinned
+                    cards[current].pinnedAt = previousPinnedAt
                 }
             }
         }
+    }
+
+    func setPublic(_ id: UUID, isPublic: Bool) {
+        guard let index = cards.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let previous = cards[index].isPublic
+        cards[index].isPublic = isPublic
+
+        publicTasks[id]?.cancel()
+        publicTasks[id] = Task { @MainActor in
+            defer { publicTasks[id] = nil }
+            do {
+                let stored = try await cardsService.patch(
+                    id: id.uuidString.lowercased(),
+                    PatchCardRequest(isPublic: isPublic)
+                )
+                guard !Task.isCancelled else {
+                    return
+                }
+                if let current = cards.firstIndex(where: { $0.id == id }) {
+                    cards[current].apply(stored)
+                }
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+                if let current = cards.firstIndex(where: { $0.id == id }) {
+                    cards[current].isPublic = previous
+                }
+            }
+        }
+    }
+
+    private static func favoriteTaskKey(id: UUID, style: Style) -> String {
+        "\(id.uuidString)-\(style.rawValue)"
     }
 
     func recookStyle(_ style: Style) {

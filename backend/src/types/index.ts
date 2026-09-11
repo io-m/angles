@@ -115,6 +115,13 @@ export type StoredCardTag = {
   label: string;
 };
 
+export type StoredReframeResult = {
+  style: Style;
+  reframe: string;
+  isFavorite: boolean;
+  favoritedAt?: string;
+};
+
 export type StoredCard = {
   id: string;
   thought: string;
@@ -131,11 +138,12 @@ export type StoredCard = {
   safety: SafetyFlag;
   skippedStyles: SkippedStyle[];
   matching: MatchingKey;
-  results: ReframeResult[];
+  results: StoredReframeResult[];
   model: string;
   spotlightStyle: Style;
-  isFavorite: boolean;
-  favoritedAt?: string;
+  isPinned: boolean;
+  pinnedAt?: string;
+  isPublic: boolean;
   createdAt: string;
 };
 
@@ -154,7 +162,16 @@ export type CardListQuery = {
   category?: Category;
   /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
   style?: Style;
+  /** Cards that have at least one liked style. */
   favorite?: boolean;
+  pinned?: boolean;
+};
+
+export type PatchCardInput = {
+  isFavorite?: boolean;
+  style?: Style;
+  isPinned?: boolean;
+  isPublic?: boolean;
 };
 
 const STYLE_SET: ReadonlySet<string> = new Set(STYLES);

@@ -23,11 +23,8 @@ struct CardsService: Sendable {
         try await client.get(path: "cards/\(id)")
     }
 
-    func setFavorite(id: String, isFavorite: Bool) async throws -> StoredCard {
-        try await client.patch(
-            path: "cards/\(id)",
-            body: PatchCardRequest(isFavorite: isFavorite)
-        )
+    func patch(id: String, _ body: PatchCardRequest) async throws -> StoredCard {
+        try await client.patch(path: "cards/\(id)", body: body)
     }
 
     func delete(id: String) async throws {

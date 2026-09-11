@@ -56,13 +56,15 @@ export const cards = pgTable(
     skippedStyles: jsonb("skipped_styles").$type<SkippedStyle[]>().notNull(),
     model: text("model").notNull(),
     spotlightStyle: styleEnum("spotlight_style").notNull(),
-    isFavorite: boolean("is_favorite").notNull().default(false),
-    favoritedAt: timestamp("favorited_at", { withTimezone: true, mode: "date" }),
+    isPinned: boolean("is_pinned").notNull().default(false),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true, mode: "date" }),
+    isPublic: boolean("is_public").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
     index("cards_user_created_idx").on(table.userId, table.createdAt.desc()),
     index("cards_category_idx").on(table.category),
+    index("cards_user_pinned_idx").on(table.userId, table.pinnedAt.desc()),
     check("cards_intensity_range", sql`intensity between 1 and 5`),
   ],
 );
@@ -77,6 +79,8 @@ export const cardReframes = pgTable(
     style: styleEnum("style").notNull(),
     reframe: text("reframe").notNull(),
     position: integer("position").notNull(),
+    isFavorite: boolean("is_favorite").notNull().default(false),
+    favoritedAt: timestamp("favorited_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [uniqueIndex("card_reframes_card_style_idx").on(table.cardId, table.style)],
 );

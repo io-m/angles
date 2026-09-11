@@ -10,8 +10,8 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 - `src/app.ts` — middleware, route mount, `onError`
 - `src/index.ts` — Node `serve()`, schema check, pool shutdown
 - `src/routes/reframe.ts` — `POST /reframe`
-- `src/routes/cards.ts` — card CRUD
-- `src/db/schema.ts` / `src/db/cards.ts` — Drizzle schema and SQL seam
+- `src/routes/cards.ts` — card CRUD. `PATCH` sets per-style `isFavorite` (requires `style`), `isPinned`, and/or `isPublic`. `GET ?style=` means the card has that reframe; `?favorite=` means any liked style.
+- `src/db/schema.ts` / `src/db/cards.ts` — Drizzle schema and SQL seam. Favorites live on `card_reframes`; pin and `isPublic` live on `cards`.
 - `src/lib/decision.ts` — decision call, JSON parsing, one repair retry, metadata mapping
 - `src/lib/llmClient.ts` — `generateReframe({ text, systemPrompt })`, `generateJson({ ... })`
 - `src/lib/prompts.ts` — `DECISION_PROMPT`, `SYSTEM_PROMPTS`, length budgets

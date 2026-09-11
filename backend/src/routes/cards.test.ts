@@ -25,12 +25,12 @@ vi.mock("../db/cards.js", () => ({
   createCard: vi.fn(),
   listCards: vi.fn(),
   getCard: vi.fn(),
-  setFavorite: vi.fn(),
+  patchCard: vi.fn(),
   deleteCard: vi.fn(),
 }));
 
 const { createApp } = await import("../app.js");
-const { createCard, deleteCard, getCard, listCards, setFavorite } = await import("../db/cards.js");
+const { createCard, deleteCard, getCard, listCards, patchCard } = await import("../db/cards.js");
 
 const app = createApp();
 const CARD_ID = "11111111-1111-4111-8111-111111111111";
@@ -70,10 +70,11 @@ function storedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     safety: "none",
     skippedStyles: [],
     matching: { category: "work", tags: ["job_interview", "shame"], intensityBand: "high" },
-    results: cookBody.results,
+    results: cookBody.results.map((item) => ({ ...item, isFavorite: false })),
     model: cookBody.model,
     spotlightStyle: "stoic",
-    isFavorite: false,
+    isPinned: false,
+    isPublic: false,
     createdAt: "2026-09-10T12:00:00.000Z",
     ...overrides,
   };
@@ -160,6 +161,7 @@ describe("GET /cards", () => {
       category: undefined,
       style: undefined,
       favorite: undefined,
+      pinned: undefined,
     });
   });
 
@@ -167,7 +169,7 @@ describe("GET /cards", () => {
     vi.mocked(listCards).mockResolvedValue([]);
     const before = "2026-09-10T12:00:00.000Z";
     const response = await app.request(
-      `/cards?limit=10&before=${encodeURIComponent(before)}&category=work&style=stoic&favorite=true`,
+      `/cards?limit=10&before=${encodeURIComponent(before)}&category=work&style=stoic&favorite=true&pinned=true`,
     );
     expect(response.status).toBe(200);
     expect(listCards).toHaveBeenCalledWith({
@@ -176,6 +178,7 @@ describe("GET /cards", () => {
       category: "work",
       style: "stoic",
       favorite: true,
+      pinned: true,
     });
   });
 });
@@ -203,25 +206,77 @@ describe("GET /cards/:id", () => {
 
 describe("PATCH /cards/:id", () => {
   beforeEach(() => {
-    vi.mocked(setFavorite).mockReset();
+    vi.mocked(patchCard).mockReset();
   });
 
-  it("sets favorite", async () => {
-    const stored = storedCard({ isFavorite: true, favoritedAt: "2026-09-10T12:01:00.000Z" });
-    vi.mocked(setFavorite).mockResolvedValue(stored);
+  it("sets a per-style favorite", async () => {
+    const stored = storedCard({
+      results: storedCard().results.map((item) =>
+        item.style === "stoic"
+          ? { ...item, isFavorite: true, favoritedAt: "2026-09-10T12:01:00.000Z" }
+          : item,
+      ),
+    });
+    vi.mocked(patchCard).mockResolvedValue({ ok: true, card: stored });
 
     const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isFavorite: true }),
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isFavorite: true, style: "stoic" }),
     );
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual(stored);
-    expect(setFavorite).toHaveBeenCalledWith(CARD_ID, true);
+    expect(patchCard).toHaveBeenCalledWith(
+      CARD_ID,
+      expect.objectContaining({ isFavorite: true, style: "stoic" }),
+    );
+  });
+
+  it("sets pin and public independently", async () => {
+    const stored = storedCard({
+      isPinned: true,
+      pinnedAt: "2026-09-10T12:02:00.000Z",
+      isPublic: true,
+    });
+    vi.mocked(patchCard).mockResolvedValue({ ok: true, card: stored });
+
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPinned: true, isPublic: true }),
+    );
+    expect(response.status).toBe(200);
+    expect(patchCard).toHaveBeenCalledWith(
+      CARD_ID,
+      expect.objectContaining({ isPinned: true, isPublic: true }),
+    );
+  });
+
+  it("rejects favorite without a style", async () => {
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isFavorite: true }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(patchCard).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty patch", async () => {
+    const response = await app.request(jsonRequest(`/cards/${CARD_ID}`, "PATCH", {}));
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(patchCard).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when the style is not on the card", async () => {
+    vi.mocked(patchCard).mockResolvedValue({ ok: false, reason: "unknown_style" });
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isFavorite: true, style: "humorous" }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   it("returns 404 when missing", async () => {
-    vi.mocked(setFavorite).mockResolvedValue(null);
+    vi.mocked(patchCard).mockResolvedValue({ ok: false, reason: "not_found" });
     const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isFavorite: true }),
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPinned: true }),
     );
     expect(response.status).toBe(404);
     await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });
