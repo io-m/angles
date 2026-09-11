@@ -2,7 +2,6 @@ import SwiftUI
 
 enum ReframeCardPresentation: String, Equatable {
     case library
-    case pinned
     case favoriteAngles
 }
 
@@ -20,10 +19,14 @@ enum ReframeCardMetrics {
     static let thoughtSize: CGFloat = 18
     static let chromeInset: CGFloat = 16
     static let controlSize: CGFloat = 32
+    /// Four chips plus the heart have to share ~161pt of band on a two-column card.
+    static let chipSize: CGFloat = 28
+    static let chipSizeCompact: CGFloat = 24
+    static let chipSpacing: CGFloat = 2
 
     static var contentBottomPad: CGFloat { chromeInset + controlSize }
-    /// Top chrome band: style pill / initials on the leading side, ⋯ on the trailing side.
-    /// Nothing in this band flips, and the in-card pager never reaches into it.
+    /// Top chrome band: style chips / initials leading, heart trailing. Nothing in this
+    /// band flips the card.
     static var topBandHeight: CGFloat { chromeInset + controlSize }
 }
 
@@ -34,7 +37,6 @@ struct ReframeCardView: View, Equatable {
     var openingStyle: Style? = nil
     var onDelete: () -> Void = {}
     var onToggleFavorite: (Style) -> Void = { _ in }
-    var onTogglePin: () -> Void = {}
     var onSetPublic: (Bool) -> Void = { _ in }
     var onRemoveFromBoard: () -> Void = {}
 
@@ -44,12 +46,11 @@ struct ReframeCardView: View, Equatable {
     @ScaledMetric(relativeTo: .title3) private var thoughtSize: CGFloat = ReframeCardMetrics.thoughtSize
     @State private var isFlipped = false
     @State private var showingOriginal = false
-    @State private var pagedSlideID: UUID?
+    /// Explicit selection, not a value read back off a scroll offset.
+    @State private var selectedStyle: Style?
     @State private var flipHaptic = 0
     @State private var favoriteHaptic = 0
-    @State private var pinHaptic = 0
     @State private var showDeleteConfirm = false
-    @State private var didSetInitialFace = false
 
     static func == (lhs: ReframeCardView, rhs: ReframeCardView) -> Bool {
         lhs.card == rhs.card
@@ -69,42 +70,53 @@ struct ReframeCardView: View, Equatable {
 
     private var visibleSlides: [HomeCardSlide] {
         switch presentation {
-        case .library, .pinned:
+        case .library:
             return card.slides
         case .favoriteAngles:
             return card.slides.filter(\.isFavorite)
         }
     }
 
-    private var activeSlideIndex: Int {
-        guard let pagedSlideID,
-              let index = visibleSlides.firstIndex(where: { $0.id == pagedSlideID })
+    private var visibleStyles: [Style] {
+        visibleSlides.map(\.result.style)
+    }
+
+    private var activeSlide: HomeCardSlide? {
+        guard let selectedStyle,
+              let match = visibleSlides.first(where: { $0.result.style == selectedStyle })
         else {
-            return 0
+            return visibleSlides.first
         }
 
-        return index
+        return match
+    }
+
+    private var activeStyle: Style? {
+        activeSlide?.result.style
     }
 
     var body: some View {
-        clippedCard
-            .onAppear(perform: syncPresentation)
+        menuedCard
+            .onAppear {
+                if selectedStyle == nil {
+                    selectedStyle = preferredStyle()
+                }
+            }
             .onChange(of: openingStyle) { _, _ in
-                syncPager()
+                selectedStyle = preferredStyle()
             }
             .onChange(of: presentation) { _, _ in
-                didSetInitialFace = false
-                syncPresentation()
+                selectedStyle = preferredStyle()
             }
-            .onChange(of: visibleSlideIDs) { _, ids in
-                if let pagedSlideID, ids.contains(pagedSlideID) {
+            // A heart never moves the selection; only a style leaving the card does.
+            .onChange(of: visibleStyles) { _, styles in
+                guard let selectedStyle, styles.contains(selectedStyle) else {
+                    self.selectedStyle = preferredStyle()
                     return
                 }
-                self.pagedSlideID = ids.first
             }
             .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
             .sensoryFeedback(.impact(weight: .light), trigger: favoriteHaptic)
-            .sensoryFeedback(.impact(weight: .light), trigger: pinHaptic)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint(showingThought ? "Shows the answers" : "Shows the original thought")
@@ -117,8 +129,17 @@ struct ReframeCardView: View, Equatable {
             }
     }
 
-    private var visibleSlideIDs: [UUID] {
-        visibleSlides.map(\.id)
+    /// Long press replaces the ⋯ button: the top-trailing slot is the heart's now.
+    @ViewBuilder
+    private var menuedCard: some View {
+        if showsMenu {
+            clippedCard
+                .contextMenu {
+                    cardMenuItems
+                }
+        } else {
+            clippedCard
+        }
     }
 
     private var accessibilityLabel: String {
@@ -126,10 +147,7 @@ struct ReframeCardView: View, Equatable {
             return card.thought
         }
 
-        if let slide = visibleSlides[safe: activeSlideIndex] {
-            if visibleSlides.count > 1 {
-                return "\(slide.result.style.displayName) answer, \(activeSlideIndex + 1) of \(visibleSlides.count). \(slide.result.reframe)"
-            }
+        if let slide = activeSlide {
             return "\(slide.result.style.displayName) answer. \(slide.result.reframe)"
         }
 
@@ -151,21 +169,8 @@ struct ReframeCardView: View, Equatable {
                 .allowsHitTesting(false)
         }
         .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-        .overlay(alignment: .topTrailing) {
-            if showsMenu {
-                cardMenu
-                    .padding(ReframeCardMetrics.chromeInset)
-            }
-        }
         .overlay(alignment: .bottom) {
             bottomChrome
-        }
-        .overlay(alignment: .bottom) {
-            if !showingThought && visibleSlides.count > 1 {
-                inCardPageDots
-                    .padding(.bottom, 8)
-                    .allowsHitTesting(false)
-            }
         }
     }
 
@@ -177,6 +182,8 @@ struct ReframeCardView: View, Equatable {
                 fill: theme.ink,
                 symbol: theme.paper
             )
+        } trailing: {
+            EmptyView()
         } middle: {
             copyBand(
                 Text(showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought)
@@ -196,18 +203,24 @@ struct ReframeCardView: View, Equatable {
     }
 
     private var activeAppearance: CardStyleAppearance {
-        CardStyleAppearance(style: visibleSlides[safe: activeSlideIndex]?.result.style ?? card.spotlightStyle)
+        CardStyleAppearance(style: activeStyle ?? card.spotlightStyle)
     }
 
-    /// The wash and the pill sit outside the pager: a horizontal drag on the chrome bands
-    /// has to belong to the enclosing strip, so only the copy pages.
+    /// The copy no longer pages, so a horizontal drag anywhere on the card belongs to the
+    /// enclosing strip. Styles switch from the chips in the top band.
     private var answerFace: some View {
         let appearance = activeAppearance
 
         return cardFace {
-            stylePill(appearance)
+            styleSelector(appearance)
+        } trailing: {
+            if let style = activeStyle {
+                favoriteButton(for: style)
+            }
         } middle: {
-            answerPager
+            if let slide = activeSlide {
+                answerCopy(slide.result)
+            }
         }
         .background {
             appearance.washFill(over: theme.surface)
@@ -215,49 +228,38 @@ struct ReframeCardView: View, Equatable {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appearance.style)
     }
 
-    private var answerPager: some View {
-        Group {
-            if visibleSlides.count > 1 {
-                // The page width comes from the band, not from `containerRelativeFrame`:
-                // nested scroll views resolve that against the wrong container.
-                GeometryReader { proxy in
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 0) {
-                            ForEach(visibleSlides) { slide in
-                                answerCopy(slide.result)
-                                    .frame(width: proxy.size.width, height: proxy.size.height)
-                                    .id(slide.id)
-                            }
-                        }
-                        .scrollTargetLayout()
-                    }
-                    .scrollIndicators(.hidden)
-                    .scrollTargetBehavior(.paging)
-                    .scrollPosition(id: $pagedSlideID)
-                    .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-                }
-            } else if let slide = visibleSlides.first {
-                answerCopy(slide.result)
+    /// One chip per angle this card actually carries. A single-angle card keeps the named
+    /// pill: there is nothing to switch to.
+    @ViewBuilder
+    private func styleSelector(_ appearance: CardStyleAppearance) -> some View {
+        if visibleStyles.count > 1 {
+            StyleChipRow(styles: visibleStyles, selected: appearance.style, muted: theme.muted) { style in
+                selectedStyle = style
             }
+        } else {
+            stylePill(appearance)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Three bands: chrome, the flip/page target, chrome. The bottom band is empty space
-    /// the `bottomChrome` overlay draws into.
-    private func cardFace<Top: View, Middle: View>(
+    /// Three bands: chrome, the flip target, chrome. The bottom band is empty space the
+    /// `bottomChrome` overlay draws into.
+    private func cardFace<Top: View, Trailing: View, Middle: View>(
         @ViewBuilder top: () -> Top,
+        @ViewBuilder trailing: () -> Trailing,
         @ViewBuilder middle: () -> Middle
     ) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
+            HStack(spacing: 4) {
                 top()
+
                 Spacer(minLength: 0)
+                    .allowsHitTesting(false)
+
+                trailing()
             }
             .frame(height: ReframeCardMetrics.controlSize)
             .padding(.horizontal, ReframeCardMetrics.chromeInset)
             .padding(.top, ReframeCardMetrics.chromeInset)
-            .allowsHitTesting(false)
 
             middle()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -270,36 +272,20 @@ struct ReframeCardView: View, Equatable {
     }
 
     private var bottomChrome: some View {
-        HStack(alignment: .center, spacing: 0) {
+        HStack(alignment: .center, spacing: 4) {
             Text(HomeViewModel.dateLabel(for: card.createdAt))
                 .font(.caption.weight(.medium))
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
                 .frame(height: ReframeCardMetrics.controlSize, alignment: .leading)
+                .allowsHitTesting(false)
 
             Spacer(minLength: 0)
                 .allowsHitTesting(false)
 
-            if showingThought {
-                pinButton
-            } else if let style = visibleSlides[safe: activeSlideIndex]?.result.style {
-                favoriteButton(for: style)
-            }
+            flipButton
         }
         .padding(ReframeCardMetrics.chromeInset)
-    }
-
-    private var inCardPageDots: some View {
-        let indices = ReframePageDots.visibleIndices(count: visibleSlides.count)
-        return HStack(spacing: 3) {
-            ForEach(indices, id: \.self) { index in
-                let isActive = index == activeSlideIndex
-                Capsule()
-                    .fill(isActive ? theme.ink : theme.faint)
-                    .frame(width: isActive ? 10 : 4, height: 4)
-            }
-        }
-        .accessibilityHidden(true)
     }
 
     private func answerCopy(_ result: ReframeResult) -> some View {
@@ -331,52 +317,43 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
-    private var cardMenu: some View {
-        Menu {
-            if hasOriginal {
-                Button {
-                    showingOriginal.toggle()
-                    if !showingThought {
-                        flip()
-                    }
-                } label: {
-                    Label(
-                        showingOriginal ? "Show English" : "Show original",
-                        systemImage: showingOriginal ? "character.bubble.fill" : "character.bubble"
-                    )
+    @ViewBuilder
+    private var cardMenuItems: some View {
+        if hasOriginal {
+            Button {
+                showingOriginal.toggle()
+                if !showingThought {
+                    flip()
                 }
+            } label: {
+                Label(
+                    showingOriginal ? "Show English" : "Show original",
+                    systemImage: showingOriginal ? "character.bubble.fill" : "character.bubble"
+                )
             }
-
-            switch menuRole {
-            case .feed:
-                EmptyView()
-            case .savedFromFeed:
-                Button("Remove from board", systemImage: "rectangle.badge.minus") {
-                    onRemoveFromBoard()
-                }
-            case .owner:
-                Button {
-                    onSetPublic(!card.isPublic)
-                } label: {
-                    Label(
-                        card.isPublic ? "Make private" : "Make public",
-                        systemImage: card.isPublic ? "lock.fill" : "globe"
-                    )
-                }
-
-                Button("Delete", systemImage: "trash", role: .destructive) {
-                    showDeleteConfirm = true
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(theme.muted)
-                .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Card actions")
+
+        switch menuRole {
+        case .feed:
+            EmptyView()
+        case .savedFromFeed:
+            Button("Remove from board", systemImage: "rectangle.badge.minus") {
+                onRemoveFromBoard()
+            }
+        case .owner:
+            Button {
+                onSetPublic(!card.isPublic)
+            } label: {
+                Label(
+                    card.isPublic ? "Make private" : "Make public",
+                    systemImage: card.isPublic ? "lock.fill" : "globe"
+                )
+            }
+
+            Button("Delete", systemImage: "trash", role: .destructive) {
+                showDeleteConfirm = true
+            }
+        }
     }
 
     private func favoriteButton(for style: Style) -> some View {
@@ -398,42 +375,35 @@ struct ReframeCardView: View, Equatable {
         .accessibilityAddTraits(isFavorite ? .isSelected : [])
     }
 
-    private var pinButton: some View {
-        Button {
-            pinHaptic += 1
-            onTogglePin()
-        } label: {
-            Image(systemName: card.isPinned ? "pin.fill" : "pin")
+    /// The discoverable half of the flip; the copy band keeps the gesture.
+    private var flipButton: some View {
+        Button(action: flip) {
+            Image(systemName: showingThought ? "chevron.left" : "chevron.right")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(card.isPinned ? theme.ink : theme.muted)
+                .foregroundStyle(theme.muted)
                 .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(card.isPinned ? "Unpin this post" : "Pin this post")
-        .accessibilityAddTraits(card.isPinned ? .isSelected : [])
+        .accessibilityLabel(showingThought ? "Show answers" : "Show the original thought")
     }
 
-    private func syncPresentation() {
-        if !didSetInitialFace {
-            isFlipped = presentation == .pinned
-            didSetInitialFace = true
-        }
-        syncPager()
-    }
-
-    private func syncPager() {
+    private func preferredStyle() -> Style? {
         switch presentation {
         case .favoriteAngles:
-            if let preferred = card.latestFavoriteStyle,
-               let match = visibleSlides.first(where: { $0.result.style == preferred }) {
-                pagedSlideID = match.id
-            } else {
-                pagedSlideID = visibleSlides.first?.id
+            if let preferred = card.latestFavoriteStyle, visibleStyles.contains(preferred) {
+                return preferred
             }
-        case .library, .pinned:
-            pagedSlideID = card.openingSlideID(preferring: openingStyle)
+        case .library:
+            if let openingStyle, visibleStyles.contains(openingStyle) {
+                return openingStyle
+            }
+            if visibleStyles.contains(card.spotlightStyle) {
+                return card.spotlightStyle
+            }
         }
+
+        return visibleStyles.first
     }
 
     private func flip() {
@@ -467,7 +437,7 @@ struct OverlayProposalCard: View {
     @ScaledMetric(relativeTo: .title3) private var thoughtSize: CGFloat = ReframeCardMetrics.thoughtSize
     @State private var isFlipped = false
     @State private var showingOriginal = false
-    @State private var pagedStyle: Style?
+    @State private var selectedStyle: Style?
     @State private var flipHaptic = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -479,18 +449,18 @@ struct OverlayProposalCard: View {
         isFlipped
     }
 
-    private var activeIndex: Int {
-        guard let pagedStyle,
-              let index = results.firstIndex(where: { $0.style == pagedStyle })
+    private var activeResult: ReframeResult? {
+        guard let selectedStyle,
+              let match = results.first(where: { $0.style == selectedStyle })
         else {
-            return 0
+            return results.first
         }
 
-        return index
+        return match
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             ZStack(alignment: .topTrailing) {
                 FlipStack(progress: isFlipped ? 1 : 0) {
                     answerFace
@@ -517,15 +487,17 @@ struct OverlayProposalCard: View {
             }
             .shadow(color: theme.shadowSoft, radius: 10, y: 3)
             .contentShape(cardShape)
-
-            dots
-                .frame(height: 18)
-                .opacity(!showingThought && results.count > 1 ? 1 : 0)
         }
         .frame(maxWidth: .infinity)
         .onAppear {
-            if pagedStyle == nil {
-                pagedStyle = results.first?.style
+            if selectedStyle == nil {
+                selectedStyle = results.first?.style
+            }
+        }
+        .onChange(of: results.map(\.style)) { _, styles in
+            guard let selectedStyle, styles.contains(selectedStyle) else {
+                self.selectedStyle = styles.first
+                return
             }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
@@ -542,7 +514,7 @@ struct OverlayProposalCard: View {
             return thought
         }
 
-        guard let result = results[safe: activeIndex] else {
+        guard let result = activeResult else {
             return "Answers"
         }
 
@@ -578,34 +550,21 @@ struct OverlayProposalCard: View {
     }
 
     private var activeAppearance: CardStyleAppearance {
-        CardStyleAppearance(style: results[safe: activeIndex]?.style ?? .stoic)
+        CardStyleAppearance(style: activeResult?.style ?? .stoic)
     }
 
     private var answerFace: some View {
         let appearance = activeAppearance
 
         return cardFace {
-            stylePill(appearance)
+            styleSelector(appearance)
         } middle: {
-            GeometryReader { proxy in
-                ScrollView(.horizontal) {
-                    HStack(spacing: 0) {
-                        ForEach(results, id: \.style) { result in
-                            copyBand(
-                                Text(result.reframe)
-                                    .font(.callout.weight(.medium))
-                                    .foregroundStyle(theme.ink)
-                            )
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                            .id(result.style)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $pagedStyle)
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            if let result = activeResult {
+                copyBand(
+                    Text(result.reframe)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(theme.ink)
+                )
             }
         } bottom: {
             recookButton(for: appearance.style, ink: appearance.ink)
@@ -616,7 +575,22 @@ struct OverlayProposalCard: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appearance.style)
     }
 
-    /// Same three bands as `ReframeCardView`: chrome, flip/page target, chrome.
+    @ViewBuilder
+    private func styleSelector(_ appearance: CardStyleAppearance) -> some View {
+        if results.count > 1 {
+            StyleChipRow(
+                styles: results.map(\.style),
+                selected: appearance.style,
+                muted: theme.muted
+            ) { style in
+                selectedStyle = style
+            }
+        } else {
+            stylePill(appearance)
+        }
+    }
+
+    /// Same three bands as `ReframeCardView`: chrome, flip target, chrome.
     private func cardFace<Top: View, Middle: View, Bottom: View>(
         @ViewBuilder top: () -> Top,
         @ViewBuilder middle: () -> Middle,
@@ -625,12 +599,13 @@ struct OverlayProposalCard: View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 top()
+
                 Spacer(minLength: 0)
+                    .allowsHitTesting(false)
             }
             .frame(height: ReframeCardMetrics.controlSize)
             .padding(.horizontal, ReframeCardMetrics.chromeInset)
             .padding(.top, ReframeCardMetrics.chromeInset)
-            .allowsHitTesting(false)
 
             middle()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -686,20 +661,6 @@ struct OverlayProposalCard: View {
         )
     }
 
-    private var dots: some View {
-        let indices = ReframePageDots.visibleIndices(count: results.count)
-        return HStack(spacing: 5) {
-            ForEach(indices, id: \.self) { index in
-                let isActive = index == activeIndex
-                Capsule()
-                    .fill(isActive ? theme.ink : theme.faint)
-                    .frame(width: isActive ? 18 : 6, height: 6)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityHidden(true)
-    }
-
     private func flip() {
         flipHaptic += 1
 
@@ -738,6 +699,54 @@ private struct OriginalToggle: View {
     }
 }
 
+/// Icon-only chips, one per angle the card carries. Four 28pt chips plus the heart only
+/// just fit a two-column card, so a narrower card drops to the compact size.
+private struct StyleChipRow: View {
+    let styles: [Style]
+    let selected: Style
+    let muted: Color
+    let onSelect: (Style) -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row(side: ReframeCardMetrics.chipSize)
+            row(side: ReframeCardMetrics.chipSizeCompact)
+        }
+    }
+
+    private func row(side: CGFloat) -> some View {
+        HStack(spacing: ReframeCardMetrics.chipSpacing) {
+            ForEach(styles, id: \.self) { style in
+                chip(style, side: side)
+            }
+        }
+    }
+
+    private func chip(_ style: Style, side: CGFloat) -> some View {
+        let appearance = CardStyleAppearance(style: style)
+        let isSelected = style == selected
+
+        return Button {
+            onSelect(style)
+        } label: {
+            Image(systemName: appearance.systemImage)
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isSelected ? appearance.ink : muted)
+                .frame(width: side, height: side)
+                .background {
+                    if isSelected {
+                        Circle().fill(appearance.ink.opacity(0.14))
+                    }
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(style.displayName) answer")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
 fileprivate func stylePill(_ appearance: CardStyleAppearance) -> some View {
     HStack(spacing: 6) {
         Image(systemName: appearance.systemImage)
@@ -755,26 +764,6 @@ fileprivate func stylePill(_ appearance: CardStyleAppearance) -> some View {
     .padding(.vertical, 5)
     .background(appearance.ink.opacity(0.14), in: Capsule())
     .accessibilityHidden(true)
-}
-
-enum ReframePageDots {
-    static func visibleIndices(count: Int) -> [Int] {
-        guard count > 1 else {
-            return []
-        }
-
-        return Array(0..<count)
-    }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        guard indices.contains(index) else {
-            return nil
-        }
-
-        return self[index]
-    }
 }
 
 private struct FlipStack<Front: View, Back: View>: View, Animatable {

@@ -32,17 +32,13 @@ vi.mock("../db/cards.js", () => ({
 vi.mock("../db/feed.js", () => ({
   listFeed: vi.fn(),
   listHomeFeed: vi.fn(),
-  pinFeedCard: vi.fn(),
-  unpinFeedCard: vi.fn(),
   saveFeedAngle: vi.fn(),
   unsaveFeedAngle: vi.fn(),
   clearFeedSaves: vi.fn(),
 }));
 
 const { createApp } = await import("../app.js");
-const { listFeed, listHomeFeed, pinFeedCard, saveFeedAngle, clearFeedSaves } = await import(
-  "../db/feed.js"
-);
+const { listFeed, listHomeFeed, saveFeedAngle, clearFeedSaves } = await import("../db/feed.js");
 
 const app = createApp();
 const CARD_ID = "22222222-2222-4222-8222-222222222222";
@@ -64,7 +60,6 @@ function feedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     results: STYLES.map((style) => ({ style, reframe: `A ${style} take.`, isFavorite: false })),
     model: "mistral-small-latest",
     spotlightStyle: "optimistic",
-    isPinned: false,
     isPublic: true,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: false,
@@ -151,30 +146,30 @@ describe("GET /feed/home", () => {
   });
 });
 
-describe("PUT /feed/cards/:id/pin", () => {
+describe("PUT /feed/cards/:id/angles/:style", () => {
   beforeEach(() => {
-    vi.mocked(pinFeedCard).mockReset();
+    vi.mocked(saveFeedAngle).mockReset();
   });
 
   it("returns the viewer-scoped card", async () => {
-    const card = feedCard({ isPinned: true });
-    vi.mocked(pinFeedCard).mockResolvedValue({ ok: true, card });
-    const response = await app.request(`/feed/cards/${CARD_ID}/pin`, { method: "PUT" });
+    const card = feedCard({
+      results: STYLES.map((style) => ({
+        style,
+        reframe: `A ${style} take.`,
+        isFavorite: style === "stoic",
+      })),
+    });
+    vi.mocked(saveFeedAngle).mockResolvedValue({ ok: true, card });
+    const response = await app.request(`/feed/cards/${CARD_ID}/angles/stoic`, { method: "PUT" });
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual(card);
   });
 
   it("returns 404 when the card is not a public other", async () => {
-    vi.mocked(pinFeedCard).mockResolvedValue({ ok: false, reason: "not_found" });
-    const response = await app.request(`/feed/cards/${CARD_ID}/pin`, { method: "PUT" });
+    vi.mocked(saveFeedAngle).mockResolvedValue({ ok: false, reason: "not_found" });
+    const response = await app.request(`/feed/cards/${CARD_ID}/angles/stoic`, { method: "PUT" });
     expect(response.status).toBe(404);
     await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });
-  });
-});
-
-describe("PUT /feed/cards/:id/angles/:style", () => {
-  beforeEach(() => {
-    vi.mocked(saveFeedAngle).mockReset();
   });
 
   it("returns 400 when the style is not on the card", async () => {
@@ -182,6 +177,11 @@ describe("PUT /feed/cards/:id/angles/:style", () => {
     const response = await app.request(`/feed/cards/${CARD_ID}/angles/stoic`, { method: "PUT" });
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("404s the removed pin route", async () => {
+    const response = await app.request(`/feed/cards/${CARD_ID}/pin`, { method: "PUT" });
+    expect(response.status).toBe(404);
   });
 });
 

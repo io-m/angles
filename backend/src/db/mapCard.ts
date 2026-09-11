@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { intensityBand, type StoredCard, type StoredReframeResult, type Style } from "../types/index.js";
 import { getDb } from "./client.js";
-import { savedAngles, savedPins, type CardReframeRow, type CardRow, type TagRow } from "./schema.js";
+import { savedAngles, type CardReframeRow, type CardRow, type TagRow } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 
@@ -12,8 +12,8 @@ export type CardLoaded = CardRow & {
   user: { initials: string };
 };
 
+/** A viewer's saves on other people's cards. Hearts are the only save there is. */
 export type ViewerSaves = {
-  pins: Map<string, Date>;
   angles: Map<string, Map<Style, Date>>;
 };
 
@@ -21,15 +21,7 @@ export async function loadViewerSaves(
   viewerId: string = getOwnerUserId(),
   db: Selectable = getDb(),
 ): Promise<ViewerSaves> {
-  const [pinRows, angleRows] = await Promise.all([
-    db.select().from(savedPins).where(eq(savedPins.userId, viewerId)),
-    db.select().from(savedAngles).where(eq(savedAngles.userId, viewerId)),
-  ]);
-
-  const pins = new Map<string, Date>();
-  for (const row of pinRows) {
-    pins.set(row.cardId, row.pinnedAt);
-  }
+  const angleRows = await db.select().from(savedAngles).where(eq(savedAngles.userId, viewerId));
 
   const angles = new Map<string, Map<Style, Date>>();
   for (const row of angleRows) {
@@ -41,12 +33,11 @@ export async function loadViewerSaves(
     byStyle.set(row.style, row.favoritedAt);
   }
 
-  return { pins, angles };
+  return { angles };
 }
 
 export function toStoredCard(row: CardLoaded, saves: ViewerSaves, viewerId: string = getOwnerUserId()): StoredCard {
   const isOwner = row.userId === viewerId;
-  const savedPinAt = saves.pins.get(row.id);
   const savedStyles = saves.angles.get(row.id);
   const tagList = row.cardTags.map((join) => ({
     slug: join.tag.slug,
@@ -79,9 +70,6 @@ export function toStoredCard(row: CardLoaded, saves: ViewerSaves, viewerId: stri
       return stored;
     });
 
-  const isPinned = isOwner ? row.isPinned : savedPinAt !== undefined;
-  const pinnedAt = isOwner ? row.pinnedAt : savedPinAt;
-
   const stored: StoredCard = {
     id: row.id,
     thought: row.thoughtEn,
@@ -102,7 +90,6 @@ export function toStoredCard(row: CardLoaded, saves: ViewerSaves, viewerId: stri
     results,
     model: row.model,
     spotlightStyle: row.spotlightStyle,
-    isPinned,
     isPublic: row.isPublic,
     createdAt: row.createdAt.toISOString(),
     isOwner,
@@ -117,9 +104,6 @@ export function toStoredCard(row: CardLoaded, saves: ViewerSaves, viewerId: stri
   }
   if (row.proposedLabel) {
     stored.proposedLabel = row.proposedLabel;
-  }
-  if (pinnedAt) {
-    stored.pinnedAt = pinnedAt.toISOString();
   }
 
   return stored;

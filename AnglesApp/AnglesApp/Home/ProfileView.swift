@@ -53,7 +53,7 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
                     scrollingHeader
 
-                    pinnedAndFavorites
+                    favoriteAngles
 
                     gridSection
                 }
@@ -202,7 +202,6 @@ struct ProfileView: View {
                         openingStyle: viewModel.profileGridFilter.matchingStyle,
                         onDelete: deleteCard,
                         onToggleFavorite: toggleFavorite,
-                        onTogglePin: togglePinned,
                         onSetPublic: setPublic,
                         onRemoveFromBoard: removeFromBoard
                     )
@@ -290,19 +289,10 @@ struct ProfileView: View {
     }
 
     @ViewBuilder
-    private var pinnedAndFavorites: some View {
-        if case .loaded = viewModel.libraryLoadState {
-            VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
-                if !viewModel.pinnedCards.isEmpty {
-                    pinnedSection
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
-                if !viewModel.favoriteAngleCards.isEmpty {
-                    favoriteAnglesSection
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
+    private var favoriteAngles: some View {
+        if case .loaded = viewModel.libraryLoadState, !viewModel.favoriteAngleCards.isEmpty {
+            favoriteAnglesSection
+                .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
@@ -336,34 +326,6 @@ struct ProfileView: View {
         .accessibilityLabel(viewModel.profileGridFilter.title)
     }
 
-    private var pinnedSection: some View {
-        VStack(alignment: .leading, spacing: HeaderCollapse.sectionContentGap) {
-            subsetSectionTitle("Pinned", hint: "Shows all pinned posts") {
-                PinsView(
-                    viewModel: viewModel,
-                    onDelete: deleteCard,
-                    onToggleFavorite: toggleFavorite,
-                    onTogglePin: togglePinned,
-                    onSetPublic: setPublic,
-                    onRemoveFromBoard: removeFromBoard
-                )
-            }
-
-            HomeCardStrip(
-                cards: viewModel.stripPinnedCards,
-                pageWidth: pageWidth,
-                presentation: .pinned,
-                cardRowHeight: cardRowHeight,
-                onDelete: deleteCard,
-                onToggleFavorite: toggleFavorite,
-                onTogglePin: togglePinned,
-                onSetPublic: setPublic,
-                onRemoveFromBoard: removeFromBoard
-            )
-            .equatable()
-        }
-    }
-
     private var favoriteAnglesSection: some View {
         VStack(alignment: .leading, spacing: HeaderCollapse.sectionContentGap) {
             subsetSectionTitle("Favorite angles", hint: "Shows all favorite angles") {
@@ -371,7 +333,6 @@ struct ProfileView: View {
                     viewModel: viewModel,
                     onDelete: deleteCard,
                     onToggleFavorite: toggleFavorite,
-                    onTogglePin: togglePinned,
                     onSetPublic: setPublic,
                     onRemoveFromBoard: removeFromBoard
                 )
@@ -384,7 +345,6 @@ struct ProfileView: View {
                 cardRowHeight: cardRowHeight,
                 onDelete: deleteCard,
                 onToggleFavorite: toggleFavorite,
-                onTogglePin: togglePinned,
                 onSetPublic: setPublic,
                 onRemoveFromBoard: removeFromBoard
             )
@@ -461,12 +421,6 @@ struct ProfileView: View {
     private func toggleFavorite(_ card: HomeCard, _ style: Style) {
         withAnimation(favoriteLayoutAnimation) {
             viewModel.toggleFavorite(card.id, style: style)
-        }
-    }
-
-    private func togglePinned(_ card: HomeCard) {
-        withAnimation(favoriteLayoutAnimation) {
-            viewModel.togglePinned(card.id)
         }
     }
 

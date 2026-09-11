@@ -20,7 +20,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/index.ts` — `serve()`, `PORT` (default 8787), bind `0.0.0.0`, schema check, pool shutdown
 - `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, decision call then one batched style JSON (recook is a single style)
 - `backend/src/routes/cards.ts` — `POST/GET/PATCH/DELETE /cards`
-- `backend/src/routes/feed.ts` — `GET /feed` (paged, filterable), `GET /feed/home` (grouped shelves), viewer pin/heart saves
+- `backend/src/routes/feed.ts` — `GET /feed` (paged, filterable), `GET /feed/home` (grouped shelves), viewer heart saves
 - `backend/src/lib/homeFeed.ts` — `groupHomeFeed`: one card scan into Recent + capped domain/mood shelves
 - `backend/src/routes/health.ts` — `GET /health` (includes a DB probe)
 - `backend/src/db/schema.ts` — Drizzle tables
@@ -34,7 +34,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
 - `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: collapsing header (title, style filter, Settings) over lazily mounted shelves
 - `AnglesApp/AnglesApp/Home/HeaderChrome.swift` — collapse metrics, scroll-distance modifier, and filter popover shared by Home and Profile
-- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library: pinned strip, favorite-angles grid, All/style library. Style chips keep cards that have that angle and open on it; All mixes covers. Pinned and Favorite angles stay unfiltered.
+- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library: favorite-angles strip, All/style library. Style filters keep cards that have that angle and open on it; All mixes covers. Favorite angles stays unfiltered.
 - `AnglesApp/AnglesApp/Home/HomeCardStrip.swift` — horizontal strip (max 6) that owns its scroll position
 - `AnglesApp/AnglesApp/Home/FeedSubsetView.swift` — one Home shelf in full, paged with the `before` cursor
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — 2-column card grid
@@ -55,7 +55,7 @@ Every `POST /reframe` runs the decision call first — there is no local clarify
 
 `meta` is `{ category, proposedCategory?, proposedLabel?, tags, intensity, timeframe, emotions, safety, inputLanguage, skippedStyles, matching }`. Categories are a closed set; anything else becomes `other` plus a proposal. Never reframe a thought flagged for safety. `followUps` caps at 6 and the decision is forced to land from the third.
 
-Save writes that cook to `POST /cards`. Hearts are per style on `card_reframes`; pin and `isPublic` (default false) sit on the card. `POST /reframe` never writes.
+Save writes that cook to `POST /cards`. Hearts are per style on `card_reframes` (or `saved_angles` for someone else's card); `isPublic` (default false) sits on the card. There are no pins. `POST /reframe` never writes.
 
 ## Type sync
 

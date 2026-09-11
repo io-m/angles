@@ -83,10 +83,6 @@ const listQuerySchema = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((value) => (value === undefined ? undefined : value === "true")),
-  pinned: z
-    .enum(["true", "false"])
-    .optional()
-    .transform((value) => (value === undefined ? undefined : value === "true")),
 });
 
 const idParamSchema = z.object({
@@ -97,14 +93,11 @@ const patchCardSchema = z
   .object({
     isFavorite: z.boolean().optional(),
     style: z.enum(STYLES).optional(),
-    isPinned: z.boolean().optional(),
     isPublic: z.boolean().optional(),
   })
-  .refine(
-    (body) =>
-      body.isFavorite !== undefined || body.isPinned !== undefined || body.isPublic !== undefined,
-    { message: "patch must set isFavorite, isPinned, or isPublic" },
-  )
+  .refine((body) => body.isFavorite !== undefined || body.isPublic !== undefined, {
+    message: "patch must set isFavorite or isPublic",
+  })
   .refine((body) => body.isFavorite === undefined || body.style !== undefined, {
     message: "style is required when setting isFavorite",
   });
@@ -142,7 +135,6 @@ cardsRoute.get(
       category: query.category,
       style: query.style,
       favorite: query.favorite,
-      pinned: query.pinned,
     });
     return c.json({ cards: cardList });
   },

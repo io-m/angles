@@ -317,7 +317,6 @@ private struct HomeFeedShelf: View, Equatable {
                 menuRole: { _ in .feed },
                 onDelete: { _ in },
                 onToggleFavorite: { card, style in viewModel.toggleFavorite(card.id, style: style) },
-                onTogglePin: { card in viewModel.togglePinned(card.id) },
                 onSetPublic: { _, _ in },
                 onRemoveFromBoard: { _ in }
             )

@@ -86,6 +86,11 @@ struct AppRoot: View {
             )
             .allowsHitTesting(isComposePresented)
             .accessibilityHidden(!isComposePresented)
+
+            WriteErrorBanner(message: viewModel.writeError) {
+                viewModel.dismissWriteError()
+            }
+            .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86), value: viewModel.writeError)
         }
         .background {
             GeometryReader { geo in
@@ -135,5 +140,54 @@ struct AppRoot: View {
             next.bottom = homeSafeAreaInsets.bottom
         }
         homeSafeAreaInsets = next
+    }
+}
+
+/// Every card write is optimistic. When one fails the card rolls back on its own, so this
+/// is the only thing that says the server was never reached.
+private struct WriteErrorBanner: View {
+    let message: String?
+    let onDismiss: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        VStack {
+            if let message {
+                Button(action: onDismiss) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(theme.muted)
+
+                        Text(message)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(theme.ink)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(theme.surface, in: Capsule())
+                    .overlay {
+                        Capsule().strokeBorder(theme.cardHairline, lineWidth: 1)
+                    }
+                    .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .accessibilityLabel(message)
+                .accessibilityHint("Dismisses this message")
+            }
+
+            Spacer(minLength: 0)
+                .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea(.keyboard)
     }
 }

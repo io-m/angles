@@ -61,15 +61,12 @@ export const cards = pgTable(
     skippedStyles: jsonb("skipped_styles").$type<SkippedStyle[]>().notNull(),
     model: text("model").notNull(),
     spotlightStyle: styleEnum("spotlight_style").notNull(),
-    isPinned: boolean("is_pinned").notNull().default(false),
-    pinnedAt: timestamp("pinned_at", { withTimezone: true, mode: "date" }),
     isPublic: boolean("is_public").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
     index("cards_user_created_idx").on(table.userId, table.createdAt.desc()),
     index("cards_category_idx").on(table.category),
-    index("cards_user_pinned_idx").on(table.userId, table.pinnedAt.desc()),
     index("cards_public_created_idx").on(table.isPublic, table.createdAt.desc()),
     check("cards_intensity_range", sql`intensity between 1 and 5`),
   ],
@@ -114,23 +111,6 @@ export const cardTags = pgTable(
   ],
 );
 
-export const savedPins = pgTable(
-  "saved_pins",
-  {
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    cardId: uuid("card_id")
-      .notNull()
-      .references(() => cards.id, { onDelete: "cascade" }),
-    pinnedAt: timestamp("pinned_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.userId, table.cardId] }),
-    index("saved_pins_user_pinned_idx").on(table.userId, table.pinnedAt.desc()),
-  ],
-);
-
 export const savedAngles = pgTable(
   "saved_angles",
   {
@@ -163,7 +143,6 @@ export const categoryProposals = pgTable("category_proposals", {
 
 export const usersRelations = relations(users, ({ many }) => ({
   cards: many(cards),
-  savedPins: many(savedPins),
   savedAngles: many(savedAngles),
 }));
 
@@ -171,13 +150,7 @@ export const cardsRelations = relations(cards, ({ many, one }) => ({
   user: one(users, { fields: [cards.userId], references: [users.id] }),
   reframes: many(cardReframes),
   cardTags: many(cardTags),
-  savedPins: many(savedPins),
   savedAngles: many(savedAngles),
-}));
-
-export const savedPinsRelations = relations(savedPins, ({ one }) => ({
-  user: one(users, { fields: [savedPins.userId], references: [users.id] }),
-  card: one(cards, { fields: [savedPins.cardId], references: [cards.id] }),
 }));
 
 export const savedAnglesRelations = relations(savedAngles, ({ one }) => ({

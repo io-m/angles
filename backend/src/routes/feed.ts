@@ -1,15 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
-import {
-  clearFeedSaves,
-  listFeed,
-  listHomeFeed,
-  pinFeedCard,
-  saveFeedAngle,
-  unpinFeedCard,
-  unsaveFeedAngle,
-} from "../db/feed.js";
+import { clearFeedSaves, listFeed, listHomeFeed, saveFeedAngle, unsaveFeedAngle } from "../db/feed.js";
 import { authStub } from "../lib/authStub.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { CATEGORIES, EMOTIONS, STYLES } from "../types/index.js";
@@ -77,42 +69,6 @@ feedRoute.get(
       perSection: query.perSection,
     });
     return c.json(home);
-  },
-);
-
-feedRoute.put(
-  "/cards/:id/pin",
-  authStub,
-  zValidator("param", idParamSchema, (result, c) => {
-    if (!result.success) {
-      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
-    }
-  }),
-  async (c) => {
-    const { id } = c.req.valid("param");
-    const result = await pinFeedCard(id);
-    if (!result.ok) {
-      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
-    }
-    return c.json(result.card);
-  },
-);
-
-feedRoute.delete(
-  "/cards/:id/pin",
-  authStub,
-  zValidator("param", idParamSchema, (result, c) => {
-    if (!result.success) {
-      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
-    }
-  }),
-  async (c) => {
-    const { id } = c.req.valid("param");
-    const result = await unpinFeedCard(id);
-    if (!result.ok) {
-      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
-    }
-    return c.json(result.card);
   },
 );
 

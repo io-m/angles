@@ -145,8 +145,6 @@ export type StoredCard = {
   results: StoredReframeResult[];
   model: string;
   spotlightStyle: Style;
-  isPinned: boolean;
-  pinnedAt?: string;
   isPublic: boolean;
   createdAt: string;
   isOwner: boolean;
@@ -170,7 +168,6 @@ export type CardListQuery = {
   style?: Style;
   /** Cards that have at least one liked style (owner heart or viewer save). */
   favorite?: boolean;
-  pinned?: boolean;
 };
 
 export type FeedListQuery = {
@@ -205,7 +202,6 @@ export type FeedHomeResponse = {
 export type PatchCardInput = {
   isFavorite?: boolean;
   style?: Style;
-  isPinned?: boolean;
   isPublic?: boolean;
 };
 

@@ -316,8 +316,6 @@ struct StoredCard: Decodable, Equatable, Sendable {
     let results: [StoredReframeResult]
     let model: String
     let spotlightStyle: Style
-    let isPinned: Bool
-    let pinnedAt: String?
     let isPublic: Bool
     let createdAt: String
     let isOwner: Bool
@@ -342,8 +340,6 @@ struct StoredCard: Decodable, Equatable, Sendable {
         case results
         case model
         case spotlightStyle
-        case isPinned
-        case pinnedAt
         case isPublic
         case createdAt
         case isOwner
@@ -397,8 +393,6 @@ struct StoredCard: Decodable, Equatable, Sendable {
         }
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
         spotlightStyle = try container.decode(Style.self, forKey: .spotlightStyle)
-        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
-        pinnedAt = try container.decodeIfPresent(String.self, forKey: .pinnedAt)
         isPublic = try container.decodeIfPresent(Bool.self, forKey: .isPublic) ?? false
         createdAt = try container.decode(String.self, forKey: .createdAt)
         isOwner = try container.decodeIfPresent(Bool.self, forKey: .isOwner) ?? true
@@ -444,13 +438,11 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
 struct PatchCardRequest: Encodable, Equatable, Sendable {
     var isFavorite: Bool?
     var style: Style?
-    var isPinned: Bool?
     var isPublic: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case isFavorite
         case style
-        case isPinned
         case isPublic
     }
 
@@ -458,7 +450,6 @@ struct PatchCardRequest: Encodable, Equatable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(isFavorite, forKey: .isFavorite)
         try container.encodeIfPresent(style, forKey: .style)
-        try container.encodeIfPresent(isPinned, forKey: .isPinned)
         try container.encodeIfPresent(isPublic, forKey: .isPublic)
     }
 }

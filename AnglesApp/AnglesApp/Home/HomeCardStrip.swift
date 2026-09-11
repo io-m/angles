@@ -12,7 +12,6 @@ struct HomeCardStrip: View, Equatable {
     }
     var onDelete: (HomeCard) -> Void
     var onToggleFavorite: (HomeCard, Style) -> Void
-    var onTogglePin: (HomeCard) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
 
@@ -30,8 +29,8 @@ struct HomeCardStrip: View, Equatable {
             && lhs.openingStyle == rhs.openingStyle
     }
 
-    /// The in-card pager sizes its pages against the card, so the card itself needs a real
-    /// width — a nested `containerRelativeFrame` would resolve against the strip instead.
+    /// A concrete width, not `containerRelativeFrame`: nested in a strip that would
+    /// resolve against the wrong container.
     private var cardWidth: CGFloat {
         min(pageWidth * 0.78, 300)
     }
@@ -48,7 +47,6 @@ struct HomeCardStrip: View, Equatable {
                             openingStyle: openingStyle,
                             onDelete: { onDelete(card) },
                             onToggleFavorite: { style in onToggleFavorite(card, style) },
-                            onTogglePin: { onTogglePin(card) },
                             onSetPublic: { isPublic in onSetPublic(card, isPublic) },
                             onRemoveFromBoard: { onRemoveFromBoard(card) }
                         )

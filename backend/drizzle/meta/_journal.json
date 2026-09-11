@@ -22,6 +22,13 @@
       "when": 1789114679389,
       "tag": "0002_whole_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789124540277,
+      "tag": "0003_drop_pins",
+      "breakpoints": true
     }
   ]
 }

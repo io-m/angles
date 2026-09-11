@@ -25,7 +25,6 @@ struct FeedSubsetView: View {
             menuRole: { _ in .feed },
             onDelete: { _ in },
             onToggleFavorite: { card, style in viewModel.toggleFavorite(card.id, style: style) },
-            onTogglePin: { card in viewModel.togglePinned(card.id) },
             onSetPublic: { _, _ in },
             onRemoveFromBoard: { _ in },
             onLoadMore: { viewModel.loadMoreFeedSubset(shelf) },

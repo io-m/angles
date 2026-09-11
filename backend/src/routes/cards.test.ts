@@ -73,7 +73,6 @@ function storedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     results: cookBody.results.map((item) => ({ ...item, isFavorite: false })),
     model: cookBody.model,
     spotlightStyle: "stoic",
-    isPinned: false,
     isPublic: false,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: true,
@@ -163,7 +162,6 @@ describe("GET /cards", () => {
       category: undefined,
       style: undefined,
       favorite: undefined,
-      pinned: undefined,
     });
   });
 
@@ -171,7 +169,7 @@ describe("GET /cards", () => {
     vi.mocked(listCards).mockResolvedValue([]);
     const before = "2026-09-10T12:00:00.000Z";
     const response = await app.request(
-      `/cards?limit=10&before=${encodeURIComponent(before)}&category=work&style=stoic&favorite=true&pinned=true`,
+      `/cards?limit=10&before=${encodeURIComponent(before)}&category=work&style=stoic&favorite=true`,
     );
     expect(response.status).toBe(200);
     expect(listCards).toHaveBeenCalledWith({
@@ -180,7 +178,6 @@ describe("GET /cards", () => {
       category: "work",
       style: "stoic",
       favorite: true,
-      pinned: true,
     });
   });
 });
@@ -232,22 +229,24 @@ describe("PATCH /cards/:id", () => {
     );
   });
 
-  it("sets pin and public independently", async () => {
-    const stored = storedCard({
-      isPinned: true,
-      pinnedAt: "2026-09-10T12:02:00.000Z",
-      isPublic: true,
-    });
+  it("sets public on its own", async () => {
+    const stored = storedCard({ isPublic: true });
     vi.mocked(patchCard).mockResolvedValue({ ok: true, card: stored });
 
     const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPinned: true, isPublic: true }),
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPublic: true }),
     );
     expect(response.status).toBe(200);
-    expect(patchCard).toHaveBeenCalledWith(
-      CARD_ID,
-      expect.objectContaining({ isPinned: true, isPublic: true }),
+    expect(patchCard).toHaveBeenCalledWith(CARD_ID, expect.objectContaining({ isPublic: true }));
+  });
+
+  it("rejects a pin patch now that pins are gone", async () => {
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPinned: true }),
     );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(patchCard).not.toHaveBeenCalled();
   });
 
   it("rejects favorite without a style", async () => {
@@ -278,7 +277,7 @@ describe("PATCH /cards/:id", () => {
   it("returns 404 when missing", async () => {
     vi.mocked(patchCard).mockResolvedValue({ ok: false, reason: "not_found" });
     const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPinned: true }),
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPublic: true }),
     );
     expect(response.status).toBe(404);
     await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });

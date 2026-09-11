@@ -16,8 +16,6 @@ struct HomeCard: Identifiable, Equatable {
     var spotlightStyle: Style
     /// Cleaned thought in the language it was typed in, when that is not English.
     var thoughtOriginal: String?
-    var isPinned: Bool
-    var pinnedAt: Date?
     var isPublic: Bool
     var isOwner: Bool
     var authorInitials: String
@@ -30,8 +28,6 @@ struct HomeCard: Identifiable, Equatable {
         slides: [HomeCardSlide],
         spotlightStyle: Style = .stoic,
         thoughtOriginal: String? = nil,
-        isPinned: Bool = false,
-        pinnedAt: Date? = nil,
         isPublic: Bool = false,
         isOwner: Bool = true,
         authorInitials: String = UserInitials.letters,
@@ -42,8 +38,6 @@ struct HomeCard: Identifiable, Equatable {
         self.slides = slides
         self.spotlightStyle = spotlightStyle
         self.thoughtOriginal = thoughtOriginal
-        self.isPinned = isPinned
-        self.pinnedAt = pinnedAt
         self.isPublic = isPublic
         self.isOwner = isOwner
         self.authorInitials = authorInitials
@@ -72,8 +66,6 @@ struct HomeCard: Identifiable, Equatable {
             slides: slides,
             spotlightStyle: stored.spotlightStyle,
             thoughtOriginal: stored.thoughtOriginal,
-            isPinned: stored.isPinned,
-            pinnedAt: stored.pinnedAt.flatMap { ISO8601Dates.date(from: $0) },
             isPublic: stored.isPublic,
             isOwner: stored.isOwner,
             authorInitials: stored.author.initials,
@@ -101,10 +93,6 @@ struct HomeCard: Identifiable, Equatable {
             .style
     }
 
-    var spotlightSlideID: UUID? {
-        slides.first(where: { $0.result.style == spotlightStyle })?.id ?? slides.first?.id
-    }
-
     func hasStyle(_ style: Style) -> Bool {
         slides.contains { $0.result.style == style }
     }
@@ -113,17 +101,7 @@ struct HomeCard: Identifiable, Equatable {
         slides.first(where: { $0.result.style == style })?.isFavorite ?? false
     }
 
-    func openingSlideID(preferring style: Style?) -> UUID? {
-        if let style {
-            return slides.first(where: { $0.result.style == style })?.id ?? spotlightSlideID
-        }
-
-        return spotlightSlideID
-    }
-
     mutating func apply(_ stored: StoredCard) {
-        isPinned = stored.isPinned
-        pinnedAt = stored.pinnedAt.flatMap { ISO8601Dates.date(from: $0) }
         isPublic = stored.isPublic
         thoughtOriginal = stored.thoughtOriginal
         for index in slides.indices {
@@ -315,6 +293,9 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var feedSubsets: [String: FeedSubsetState] = [:]
     @Published private(set) var isSaving = false
     @Published private(set) var saveError: String?
+    /// A heart, privacy flag, or delete that did not reach the server. The rollback is
+    /// invisible on its own, so the root banner reads this.
+    @Published private(set) var writeError: String?
 
     struct FeedShelfIDs: Equatable {
         let shelf: FeedShelf
@@ -331,12 +312,13 @@ final class HomeViewModel: ObservableObject {
     private var hasLoadedFeed = false
     private var hasLoadedLibrary = false
     private var favoriteTasks: [String: Task<Void, Never>] = [:]
-    private var pinTasks: [UUID: Task<Void, Never>] = [:]
     private var publicTasks: [UUID: Task<Void, Never>] = [:]
     private var deleteTasks: [UUID: Task<Void, Never>] = [:]
     private var boardTasks: [UUID: Task<Void, Never>] = [:]
+    private var writeErrorTask: Task<Void, Never>?
 
     private static let modelDefaultsKey = "angles.llmModel"
+    private static let writeErrorDuration: Duration = .seconds(3)
 
     init(
         cards: [HomeCard] = [],
@@ -371,16 +353,6 @@ final class HomeViewModel: ObservableObject {
         cards
             .filter(\.hasFavoriteAngle)
             .sorted { ($0.latestFavoritedAt ?? .distantPast) > ($1.latestFavoritedAt ?? .distantPast) }
-    }
-
-    var pinnedCards: [HomeCard] {
-        cards
-            .filter(\.isPinned)
-            .sorted { ($0.pinnedAt ?? .distantPast) > ($1.pinnedAt ?? .distantPast) }
-    }
-
-    var stripPinnedCards: [HomeCard] {
-        Array(pinnedCards.prefix(Self.stripLimit))
     }
 
     var stripFavoriteCards: [HomeCard] {
@@ -859,6 +831,7 @@ final class HomeViewModel: ObservableObject {
                 }
                 let insertAt = min(index, cards.count)
                 cards.insert(removed, at: insertAt)
+                reportWriteFailure(error, "Couldn't delete that card. Check your connection.")
             }
         }
     }
@@ -869,8 +842,6 @@ final class HomeViewModel: ObservableObject {
         }
 
         applyLocal(id: id) { card in
-            card.isPinned = false
-            card.pinnedAt = nil
             for index in card.slides.indices {
                 card.slides[index].isFavorite = false
                 card.slides[index].favoritedAt = nil
@@ -889,8 +860,6 @@ final class HomeViewModel: ObservableObject {
                     return
                 }
                 applyLocal(id: id) { card in
-                    card.isPinned = false
-                    card.pinnedAt = nil
                     for index in card.slides.indices {
                         card.slides[index].isFavorite = false
                         card.slides[index].favoritedAt = nil
@@ -905,6 +874,7 @@ final class HomeViewModel: ObservableObject {
                 }
                 replaceCard(snapshot)
                 syncSavedOtherIntoLibrary(snapshot)
+                reportWriteFailure(error, "Couldn't remove that card. Check your connection.")
             }
         }
     }
@@ -964,56 +934,7 @@ final class HomeViewModel: ObservableObject {
                 if let current = card(id: id) {
                     syncSavedOtherIntoLibrary(current)
                 }
-            }
-        }
-    }
-
-    func togglePinned(_ id: UUID) {
-        guard let snapshot = card(id: id) else {
-            return
-        }
-
-        let previousPinned = snapshot.isPinned
-        let previousPinnedAt = snapshot.pinnedAt
-        let nextPinned = !previousPinned
-        applyLocal(id: id) { card in
-            card.isPinned = nextPinned
-            card.pinnedAt = nextPinned ? Date() : nil
-        }
-        if let current = card(id: id) {
-            syncSavedOtherIntoLibrary(current)
-        }
-
-        pinTasks[id]?.cancel()
-        pinTasks[id] = Task { @MainActor in
-            defer { pinTasks[id] = nil }
-            do {
-                let stored: StoredCard
-                if snapshot.isOwner {
-                    stored = try await cardsService.patch(
-                        id: id.uuidString.lowercased(),
-                        PatchCardRequest(isPinned: nextPinned)
-                    )
-                } else if nextPinned {
-                    stored = try await cardsService.pinFeed(id: id.uuidString.lowercased())
-                } else {
-                    stored = try await cardsService.unpinFeed(id: id.uuidString.lowercased())
-                }
-                guard !Task.isCancelled else {
-                    return
-                }
-                applyStored(stored)
-            } catch {
-                guard !Task.isCancelled else {
-                    return
-                }
-                applyLocal(id: id) { card in
-                    card.isPinned = previousPinned
-                    card.pinnedAt = previousPinnedAt
-                }
-                if let current = card(id: id) {
-                    syncSavedOtherIntoLibrary(current)
-                }
+                reportWriteFailure(error, "Couldn't save that. Check your connection.")
             }
         }
     }
@@ -1047,8 +968,34 @@ final class HomeViewModel: ObservableObject {
                 if let current = cards.firstIndex(where: { $0.id == id }) {
                     cards[current].isPublic = previous
                 }
+                reportWriteFailure(error, "Couldn't change who can see this. Check your connection.")
             }
         }
+    }
+
+    /// Every write here is optimistic, so a rollback looks like the tap never happened.
+    /// Say so instead.
+    private func reportWriteFailure(_ error: Error, _ message: String) {
+        guard !Self.isCancellation(error) else {
+            return
+        }
+
+        writeError = message
+        writeErrorTask?.cancel()
+        writeErrorTask = Task { @MainActor in
+            defer { writeErrorTask = nil }
+            try? await Task.sleep(for: Self.writeErrorDuration)
+            guard !Task.isCancelled else {
+                return
+            }
+            writeError = nil
+        }
+    }
+
+    func dismissWriteError() {
+        writeErrorTask?.cancel()
+        writeErrorTask = nil
+        writeError = nil
     }
 
     private static func favoriteTaskKey(id: UUID, style: Style) -> String {
@@ -1123,7 +1070,7 @@ final class HomeViewModel: ObservableObject {
             return
         }
 
-        let keep = card.isPinned || card.hasFavoriteAngle
+        let keep = card.hasFavoriteAngle
         if let index = cards.firstIndex(where: { $0.id == card.id }) {
             if keep {
                 cards[index] = card

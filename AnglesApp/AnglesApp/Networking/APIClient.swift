@@ -49,35 +49,38 @@ final class APIClient: @unchecked Sendable {
 
     func post<Body: Encodable, Response: Decodable>(
         path: String,
-        body: Body
+        body: Body,
+        timeout: TimeInterval? = nil
     ) async throws -> Response {
-        try await decode(try await send(path: path, method: "POST", body: body))
+        try await decode(try await send(path: path, method: "POST", body: body, timeout: timeout))
     }
 
     func get<Response: Decodable>(
         path: String,
-        queryItems: [URLQueryItem] = []
+        queryItems: [URLQueryItem] = [],
+        timeout: TimeInterval? = nil
     ) async throws -> Response {
-        try await decode(try await send(path: path, method: "GET", queryItems: queryItems))
+        try await decode(try await send(path: path, method: "GET", queryItems: queryItems, timeout: timeout))
     }
 
-    func put<Response: Decodable>(path: String) async throws -> Response {
-        try await decode(try await send(path: path, method: "PUT"))
+    func put<Response: Decodable>(path: String, timeout: TimeInterval? = nil) async throws -> Response {
+        try await decode(try await send(path: path, method: "PUT", timeout: timeout))
     }
 
     func patch<Body: Encodable, Response: Decodable>(
         path: String,
-        body: Body
+        body: Body,
+        timeout: TimeInterval? = nil
     ) async throws -> Response {
-        try await decode(try await send(path: path, method: "PATCH", body: body))
+        try await decode(try await send(path: path, method: "PATCH", body: body, timeout: timeout))
     }
 
-    func delete(path: String) async throws {
-        _ = try await send(path: path, method: "DELETE")
+    func delete(path: String, timeout: TimeInterval? = nil) async throws {
+        _ = try await send(path: path, method: "DELETE", timeout: timeout)
     }
 
-    func deleteJSON<Response: Decodable>(path: String) async throws -> Response {
-        try await decode(try await send(path: path, method: "DELETE"))
+    func deleteJSON<Response: Decodable>(path: String, timeout: TimeInterval? = nil) async throws -> Response {
+        try await decode(try await send(path: path, method: "DELETE", timeout: timeout))
     }
 
     private func decode<Response: Decodable>(_ data: Data) throws -> Response {
@@ -88,21 +91,28 @@ final class APIClient: @unchecked Sendable {
         }
     }
 
-    private func send(path: String, method: String, queryItems: [URLQueryItem] = []) async throws -> Data {
-        try await perform(path: path, method: method, queryItems: queryItems, bodyData: nil)
+    private func send(
+        path: String,
+        method: String,
+        queryItems: [URLQueryItem] = [],
+        timeout: TimeInterval? = nil
+    ) async throws -> Data {
+        try await perform(path: path, method: method, queryItems: queryItems, bodyData: nil, timeout: timeout)
     }
 
     private func send<Body: Encodable>(
         path: String,
         method: String,
         queryItems: [URLQueryItem] = [],
-        body: Body
+        body: Body,
+        timeout: TimeInterval? = nil
     ) async throws -> Data {
         try await perform(
             path: path,
             method: method,
             queryItems: queryItems,
-            bodyData: try encoder.encode(body)
+            bodyData: try encoder.encode(body),
+            timeout: timeout
         )
     }
 
@@ -110,7 +120,8 @@ final class APIClient: @unchecked Sendable {
         path: String,
         method: String,
         queryItems: [URLQueryItem],
-        bodyData: Data?
+        bodyData: Data?,
+        timeout: TimeInterval?
     ) async throws -> Data {
         guard let url = resolvedURL(path: path, queryItems: queryItems) else {
             throw APIError.invalidURL
@@ -118,6 +129,9 @@ final class APIClient: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
+        if let timeout {
+            request.timeoutInterval = timeout
+        }
         // TODO(auth): attach Authorization from the Better Auth session once auth exists
         if let bodyData {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

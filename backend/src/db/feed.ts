@@ -4,7 +4,7 @@ import { groupHomeFeed } from "../lib/homeFeed.js";
 import type { FeedHomeQuery, FeedHomeResponse, FeedListQuery, StoredCard, Style } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
 import { loadViewerSaves, toStoredCard, type CardLoaded } from "./mapCard.js";
-import { cardReframes, cards, savedAngles, savedPins } from "./schema.js";
+import { cardReframes, cards, savedAngles } from "./schema.js";
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
 
@@ -116,28 +116,6 @@ async function returnViewerCard(
   return { ok: true, card: toStoredCard(row, saves, viewerId) };
 }
 
-export async function pinFeedCard(id: string): Promise<FeedSaveResult> {
-  return withFeedTarget(id, async (tx, _row, viewerId) => {
-    await tx
-      .insert(savedPins)
-      .values({ userId: viewerId, cardId: id, pinnedAt: new Date() })
-      .onConflictDoUpdate({
-        target: [savedPins.userId, savedPins.cardId],
-        set: { pinnedAt: new Date() },
-      });
-    return returnViewerCard(tx, id, viewerId);
-  });
-}
-
-export async function unpinFeedCard(id: string): Promise<FeedSaveResult> {
-  return withFeedTarget(id, async (tx, _row, viewerId) => {
-    await tx
-      .delete(savedPins)
-      .where(and(eq(savedPins.userId, viewerId), eq(savedPins.cardId, id)));
-    return returnViewerCard(tx, id, viewerId);
-  });
-}
-
 export async function saveFeedAngle(id: string, style: Style): Promise<FeedSaveResult> {
   return withFeedTarget(id, async (tx, row, viewerId) => {
     if (!row.reframes.some((item) => item.style === style)) {
@@ -170,7 +148,6 @@ export async function unsaveFeedAngle(id: string, style: Style): Promise<FeedSav
 
 export async function clearFeedSaves(id: string): Promise<FeedSaveResult> {
   return withFeedTarget(id, async (tx, _row, viewerId) => {
-    await tx.delete(savedPins).where(and(eq(savedPins.userId, viewerId), eq(savedPins.cardId, id)));
     await tx.delete(savedAngles).where(and(eq(savedAngles.userId, viewerId), eq(savedAngles.cardId, id)));
     return returnViewerCard(tx, id, viewerId);
   });

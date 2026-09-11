@@ -12,7 +12,6 @@ struct ProfileSubsetView: View {
     var menuRole: ((HomeCard) -> ReframeCardMenuRole)? = nil
     var onDelete: (HomeCard) -> Void
     var onToggleFavorite: (HomeCard, Style) -> Void
-    var onTogglePin: (HomeCard) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
     /// Set by shelves that page the server instead of holding the whole list.
@@ -71,7 +70,6 @@ struct ProfileSubsetView: View {
                                 menuRole: menuRole ?? { card in card.isOwner ? .owner : .savedFromFeed },
                                 onDelete: onDelete,
                                 onToggleFavorite: onToggleFavorite,
-                                onTogglePin: onTogglePin,
                                 onSetPublic: onSetPublic,
                                 onRemoveFromBoard: onRemoveFromBoard,
                                 onReachEnd: onLoadMore

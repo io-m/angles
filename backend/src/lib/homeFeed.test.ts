@@ -19,7 +19,6 @@ function card(id: string, category: Category, emotions: Emotion[]): StoredCard {
     results: STYLES.map((style) => ({ style, reframe: `A ${style} take.`, isFavorite: false })),
     model: "mistral-small-latest",
     spotlightStyle: "stoic",
-    isPinned: false,
     isPublic: true,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: false,

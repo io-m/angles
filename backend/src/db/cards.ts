@@ -10,15 +10,7 @@ import {
 } from "../types/index.js";
 import { getDb, wrapDbError, DbError } from "./client.js";
 import { loadViewerSaves, toStoredCard } from "./mapCard.js";
-import {
-  cardReframes,
-  cardTags,
-  cards,
-  categoryProposals,
-  savedAngles,
-  savedPins,
-  tags,
-} from "./schema.js";
+import { cardReframes, cardTags, cards, categoryProposals, savedAngles, tags } from "./schema.js";
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
 
@@ -34,7 +26,7 @@ async function loadCard(db: Queryable, id: string): Promise<StoredCard | null> {
   if (!row) {
     return null;
   }
-  return toStoredCard(row, { pins: new Map(), angles: new Map() });
+  return toStoredCard(row, { angles: new Map() });
 }
 
 export async function createCard(input: CreateCardInput): Promise<StoredCard> {
@@ -140,10 +132,6 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
-    const savedPinIds = db
-      .select({ id: savedPins.cardId })
-      .from(savedPins)
-      .where(eq(savedPins.userId, viewerId));
     const savedAngleIds = db
       .select({ id: savedAngles.cardId })
       .from(savedAngles)
@@ -154,9 +142,8 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       .innerJoin(cards, eq(cards.id, cardReframes.cardId))
       .where(and(eq(cardReframes.isFavorite, true), eq(cards.userId, viewerId)));
 
-    const filters = [
-      or(eq(cards.userId, viewerId), inArray(cards.id, savedPinIds), inArray(cards.id, savedAngleIds))!,
-    ];
+    // The library is the viewer's own cards plus anything they hearted on Home.
+    const filters = [or(eq(cards.userId, viewerId), inArray(cards.id, savedAngleIds))!];
     if (query.category) {
       filters.push(eq(cards.category, query.category));
     }
@@ -172,17 +159,6 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       filters.push(or(inArray(cards.id, ownedFavoriteIds), inArray(cards.id, savedAngleIds))!);
     } else if (query.favorite === false) {
       filters.push(not(or(inArray(cards.id, ownedFavoriteIds), inArray(cards.id, savedAngleIds))!));
-    }
-    if (query.pinned === true) {
-      filters.push(
-        or(and(eq(cards.userId, viewerId), eq(cards.isPinned, true)), inArray(cards.id, savedPinIds))!,
-      );
-    } else if (query.pinned === false) {
-      filters.push(
-        not(
-          or(and(eq(cards.userId, viewerId), eq(cards.isPinned, true)), inArray(cards.id, savedPinIds))!,
-        ),
-      );
     }
     if (query.before) {
       filters.push(lt(cards.createdAt, query.before));
@@ -253,14 +229,8 @@ export async function patchCard(id: string, patch: PatchCardInput): Promise<Patc
       }
 
       const cardSet: {
-        isPinned?: boolean;
-        pinnedAt?: Date | null;
         isPublic?: boolean;
       } = {};
-      if (patch.isPinned !== undefined) {
-        cardSet.isPinned = patch.isPinned;
-        cardSet.pinnedAt = patch.isPinned ? new Date() : null;
-      }
       if (patch.isPublic !== undefined) {
         cardSet.isPublic = patch.isPublic;
       }

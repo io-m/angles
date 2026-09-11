@@ -1,6 +1,10 @@
 import Foundation
 
 struct CardsService: Sendable {
+    /// Heart, privacy, and delete are one small row write. The 15s session default is the
+    /// cook's network slack; here it only hides an unreachable server behind a long spinner.
+    private static let writeTimeout: TimeInterval = 6
+
     private let client: APIClient
 
     init(client: APIClient = APIClient()) {
@@ -24,11 +28,11 @@ struct CardsService: Sendable {
     }
 
     func patch(id: String, _ body: PatchCardRequest) async throws -> StoredCard {
-        try await client.patch(path: "cards/\(id)", body: body)
+        try await client.patch(path: "cards/\(id)", body: body, timeout: Self.writeTimeout)
     }
 
     func delete(id: String) async throws {
-        try await client.delete(path: "cards/\(id)")
+        try await client.delete(path: "cards/\(id)", timeout: Self.writeTimeout)
     }
 
     /// Home shelves are capped, so the style filter has to run server-side or a shelf
@@ -65,23 +69,18 @@ struct CardsService: Sendable {
         return response.cards
     }
 
-    func pinFeed(id: String) async throws -> StoredCard {
-        try await client.put(path: "feed/cards/\(id)/pin")
-    }
-
-    func unpinFeed(id: String) async throws -> StoredCard {
-        try await client.deleteJSON(path: "feed/cards/\(id)/pin")
-    }
-
     func saveFeedAngle(id: String, style: Style) async throws -> StoredCard {
-        try await client.put(path: "feed/cards/\(id)/angles/\(style.rawValue)")
+        try await client.put(path: "feed/cards/\(id)/angles/\(style.rawValue)", timeout: Self.writeTimeout)
     }
 
     func unsaveFeedAngle(id: String, style: Style) async throws -> StoredCard {
-        try await client.deleteJSON(path: "feed/cards/\(id)/angles/\(style.rawValue)")
+        try await client.deleteJSON(
+            path: "feed/cards/\(id)/angles/\(style.rawValue)",
+            timeout: Self.writeTimeout
+        )
     }
 
     func removeFromBoard(id: String) async throws {
-        try await client.delete(path: "feed/cards/\(id)/saves")
+        try await client.delete(path: "feed/cards/\(id)/saves", timeout: Self.writeTimeout)
     }
 }
