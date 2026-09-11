@@ -34,6 +34,8 @@ enum ReframeCardMetrics {
     static let chipSizeCompact: CGFloat = 30
     static let chipSpacing: CGFloat = 8
     static let chipHitSize: CGFloat = 40
+    static let lifeAreaBadgeMaxWidth: CGFloat = 148
+    static let lifeAreaBadgeStripMaxWidth: CGFloat = 120
 }
 
 struct ReframeCardView: View, Equatable {
@@ -284,29 +286,14 @@ struct ReframeCardView: View, Equatable {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
+                .layoutPriority(-1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
 
-            if showsMenu {
-                Menu {
-                    cardMenuItems
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(theme.muted)
-                        .frame(
-                            width: ReframeCardMetrics.controlSize,
-                            height: ReframeCardMetrics.controlSize
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Card actions")
-            }
+            headerTrailingCluster(menuGlyphSize: 17)
         }
-        .padding(.leading, ReframeCardMetrics.chromeInset)
-        .padding(.trailing, 10)
-        .padding(.top, 12)
+        .padding(.horizontal, ReframeCardMetrics.chromeInset)
+        .padding(.top, ReframeCardMetrics.chromeInset)
     }
 
     private var favoriteHeader: some View {
@@ -322,26 +309,50 @@ struct ReframeCardView: View, Equatable {
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
+                .layoutPriority(-1)
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 4)
+
+            headerTrailingCluster(menuGlyphSize: 16)
+        }
+        .padding(.horizontal, ReframeCardMetrics.favoriteChromeInset)
+        .padding(.top, ReframeCardMetrics.favoriteChromeInset)
+    }
+
+    @ViewBuilder
+    private func headerTrailingCluster(menuGlyphSize: CGFloat) -> some View {
+        HStack(spacing: 8) {
+            if let lifeArea = card.lifeAreaPresentation {
+                LifeAreaBadge(
+                    category: lifeArea.category,
+                    label: lifeAreaLabel(lifeArea),
+                    maxWidth: limitsFavoriteCopyHeight
+                        ? ReframeCardMetrics.lifeAreaBadgeStripMaxWidth
+                        : ReframeCardMetrics.lifeAreaBadgeMaxWidth
+                )
+            }
 
             if showsMenu {
                 Menu {
                     cardMenuItems
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(theme.muted)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
+                    chromeIcon(
+                        "ellipsis",
+                        size: menuGlyphSize,
+                        color: theme.muted
+                    )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Card actions")
             }
         }
-        .padding(.leading, ReframeCardMetrics.favoriteChromeInset)
-        .padding(.trailing, 8)
-        .padding(.top, 10)
+    }
+
+    private func lifeAreaLabel(_ presentation: (category: ThoughtCategory, label: String)) -> String {
+        guard limitsFavoriteCopyHeight, presentation.category != .other else {
+            return presentation.label
+        }
+        return presentation.category.compactDisplayName
     }
 
     private var storedFooter: some View {
@@ -354,10 +365,9 @@ struct ReframeCardView: View, Equatable {
                 favoriteButton(for: style)
             }
         }
-        .padding(.leading, ReframeCardMetrics.chromeInset)
-        .padding(.trailing, 10)
+        .padding(.horizontal, ReframeCardMetrics.chromeInset)
         .padding(.top, 12)
-        .padding(.bottom, 12)
+        .padding(.bottom, ReframeCardMetrics.chromeInset)
     }
 
     private var favoriteFooter: some View {
@@ -371,21 +381,17 @@ struct ReframeCardView: View, Equatable {
             }
 
             Button(action: flipFavorite) {
-                Image(systemName: isFavoriteFlipped ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(theme.muted)
-                    .frame(
-                        width: ReframeCardMetrics.controlSize,
-                        height: ReframeCardMetrics.controlSize
-                    )
-                    .contentShape(Rectangle())
+                chromeIcon(
+                    isFavoriteFlipped ? "chevron.left" : "chevron.right",
+                    size: 16,
+                    color: theme.muted
+                )
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isFavoriteFlipped ? "Show selected answer" : "Show thought")
         }
-        .padding(.leading, ReframeCardMetrics.favoriteChromeInset)
-        .padding(.trailing, 6)
-        .padding(.bottom, 10)
+        .padding(.horizontal, ReframeCardMetrics.favoriteChromeInset)
+        .padding(.bottom, ReframeCardMetrics.favoriteChromeInset)
     }
 
     @ViewBuilder
@@ -405,6 +411,7 @@ struct ReframeCardView: View, Equatable {
 
     private func favoriteButton(for style: Style) -> some View {
         let isFavorite = card.isStyleFavorited(style)
+        let slop = chromeIconSlop(glyphSize: 17)
         return Button {
             favoriteHaptic += 1
             withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.58)) {
@@ -416,17 +423,33 @@ struct ReframeCardView: View, Equatable {
                 .foregroundStyle(isFavorite ? theme.ink : theme.muted)
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.bounce, options: .speed(1.4), value: favoriteHaptic)
-                .frame(
-                    width: ReframeCardMetrics.controlSize,
-                    height: ReframeCardMetrics.controlSize
-                )
+                .padding(slop)
                 .contentShape(Rectangle())
+                .padding(-slop)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
             isFavorite ? "Remove from favorite angles" : "Add to favorite angles"
         )
         .accessibilityAddTraits(isFavorite ? .isSelected : [])
+    }
+
+    private func chromeIcon(
+        _ systemName: String,
+        size: CGFloat,
+        color: Color
+    ) -> some View {
+        let slop = chromeIconSlop(glyphSize: size)
+        return Image(systemName: systemName)
+            .font(.system(size: size, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(slop)
+            .contentShape(Rectangle())
+            .padding(-slop)
+    }
+
+    private func chromeIconSlop(glyphSize: CGFloat) -> CGFloat {
+        max(0, (ReframeCardMetrics.controlSize - glyphSize) / 2)
     }
 
     @ViewBuilder
@@ -469,15 +492,18 @@ struct ReframeCardView: View, Equatable {
     }
 
     private var accessibilityLabel: String {
+        let prefix = card.lifeAreaPresentation.map { "\($0.label). " } ?? ""
         guard let slide = activeSlide else {
-            return displayedThought
+            return prefix + displayedThought
         }
         if presentation == .favoriteAngles {
-            return isFavoriteFlipped
+            let body = isFavoriteFlipped
                 ? displayedThought
                 : "\(slide.result.style.displayName) answer. \(slide.result.reframe)"
+            return prefix + body
         }
-        return "\(displayedThought). \(slide.result.style.displayName) answer. \(slide.result.reframe)"
+        return prefix
+            + "\(displayedThought). \(slide.result.style.displayName) answer. \(slide.result.reframe)"
     }
 
     private func preferredStyle() -> Style? {
@@ -845,6 +871,33 @@ private struct StyleChipRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(style.displayName) answer")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+private struct LifeAreaBadge: View {
+    let category: ThoughtCategory
+    let label: String
+    var maxWidth: CGFloat = ReframeCardMetrics.lifeAreaBadgeMaxWidth
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: category.systemImage)
+                .font(.system(size: 12, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+
+            Text(label)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .foregroundStyle(theme.sub)
+        .frame(maxWidth: maxWidth, alignment: .trailing)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Life area, \(label)")
     }
 }
 

@@ -45,6 +45,15 @@ enum ThoughtCategory: String, Codable, CaseIterable, Hashable, Sendable {
         }
     }
 
+    /// Narrow strip headers: drop the second noun so the badge stays readable.
+    var compactDisplayName: String {
+        switch self {
+        case .friendsSocial: return "Friends"
+        case .griefLoss: return "Grief"
+        default: return displayName
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .work: return "briefcase.fill"
@@ -57,7 +66,7 @@ enum ThoughtCategory: String, Codable, CaseIterable, Hashable, Sendable {
         case .future: return "arrow.forward.circle.fill"
         case .griefLoss: return "leaf.fill"
         case .identity: return "person.crop.circle.fill"
-        case .other: return "ellipsis.circle.fill"
+        case .other: return "circle.grid.2x2"
         }
     }
 }

@@ -83,6 +83,18 @@ struct HomeCard: Identifiable, Equatable {
         slides.first?.thought ?? ""
     }
 
+    /// Life-area chrome: closed category plus a proposed label when the cook landed on `other`.
+    var lifeAreaPresentation: (category: ThoughtCategory, label: String)? {
+        guard let meta else {
+            return nil
+        }
+        let label =
+            meta.category == .other
+            ? (meta.proposedLabel ?? meta.category.displayName)
+            : meta.category.displayName
+        return (meta.category, label)
+    }
+
     var hasFavoriteAngle: Bool {
         slides.contains(where: \.isFavorite)
     }

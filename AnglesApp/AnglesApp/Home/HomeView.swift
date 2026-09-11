@@ -20,7 +20,7 @@ struct HomeView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
-                    HomeScrollingTitle()
+                    HomeScrollingTitle(scrollState: headerScrollState)
 
                     HomeFeedList(viewModel: viewModel)
                 }
@@ -44,6 +44,7 @@ struct HomeView: View {
             .ignoresSafeArea(.container, edges: .top)
 
             HomeFixedActions(
+                scrollState: headerScrollState,
                 safeTop: safeAreaInsets.top,
                 appliedCount: viewModel.appliedFilter.appliedCount,
                 showFilter: $showHomeFilter,
@@ -75,46 +76,71 @@ struct HomeView: View {
 }
 
 private struct HomeScrollingTitle: View {
+    let scrollState: HeaderScrollState
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
     var body: some View {
+        let opacity = 1 - HeaderCollapse.restProgress(
+            scrollState.distance,
+            reduceMotion: reduceMotion
+        )
+
         Text("Home")
             .font(.title.bold())
+            .foregroundStyle(theme.ink)
             .lineLimit(1)
             .minimumScaleFactor(0.72)
             .padding(.horizontal, HeaderCollapse.horizontalPadding)
             .frame(height: HeaderCollapse.headerHeight, alignment: .leading)
+            .opacity(opacity)
+            .animation(nil, value: scrollState.distance)
             .accessibilityAddTraits(.isHeader)
+            .accessibilityHidden(opacity <= 0.4)
     }
 }
 
 private struct HomeFixedActions: View {
+    let scrollState: HeaderScrollState
     let safeTop: CGFloat
     let appliedCount: Int
     @Binding var showFilter: Bool
     @Binding var showSettings: Bool
 
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let progress = HeaderCollapse.collapsedProgress(
+            scrollState.distance,
+            reduceMotion: reduceMotion
+        )
+
         VStack(spacing: 0) {
             Color.clear
                 .frame(height: safeTop + HeaderCollapse.headerTopPad)
                 .allowsHitTesting(false)
 
-            HStack(spacing: 12) {
-                Spacer(minLength: 0)
+            ZStack {
+                CollapsedInlineTitle(title: "Home", progress: progress)
+                    .animation(nil, value: scrollState.distance)
 
-                Button {
-                    showFilter = true
-                } label: {
-                    HomeFilterIcon(appliedCount: appliedCount)
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+
+                    Button {
+                        showFilter = true
+                    } label: {
+                        HomeFilterIcon(appliedCount: appliedCount)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Filter Home")
+                    .accessibilityValue(filterAccessibilityValue(appliedCount))
+
+                    HomeSettingsButton(showSettings: $showSettings)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Filter Home")
-                .accessibilityValue(filterAccessibilityValue(appliedCount))
-
-                HomeSettingsButton(showSettings: $showSettings)
             }
             .padding(.horizontal, HeaderCollapse.horizontalPadding)
             .frame(height: HeaderCollapse.headerHeight)

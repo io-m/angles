@@ -2,7 +2,8 @@ import Observation
 import SwiftUI
 
 /// Collapse language shared by Home and Profile: a left-aligned title row at rest that
-/// fades into a centered filter chip as the page scrolls.
+/// fades as the page scrolls. Home reveals a centered inline title; Profile reveals
+/// a centered filter chip.
 enum HeaderCollapse {
     static let horizontalPadding: CGFloat = 16
     static let headerHeight: CGFloat = 44
@@ -91,6 +92,29 @@ func filterSymbolColor(_ filter: ProfileGridFilter, ink: Color) -> Color {
     }
 
     return CardStyleAppearance(style: style).ink
+}
+
+/// Compact nav title that fades and slides into the bar, matching UIKit inline titles.
+struct CollapsedInlineTitle: View {
+    let title: String
+    let progress: CGFloat
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        Text(title)
+            .font(.headline.weight(.bold))
+            .foregroundStyle(theme.ink)
+            .lineLimit(1)
+            .opacity(progress)
+            .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
+            .allowsHitTesting(false)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityHidden(progress <= 0.4)
+    }
 }
 
 /// The collapsed chrome: icon + title + chevron, centered.
