@@ -48,6 +48,7 @@ Loading and error are **states on Results**, not their own screens.
 | 9 | Public opt-in / community Home | screen | done | `HomeView.swift`; `feed.ts`; `schema.ts`; `CardsService.swift` | Public-others feed by Recent, category, and emotion; viewer pin/heart saves; `pnpm db:seed-community`. |
 | 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 | 9c | Style chips, flip chevron, no pins | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `APIClient.swift`; `feed.ts`; `cards.ts` | Chips replace the in-card pager; heart top-right, flip chevron bottom-right; pins gone; failed writes say so. |
+| 9d | Full-width cards, hittable chips | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `ProfileView.swift`; `ProfileSubsetView.swift`; `HomeCardStrip.swift`; `prompts.ts` | One card per row; selected chip is a labeled pill; 16pt grid gap; landscape strips. |
 
 ### 1. Compose (home)
 
@@ -112,7 +113,7 @@ Not a new screen. Local Postgres in Docker (host 5433) + Drizzle. Profile is the
 
 ### 5b. Favorite angles
 
-Heart is per style, not per cook. Profile has a tappable **Favorite angles** title plus a landscape strip (max 6, list dots), and FavoritesView is the full 2-column grid of liked angles. Front is the liked angle; flip is the thought. One liked style has no in-card carousel; two or more liked styles on the same post share one card. Un-hearting the last liked style removes it from this list. Style chips do not filter this strip or grid.
+Heart is per style, not per cook. Profile has a tappable **Favorite angles** title plus a landscape strip (max 6, list dots), and FavoritesView is the full one-card-per-row grid of liked angles. Front is the liked angle; flip is the thought. One liked style has no in-card carousel; two or more liked styles on the same post share one card. Un-hearting the last liked style removes it from this list. Style chips do not filter this strip or grid.
 
 ### 5c. Pinned posts — removed in 9c
 
@@ -155,6 +156,16 @@ Not a new screen. Polish on 9b.
 - **Failed writes.** A heart, privacy flag, or delete that never reaches the server rolls back visibly: a banner at the top of the app says so instead of the heart quietly un-filling ~15s later. Small writes time out in 6s; cooks keep 15s.
 - **No pinned list.** Profile is the favorites strip plus the library. `drizzle/0003_drop_pins.sql` drops `is_pinned`, `pinned_at`, and `saved_pins` so the schema and the seed have no pin left in them.
 
+### 9d. Full-width cards, hittable chips
+
+Not a new screen. Polish on 9c.
+
+- **One card per row.** `HomeCardGrid` is a `LazyVStack`. Profile library, Favorite angles, and Home shelf subsets are full width. `usesSingleColumn` is gone. Strips are a landscape peek (`min(pageWidth * 0.84, 340)`).
+- **Card.** Inset 16, copy pads 8, height 228 so chrome hugs the copy. Overlay shares the metrics.
+- **Chips.** Selected is a labeled pill; the rest stay 36pt circles and morph on tap. Unselected glyphs stay faint. Single-angle cards keep the named pill.
+- **Row gap.** Grid spacing matches the 16pt side padding.
+- **Budgets.** Thought and reframe caps stay; prompt copy no longer says two-column.
+
 ## Postponed (do not start)
 
 | # | Item | Kind | Status | Why later |
@@ -174,6 +185,7 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-11 — Full-width cards: one per row, height 228, selected style is a labeled pill, 16pt grid gap, landscape strips (340×228); LLM length budgets unchanged.
 - 2026-09-11 — Card chips replace the in-card pager, heart top-right, flip chevron bottom-right, card actions on long press; pins removed app, API, and schema (`0003_drop_pins.sql`); hearting no longer rebuilds the card; failed writes show a banner and small writes time out in 6s.
 - 2026-09-11 — Home polish: lazy shelves and a grouped `GET /feed/home` (140 KB, not 500 KB), one collapsing header like Profile, three-band cards (middle flips and pages, chrome swipes the strip), domain/mood zipper, paged shelf screens, no cold refetch on pop.
 - 2026-09-11 — Community Home: public-others feed (Recent, life-domain, mood), viewer-scoped pin/heart, seed via `pnpm db:seed-community` (docker compose up, migrate, seed).

@@ -37,7 +37,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library: favorite-angles strip, All/style library. Style filters keep cards that have that angle and open on it; All mixes covers. Favorite angles stays unfiltered.
 - `AnglesApp/AnglesApp/Home/HomeCardStrip.swift` — horizontal strip (max 6) that owns its scroll position
 - `AnglesApp/AnglesApp/Home/FeedSubsetView.swift` — one Home shelf in full, paged with the `before` cursor
-- `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — 2-column card grid
+- `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — one card per row (`LazyVStack`)
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`, `CardsService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
 - `BUILD.md` — **screen/feature order**. Update it in the same change as every new screen or feature.

@@ -32,7 +32,7 @@ struct HomeCardStrip: View, Equatable {
     /// A concrete width, not `containerRelativeFrame`: nested in a strip that would
     /// resolve against the wrong container.
     private var cardWidth: CGFloat {
-        min(pageWidth * 0.78, 300)
+        min(pageWidth * 0.84, 340)
     }
 
     var body: some View {

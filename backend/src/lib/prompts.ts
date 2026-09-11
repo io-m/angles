@@ -27,7 +27,7 @@ const list = (values: readonly string[]): string => values.join(" | ");
 
 const STYLE_LENGTH_BUDGET = `Length budget (hard):
 - ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, ${REFRAME_MIN_CHARS}–${REFRAME_MAX_CHARS} characters, 1–3 sentences.
-- The text has to fit on a two-column card. Going long is a failure, not thoroughness.`;
+- The text has to fit a glance-sized card. Going long is a failure, not thoroughness.`;
 
 const SHARED_CONSTRAINTS = `Output rules (always):
 - Reply with the reframe only. No preamble, no label, no quotes around it.
@@ -109,7 +109,7 @@ If the thought involves suicide, self-harm, harming someone else, or ongoing abu
 
 - "thought_en": the thought in clean English, as they would say it. Fix typos and grammar, cut rambling and repetition, keep the sting and every fact they stated. Never invent facts, names, or outcomes. Never soften it into something they did not mean. First person. ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words, ${THOUGHT_MIN_CHARS}–${THOUGHT_MAX_CHARS} characters, 1–3 short sentences, no bullets, no quotes around it. If they ramble, compress to the sting plus every fact — do not drop facts to hit the cap.
 - "thought_original_cleaned": the same cleanup in their own input language, same meaning, same budget. It must fit the same card as thought_en. Actually clean it — capitalisation, punctuation, typos, rambling — never paste their raw text back. If they wrote in English, use null.
-- Never echo a long or messy paste. This string is printed on a two-column card.
+- Never echo a long or messy paste. This string is printed on the card.
 
 ## Styles
 
@@ -192,7 +192,7 @@ export const SAFETY_FALLBACK_MESSAGE = `This sounds heavier than a reframe shoul
 export const REFRAME_TOO_LONG_RETRY = `That was too long for the card. Rewrite it shorter: ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, at most ${REFRAME_MAX_CHARS} characters, 1–3 sentences. Same angle, fewer words. Reply with the reframe only.`;
 
 const BATCH_SHARED = `Shared rules for every value:
-- ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, ${REFRAME_MIN_CHARS}–${REFRAME_MAX_CHARS} characters, 1–3 sentences. Fit a two-column card.
+- ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, ${REFRAME_MIN_CHARS}–${REFRAME_MAX_CHARS} characters, 1–3 sentences. Fit a glance-sized card.
 - English, plain and human. No markdown, bullets, numbering, headings, or labels inside the strings.
 - No therapy-speak clichés ("it's okay to feel", "you are enough", "hold space", "your truth", "journey").
 - No diagnosis, no advice to seek treatment, no clinical language.

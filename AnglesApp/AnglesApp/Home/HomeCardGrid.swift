@@ -2,9 +2,7 @@ import SwiftUI
 
 struct HomeCardGrid: View, Equatable {
     let cards: [HomeCard]
-    let usesSingleColumn: Bool
-    var columnSpacing: CGFloat = 12
-    var rowSpacing: CGFloat = 16
+    var rowSpacing: CGFloat = HeaderCollapse.horizontalPadding
     var presentation: ReframeCardPresentation = .library
     var openingStyle: Style? = nil
     var menuRole: (HomeCard) -> ReframeCardMenuRole = { card in
@@ -19,26 +17,13 @@ struct HomeCardGrid: View, Equatable {
 
     static func == (lhs: HomeCardGrid, rhs: HomeCardGrid) -> Bool {
         lhs.cards == rhs.cards
-            && lhs.usesSingleColumn == rhs.usesSingleColumn
-            && lhs.columnSpacing == rhs.columnSpacing
             && lhs.rowSpacing == rhs.rowSpacing
             && lhs.presentation == rhs.presentation
             && lhs.openingStyle == rhs.openingStyle
     }
 
-    private var columns: [GridItem] {
-        if usesSingleColumn {
-            return [GridItem(.flexible())]
-        }
-
-        return [
-            GridItem(.flexible(), spacing: columnSpacing),
-            GridItem(.flexible(), spacing: columnSpacing),
-        ]
-    }
-
     var body: some View {
-        LazyVGrid(columns: columns, spacing: rowSpacing) {
+        LazyVStack(spacing: rowSpacing) {
             ForEach(cards) { card in
                 ReframeCardView(
                     card: card,

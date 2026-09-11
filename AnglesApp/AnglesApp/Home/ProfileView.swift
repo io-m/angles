@@ -2,8 +2,7 @@ import SwiftUI
 
 struct ProfileView: View {
     private enum Layout {
-        static let gridColumnSpacing: CGFloat = 12
-        static let gridRowSpacing: CGFloat = 16
+        static let gridRowSpacing: CGFloat = HeaderCollapse.horizontalPadding
         static let greetings = ["Hey", "Welcome back", "Hi there", "Good to see you"]
     }
 
@@ -13,7 +12,6 @@ struct ProfileView: View {
     @ObservedObject var viewModel: HomeViewModel
     var onInspire: () -> Void = {}
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var cardRowHeight: CGFloat = ReframeCardMetrics.baseHeight
@@ -195,8 +193,6 @@ struct ProfileView: View {
                 } else {
                     HomeCardGrid(
                         cards: viewModel.filteredProfileCards,
-                        usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
-                        columnSpacing: Layout.gridColumnSpacing,
                         rowSpacing: Layout.gridRowSpacing,
                         presentation: .library,
                         openingStyle: viewModel.profileGridFilter.matchingStyle,

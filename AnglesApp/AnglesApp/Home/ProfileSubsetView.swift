@@ -19,7 +19,6 @@ struct ProfileSubsetView: View {
     var isLoadingMore = false
 
     @ObservedObject var viewModel: HomeViewModel
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -62,9 +61,7 @@ struct ProfileSubsetView: View {
                         VStack(spacing: 0) {
                             HomeCardGrid(
                                 cards: cards,
-                                usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
-                                columnSpacing: 12,
-                                rowSpacing: 16,
+                                rowSpacing: HeaderCollapse.horizontalPadding,
                                 presentation: presentation,
                                 openingStyle: openingStyle,
                                 menuRole: menuRole ?? { card in card.isOwner ? .owner : .savedFromFeed },

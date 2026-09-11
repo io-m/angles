@@ -12,22 +12,27 @@ enum ReframeCardMenuRole: Equatable {
 }
 
 enum ReframeCardMetrics {
-    /// Two-column cell on iPhone 14 Pro Max (~193pt) plus chrome (pill, date, heart/pin/menu, initials)
-    /// fits max thought (140) and max reframe (190) at the thought type below, with min-scale for Dynamic Type.
-    static let baseHeight: CGFloat = 260
+    /// Full-width cell on iPhone 14 Pro Max (~398pt). Chrome hugs the copy; height
+    /// fits max thought (140) and max reframe (190) at real type without a dead band.
+    static let baseHeight: CGFloat = 228
     /// Slightly smaller and heavier than `.title3.regular` (20pt); still larger than the answer (`.callout.medium`).
     static let thoughtSize: CGFloat = 18
     static let chromeInset: CGFloat = 16
     static let controlSize: CGFloat = 32
-    /// Four chips plus the heart have to share ~161pt of band on a two-column card.
-    static let chipSize: CGFloat = 28
-    static let chipSizeCompact: CGFloat = 24
-    static let chipSpacing: CGFloat = 2
+    static let copyTopPad: CGFloat = 8
+    static let copyBottomPad: CGFloat = 8
+    /// Visual circle; compact is the strip fallback. Hit target is `chipHitSize`.
+    static let chipSize: CGFloat = 36
+    static let chipSizeCompact: CGFloat = 30
+    static let chipSpacing: CGFloat = 8
+    static let chipHitSize: CGFloat = 40
 
     static var contentBottomPad: CGFloat { chromeInset + controlSize }
+    /// Top chrome fits the chip hit area; heart and initials sit centered in it.
+    static var topControlHeight: CGFloat { max(controlSize, chipHitSize) }
     /// Top chrome band: style chips / initials leading, heart trailing. Nothing in this
     /// band flips the card.
-    static var topBandHeight: CGFloat { chromeInset + controlSize }
+    static var topBandHeight: CGFloat { chromeInset + topControlHeight }
 }
 
 struct ReframeCardView: View, Equatable {
@@ -233,7 +238,11 @@ struct ReframeCardView: View, Equatable {
     @ViewBuilder
     private func styleSelector(_ appearance: CardStyleAppearance) -> some View {
         if visibleStyles.count > 1 {
-            StyleChipRow(styles: visibleStyles, selected: appearance.style, muted: theme.muted) { style in
+            StyleChipRow(
+                styles: visibleStyles,
+                selected: appearance.style,
+                faint: theme.faint
+            ) { style in
                 selectedStyle = style
             }
         } else {
@@ -249,7 +258,7 @@ struct ReframeCardView: View, Equatable {
         @ViewBuilder middle: () -> Middle
     ) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
                 top()
 
                 Spacer(minLength: 0)
@@ -257,7 +266,7 @@ struct ReframeCardView: View, Equatable {
 
                 trailing()
             }
-            .frame(height: ReframeCardMetrics.controlSize)
+            .frame(height: ReframeCardMetrics.topControlHeight)
             .padding(.horizontal, ReframeCardMetrics.chromeInset)
             .padding(.top, ReframeCardMetrics.chromeInset)
 
@@ -303,7 +312,8 @@ struct ReframeCardView: View, Equatable {
             .minimumScaleFactor(0.72)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, ReframeCardMetrics.chromeInset)
-            .padding(.top, 8)
+            .padding(.top, ReframeCardMetrics.copyTopPad)
+            .padding(.bottom, ReframeCardMetrics.copyBottomPad)
             .contentShape(Rectangle())
             .onTapGesture(perform: flip)
     }
@@ -439,6 +449,7 @@ struct OverlayProposalCard: View {
     @State private var showingOriginal = false
     @State private var selectedStyle: Style?
     @State private var flipHaptic = 0
+    @State private var recookHaptic = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var cardShape: RoundedRectangle {
@@ -501,6 +512,7 @@ struct OverlayProposalCard: View {
             }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
+        .sensoryFeedback(.impact(weight: .light), trigger: recookHaptic)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(showingThought ? "Shows the answers" : "Shows the original thought")
@@ -581,7 +593,7 @@ struct OverlayProposalCard: View {
             StyleChipRow(
                 styles: results.map(\.style),
                 selected: appearance.style,
-                muted: theme.muted
+                faint: theme.faint
             ) { style in
                 selectedStyle = style
             }
@@ -597,13 +609,13 @@ struct OverlayProposalCard: View {
         @ViewBuilder bottom: () -> Bottom
     ) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
+            HStack(spacing: 8) {
                 top()
 
                 Spacer(minLength: 0)
                     .allowsHitTesting(false)
             }
-            .frame(height: ReframeCardMetrics.controlSize)
+            .frame(height: ReframeCardMetrics.topControlHeight)
             .padding(.horizontal, ReframeCardMetrics.chromeInset)
             .padding(.top, ReframeCardMetrics.chromeInset)
 
@@ -622,7 +634,8 @@ struct OverlayProposalCard: View {
             .minimumScaleFactor(0.72)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(.horizontal, ReframeCardMetrics.chromeInset)
-            .padding(.top, 8)
+            .padding(.top, ReframeCardMetrics.copyTopPad)
+            .padding(.bottom, ReframeCardMetrics.copyBottomPad)
             .contentShape(Rectangle())
             .onTapGesture(perform: flip)
     }
@@ -630,6 +643,7 @@ struct OverlayProposalCard: View {
     private func recookButton(for style: Style, ink: Color) -> some View {
         let isRecooking = recookingStyle == style
         return Button {
+            recookHaptic += 1
             onRecook(style)
         } label: {
             HStack(spacing: 4) {
@@ -685,8 +699,13 @@ private struct OriginalToggle: View {
     let ink: Color
     let action: () -> Void
 
+    @State private var haptic = 0
+
     var body: some View {
-        Button(action: action) {
+        Button {
+            haptic += 1
+            action()
+        } label: {
             Image(systemName: showingOriginal ? "character.bubble.fill" : "character.bubble")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(ink)
@@ -695,23 +714,31 @@ private struct OriginalToggle: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .sensoryFeedback(.impact(weight: .light), trigger: haptic)
         .accessibilityLabel(showingOriginal ? "Show the English version" : "Show the original wording")
     }
 }
 
-/// Icon-only chips, one per angle the card carries. Four 28pt chips plus the heart only
-/// just fit a two-column card, so a narrower card drops to the compact size.
+/// Selected chip is a labeled pill; the rest stay circles and morph on tap.
 private struct StyleChipRow: View {
     let styles: [Style]
     let selected: Style
-    let muted: Color
+    let faint: Color
     let onSelect: (Style) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selectHaptic = 0
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             row(side: ReframeCardMetrics.chipSize)
             row(side: ReframeCardMetrics.chipSizeCompact)
         }
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.78),
+            value: selected
+        )
+        .sensoryFeedback(.selection, trigger: selectHaptic)
     }
 
     private func row(side: CGFloat) -> some View {
@@ -725,21 +752,44 @@ private struct StyleChipRow: View {
     private func chip(_ style: Style, side: CGFloat) -> some View {
         let appearance = CardStyleAppearance(style: style)
         let isSelected = style == selected
+        let glyph: CGFloat = side >= ReframeCardMetrics.chipSize ? 14 : 12
+        let slop = (ReframeCardMetrics.chipHitSize - side) / 2
 
         return Button {
+            guard style != selected else {
+                return
+            }
+            selectHaptic += 1
             onSelect(style)
         } label: {
-            Image(systemName: appearance.systemImage)
-                .symbolRenderingMode(.hierarchical)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(isSelected ? appearance.ink : muted)
-                .frame(width: side, height: side)
-                .background {
-                    if isSelected {
-                        Circle().fill(appearance.ink.opacity(0.14))
-                    }
+            HStack(spacing: 6) {
+                Image(systemName: appearance.systemImage)
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: glyph, weight: .semibold))
+
+                if isSelected {
+                    Text(style.displayName)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.84, anchor: .leading)),
+                                removal: .opacity.combined(with: .scale(scale: 0.84, anchor: .leading))
+                            )
+                        )
                 }
-                .contentShape(Circle())
+            }
+            .foregroundStyle(isSelected ? appearance.ink : faint)
+            .padding(.horizontal, isSelected ? 10 : 0)
+            .frame(width: isSelected ? nil : side, height: side, alignment: .center)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(isSelected ? appearance.ink.opacity(0.14) : faint.opacity(0.08))
+            }
+            .padding(slop)
+            .contentShape(Capsule())
+            .padding(-slop)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(style.displayName) answer")
