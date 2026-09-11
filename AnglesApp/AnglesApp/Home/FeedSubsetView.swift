@@ -5,7 +5,7 @@ import SwiftUI
 struct FeedSubsetView: View {
     let shelf: FeedShelf
 
-    @ObservedObject var viewModel: HomeViewModel
+    let viewModel: HomeViewModel
 
     var body: some View {
         let state = viewModel.feedSubset(shelf)
@@ -28,8 +28,8 @@ struct FeedSubsetView: View {
             onSetPublic: { _, _ in },
             onRemoveFromBoard: { _ in },
             onLoadMore: { viewModel.loadMoreFeedSubset(shelf) },
-            isLoadingMore: state.isLoadingMore,
-            viewModel: viewModel
+            usesPagination: true,
+            isLoadingMore: state.isLoadingMore
         )
         .task {
             await viewModel.loadFeedSubsetIfNeeded(shelf)

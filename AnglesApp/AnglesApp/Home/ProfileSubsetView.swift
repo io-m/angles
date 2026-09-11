@@ -7,8 +7,8 @@ struct ProfileSubsetView: View {
     let cards: [HomeCard]
     let presentation: ReframeCardPresentation
     var openingStyle: Style? = nil
-    var loadState: LibraryLoadState? = nil
-    var onRetry: (() -> Void)? = nil
+    let loadState: LibraryLoadState
+    let onRetry: () -> Void
     var menuRole: ((HomeCard) -> ReframeCardMenuRole)? = nil
     var onDelete: (HomeCard) -> Void
     var onToggleFavorite: (HomeCard, Style) -> Void
@@ -16,20 +16,16 @@ struct ProfileSubsetView: View {
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
     /// Set by shelves that page the server instead of holding the whole list.
     var onLoadMore: (() -> Void)? = nil
+    var usesPagination = false
     var isLoadingMore = false
 
-    @ObservedObject var viewModel: HomeViewModel
     @Environment(\.colorScheme) private var colorScheme
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
-    private var resolvedState: LibraryLoadState {
-        loadState ?? viewModel.libraryLoadState
-    }
-
     var body: some View {
         Group {
-            switch resolvedState {
+            switch loadState {
             case .loading:
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -39,13 +35,7 @@ struct ProfileSubsetView: View {
                     Text(message)
                         .font(.body.weight(.medium))
                         .foregroundStyle(theme.muted)
-                    Button("Retry") {
-                        if let onRetry {
-                            onRetry()
-                        } else {
-                            viewModel.retryLoadLibrary()
-                        }
-                    }
+                    Button("Retry", action: onRetry)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(theme.ink)
                 }
@@ -69,16 +59,19 @@ struct ProfileSubsetView: View {
                                 onToggleFavorite: onToggleFavorite,
                                 onSetPublic: onSetPublic,
                                 onRemoveFromBoard: onRemoveFromBoard,
-                                onReachEnd: onLoadMore
+                                onReachEnd: onLoadMore,
+                                loadMorePrefetchDistance: usesPagination ? 6 : 0
                             )
                             .equatable()
                             .padding(.horizontal, 16)
 
-                            if isLoadingMore {
+                            if usesPagination {
                                 ProgressView()
+                                    .opacity(isLoadingMore ? 1 : 0)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.top, 16)
+                                    .frame(height: 44)
                                     .accessibilityLabel(loadingLabel)
+                                    .accessibilityHidden(!isLoadingMore)
                             }
                         }
                         .padding(.bottom, 40)

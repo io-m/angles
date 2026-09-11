@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 
 /// Collapse language shared by Home and Profile: a left-aligned title row at rest that
@@ -11,6 +12,7 @@ enum HeaderCollapse {
     static let restFadeDistance: CGFloat = 44
     static let collapsedRevealDistance: CGFloat = 36
     static let collapseSlide: CGFloat = 10
+    static let maximumTrackedDistance = restFadeDistance + collapsedRevealDistance
 
     static func overlayHeight(safeTop: CGFloat) -> CGFloat {
         safeTop + headerTopPad + headerHeight
@@ -30,6 +32,24 @@ enum HeaderCollapse {
             return clamped > 0.5 ? 1 : 0
         }
         return clamped
+    }
+}
+
+/// Scroll state is retained by the screen, but only the small header views read it.
+/// Distance is capped once collapse completes so a long feed fling stops publishing work.
+@Observable
+final class HeaderScrollState {
+    private(set) var distance: CGFloat = 0
+
+    func update(_ rawDistance: CGFloat) {
+        let newValue = min(HeaderCollapse.maximumTrackedDistance, max(0, rawDistance))
+        guard abs(distance - newValue) > 0.5 else { return }
+
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            distance = newValue
+        }
     }
 }
 
@@ -131,6 +151,44 @@ struct GridFilterPicker: View {
     }
 }
 
+/// The status-bar fade is the only background that follows continuous collapse progress.
+struct CollapsingHeaderFade: View {
+    let scrollState: HeaderScrollState
+    let safeTop: CGFloat
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        let progress = HeaderCollapse.restProgress(
+            scrollState.distance,
+            reduceMotion: reduceMotion
+        )
+
+        VStack(spacing: 0) {
+            theme.paper
+                .frame(height: safeTop)
+
+            LinearGradient(
+                stops: [
+                    Gradient.Stop(color: theme.paper.opacity(progress), location: 0),
+                    Gradient.Stop(color: theme.paper.opacity(0.88 * progress), location: 0.52),
+                    Gradient.Stop(color: .clear, location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: HeaderCollapse.headerTopPad + HeaderCollapse.headerHeight + 12)
+        }
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .animation(nil, value: scrollState.distance)
+    }
+}
+
 struct ScrollDistanceKey: PreferenceKey {
     static var defaultValue: CGFloat?
 
@@ -143,7 +201,7 @@ struct ScrollDistanceKey: PreferenceKey {
 
 /// Reports how far a scroll view has travelled without animating the report itself.
 struct ProfileScrollDistance: ViewModifier {
-    @Binding var distance: CGFloat
+    let state: HeaderScrollState
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -151,22 +209,13 @@ struct ProfileScrollDistance: ViewModifier {
             content.onScrollGeometryChange(for: CGFloat.self) { geometry in
                 max(0, geometry.contentOffset.y)
             } action: { _, newValue in
-                update(newValue)
+                state.update(newValue)
             }
         } else {
             content.onPreferenceChange(ScrollDistanceKey.self) { minY in
                 guard let minY else { return }
-                update(max(0, -minY))
+                state.update(max(0, -minY))
             }
-        }
-    }
-
-    private func update(_ newValue: CGFloat) {
-        guard abs(distance - newValue) > 0.5 else { return }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            distance = newValue
         }
     }
 }

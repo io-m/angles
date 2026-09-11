@@ -12,14 +12,16 @@ struct HomeCardGrid: View, Equatable {
     var onToggleFavorite: (HomeCard, Style) -> Void = { _, _ in }
     var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
-    /// Fires when the last cell is mounted, so a server-paged grid can ask for more.
+    /// Fires before the end is visible, so a server-paged grid can append off screen.
     var onReachEnd: (() -> Void)? = nil
+    var loadMorePrefetchDistance = 0
 
     static func == (lhs: HomeCardGrid, rhs: HomeCardGrid) -> Bool {
         lhs.cards == rhs.cards
             && lhs.rowSpacing == rhs.rowSpacing
             && lhs.presentation == rhs.presentation
             && lhs.openingStyle == rhs.openingStyle
+            && lhs.loadMorePrefetchDistance == rhs.loadMorePrefetchDistance
     }
 
     var body: some View {
@@ -37,13 +39,23 @@ struct HomeCardGrid: View, Equatable {
                 )
                 .equatable()
                 .onAppear {
-                    guard let onReachEnd, card.id == cards.last?.id else {
+                    guard let onReachEnd, card.id == loadMoreTriggerID else {
                         return
                     }
                     onReachEnd()
                 }
             }
         }
+    }
+
+    private var loadMoreTriggerID: UUID? {
+        guard !cards.isEmpty else {
+            return nil
+        }
+        let configuredDistance = max(0, loadMorePrefetchDistance)
+        let adaptiveDistance = min(configuredDistance, max(1, cards.count / 4))
+        let distance = min(adaptiveDistance, cards.count - 1)
+        return cards[cards.count - 1 - distance].id
     }
 
     /// `ForEach` keys on `card.id` alone. An explicit identity that folded in favorite state

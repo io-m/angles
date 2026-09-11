@@ -13,7 +13,7 @@ struct AnglesApp: App {
 }
 
 struct AppRoot: View {
-    @StateObject private var viewModel = HomeViewModel()
+    @State private var viewModel = HomeViewModel()
     @State private var isComposePresented = false
     @State private var selectedTab: RootTab = .profile
     @State private var lastContentTab: RootTab = .profile

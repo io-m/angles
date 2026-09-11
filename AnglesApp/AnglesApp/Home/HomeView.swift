@@ -4,34 +4,17 @@ struct HomeView: View {
     let safeAreaInsets: EdgeInsets
     let pageWidth: CGFloat
 
-    @ObservedObject var viewModel: HomeViewModel
+    let viewModel: HomeViewModel
 
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeStore: ThemeStore
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var scrolledDistance: CGFloat = 0
+    @State private var headerScrollState = HeaderScrollState()
     @State private var showSettings = false
     @State private var showRestFilter = false
     @State private var showCollapsedFilter = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    private var headerOverlayHeight: CGFloat {
-        HeaderCollapse.overlayHeight(safeTop: safeAreaInsets.top)
-    }
-
-    private var restProgress: CGFloat {
-        HeaderCollapse.restProgress(scrolledDistance, reduceMotion: reduceMotion)
-    }
-
-    private var restOpacity: CGFloat {
-        1 - restProgress
-    }
-
-    private var collapsedProgress: CGFloat {
-        HeaderCollapse.collapsedProgress(scrolledDistance, reduceMotion: reduceMotion)
-    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -39,7 +22,12 @@ struct HomeView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
-                    restHeader
+                    HomeRestHeader(
+                        scrollState: headerScrollState,
+                        viewModel: viewModel,
+                        showFilter: $showRestFilter,
+                        showSettings: $showSettings
+                    )
 
                     HomeFeedList(pageWidth: pageWidth, viewModel: viewModel)
                 }
@@ -51,11 +39,20 @@ struct HomeView: View {
             }
             .scrollIndicators(.hidden)
             .coordinateSpace(name: "homeScroll")
-            .modifier(ProfileScrollDistance(distance: $scrolledDistance))
+            .modifier(ProfileScrollDistance(state: headerScrollState))
 
-            headerFade
+            CollapsingHeaderFade(
+                scrollState: headerScrollState,
+                safeTop: safeAreaInsets.top
+            )
 
-            collapsedHeader
+            HomeCollapsedHeader(
+                scrollState: headerScrollState,
+                safeTop: safeAreaInsets.top,
+                viewModel: viewModel,
+                showFilter: $showCollapsedFilter,
+                showSettings: $showSettings
+            )
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbar(.hidden, for: .navigationBar)
@@ -71,8 +68,25 @@ struct HomeView: View {
                 .modifier(UserAppearance(store: themeStore))
         }
     }
+}
 
-    private var restHeader: some View {
+private struct HomeRestHeader: View {
+    let scrollState: HeaderScrollState
+    let viewModel: HomeViewModel
+    @Binding var showFilter: Bool
+    @Binding var showSettings: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        let opacity = 1 - HeaderCollapse.restProgress(
+            scrollState.distance,
+            reduceMotion: reduceMotion
+        )
+
         HStack(alignment: .center, spacing: 12) {
             Text("Home")
                 .font(.title.bold())
@@ -84,7 +98,7 @@ struct HomeView: View {
             Spacer(minLength: 8)
 
             Button {
-                showRestFilter = true
+                showFilter = true
             } label: {
                 CircleIcon(
                     systemName: filterSystemImage(viewModel.homeGridFilter),
@@ -97,22 +111,96 @@ struct HomeView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Filter")
             .accessibilityValue(viewModel.homeGridFilter.title)
-            .popover(isPresented: $showRestFilter, arrowEdge: .top) {
-                filterPicker
-                    .presentationCompactAdaptation(.popover)
+            .popover(isPresented: $showFilter, arrowEdge: .top) {
+                GridFilterPicker(selection: viewModel.homeGridFilter) { filter in
+                    viewModel.homeGridFilter = filter
+                    showFilter = false
+                }
+                .presentationCompactAdaptation(.popover)
             }
 
-            settingsButton
+            HomeSettingsButton(showSettings: $showSettings)
         }
         .padding(.horizontal, HeaderCollapse.horizontalPadding)
         .frame(minHeight: HeaderCollapse.headerHeight, alignment: .center)
-        .opacity(restOpacity)
-        .animation(nil, value: scrolledDistance)
-        .allowsHitTesting(restOpacity > 0.4)
-        .accessibilityHidden(restOpacity <= 0.4)
+        .opacity(opacity)
+        .animation(nil, value: scrollState.distance)
+        .allowsHitTesting(opacity > 0.4)
+        .accessibilityHidden(opacity <= 0.4)
     }
+}
 
-    private var settingsButton: some View {
+/// Collapsed chrome is the centered filter chip; Settings stays trailing.
+private struct HomeCollapsedHeader: View {
+    let scrollState: HeaderScrollState
+    let safeTop: CGFloat
+    let viewModel: HomeViewModel
+    @Binding var showFilter: Bool
+    @Binding var showSettings: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let progress = HeaderCollapse.collapsedProgress(
+            scrollState.distance,
+            reduceMotion: reduceMotion
+        )
+
+        VStack(spacing: 0) {
+            Color.clear
+                .frame(height: safeTop + HeaderCollapse.headerTopPad)
+                .allowsHitTesting(false)
+
+            ZStack {
+                Button {
+                    showFilter = true
+                } label: {
+                    CollapsedFilterLabel(filter: viewModel.homeGridFilter)
+                }
+                .buttonStyle(.plain)
+                .opacity(progress)
+                .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
+                .animation(nil, value: scrollState.distance)
+                .accessibilityLabel("Filter")
+                .accessibilityValue(viewModel.homeGridFilter.title)
+                .accessibilityHidden(progress <= 0.4)
+                .popover(isPresented: $showFilter, arrowEdge: .top) {
+                    GridFilterPicker(selection: viewModel.homeGridFilter) { filter in
+                        viewModel.homeGridFilter = filter
+                        showFilter = false
+                    }
+                    .presentationCompactAdaptation(.popover)
+                }
+                .allowsHitTesting(progress > 0.4)
+
+                HStack {
+                    Spacer(minLength: 0)
+                        .allowsHitTesting(false)
+
+                    HomeSettingsButton(showSettings: $showSettings)
+                        .opacity(progress)
+                        .animation(nil, value: scrollState.distance)
+                        .accessibilityHidden(progress <= 0.4)
+                        .allowsHitTesting(progress > 0.4)
+                }
+                .padding(.horizontal, HeaderCollapse.horizontalPadding)
+            }
+            .frame(height: HeaderCollapse.headerHeight)
+        }
+        .frame(height: HeaderCollapse.overlayHeight(safeTop: safeTop), alignment: .top)
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(progress > 0.4)
+    }
+}
+
+private struct HomeSettingsButton: View {
+    @Binding var showSettings: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
         Button {
             showSettings = true
         } label: {
@@ -126,93 +214,12 @@ struct HomeView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Settings")
     }
-
-    /// Collapsed chrome is the centered filter chip; Settings stays trailing so it is
-    /// still reachable once the title is gone.
-    private var collapsedHeader: some View {
-        let progress = collapsedProgress
-
-        return VStack(spacing: 0) {
-            Color.clear
-                .frame(height: safeAreaInsets.top + HeaderCollapse.headerTopPad)
-                .allowsHitTesting(false)
-
-            ZStack {
-                Button {
-                    showCollapsedFilter = true
-                } label: {
-                    CollapsedFilterLabel(filter: viewModel.homeGridFilter)
-                }
-                .buttonStyle(.plain)
-                .opacity(progress)
-                .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
-                .animation(nil, value: scrolledDistance)
-                .accessibilityLabel("Filter")
-                .accessibilityValue(viewModel.homeGridFilter.title)
-                .accessibilityHidden(progress <= 0.4)
-                .popover(isPresented: $showCollapsedFilter, arrowEdge: .top) {
-                    filterPicker
-                        .presentationCompactAdaptation(.popover)
-                }
-                .allowsHitTesting(progress > 0.4)
-
-                HStack {
-                    Spacer(minLength: 0)
-                        .allowsHitTesting(false)
-
-                    settingsButton
-                        .opacity(progress)
-                        .animation(nil, value: scrolledDistance)
-                        .accessibilityHidden(progress <= 0.4)
-                        .allowsHitTesting(progress > 0.4)
-                }
-                .padding(.horizontal, HeaderCollapse.horizontalPadding)
-            }
-            .frame(height: HeaderCollapse.headerHeight)
-        }
-        .frame(height: headerOverlayHeight, alignment: .top)
-        .frame(maxWidth: .infinity)
-        .allowsHitTesting(progress > 0.4)
-    }
-
-    private var filterPicker: some View {
-        GridFilterPicker(selection: viewModel.homeGridFilter) { filter in
-            viewModel.homeGridFilter = filter
-            showRestFilter = false
-            showCollapsedFilter = false
-        }
-    }
-
-    private var headerFade: some View {
-        let progress = restProgress
-
-        return VStack(spacing: 0) {
-            theme.paper
-                .frame(height: safeAreaInsets.top)
-
-            LinearGradient(
-                stops: [
-                    Gradient.Stop(color: theme.paper.opacity(progress), location: 0),
-                    Gradient.Stop(color: theme.paper.opacity(0.88 * progress), location: 0.52),
-                    Gradient.Stop(color: .clear, location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: HeaderCollapse.headerTopPad + HeaderCollapse.headerHeight + 12)
-        }
-        .frame(maxWidth: .infinity)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-        .animation(nil, value: scrolledDistance)
-    }
 }
 
 /// Own view so the header's scroll progress never re-evaluates the shelves.
 private struct HomeFeedList: View {
     let pageWidth: CGFloat
-
-    @ObservedObject var viewModel: HomeViewModel
+    let viewModel: HomeViewModel
 
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var cardRowHeight: CGFloat = ReframeCardMetrics.baseHeight

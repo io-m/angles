@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct FavoritesView: View {
-    @ObservedObject var viewModel: HomeViewModel
+    let viewModel: HomeViewModel
     var onDelete: (HomeCard) -> Void
     var onToggleFavorite: (HomeCard, Style) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
@@ -14,11 +14,12 @@ struct FavoritesView: View {
             loadingLabel: "Loading favorite angles",
             cards: viewModel.favoriteAngleCards,
             presentation: .favoriteAngles,
+            loadState: viewModel.libraryLoadState,
+            onRetry: viewModel.retryLoadLibrary,
             onDelete: onDelete,
             onToggleFavorite: onToggleFavorite,
             onSetPublic: onSetPublic,
-            onRemoveFromBoard: onRemoveFromBoard,
-            viewModel: viewModel
+            onRemoveFromBoard: onRemoveFromBoard
         )
     }
 }

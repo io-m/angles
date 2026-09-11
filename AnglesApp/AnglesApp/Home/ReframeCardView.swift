@@ -104,19 +104,19 @@ struct ReframeCardView: View, Equatable {
         menuedCard
             .onAppear {
                 if selectedStyle == nil {
-                    selectedStyle = preferredStyle()
+                    setSelectedStyleWithoutAnimation(preferredStyle())
                 }
             }
             .onChange(of: openingStyle) { _, _ in
-                selectedStyle = preferredStyle()
+                setSelectedStyleWithoutAnimation(preferredStyle())
             }
             .onChange(of: presentation) { _, _ in
-                selectedStyle = preferredStyle()
+                setSelectedStyleWithoutAnimation(preferredStyle())
             }
             // A heart never moves the selection; only a style leaving the card does.
             .onChange(of: visibleStyles) { _, styles in
                 guard let selectedStyle, styles.contains(selectedStyle) else {
-                    self.selectedStyle = preferredStyle()
+                    setSelectedStyleWithoutAnimation(preferredStyle())
                     return
                 }
             }
@@ -230,7 +230,6 @@ struct ReframeCardView: View, Equatable {
         .background {
             appearance.washFill(over: theme.surface)
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appearance.style)
     }
 
     /// One chip per angle this card actually carries. A single-angle card keeps the named
@@ -370,11 +369,15 @@ struct ReframeCardView: View, Equatable {
         let isFavorite = card.isStyleFavorited(style)
         return Button {
             favoriteHaptic += 1
-            onToggleFavorite(style)
+            withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.58)) {
+                onToggleFavorite(style)
+            }
         } label: {
             Image(systemName: isFavorite ? "heart.fill" : "heart")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(isFavorite ? theme.ink : theme.muted)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, options: .speed(1.4), value: favoriteHaptic)
                 .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
                 .contentShape(Rectangle())
         }
@@ -414,6 +417,14 @@ struct ReframeCardView: View, Equatable {
         }
 
         return visibleStyles.first
+    }
+
+    private func setSelectedStyleWithoutAnimation(_ style: Style?) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            selectedStyle = style
+        }
     }
 
     private func flip() {
@@ -502,12 +513,12 @@ struct OverlayProposalCard: View {
         .frame(maxWidth: .infinity)
         .onAppear {
             if selectedStyle == nil {
-                selectedStyle = results.first?.style
+                setSelectedStyleWithoutAnimation(results.first?.style)
             }
         }
         .onChange(of: results.map(\.style)) { _, styles in
             guard let selectedStyle, styles.contains(selectedStyle) else {
-                self.selectedStyle = styles.first
+                setSelectedStyleWithoutAnimation(styles.first)
                 return
             }
         }
@@ -584,7 +595,6 @@ struct OverlayProposalCard: View {
         .background {
             appearance.washFill(over: theme.surface)
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appearance.style)
     }
 
     @ViewBuilder
@@ -691,6 +701,14 @@ struct OverlayProposalCard: View {
             isFlipped.toggle()
         }
     }
+
+    private func setSelectedStyleWithoutAnimation(_ style: Style?) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            selectedStyle = style
+        }
+    }
 }
 
 /// Only shown when the cleaned original is in another language than the card copy.
@@ -734,10 +752,6 @@ private struct StyleChipRow: View {
             row(side: ReframeCardMetrics.chipSize)
             row(side: ReframeCardMetrics.chipSizeCompact)
         }
-        .animation(
-            reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.78),
-            value: selected
-        )
         .sensoryFeedback(.selection, trigger: selectHaptic)
     }
 
@@ -760,7 +774,9 @@ private struct StyleChipRow: View {
                 return
             }
             selectHaptic += 1
-            onSelect(style)
+            withAnimation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.78)) {
+                onSelect(style)
+            }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: appearance.systemImage)

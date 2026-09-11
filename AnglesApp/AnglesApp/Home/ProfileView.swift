@@ -9,38 +9,22 @@ struct ProfileView: View {
     let safeAreaInsets: EdgeInsets
     let pageWidth: CGFloat
 
-    @ObservedObject var viewModel: HomeViewModel
+    let viewModel: HomeViewModel
     var onInspire: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var cardRowHeight: CGFloat = ReframeCardMetrics.baseHeight
 
-    @State private var scrolledDistance: CGFloat = 0
+    @State private var headerScrollState = HeaderScrollState()
     @State private var showRestFilter = false
     @State private var showCollapsedFilter = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
-    private var headerOverlayHeight: CGFloat {
-        HeaderCollapse.overlayHeight(safeTop: safeAreaInsets.top)
-    }
-
     private var greeting: String {
         let day = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 1
         return Layout.greetings[(day - 1) % Layout.greetings.count]
-    }
-
-    private var restProgress: CGFloat {
-        HeaderCollapse.restProgress(scrolledDistance, reduceMotion: reduceMotion)
-    }
-
-    private var restOpacity: CGFloat {
-        1 - restProgress
-    }
-
-    private var collapsedProgress: CGFloat {
-        HeaderCollapse.collapsedProgress(scrolledDistance, reduceMotion: reduceMotion)
     }
 
     var body: some View {
@@ -49,7 +33,12 @@ struct ProfileView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
-                    scrollingHeader
+                    ProfileRestHeader(
+                        greeting: greeting,
+                        scrollState: headerScrollState,
+                        viewModel: viewModel,
+                        showFilter: $showRestFilter
+                    )
 
                     favoriteAngles
 
@@ -63,103 +52,25 @@ struct ProfileView: View {
             }
             .scrollIndicators(.hidden)
             .coordinateSpace(name: "profileScroll")
-            .modifier(ProfileScrollDistance(distance: $scrolledDistance))
+            .modifier(ProfileScrollDistance(state: headerScrollState))
 
-            headerFade
+            CollapsingHeaderFade(
+                scrollState: headerScrollState,
+                safeTop: safeAreaInsets.top
+            )
 
-            collapsedHeader
+            ProfileCollapsedHeader(
+                scrollState: headerScrollState,
+                safeTop: safeAreaInsets.top,
+                viewModel: viewModel,
+                showFilter: $showCollapsedFilter
+            )
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
         .task {
             await viewModel.loadLibraryIfNeeded()
-        }
-    }
-
-    private var scrollingHeader: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(greeting)
-                .font(.title.bold())
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .accessibilityAddTraits(.isHeader)
-
-            Spacer(minLength: 8)
-
-            Button {
-                showRestFilter = true
-            } label: {
-                CircleIcon(
-                    systemName: filterSystemImage(viewModel.profileGridFilter),
-                    fill: theme.surface,
-                    symbol: filterSymbolColor(viewModel.profileGridFilter, ink: theme.ink),
-                    weight: .semibold,
-                    hairline: theme.cardHairline
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Filter")
-            .accessibilityValue(viewModel.profileGridFilter.title)
-            .popover(isPresented: $showRestFilter, arrowEdge: .top) {
-                filterPicker
-                    .presentationCompactAdaptation(.popover)
-            }
-        }
-        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-        .frame(minHeight: HeaderCollapse.headerHeight, alignment: .center)
-        .opacity(restOpacity)
-        .animation(nil, value: scrolledDistance)
-        .allowsHitTesting(restOpacity > 0.4)
-        .accessibilityHidden(restOpacity <= 0.4)
-    }
-
-    private var collapsedHeader: some View {
-        let progress = collapsedProgress
-
-        return VStack(spacing: 0) {
-            Color.clear
-                .frame(height: safeAreaInsets.top + HeaderCollapse.headerTopPad)
-                .allowsHitTesting(false)
-
-            HStack {
-                Spacer(minLength: 0)
-                    .allowsHitTesting(false)
-
-                Button {
-                    showCollapsedFilter = true
-                } label: {
-                    CollapsedFilterLabel(filter: viewModel.profileGridFilter)
-                }
-                .buttonStyle(.plain)
-                .opacity(progress)
-                .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
-                .animation(nil, value: scrolledDistance)
-                .accessibilityLabel("Filter")
-                .accessibilityValue(viewModel.profileGridFilter.title)
-                .accessibilityHidden(progress <= 0.4)
-                .popover(isPresented: $showCollapsedFilter, arrowEdge: .top) {
-                    filterPicker
-                        .presentationCompactAdaptation(.popover)
-                }
-                .allowsHitTesting(progress > 0.4)
-
-                Spacer(minLength: 0)
-                    .allowsHitTesting(false)
-            }
-            .frame(height: HeaderCollapse.headerHeight)
-        }
-        .frame(height: headerOverlayHeight, alignment: .top)
-        .frame(maxWidth: .infinity)
-        .allowsHitTesting(progress > 0.4)
-    }
-
-    private var filterPicker: some View {
-        GridFilterPicker(selection: viewModel.profileGridFilter) { filter in
-            viewModel.profileGridFilter = filter
-            showRestFilter = false
-            showCollapsedFilter = false
         }
     }
 
@@ -374,30 +285,6 @@ struct ProfileView: View {
         .accessibilityHint(hint)
     }
 
-    private var headerFade: some View {
-        let progress = restProgress
-
-        return VStack(spacing: 0) {
-            theme.paper
-                .frame(height: safeAreaInsets.top)
-
-            LinearGradient(
-                stops: [
-                    Gradient.Stop(color: theme.paper.opacity(progress), location: 0),
-                    Gradient.Stop(color: theme.paper.opacity(0.88 * progress), location: 0.52),
-                    Gradient.Stop(color: .clear, location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: HeaderCollapse.headerTopPad + HeaderCollapse.headerHeight + 12)
-        }
-        .frame(maxWidth: .infinity)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-        .animation(nil, value: scrolledDistance)
-    }
-
     private func deleteCard(_ card: HomeCard) {
         guard card.isOwner else {
             return
@@ -428,6 +315,119 @@ struct ProfileView: View {
         withAnimation(favoriteLayoutAnimation) {
             viewModel.removeFromBoard(card.id)
         }
+    }
+}
+
+private struct ProfileRestHeader: View {
+    let greeting: String
+    let scrollState: HeaderScrollState
+    let viewModel: HomeViewModel
+    @Binding var showFilter: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        let opacity = 1 - HeaderCollapse.restProgress(
+            scrollState.distance,
+            reduceMotion: reduceMotion
+        )
+
+        HStack(alignment: .center, spacing: 12) {
+            Text(greeting)
+                .font(.title.bold())
+                .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: 8)
+
+            Button {
+                showFilter = true
+            } label: {
+                CircleIcon(
+                    systemName: filterSystemImage(viewModel.profileGridFilter),
+                    fill: theme.surface,
+                    symbol: filterSymbolColor(viewModel.profileGridFilter, ink: theme.ink),
+                    weight: .semibold,
+                    hairline: theme.cardHairline
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Filter")
+            .accessibilityValue(viewModel.profileGridFilter.title)
+            .popover(isPresented: $showFilter, arrowEdge: .top) {
+                GridFilterPicker(selection: viewModel.profileGridFilter) { filter in
+                    viewModel.profileGridFilter = filter
+                    showFilter = false
+                }
+                .presentationCompactAdaptation(.popover)
+            }
+        }
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
+        .frame(minHeight: HeaderCollapse.headerHeight, alignment: .center)
+        .opacity(opacity)
+        .animation(nil, value: scrollState.distance)
+        .allowsHitTesting(opacity > 0.4)
+        .accessibilityHidden(opacity <= 0.4)
+    }
+}
+
+private struct ProfileCollapsedHeader: View {
+    let scrollState: HeaderScrollState
+    let safeTop: CGFloat
+    let viewModel: HomeViewModel
+    @Binding var showFilter: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let progress = HeaderCollapse.collapsedProgress(
+            scrollState.distance,
+            reduceMotion: reduceMotion
+        )
+
+        VStack(spacing: 0) {
+            Color.clear
+                .frame(height: safeTop + HeaderCollapse.headerTopPad)
+                .allowsHitTesting(false)
+
+            HStack {
+                Spacer(minLength: 0)
+                    .allowsHitTesting(false)
+
+                Button {
+                    showFilter = true
+                } label: {
+                    CollapsedFilterLabel(filter: viewModel.profileGridFilter)
+                }
+                .buttonStyle(.plain)
+                .opacity(progress)
+                .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
+                .animation(nil, value: scrollState.distance)
+                .accessibilityLabel("Filter")
+                .accessibilityValue(viewModel.profileGridFilter.title)
+                .accessibilityHidden(progress <= 0.4)
+                .popover(isPresented: $showFilter, arrowEdge: .top) {
+                    GridFilterPicker(selection: viewModel.profileGridFilter) { filter in
+                        viewModel.profileGridFilter = filter
+                        showFilter = false
+                    }
+                    .presentationCompactAdaptation(.popover)
+                }
+                .allowsHitTesting(progress > 0.4)
+
+                Spacer(minLength: 0)
+                    .allowsHitTesting(false)
+            }
+            .frame(height: HeaderCollapse.headerHeight)
+        }
+        .frame(height: HeaderCollapse.overlayHeight(safeTop: safeTop), alignment: .top)
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(progress > 0.4)
     }
 }
 

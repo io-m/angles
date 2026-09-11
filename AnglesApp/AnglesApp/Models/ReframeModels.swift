@@ -513,4 +513,10 @@ enum ISO8601Dates {
         plain.formatOptions = [.withInternetDateTime]
         return plain.date(from: raw)
     }
+
+    static func string(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
 }

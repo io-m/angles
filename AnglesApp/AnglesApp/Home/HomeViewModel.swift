@@ -1,5 +1,5 @@
-import Combine
 import Foundation
+import Observation
 
 struct HomeCardSlide: Identifiable, Equatable {
     let id: UUID
@@ -12,6 +12,8 @@ struct HomeCardSlide: Identifiable, Equatable {
 struct HomeCard: Identifiable, Equatable {
     let id: UUID
     let createdAt: Date
+    /// Exact server timestamp retained for cursor pagination.
+    let createdAtCursor: String
     var slides: [HomeCardSlide]
     var spotlightStyle: Style
     /// Cleaned thought in the language it was typed in, when that is not English.
@@ -25,6 +27,7 @@ struct HomeCard: Identifiable, Equatable {
     init(
         id: UUID = UUID(),
         createdAt: Date = Date(),
+        createdAtCursor: String? = nil,
         slides: [HomeCardSlide],
         spotlightStyle: Style = .stoic,
         thoughtOriginal: String? = nil,
@@ -35,6 +38,7 @@ struct HomeCard: Identifiable, Equatable {
     ) {
         self.id = id
         self.createdAt = createdAt
+        self.createdAtCursor = createdAtCursor ?? ISO8601Dates.string(from: createdAt)
         self.slides = slides
         self.spotlightStyle = spotlightStyle
         self.thoughtOriginal = thoughtOriginal
@@ -63,6 +67,7 @@ struct HomeCard: Identifiable, Equatable {
         self.init(
             id: id,
             createdAt: ISO8601Dates.date(from: stored.createdAt) ?? Date(),
+            createdAtCursor: stored.createdAt,
             slides: slides,
             spotlightStyle: stored.spotlightStyle,
             thoughtOriginal: stored.thoughtOriginal,
@@ -224,6 +229,7 @@ struct FeedSection: Identifiable, Equatable {
 
 struct FeedSubsetState: Equatable {
     var cards: [HomeCard] = []
+    var cardIDs: Set<UUID> = []
     var loadState: LibraryLoadState = .loading
     var isLoadingMore = false
     var hasMore = true
@@ -259,20 +265,21 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
 }
 
 @MainActor
-final class HomeViewModel: ObservableObject {
-    @Published private(set) var cards: [HomeCard]
+@Observable
+final class HomeViewModel {
+    private(set) var cards: [HomeCard]
 
-    @Published var composeText = ""
-    @Published private(set) var statement = ""
-    @Published private(set) var turns: [RefineTurn] = []
-    @Published private(set) var phase: RefinePhase = .composing
-    @Published private(set) var cookHaptic = 0
-    @Published private(set) var recookingStyle: Style?
+    var composeText = ""
+    private(set) var statement = ""
+    private(set) var turns: [RefineTurn] = []
+    private(set) var phase: RefinePhase = .composing
+    private(set) var cookHaptic = 0
+    private(set) var recookingStyle: Style?
     /// Set when a recook comes back as `continue` (that style no longer fits).
-    @Published private(set) var recookNotice: String?
-    @Published var profileGridFilter: ProfileGridFilter = .all
+    private(set) var recookNotice: String?
+    var profileGridFilter: ProfileGridFilter = .all
     /// Home shelves cap at 6, so this filter runs in SQL. Changing it refetches the shelves.
-    @Published var homeGridFilter: ProfileGridFilter = .all {
+    var homeGridFilter: ProfileGridFilter = .all {
         didSet {
             guard oldValue != homeGridFilter else {
                 return
@@ -280,22 +287,22 @@ final class HomeViewModel: ObservableObject {
             reloadFeedForFilterChange()
         }
     }
-    @Published var selectedModel: LlmModel {
+    var selectedModel: LlmModel {
         didSet {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: Self.modelDefaultsKey)
         }
     }
-    @Published private(set) var libraryLoadState: LibraryLoadState
+    private(set) var libraryLoadState: LibraryLoadState
     /// Every card any shelf references, once. Shelves hold ids into this pool.
-    @Published private(set) var feedCards: [HomeCard] = []
-    @Published private(set) var feedShelves: [FeedShelfIDs] = []
-    @Published private(set) var feedLoadState: LibraryLoadState = .loading
-    @Published private(set) var feedSubsets: [String: FeedSubsetState] = [:]
-    @Published private(set) var isSaving = false
-    @Published private(set) var saveError: String?
+    private(set) var feedCards: [HomeCard] = []
+    private(set) var feedShelves: [FeedShelfIDs] = []
+    private(set) var feedLoadState: LibraryLoadState = .loading
+    private(set) var feedSubsets: [String: FeedSubsetState] = [:]
+    private(set) var isSaving = false
+    private(set) var saveError: String?
     /// A heart, privacy flag, or delete that did not reach the server. The rollback is
     /// invisible on its own, so the root banner reads this.
-    @Published private(set) var writeError: String?
+    private(set) var writeError: String?
 
     struct FeedShelfIDs: Equatable {
         let shelf: FeedShelf
@@ -730,8 +737,8 @@ final class HomeViewModel: ObservableObject {
         feedSubsets[shelf.key] ?? FeedSubsetState()
     }
 
-    /// Seeds the screen with the shelf's cards so pushing it never shows a spinner, then
-    /// fetches that shelf's own first page.
+    /// Seeds the screen with the shelf's cards. The exact last-card cursor lets threshold
+    /// prefetch append the next page directly instead of replacing these rows after push.
     func loadFeedSubsetIfNeeded(_ shelf: FeedShelf) async {
         guard feedSubsets[shelf.key] == nil else {
             return
@@ -740,9 +747,14 @@ final class HomeViewModel: ObservableObject {
         let seed = feedSectionCards(shelf)
         var state = FeedSubsetState()
         state.cards = seed
+        state.cardIDs = Set(seed.map(\.id))
         state.loadState = seed.isEmpty ? .loading : .loaded
+        state.before = seed.last?.createdAtCursor
+        state.hasMore = seed.isEmpty || seed.count >= Self.stripLimit
         feedSubsets[shelf.key] = state
-        await fetchFeedSubsetPage(shelf, replacing: true)
+        if seed.isEmpty {
+            await fetchFeedSubsetPage(shelf, replacing: true)
+        }
     }
 
     func retryFeedSubset(_ shelf: FeedShelf) {
@@ -790,12 +802,20 @@ final class HomeViewModel: ObservableObject {
             guard !Task.isCancelled, var state = feedSubsets[shelf.key] else {
                 return
             }
-            let page = merged(state.cards, with: stored)
             if replacing {
+                let page = merged(state.cards, with: stored)
                 state.cards = page
+                state.cardIDs = Set(page.map(\.id))
             } else {
-                let known = Set(state.cards.map(\.id))
-                state.cards.append(contentsOf: page.filter { !known.contains($0.id) })
+                state.cards.reserveCapacity(state.cards.count + stored.count)
+                for item in stored {
+                    guard let card = HomeCard(stored: item),
+                          state.cardIDs.insert(card.id).inserted
+                    else {
+                        continue
+                    }
+                    state.cards.append(card)
+                }
             }
             state.before = stored.last?.createdAt
             state.hasMore = stored.count >= Self.feedSubsetPageSize

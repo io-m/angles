@@ -38,7 +38,7 @@ private enum LeaveKind {
 }
 
 struct ComposeSheetView: View {
-    @ObservedObject var viewModel: HomeViewModel
+    @Bindable var viewModel: HomeViewModel
     var isActive: Bool = true
     var onClose: () -> Void = {}
     var onSave: () -> Void = {}

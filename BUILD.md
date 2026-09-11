@@ -49,6 +49,7 @@ Loading and error are **states on Results**, not their own screens.
 | 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 | 9c | Style chips, flip chevron, no pins | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `APIClient.swift`; `feed.ts`; `cards.ts` | Chips replace the in-card pager; heart top-right, flip chevron bottom-right; pins gone; failed writes say so. |
 | 9d | Full-width cards, hittable chips | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `ProfileView.swift`; `ProfileSubsetView.swift`; `HomeCardStrip.swift`; `prompts.ts` | One card per row; selected chip is a labeled pill; 16pt grid gap; landscape strips. |
+| 9e | Scroll + pagination performance | polish | done | `HomeViewModel.swift`; `HeaderChrome.swift`; `HomeView.swift`; `ProfileView.swift`; `FeedSubsetView.swift`; `ProfileSubsetView.swift`; `HomeCardGrid.swift`; `ReframeCardView.swift` | Field-level observation; header-only capped scroll state; append-only shelf paging before the edge; chips animate only on tap; heart bounce. |
 
 ### 1. Compose (home)
 
@@ -166,6 +167,16 @@ Not a new screen. Polish on 9c.
 - **Row gap.** Grid spacing matches the 16pt side padding.
 - **Budgets.** Thought and reframe caps stay; prompt copy no longer says two-column.
 
+### 9e. Scroll + pagination performance
+
+Not a new screen. Polish on 9d.
+
+- **Measured cause.** An Animation Hitches recording on Joe’s iPhone showed baseline main-thread interaction delays up to 131.66ms. Steady Home scrolling was already smooth; reproduction isolated the visible jitter to a shelf page arriving while the user was at the list edge. One offscreen-render event was not correlated, so card shadows, gradients, and flip visuals stayed unchanged.
+- **Observation boundary.** `HomeViewModel` uses iOS 17 Observation instead of one broad Combine publisher, so subset paging does not invalidate Home, Profile, compose, and unrelated shelves. Subset content receives explicit load state instead of observing the whole model.
+- **Header.** Collapse distance lives in header-only state and caps at 80pt. Long flings stop publishing after the header is fully collapsed; feed and library content never read that progress.
+- **Pagination.** Shelf pushes retain their six seeded cards and exact server cursor. The next page appends directly instead of re-fetching/replacing page one, deduplicates incrementally, prefetches six rows early on long lists, and keeps a fixed-height loading footer so arrival does not move the scroll edge.
+- **Interaction animation.** Programmatic style selection is transactionally non-animated. The selected pill and wash spring only from a chip tap; hearts use a native symbol replacement and bounce without changing card identity or selection.
+
 ## Postponed (do not start)
 
 | # | Item | Kind | Status | Why later |
@@ -185,6 +196,7 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-11 — Shelf pagination no longer jitters at page arrival: field-level Observation, capped header-only scroll state, exact-cursor append paging with early prefetch and stable footer; chips animate only on tap and hearts bounce.
 - 2026-09-11 — Full-width cards: one per row, height 228, selected style is a labeled pill, 16pt grid gap, landscape strips (340×228); LLM length budgets unchanged.
 - 2026-09-11 — Card chips replace the in-card pager, heart top-right, flip chevron bottom-right, card actions on long press; pins removed app, API, and schema (`0003_drop_pins.sql`); hearting no longer rebuilds the card; failed writes show a banner and small writes time out in 6s.
 - 2026-09-11 — Home polish: lazy shelves and a grouped `GET /feed/home` (140 KB, not 500 KB), one collapsing header like Profile, three-band cards (middle flips and pages, chrome swipes the strip), domain/mood zipper, paged shelf screens, no cold refetch on pop.
