@@ -14,7 +14,7 @@ struct ProfileView: View {
     private enum Layout {
         static let horizontalPadding: CGFloat = 16
         static let gridColumnSpacing: CGFloat = 12
-        static let gridRowSpacing: CGFloat = 8
+        static let gridRowSpacing: CGFloat = 16
         static let sectionContentGap: CGFloat = 16
         static let headerHeight: CGFloat = 44
         static let headerTopPad: CGFloat = 6

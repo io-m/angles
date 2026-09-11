@@ -4,7 +4,7 @@ struct HomeCardGrid: View, Equatable {
     let cards: [HomeCard]
     let usesSingleColumn: Bool
     var columnSpacing: CGFloat = 12
-    var rowSpacing: CGFloat = 8
+    var rowSpacing: CGFloat = 16
     var presentation: ReframeCardPresentation = .library
     var openingStyle: Style? = nil
     var onDelete: (HomeCard) -> Void = { _ in }

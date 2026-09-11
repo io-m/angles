@@ -48,7 +48,7 @@ struct ProfileSubsetView: View {
                             cards: cards,
                             usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
                             columnSpacing: 12,
-                            rowSpacing: 8,
+                            rowSpacing: 16,
                             presentation: presentation,
                             onDelete: onDelete,
                             onToggleFavorite: onToggleFavorite,
