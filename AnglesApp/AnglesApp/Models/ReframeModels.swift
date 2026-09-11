@@ -44,6 +44,22 @@ enum ThoughtCategory: String, Codable, CaseIterable, Hashable, Sendable {
         case .other: return "Other"
         }
     }
+
+    var systemImage: String {
+        switch self {
+        case .work: return "briefcase.fill"
+        case .money: return "dollarsign.circle.fill"
+        case .romantic: return "heart.fill"
+        case .family: return "figure.2.and.child.holdinghands"
+        case .friendsSocial: return "person.3.fill"
+        case .health: return "heart.text.square.fill"
+        case .selfWorth: return "sparkles"
+        case .future: return "arrow.forward.circle.fill"
+        case .griefLoss: return "leaf.fill"
+        case .identity: return "person.crop.circle.fill"
+        case .other: return "ellipsis.circle.fill"
+        }
+    }
 }
 
 enum Emotion: String, Codable, CaseIterable, Hashable, Sendable {

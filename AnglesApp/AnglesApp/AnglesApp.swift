@@ -15,8 +15,8 @@ struct AnglesApp: App {
 struct AppRoot: View {
     @State private var viewModel = HomeViewModel()
     @State private var isComposePresented = false
-    @State private var selectedTab: RootTab = .profile
-    @State private var lastContentTab: RootTab = .profile
+    @State private var selectedTab: RootTab = .home
+    @State private var lastContentTab: RootTab = .home
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
     @State private var pageWidth: CGFloat = 393
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

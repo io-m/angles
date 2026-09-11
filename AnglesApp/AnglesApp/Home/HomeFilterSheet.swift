@@ -47,6 +47,7 @@ struct HomeFilterSheet: View {
                         ForEach(ThoughtCategory.allCases, id: \.self) { category in
                             filterRow(
                                 title: category.displayName,
+                                systemImage: category.systemImage,
                                 isSelected: draft.categories.contains(category)
                             ) {
                                 toggle(category, in: &draft.categories)
@@ -73,15 +74,27 @@ struct HomeFilterSheet: View {
                     Button("Clear") {
                         draft = HomeFeedFilter()
                     }
+                    .tint(draft.appliedCount > 0 ? .red : theme.faint)
                     .disabled(draft.appliedCount == 0)
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
+                    Button {
                         onApply(draft)
                         dismiss()
+                    } label: {
+                        if draft.appliedCount > 0 {
+                            Text("Apply (\(draft.appliedCount))")
+                        } else {
+                            Text("Apply")
+                        }
                     }
                     .fontWeight(.semibold)
+                    .accessibilityLabel(
+                        draft.appliedCount > 0
+                            ? "Apply \(draft.appliedCount) filters"
+                            : "Apply"
+                    )
                 }
             }
             .tint(theme.ink)
@@ -90,11 +103,20 @@ struct HomeFilterSheet: View {
 
     private func filterRow(
         title: String,
+        systemImage: String? = nil,
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(theme.ink.opacity(0.72))
+                        .frame(width: 28, alignment: .center)
+                        .accessibilityHidden(true)
+                }
+
                 Text(title)
                     .font(.body.weight(.medium))
                     .foregroundStyle(theme.ink)
