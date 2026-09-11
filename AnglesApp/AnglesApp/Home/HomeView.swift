@@ -16,6 +16,7 @@ struct HomeView: View {
     var body: some View {
         ZStack(alignment: .top) {
             AnglesCanvasBackground()
+                .ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
@@ -23,7 +24,7 @@ struct HomeView: View {
 
                     HomeFeedList(viewModel: viewModel)
                 }
-                .padding(.top, safeAreaInsets.top + HeaderCollapse.headerTopPad)
+                .padding(.top, HeaderCollapse.headerTopPad)
                 .padding(.bottom, 20)
                 .background(alignment: .top) {
                     ScrollDistanceProbe(space: "homeScroll")
@@ -32,11 +33,15 @@ struct HomeView: View {
             .scrollIndicators(.hidden)
             .coordinateSpace(name: "homeScroll")
             .modifier(ProfileScrollDistance(state: headerScrollState))
+            .refreshable {
+                await viewModel.refreshFeed()
+            }
 
             CollapsingHeaderFade(
                 scrollState: headerScrollState,
                 safeTop: safeAreaInsets.top
             )
+            .ignoresSafeArea(.container, edges: .top)
 
             HomeFixedActions(
                 safeTop: safeAreaInsets.top,
@@ -44,8 +49,8 @@ struct HomeView: View {
                 showFilter: $showHomeFilter,
                 showSettings: $showSettings
             )
+            .ignoresSafeArea(.container, edges: .top)
         }
-        .ignoresSafeArea(.container, edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
         .task {

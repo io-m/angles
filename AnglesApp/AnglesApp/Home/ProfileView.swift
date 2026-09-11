@@ -29,6 +29,7 @@ struct ProfileView: View {
     var body: some View {
         ZStack(alignment: .top) {
             AnglesCanvasBackground()
+                .ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
@@ -43,7 +44,7 @@ struct ProfileView: View {
 
                     gridSection
                 }
-                .padding(.top, safeAreaInsets.top + HeaderCollapse.headerTopPad)
+                .padding(.top, HeaderCollapse.headerTopPad)
                 .padding(.bottom, 20)
                 .background(alignment: .top) {
                     ScrollDistanceProbe(space: "profileScroll")
@@ -52,11 +53,15 @@ struct ProfileView: View {
             .scrollIndicators(.hidden)
             .coordinateSpace(name: "profileScroll")
             .modifier(ProfileScrollDistance(state: headerScrollState))
+            .refreshable {
+                await viewModel.refreshLibrary()
+            }
 
             CollapsingHeaderFade(
                 scrollState: headerScrollState,
                 safeTop: safeAreaInsets.top
             )
+            .ignoresSafeArea(.container, edges: .top)
 
             ProfileCollapsedHeader(
                 scrollState: headerScrollState,
@@ -64,8 +69,8 @@ struct ProfileView: View {
                 viewModel: viewModel,
                 showFilter: $showCollapsedFilter
             )
+            .ignoresSafeArea(.container, edges: .top)
         }
-        .ignoresSafeArea(.container, edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
         .task {
@@ -233,7 +238,7 @@ struct ProfileView: View {
     }
 
     private var favoriteAnglesSection: some View {
-        VStack(alignment: .leading, spacing: HeaderCollapse.sectionContentGap) {
+        VStack(alignment: .leading, spacing: 10) {
             subsetSectionTitle("Favorite angles", hint: "Shows all favorite angles") {
                 FavoritesView(
                     viewModel: viewModel,

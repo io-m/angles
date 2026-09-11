@@ -511,6 +511,13 @@ final class HomeViewModel {
         }
     }
 
+    /// Pull-to-refresh: keep showing the current library while re-fetching.
+    func refreshLibrary() async {
+        libraryTask?.cancel()
+        libraryTask = nil
+        await loadLibrary(showsLoading: false)
+    }
+
     func loadFeedIfNeeded() async {
         guard !hasLoadedFeed, feedTask == nil else {
             return
@@ -531,6 +538,27 @@ final class HomeViewModel {
     func retryLoadFeed() {
         resetFeed(filter: appliedFilter)
         startFeedTask(replacing: true)
+    }
+
+    /// Pull-to-refresh: reload page one for the active filter without blanking the feed.
+    func refreshFeed() async {
+        feedTask?.cancel()
+        feedTask = nil
+        feedGeneration &+= 1
+        let generation = feedGeneration
+
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            feedBefore = nil
+            feedHasMore = true
+            feedFooterState = .idle
+            if !feedCards.isEmpty {
+                feedLoadState = .loaded
+            }
+        }
+
+        await fetchFeedPage(replacing: true, generation: generation)
     }
 
     func loadMoreFeed() {

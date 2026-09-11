@@ -47,8 +47,8 @@ struct HomeCardStrip: View, Equatable {
         let horizontal = max(16, halo)
         switch presentation {
         case .favoriteAngles:
-            // Dots sit under the strip; keep top/side halo, tighten space below cards.
-            return EdgeInsets(top: halo, leading: horizontal, bottom: 8, trailing: horizontal)
+            // Title sits above: no top inset (shadow paints upward with scrollClipDisabled).
+            return EdgeInsets(top: 0, leading: horizontal, bottom: 8, trailing: horizontal)
         case .library:
             return EdgeInsets(top: halo, leading: horizontal, bottom: halo, trailing: horizontal)
         }
