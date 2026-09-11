@@ -14,7 +14,6 @@ struct ProfileView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var cardRowHeight: CGFloat = ReframeCardMetrics.baseHeight
 
     @State private var headerScrollState = HeaderScrollState()
     @State private var showRestFilter = false
@@ -249,7 +248,6 @@ struct ProfileView: View {
                 cards: viewModel.stripFavoriteCards,
                 pageWidth: pageWidth,
                 presentation: .favoriteAngles,
-                cardRowHeight: cardRowHeight,
                 onDelete: deleteCard,
                 onToggleFavorite: toggleFavorite,
                 onSetPublic: setPublic,

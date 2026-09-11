@@ -12,27 +12,16 @@ enum ReframeCardMenuRole: Equatable {
 }
 
 enum ReframeCardMetrics {
-    /// Full-width cell on iPhone 14 Pro Max (~398pt). Chrome hugs the copy; height
-    /// fits max thought (140) and max reframe (190) at real type without a dead band.
-    static let baseHeight: CGFloat = 228
-    /// Slightly smaller and heavier than `.title3.regular` (20pt); still larger than the answer (`.callout.medium`).
-    static let thoughtSize: CGFloat = 18
+    static let storedMinimumHeight: CGFloat = 300
+    static let overlayMinimumHeight: CGFloat = 260
     static let chromeInset: CGFloat = 16
-    static let controlSize: CGFloat = 32
-    static let copyTopPad: CGFloat = 8
-    static let copyBottomPad: CGFloat = 8
-    /// Visual circle; compact is the strip fallback. Hit target is `chipHitSize`.
+    static let controlSize: CGFloat = 44
+    static let avatarSize: CGFloat = 36
+    static let sectionSpacing: CGFloat = 16
     static let chipSize: CGFloat = 36
     static let chipSizeCompact: CGFloat = 30
     static let chipSpacing: CGFloat = 8
     static let chipHitSize: CGFloat = 40
-
-    static var contentBottomPad: CGFloat { chromeInset + controlSize }
-    /// Top chrome fits the chip hit area; heart and initials sit centered in it.
-    static var topControlHeight: CGFloat { max(controlSize, chipHitSize) }
-    /// Top chrome band: style chips / initials leading, heart trailing. Nothing in this
-    /// band flips the card.
-    static var topBandHeight: CGFloat { chromeInset + topControlHeight }
 }
 
 struct ReframeCardView: View, Equatable {
@@ -47,14 +36,14 @@ struct ReframeCardView: View, Equatable {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = ReframeCardMetrics.baseHeight
-    @ScaledMetric(relativeTo: .title3) private var thoughtSize: CGFloat = ReframeCardMetrics.thoughtSize
-    @State private var isFlipped = false
+
+    @ScaledMetric(relativeTo: .body) private var favoriteCardHeight: CGFloat =
+        ReframeCardMetrics.storedMinimumHeight
     @State private var showingOriginal = false
-    /// Explicit selection, not a value read back off a scroll offset.
     @State private var selectedStyle: Style?
-    @State private var flipHaptic = 0
     @State private var favoriteHaptic = 0
+    @State private var favoriteFlipHaptic = 0
+    @State private var isFavoriteFlipped = false
     @State private var showDeleteConfirm = false
 
     static func == (lhs: ReframeCardView, rhs: ReframeCardView) -> Bool {
@@ -67,10 +56,6 @@ struct ReframeCardView: View, Equatable {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var cardShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
-    }
-
-    private var showingThought: Bool {
-        isFlipped
     }
 
     private var visibleSlides: [HomeCardSlide] {
@@ -92,12 +77,35 @@ struct ReframeCardView: View, Equatable {
         else {
             return visibleSlides.first
         }
-
         return match
     }
 
     private var activeStyle: Style? {
         activeSlide?.result.style
+    }
+
+    private var activeAppearance: CardStyleAppearance {
+        CardStyleAppearance(style: activeStyle ?? card.spotlightStyle)
+    }
+
+    private var displayedThought: String {
+        showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought
+    }
+
+    private var hasOriginal: Bool {
+        guard let original = card.thoughtOriginal else {
+            return false
+        }
+        return original != card.thought
+    }
+
+    private var showsMenu: Bool {
+        switch menuRole {
+        case .owner, .savedFromFeed:
+            return true
+        case .feed:
+            return hasOriginal
+        }
     }
 
     var body: some View {
@@ -113,127 +121,208 @@ struct ReframeCardView: View, Equatable {
             .onChange(of: presentation) { _, _ in
                 setSelectedStyleWithoutAnimation(preferredStyle())
             }
-            // A heart never moves the selection; only a style leaving the card does.
             .onChange(of: visibleStyles) { _, styles in
                 guard let selectedStyle, styles.contains(selectedStyle) else {
                     setSelectedStyleWithoutAnimation(preferredStyle())
                     return
                 }
             }
-            .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
             .sensoryFeedback(.impact(weight: .light), trigger: favoriteHaptic)
+            .sensoryFeedback(.impact(weight: .light), trigger: favoriteFlipHaptic)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint(showingThought ? "Shows the answers" : "Shows the original thought")
-            .accessibilityAction(named: showingThought ? "Show answers" : "Show original thought") {
-                flip()
-            }
-            .confirmationDialog("Delete this card?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            .confirmationDialog(
+                "Delete this card?",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
                 Button("Delete", role: .destructive, action: onDelete)
                 Button("Cancel", role: .cancel) {}
             }
     }
 
-    /// Long press replaces the ⋯ button: the top-trailing slot is the heart's now.
     @ViewBuilder
     private var menuedCard: some View {
         if showsMenu {
-            clippedCard
+            cardBody
                 .contextMenu {
                     cardMenuItems
                 }
         } else {
-            clippedCard
+            cardBody
         }
     }
 
-    private var accessibilityLabel: String {
-        if showingThought {
-            return card.thought
+    @ViewBuilder
+    private var cardBody: some View {
+        switch presentation {
+        case .library:
+            stackedCardBody
+        case .favoriteAngles:
+            favoriteFlipCard
         }
-
-        if let slide = activeSlide {
-            return "\(slide.result.style.displayName) answer. \(slide.result.reframe)"
-        }
-
-        return card.thought
     }
 
-    private var clippedCard: some View {
-        FlipStack(progress: isFlipped ? 1 : 0) {
-            answerFace
-        } back: {
-            thoughtFace
+    private var stackedCardBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            storedHeader
+
+            ReframeCopyStack(
+                thought: displayedThought,
+                answer: activeSlide?.result.reframe
+            )
+
+            storedFooter
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: cardHeight)
-        .clipped()
+        .frame(maxWidth: .infinity, minHeight: ReframeCardMetrics.storedMinimumHeight, alignment: .top)
+        .background {
+            activeAppearance.washFill(over: theme.surface)
+        }
         .clipShape(cardShape)
         .overlay {
             cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-        .overlay(alignment: .bottom) {
-            bottomChrome
+    }
+
+    private var favoriteFlipCard: some View {
+        FlipStack(progress: isFavoriteFlipped ? 1 : 0) {
+            favoriteFace(
+                copy: activeSlide?.result.reframe ?? "",
+                font: .title3.weight(.semibold),
+                foreground: theme.ink
+            )
+        } back: {
+            favoriteFace(
+                copy: displayedThought,
+                font: .body.weight(.medium),
+                foreground: theme.ink.opacity(0.72)
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: favoriteCardHeight)
+        .clipped()
+        .background {
+            activeAppearance.washFill(over: theme.surface)
+        }
+        .clipShape(cardShape)
+        .overlay {
+            cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+        .accessibilityHint(isFavoriteFlipped ? "Shows the selected answer" : "Shows the thought")
+        .accessibilityAction(named: isFavoriteFlipped ? "Show answer" : "Show thought") {
+            flipFavorite()
         }
     }
 
-    private var thoughtFace: some View {
-        cardFace {
+    private func favoriteFace(
+        copy: String,
+        font: Font,
+        foreground: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            storedHeader
+
+            Text(copy)
+                .font(font)
+                .foregroundStyle(foreground)
+                .lineSpacing(3)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(ReframeCardMetrics.chromeInset)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: flipFavorite)
+
+            favoriteFooter
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var storedHeader: some View {
+        HStack(spacing: 10) {
             InitialsAvatar(
                 letters: card.authorInitials,
-                side: ReframeCardMetrics.controlSize,
+                side: ReframeCardMetrics.avatarSize,
                 fill: theme.ink,
                 symbol: theme.paper
             )
-        } trailing: {
-            EmptyView()
-        } middle: {
-            copyBand(
-                Text(showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought)
-                    .font(.system(size: thoughtSize, weight: .medium))
-                    .foregroundStyle(theme.ink)
-            )
+
+            Text(HomeViewModel.dateLabel(for: card.createdAt))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(theme.muted)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if showsMenu {
+                Menu {
+                    cardMenuItems
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(theme.muted)
+                        .frame(
+                            width: ReframeCardMetrics.controlSize,
+                            height: ReframeCardMetrics.controlSize
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Card actions")
+            }
         }
-        .background(theme.surface)
+        .padding(.leading, ReframeCardMetrics.chromeInset)
+        .padding(.trailing, 10)
+        .padding(.top, 12)
     }
 
-    private var hasOriginal: Bool {
-        guard let original = card.thoughtOriginal else {
-            return false
-        }
+    private var storedFooter: some View {
+        HStack(spacing: 10) {
+            styleSelector(activeAppearance)
 
-        return original != card.thought
-    }
+            Spacer(minLength: 8)
 
-    private var activeAppearance: CardStyleAppearance {
-        CardStyleAppearance(style: activeStyle ?? card.spotlightStyle)
-    }
-
-    /// The copy no longer pages, so a horizontal drag anywhere on the card belongs to the
-    /// enclosing strip. Styles switch from the chips in the top band.
-    private var answerFace: some View {
-        let appearance = activeAppearance
-
-        return cardFace {
-            styleSelector(appearance)
-        } trailing: {
             if let style = activeStyle {
                 favoriteButton(for: style)
             }
-        } middle: {
-            if let slide = activeSlide {
-                answerCopy(slide.result)
-            }
         }
-        .background {
-            appearance.washFill(over: theme.surface)
-        }
+        .padding(.leading, ReframeCardMetrics.chromeInset)
+        .padding(.trailing, 10)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
     }
 
-    /// One chip per angle this card actually carries. A single-angle card keeps the named
-    /// pill: there is nothing to switch to.
+    private var favoriteFooter: some View {
+        HStack(spacing: 6) {
+            styleSelector(activeAppearance)
+
+            Spacer(minLength: 4)
+
+            if let style = activeStyle {
+                favoriteButton(for: style)
+            }
+
+            Button(action: flipFavorite) {
+                Image(systemName: isFavoriteFlipped ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(theme.muted)
+                    .frame(
+                        width: ReframeCardMetrics.controlSize,
+                        height: ReframeCardMetrics.controlSize
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isFavoriteFlipped ? "Show selected answer" : "Show thought")
+        }
+        .padding(.leading, ReframeCardMetrics.chromeInset)
+        .padding(.trailing, 6)
+        .padding(.bottom, 12)
+    }
+
     @ViewBuilder
     private func styleSelector(_ appearance: CardStyleAppearance) -> some View {
         if visibleStyles.count > 1 {
@@ -249,81 +338,30 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
-    /// Three bands: chrome, the flip target, chrome. The bottom band is empty space the
-    /// `bottomChrome` overlay draws into.
-    private func cardFace<Top: View, Trailing: View, Middle: View>(
-        @ViewBuilder top: () -> Top,
-        @ViewBuilder trailing: () -> Trailing,
-        @ViewBuilder middle: () -> Middle
-    ) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                top()
-
-                Spacer(minLength: 0)
-                    .allowsHitTesting(false)
-
-                trailing()
+    private func favoriteButton(for style: Style) -> some View {
+        let isFavorite = card.isStyleFavorited(style)
+        return Button {
+            favoriteHaptic += 1
+            withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.58)) {
+                onToggleFavorite(style)
             }
-            .frame(height: ReframeCardMetrics.topControlHeight)
-            .padding(.horizontal, ReframeCardMetrics.chromeInset)
-            .padding(.top, ReframeCardMetrics.chromeInset)
-
-            middle()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Color.clear
-                .frame(height: ReframeCardMetrics.contentBottomPad)
-                .allowsHitTesting(false)
+        } label: {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(isFavorite ? theme.ink : theme.muted)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, options: .speed(1.4), value: favoriteHaptic)
+                .frame(
+                    width: ReframeCardMetrics.controlSize,
+                    height: ReframeCardMetrics.controlSize
+                )
+                .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var bottomChrome: some View {
-        HStack(alignment: .center, spacing: 4) {
-            Text(HomeViewModel.dateLabel(for: card.createdAt))
-                .font(.caption.weight(.medium))
-                .foregroundStyle(theme.muted)
-                .lineLimit(1)
-                .frame(height: ReframeCardMetrics.controlSize, alignment: .leading)
-                .allowsHitTesting(false)
-
-            Spacer(minLength: 0)
-                .allowsHitTesting(false)
-
-            flipButton
-        }
-        .padding(ReframeCardMetrics.chromeInset)
-    }
-
-    private func answerCopy(_ result: ReframeResult) -> some View {
-        copyBand(
-            Text(result.reframe)
-                .font(.callout.weight(.medium))
-                .foregroundStyle(theme.ink)
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            isFavorite ? "Remove from favorite angles" : "Add to favorite angles"
         )
-    }
-
-    /// One tap target for the whole middle band, including the empty space under the copy.
-    private func copyBand(_ copy: Text) -> some View {
-        copy
-            .multilineTextAlignment(.leading)
-            .minimumScaleFactor(0.72)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.horizontal, ReframeCardMetrics.chromeInset)
-            .padding(.top, ReframeCardMetrics.copyTopPad)
-            .padding(.bottom, ReframeCardMetrics.copyBottomPad)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: flip)
-    }
-
-    private var showsMenu: Bool {
-        switch menuRole {
-        case .owner, .savedFromFeed:
-            return true
-        case .feed:
-            return hasOriginal
-        }
+        .accessibilityAddTraits(isFavorite ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -331,8 +369,8 @@ struct ReframeCardView: View, Equatable {
         if hasOriginal {
             Button {
                 showingOriginal.toggle()
-                if !showingThought {
-                    flip()
+                if presentation == .favoriteAngles {
+                    showFavoriteThought()
                 }
             } label: {
                 Label(
@@ -365,40 +403,16 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
-    private func favoriteButton(for style: Style) -> some View {
-        let isFavorite = card.isStyleFavorited(style)
-        return Button {
-            favoriteHaptic += 1
-            withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.58)) {
-                onToggleFavorite(style)
-            }
-        } label: {
-            Image(systemName: isFavorite ? "heart.fill" : "heart")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(isFavorite ? theme.ink : theme.muted)
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, options: .speed(1.4), value: favoriteHaptic)
-                .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
-                .contentShape(Rectangle())
+    private var accessibilityLabel: String {
+        guard let slide = activeSlide else {
+            return displayedThought
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            isFavorite ? "Remove from favorite angles" : "Add to favorite angles"
-        )
-        .accessibilityAddTraits(isFavorite ? .isSelected : [])
-    }
-
-    /// The discoverable half of the flip; the copy band keeps the gesture.
-    private var flipButton: some View {
-        Button(action: flip) {
-            Image(systemName: showingThought ? "chevron.left" : "chevron.right")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(theme.muted)
-                .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
-                .contentShape(Rectangle())
+        if presentation == .favoriteAngles {
+            return isFavoriteFlipped
+                ? displayedThought
+                : "\(slide.result.style.displayName) answer. \(slide.result.reframe)"
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(showingThought ? "Show answers" : "Show the original thought")
+        return "\(displayedThought). \(slide.result.style.displayName) answer. \(slide.result.reframe)"
     }
 
     private func preferredStyle() -> Style? {
@@ -415,7 +429,6 @@ struct ReframeCardView: View, Equatable {
                 return card.spotlightStyle
             }
         }
-
         return visibleStyles.first
     }
 
@@ -427,20 +440,24 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
-    private func flip() {
-        flipHaptic += 1
+    private func flipFavorite() {
+        favoriteFlipHaptic += 1
+        withAnimation(
+            reduceMotion ? nil : .timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)
+        ) {
+            isFavoriteFlipped.toggle()
+        }
+    }
 
-        if reduceMotion {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                isFlipped.toggle()
-            }
+    private func showFavoriteThought() {
+        guard !isFavoriteFlipped else {
             return
         }
-
-        withAnimation(.timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)) {
-            isFlipped.toggle()
+        favoriteFlipHaptic += 1
+        withAnimation(
+            reduceMotion ? nil : .timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)
+        ) {
+            isFavoriteFlipped = true
         }
     }
 }
@@ -453,22 +470,14 @@ struct OverlayProposalCard: View {
     var onRecook: (Style) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = ReframeCardMetrics.baseHeight
-    @ScaledMetric(relativeTo: .title3) private var thoughtSize: CGFloat = ReframeCardMetrics.thoughtSize
-    @State private var isFlipped = false
+
     @State private var showingOriginal = false
     @State private var selectedStyle: Style?
-    @State private var flipHaptic = 0
     @State private var recookHaptic = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var cardShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
-    }
-
-    private var showingThought: Bool {
-        isFlipped
     }
 
     private var activeResult: ReframeResult? {
@@ -477,40 +486,54 @@ struct OverlayProposalCard: View {
         else {
             return results.first
         }
-
         return match
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .topTrailing) {
-                FlipStack(progress: isFlipped ? 1 : 0) {
-                    answerFace
-                } back: {
-                    thoughtFace
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
+    private var activeAppearance: CardStyleAppearance {
+        CardStyleAppearance(style: activeResult?.style ?? .stoic)
+    }
 
-                if showingThought && hasOriginal {
+    private var hasOriginal: Bool {
+        guard let thoughtOriginal else {
+            return false
+        }
+        return thoughtOriginal != thought
+    }
+
+    private var displayedThought: String {
+        showingOriginal ? (thoughtOriginal ?? thought) : thought
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if hasOriginal {
+                HStack {
+                    Spacer(minLength: 0)
                     OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
                         showingOriginal.toggle()
                     }
-                    .padding(ReframeCardMetrics.chromeInset)
-                    .zIndex(2)
                 }
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: cardHeight)
-            .clipShape(cardShape)
-            .overlay {
-                cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
-                    .allowsHitTesting(false)
-            }
-            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-            .contentShape(cardShape)
+
+            ReframeCopyStack(
+                thought: displayedThought,
+                answer: activeResult?.reframe
+            )
+
+            overlayFooter
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: ReframeCardMetrics.overlayMinimumHeight, alignment: .top)
+        .background {
+            activeAppearance.washFill(over: theme.surface)
+        }
+        .clipShape(cardShape)
+        .overlay {
+            cardShape.strokeBorder(theme.cardHairline, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
         .onAppear {
             if selectedStyle == nil {
                 setSelectedStyleWithoutAnimation(results.first?.style)
@@ -522,132 +545,32 @@ struct OverlayProposalCard: View {
                 return
             }
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: flipHaptic)
         .sensoryFeedback(.impact(weight: .light), trigger: recookHaptic)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(showingThought ? "Shows the answers" : "Shows the original thought")
-        .accessibilityAction(named: showingThought ? "Show answers" : "Show original thought") {
-            flip()
-        }
     }
 
-    private var accessibilityLabel: String {
-        if showingThought {
-            return thought
-        }
-
-        guard let result = activeResult else {
-            return "Answers"
-        }
-
-        return "\(result.style.displayName) reframe. \(result.reframe)"
-    }
-
-    private var hasOriginal: Bool {
-        guard let thoughtOriginal else {
-            return false
-        }
-
-        return thoughtOriginal != thought
-    }
-
-    private var thoughtFace: some View {
-        cardFace {
-            InitialsAvatar(
-                letters: UserInitials.letters,
-                side: ReframeCardMetrics.controlSize,
-                fill: theme.ink,
-                symbol: theme.paper
-            )
-        } middle: {
-            copyBand(
-                Text(showingOriginal ? (thoughtOriginal ?? thought) : thought)
-                    .font(.system(size: thoughtSize, weight: .medium))
-                    .foregroundStyle(theme.ink)
-            )
-        } bottom: {
-            EmptyView()
-        }
-        .background(theme.surface)
-    }
-
-    private var activeAppearance: CardStyleAppearance {
-        CardStyleAppearance(style: activeResult?.style ?? .stoic)
-    }
-
-    private var answerFace: some View {
-        let appearance = activeAppearance
-
-        return cardFace {
-            styleSelector(appearance)
-        } middle: {
-            if let result = activeResult {
-                copyBand(
-                    Text(result.reframe)
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(theme.ink)
-                )
+    private var overlayFooter: some View {
+        HStack(spacing: 10) {
+            if results.count > 1 {
+                StyleChipRow(
+                    styles: results.map(\.style),
+                    selected: activeAppearance.style,
+                    faint: theme.faint
+                ) { style in
+                    selectedStyle = style
+                }
+            } else {
+                stylePill(activeAppearance)
             }
-        } bottom: {
-            recookButton(for: appearance.style, ink: appearance.ink)
+
+            Spacer(minLength: 6)
+
+            recookButton(for: activeAppearance.style, ink: activeAppearance.ink)
         }
-        .background {
-            appearance.washFill(over: theme.surface)
-        }
-    }
-
-    @ViewBuilder
-    private func styleSelector(_ appearance: CardStyleAppearance) -> some View {
-        if results.count > 1 {
-            StyleChipRow(
-                styles: results.map(\.style),
-                selected: appearance.style,
-                faint: theme.faint
-            ) { style in
-                selectedStyle = style
-            }
-        } else {
-            stylePill(appearance)
-        }
-    }
-
-    /// Same three bands as `ReframeCardView`: chrome, flip target, chrome.
-    private func cardFace<Top: View, Middle: View, Bottom: View>(
-        @ViewBuilder top: () -> Top,
-        @ViewBuilder middle: () -> Middle,
-        @ViewBuilder bottom: () -> Bottom
-    ) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                top()
-
-                Spacer(minLength: 0)
-                    .allowsHitTesting(false)
-            }
-            .frame(height: ReframeCardMetrics.topControlHeight)
-            .padding(.horizontal, ReframeCardMetrics.chromeInset)
-            .padding(.top, ReframeCardMetrics.chromeInset)
-
-            middle()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            bottom()
-                .frame(height: ReframeCardMetrics.contentBottomPad)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private func copyBand(_ copy: Text) -> some View {
-        copy
-            .multilineTextAlignment(.leading)
-            .minimumScaleFactor(0.72)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.horizontal, ReframeCardMetrics.chromeInset)
-            .padding(.top, ReframeCardMetrics.copyTopPad)
-            .padding(.bottom, ReframeCardMetrics.copyBottomPad)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: flip)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
     }
 
     private func recookButton(for style: Style, ink: Color) -> some View {
@@ -671,7 +594,7 @@ struct OverlayProposalCard: View {
             }
             .foregroundStyle(ink)
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .frame(minHeight: 40)
             .background(ink.opacity(0.12), in: Capsule())
             .contentShape(Capsule())
         }
@@ -685,21 +608,11 @@ struct OverlayProposalCard: View {
         )
     }
 
-    private func flip() {
-        flipHaptic += 1
-
-        if reduceMotion {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                isFlipped.toggle()
-            }
-            return
+    private var accessibilityLabel: String {
+        guard let result = activeResult else {
+            return displayedThought
         }
-
-        withAnimation(.timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)) {
-            isFlipped.toggle()
-        }
+        return "\(displayedThought). \(result.style.displayName) answer. \(result.reframe)"
     }
 
     private func setSelectedStyleWithoutAnimation(_ style: Style?) {
@@ -711,7 +624,46 @@ struct OverlayProposalCard: View {
     }
 }
 
-/// Only shown when the cleaned original is in another language than the card copy.
+private struct ReframeCopyStack: View {
+    let thought: String
+    let answer: String?
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(thought)
+                .font(.body.weight(.medium))
+                .foregroundStyle(theme.ink.opacity(0.72))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, ReframeCardMetrics.chromeInset)
+                .padding(.top, ReframeCardMetrics.sectionSpacing)
+                .padding(.bottom, ReframeCardMetrics.sectionSpacing)
+
+            Rectangle()
+                .fill(theme.cardHairline)
+                .frame(height: 1)
+                .padding(.horizontal, ReframeCardMetrics.chromeInset)
+
+            if let answer {
+                Text(answer)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                    .lineSpacing(3)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(ReframeCardMetrics.chromeInset)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct OriginalToggle: View {
     let showingOriginal: Bool
     let ink: Color
@@ -737,7 +689,7 @@ private struct OriginalToggle: View {
     }
 }
 
-/// Selected chip is a labeled pill; the rest stay circles and morph on tap.
+/// Selected chip is a labeled pill; the rest stay circles and morph only on a user tap.
 private struct StyleChipRow: View {
     let styles: [Style]
     let selected: Style
@@ -790,8 +742,12 @@ private struct StyleChipRow: View {
                         .fixedSize()
                         .transition(
                             .asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.84, anchor: .leading)),
-                                removal: .opacity.combined(with: .scale(scale: 0.84, anchor: .leading))
+                                insertion: .opacity.combined(
+                                    with: .scale(scale: 0.84, anchor: .leading)
+                                ),
+                                removal: .opacity.combined(
+                                    with: .scale(scale: 0.84, anchor: .leading)
+                                )
                             )
                         )
                 }
@@ -832,6 +788,7 @@ fileprivate func stylePill(_ appearance: CardStyleAppearance) -> some View {
     .accessibilityHidden(true)
 }
 
+/// Favorite angles keep equal-height faces so their horizontal strip stays level.
 private struct FlipStack<Front: View, Back: View>: View, Animatable {
     var progress: CGFloat
     var front: Front

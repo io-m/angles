@@ -5,7 +5,6 @@ struct HomeCardStrip: View, Equatable {
     /// Width of the page the strip sits on. Measured once at the app root, not per page.
     let pageWidth: CGFloat
     let presentation: ReframeCardPresentation
-    let cardRowHeight: CGFloat
     var openingStyle: Style? = nil
     var menuRole: (HomeCard) -> ReframeCardMenuRole = { card in
         card.isOwner ? .owner : .savedFromFeed
@@ -25,7 +24,6 @@ struct HomeCardStrip: View, Equatable {
         lhs.cards == rhs.cards
             && lhs.pageWidth == rhs.pageWidth
             && lhs.presentation == rhs.presentation
-            && lhs.cardRowHeight == rhs.cardRowHeight
             && lhs.openingStyle == rhs.openingStyle
     }
 
@@ -38,7 +36,7 @@ struct HomeCardStrip: View, Equatable {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             ScrollView(.horizontal) {
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
                     ForEach(cards) { card in
                         ReframeCardView(
                             card: card,
@@ -68,7 +66,6 @@ struct HomeCardStrip: View, Equatable {
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $scrollID)
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .frame(height: cardRowHeight)
             .onAppear {
                 if scrollID == nil {
                     scrollID = cards.first?.id

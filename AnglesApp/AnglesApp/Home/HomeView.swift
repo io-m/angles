@@ -2,8 +2,6 @@ import SwiftUI
 
 struct HomeView: View {
     let safeAreaInsets: EdgeInsets
-    let pageWidth: CGFloat
-
     let viewModel: HomeViewModel
 
     @Environment(\.colorScheme) private var colorScheme
@@ -11,8 +9,7 @@ struct HomeView: View {
 
     @State private var headerScrollState = HeaderScrollState()
     @State private var showSettings = false
-    @State private var showRestFilter = false
-    @State private var showCollapsedFilter = false
+    @State private var showHomeFilter = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -22,14 +19,9 @@ struct HomeView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
-                    HomeRestHeader(
-                        scrollState: headerScrollState,
-                        viewModel: viewModel,
-                        showFilter: $showRestFilter,
-                        showSettings: $showSettings
-                    )
+                    HomeScrollingTitle()
 
-                    HomeFeedList(pageWidth: pageWidth, viewModel: viewModel)
+                    HomeFeedList(viewModel: viewModel)
                 }
                 .padding(.top, safeAreaInsets.top + HeaderCollapse.headerTopPad)
                 .padding(.bottom, 20)
@@ -46,11 +38,10 @@ struct HomeView: View {
                 safeTop: safeAreaInsets.top
             )
 
-            HomeCollapsedHeader(
-                scrollState: headerScrollState,
+            HomeFixedActions(
                 safeTop: safeAreaInsets.top,
-                viewModel: viewModel,
-                showFilter: $showCollapsedFilter,
+                appliedCount: viewModel.appliedFilter.appliedCount,
+                showFilter: $showHomeFilter,
                 showSettings: $showSettings
             )
         }
@@ -59,6 +50,14 @@ struct HomeView: View {
         .tint(theme.ink)
         .task {
             await viewModel.loadFeedIfNeeded()
+        }
+        .sheet(isPresented: $showHomeFilter) {
+            HomeFilterSheet(appliedFilter: viewModel.appliedFilter) { filter in
+                viewModel.applyFeedFilter(filter)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.grey)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -70,127 +69,87 @@ struct HomeView: View {
     }
 }
 
-private struct HomeRestHeader: View {
-    let scrollState: HeaderScrollState
-    let viewModel: HomeViewModel
+private struct HomeScrollingTitle: View {
+    var body: some View {
+        Text("Home")
+            .font(.title.bold())
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .padding(.horizontal, HeaderCollapse.horizontalPadding)
+            .frame(height: HeaderCollapse.headerHeight, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct HomeFixedActions: View {
+    let safeTop: CGFloat
+    let appliedCount: Int
     @Binding var showFilter: Bool
     @Binding var showSettings: Bool
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
-        let opacity = 1 - HeaderCollapse.restProgress(
-            scrollState.distance,
-            reduceMotion: reduceMotion
-        )
-
-        HStack(alignment: .center, spacing: 12) {
-            Text("Home")
-                .font(.title.bold())
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .accessibilityAddTraits(.isHeader)
-
-            Spacer(minLength: 8)
-
-            Button {
-                showFilter = true
-            } label: {
-                CircleIcon(
-                    systemName: filterSystemImage(viewModel.homeGridFilter),
-                    fill: theme.surface,
-                    symbol: filterSymbolColor(viewModel.homeGridFilter, ink: theme.ink),
-                    weight: .semibold,
-                    hairline: theme.cardHairline
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Filter")
-            .accessibilityValue(viewModel.homeGridFilter.title)
-            .popover(isPresented: $showFilter, arrowEdge: .top) {
-                GridFilterPicker(selection: viewModel.homeGridFilter) { filter in
-                    viewModel.homeGridFilter = filter
-                    showFilter = false
-                }
-                .presentationCompactAdaptation(.popover)
-            }
-
-            HomeSettingsButton(showSettings: $showSettings)
-        }
-        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-        .frame(minHeight: HeaderCollapse.headerHeight, alignment: .center)
-        .opacity(opacity)
-        .animation(nil, value: scrollState.distance)
-        .allowsHitTesting(opacity > 0.4)
-        .accessibilityHidden(opacity <= 0.4)
-    }
-}
-
-/// Collapsed chrome is the centered filter chip; Settings stays trailing.
-private struct HomeCollapsedHeader: View {
-    let scrollState: HeaderScrollState
-    let safeTop: CGFloat
-    let viewModel: HomeViewModel
-    @Binding var showFilter: Bool
-    @Binding var showSettings: Bool
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        let progress = HeaderCollapse.collapsedProgress(
-            scrollState.distance,
-            reduceMotion: reduceMotion
-        )
-
         VStack(spacing: 0) {
             Color.clear
                 .frame(height: safeTop + HeaderCollapse.headerTopPad)
                 .allowsHitTesting(false)
 
-            ZStack {
+            HStack(spacing: 12) {
+                Spacer(minLength: 0)
+
                 Button {
                     showFilter = true
                 } label: {
-                    CollapsedFilterLabel(filter: viewModel.homeGridFilter)
+                    HomeFilterIcon(appliedCount: appliedCount)
                 }
                 .buttonStyle(.plain)
-                .opacity(progress)
-                .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
-                .animation(nil, value: scrollState.distance)
-                .accessibilityLabel("Filter")
-                .accessibilityValue(viewModel.homeGridFilter.title)
-                .accessibilityHidden(progress <= 0.4)
-                .popover(isPresented: $showFilter, arrowEdge: .top) {
-                    GridFilterPicker(selection: viewModel.homeGridFilter) { filter in
-                        viewModel.homeGridFilter = filter
-                        showFilter = false
-                    }
-                    .presentationCompactAdaptation(.popover)
-                }
-                .allowsHitTesting(progress > 0.4)
+                .accessibilityLabel("Filter Home")
+                .accessibilityValue(filterAccessibilityValue(appliedCount))
 
-                HStack {
-                    Spacer(minLength: 0)
-                        .allowsHitTesting(false)
-
-                    HomeSettingsButton(showSettings: $showSettings)
-                        .opacity(progress)
-                        .animation(nil, value: scrollState.distance)
-                        .accessibilityHidden(progress <= 0.4)
-                        .allowsHitTesting(progress > 0.4)
-                }
-                .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                HomeSettingsButton(showSettings: $showSettings)
             }
+            .padding(.horizontal, HeaderCollapse.horizontalPadding)
             .frame(height: HeaderCollapse.headerHeight)
         }
-        .frame(height: HeaderCollapse.overlayHeight(safeTop: safeTop), alignment: .top)
         .frame(maxWidth: .infinity)
-        .allowsHitTesting(progress > 0.4)
     }
+}
+
+private struct HomeFilterIcon: View {
+    let appliedCount: Int
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        CircleIcon(
+            systemName: "line.3.horizontal.decrease",
+            fill: theme.surface,
+            symbol: theme.ink,
+            weight: .semibold,
+            hairline: theme.cardHairline
+        )
+        .overlay(alignment: .topTrailing) {
+            if appliedCount > 0 {
+                Text(String(appliedCount))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(theme.paper)
+                    .frame(minWidth: 18, minHeight: 18)
+                    .padding(.horizontal, 2)
+                    .background(theme.ink, in: Capsule())
+                    .offset(x: 5, y: -5)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+private func filterAccessibilityValue(_ appliedCount: Int) -> String {
+    appliedCount == 0 ? "No filters applied" : "\(appliedCount) filters applied"
 }
 
 private struct HomeSettingsButton: View {
@@ -216,13 +175,10 @@ private struct HomeSettingsButton: View {
     }
 }
 
-/// Own view so the header's scroll progress never re-evaluates the shelves.
 private struct HomeFeedList: View {
-    let pageWidth: CGFloat
     let viewModel: HomeViewModel
 
     @Environment(\.colorScheme) private var colorScheme
-    @ScaledMetric(relativeTo: .body) private var cardRowHeight: CGFloat = ReframeCardMetrics.baseHeight
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -246,89 +202,57 @@ private struct HomeFeedList: View {
             }
             .padding(.horizontal, HeaderCollapse.horizontalPadding)
         case .loaded:
-            let sections = viewModel.feedSections
-            if sections.isEmpty {
+            if viewModel.feedCards.isEmpty {
                 Text(viewModel.feedEmptyCopy)
                     .font(.body.weight(.medium))
                     .foregroundStyle(theme.muted)
                     .padding(.horizontal, HeaderCollapse.horizontalPadding)
                     .padding(.top, 8)
             } else {
-                // Lazy so the shelves off screen are not mounted; ~20 strips of 6 flip
-                // cards each is far too much view tree to keep alive at once.
-                LazyVStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
-                    ForEach(sections) { section in
-                        HomeFeedShelf(
-                            section: section,
-                            pageWidth: pageWidth,
-                            cardRowHeight: cardRowHeight,
-                            openingStyle: viewModel.homeGridFilter.matchingStyle,
-                            viewModel: viewModel
-                        )
-                        .equatable()
-                    }
+                VStack(spacing: 0) {
+                    HomeCardGrid(
+                        cards: viewModel.feedCards,
+                        rowSpacing: HeaderCollapse.horizontalPadding,
+                        presentation: .library,
+                        menuRole: { _ in .feed },
+                        onDelete: { _ in },
+                        onToggleFavorite: { card, style in
+                            viewModel.toggleFavorite(card.id, style: style)
+                        },
+                        onSetPublic: { _, _ in },
+                        onRemoveFromBoard: { _ in },
+                        onReachEnd: viewModel.loadMoreFeed,
+                        loadMorePrefetchDistance: 6
+                    )
+                    .equatable()
+                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
+
+                    feedFooter
                 }
             }
         }
     }
-}
 
-/// Not an `@ObservedObject`: a heart on one shelf must not re-render the others, so this
-/// only reacts to its own inputs.
-private struct HomeFeedShelf: View, Equatable {
-    let section: FeedSection
-    let pageWidth: CGFloat
-    let cardRowHeight: CGFloat
-    let openingStyle: Style?
-    let viewModel: HomeViewModel
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    static func == (lhs: HomeFeedShelf, rhs: HomeFeedShelf) -> Bool {
-        lhs.section == rhs.section
-            && lhs.pageWidth == rhs.pageWidth
-            && lhs.cardRowHeight == rhs.cardRowHeight
-            && lhs.openingStyle == rhs.openingStyle
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: HeaderCollapse.sectionContentGap) {
-            NavigationLink {
-                FeedSubsetView(shelf: section.shelf, viewModel: viewModel)
-            } label: {
-                HStack(spacing: 6) {
-                    Text(section.shelf.title)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(theme.ink)
-
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(theme.muted)
-
-                    Spacer(minLength: 0)
+    @ViewBuilder
+    private var feedFooter: some View {
+        Group {
+            switch viewModel.feedFooterState {
+            case .idle:
+                Color.clear
+                    .accessibilityHidden(true)
+            case .loading:
+                ProgressView()
+                    .accessibilityLabel("Loading more thoughts")
+            case .failed:
+                Button("Retry loading more") {
+                    viewModel.retryLoadMoreFeed()
                 }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.ink)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, HeaderCollapse.horizontalPadding)
-            .accessibilityAddTraits(.isHeader)
-            .accessibilityHint(section.shelf.hint)
-
-            HomeCardStrip(
-                cards: section.cards,
-                pageWidth: pageWidth,
-                presentation: .library,
-                cardRowHeight: cardRowHeight,
-                openingStyle: openingStyle,
-                menuRole: { _ in .feed },
-                onDelete: { _ in },
-                onToggleFavorite: { card, style in viewModel.toggleFavorite(card.id, style: style) },
-                onSetPublic: { _, _ in },
-                onRemoveFromBoard: { _ in }
-            )
-            .equatable()
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
     }
 }
 
@@ -336,7 +260,6 @@ private struct HomeFeedShelf: View, Equatable {
     NavigationStack {
         HomeView(
             safeAreaInsets: EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0),
-            pageWidth: 393,
             viewModel: HomeViewModel()
         )
     }

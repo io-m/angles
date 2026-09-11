@@ -11,7 +11,7 @@ enum Style: String, Codable, CaseIterable, Sendable {
 
 /// Closed set on the backend. Anything new decodes as `.other` so a server-side
 /// addition cannot fail a whole cook.
-enum ThoughtCategory: String, Codable, CaseIterable, Sendable {
+enum ThoughtCategory: String, Codable, CaseIterable, Hashable, Sendable {
     case work
     case money
     case romantic
@@ -35,18 +35,18 @@ enum ThoughtCategory: String, Codable, CaseIterable, Sendable {
         case .money: return "Money"
         case .romantic: return "Romantic"
         case .family: return "Family"
-        case .friendsSocial: return "Friends"
+        case .friendsSocial: return "Friends & social"
         case .health: return "Health"
         case .selfWorth: return "Self-worth"
         case .future: return "Future"
-        case .griefLoss: return "Grief"
+        case .griefLoss: return "Grief & loss"
         case .identity: return "Identity"
         case .other: return "Other"
         }
     }
 }
 
-enum Emotion: String, Codable, CaseIterable, Sendable {
+enum Emotion: String, Codable, CaseIterable, Hashable, Sendable {
     case anger
     case shame
     case fear
@@ -465,40 +465,6 @@ struct CardListResponse: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
         cards = raw.compactMap(\.value)
-    }
-}
-
-enum FeedHomeSectionKind: String, Decodable, Sendable {
-    case category
-    case emotion
-}
-
-/// One Home shelf. Ids point into `FeedHomeResponse.cards`, so a card that belongs to
-/// one life domain and several moods is only sent once.
-struct FeedHomeSection: Decodable, Equatable, Sendable {
-    let kind: FeedHomeSectionKind
-    let id: String
-    let cardIds: [String]
-}
-
-struct FeedHomeResponse: Decodable, Equatable, Sendable {
-    let cards: [StoredCard]
-    let recent: [String]
-    let sections: [FeedHomeSection]
-
-    private enum CodingKeys: String, CodingKey {
-        case cards
-        case recent
-        case sections
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        cards = (try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? [])
-            .compactMap(\.value)
-        recent = try container.decodeIfPresent([String].self, forKey: .recent) ?? []
-        sections = (try container.decodeIfPresent([Failable<FeedHomeSection>].self, forKey: .sections) ?? [])
-            .compactMap(\.value)
     }
 }
 

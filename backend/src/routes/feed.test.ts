@@ -31,14 +31,13 @@ vi.mock("../db/cards.js", () => ({
 
 vi.mock("../db/feed.js", () => ({
   listFeed: vi.fn(),
-  listHomeFeed: vi.fn(),
   saveFeedAngle: vi.fn(),
   unsaveFeedAngle: vi.fn(),
   clearFeedSaves: vi.fn(),
 }));
 
 const { createApp } = await import("../app.js");
-const { listFeed, listHomeFeed, saveFeedAngle, clearFeedSaves } = await import("../db/feed.js");
+const { listFeed, saveFeedAngle, clearFeedSaves } = await import("../db/feed.js");
 
 const app = createApp();
 const CARD_ID = "22222222-2222-4222-8222-222222222222";
@@ -87,62 +86,78 @@ describe("GET /feed", () => {
     expect(listFeed).toHaveBeenCalledWith({
       limit: 200,
       before: undefined,
-      category: undefined,
-      style: undefined,
-      emotion: undefined,
+      categories: undefined,
+      emotions: undefined,
     });
   });
 
-  it("passes style, category, and emotion filters", async () => {
+  it("passes several categories in catalog order", async () => {
     vi.mocked(listFeed).mockResolvedValue([]);
-    const response = await app.request("/feed?style=stoic&category=work&emotion=shame&limit=10");
+    const response = await app.request("/feed?categories=money,work,money&limit=10");
     expect(response.status).toBe(200);
     expect(listFeed).toHaveBeenCalledWith({
       limit: 10,
       before: undefined,
-      category: "work",
-      style: "stoic",
-      emotion: "shame",
+      categories: ["work", "money"],
+      emotions: undefined,
     });
   });
-});
 
-describe("GET /feed/home", () => {
-  beforeEach(() => {
-    vi.mocked(listHomeFeed).mockReset();
-  });
-
-  it("returns the grouped shelves with six cards per shelf by default", async () => {
-    const card = feedCard();
-    vi.mocked(listHomeFeed).mockResolvedValue({
-      cards: [card],
-      recent: [card.id],
-      sections: [{ kind: "category", id: "work", cardIds: [card.id] }],
-    });
-
-    const response = await app.request("/feed/home");
+  it("passes several emotions in catalog order", async () => {
+    vi.mocked(listFeed).mockResolvedValue([]);
+    const response = await app.request("/feed?emotions=overwhelm,fear");
     expect(response.status).toBe(200);
-    await expect(jsonOf(response)).resolves.toEqual({
-      cards: [card],
-      recent: [card.id],
-      sections: [{ kind: "category", id: "work", cardIds: [card.id] }],
+    expect(listFeed).toHaveBeenCalledWith({
+      limit: 200,
+      before: undefined,
+      categories: undefined,
+      emotions: ["fear", "overwhelm"],
     });
-    expect(listHomeFeed).toHaveBeenCalledWith({ style: undefined, perSection: 6 });
   });
 
-  it("passes the style filter through so capped shelves stay full", async () => {
-    vi.mocked(listHomeFeed).mockResolvedValue({ cards: [], recent: [], sections: [] });
-
-    const response = await app.request("/feed/home?style=stoic&perSection=3");
+  it("combines category and emotion groups", async () => {
+    vi.mocked(listFeed).mockResolvedValue([]);
+    const response = await app.request("/feed?categories=work,money&emotions=fear,overwhelm");
     expect(response.status).toBe(200);
-    expect(listHomeFeed).toHaveBeenCalledWith({ style: "stoic", perSection: 3 });
+    expect(listFeed).toHaveBeenCalledWith({
+      limit: 200,
+      before: undefined,
+      categories: ["work", "money"],
+      emotions: ["fear", "overwhelm"],
+    });
   });
 
-  it("rejects an unknown style", async () => {
-    const response = await app.request("/feed/home?style=zen");
+  it("decodes the composite keyset cursor", async () => {
+    vi.mocked(listFeed).mockResolvedValue([]);
+    const before = `2026-09-10T12:00:00.000Z|${CARD_ID}`;
+    const response = await app.request(`/feed?before=${encodeURIComponent(before)}`);
+    expect(response.status).toBe(200);
+    expect(listFeed).toHaveBeenCalledWith({
+      limit: 200,
+      before: { createdAt: new Date("2026-09-10T12:00:00.000Z"), id: CARD_ID },
+      categories: undefined,
+      emotions: undefined,
+    });
+  });
+
+  it.each([
+    "/feed?categories=work,unknown",
+    "/feed?categories=work,",
+    "/feed?emotions=fear,calm",
+    "/feed?before=not-a-cursor",
+    "/feed?style=stoic",
+    "/feed?category=work",
+    "/feed?emotion=fear",
+  ])("rejects invalid or removed query values: %s", async (path) => {
+    const response = await app.request(path);
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
-    expect(listHomeFeed).not.toHaveBeenCalled();
+    expect(listFeed).not.toHaveBeenCalled();
+  });
+
+  it("404s the retired grouped Home route", async () => {
+    const response = await app.request("/feed/home");
+    expect(response.status).toBe(404);
   });
 });
 

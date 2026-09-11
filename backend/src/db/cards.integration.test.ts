@@ -5,7 +5,12 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
-import { STYLES, type CreateCardInput } from "../types/index.js";
+import {
+  STYLES,
+  type Category,
+  type CreateCardInput,
+  type Emotion,
+} from "../types/index.js";
 import { DEV_USER_ID } from "../lib/authStub.js";
 import { DbError } from "./client.js";
 
@@ -230,7 +235,13 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
   const OTHER_USER_ID = "00000000-0000-4000-8000-000000000099";
 
-  async function insertOtherCard(input: { thought: string; isPublic: boolean }): Promise<string> {
+  async function insertOtherCard(input: {
+    thought: string;
+    isPublic: boolean;
+    category?: Category;
+    emotions?: Emotion[];
+    createdAt?: Date;
+  }): Promise<string> {
     const db = getDb();
     await db.insert(users).values({ id: OTHER_USER_ID, initials: "AL" }).onConflictDoNothing();
     const [inserted] = await db
@@ -239,16 +250,17 @@ describe.skipIf(!testUrl)("cards integration", () => {
         userId: OTHER_USER_ID,
         thoughtEn: input.thought,
         inputLanguage: "en",
-        category: "work",
+        category: input.category ?? "work",
         intensity: 3,
         intensityBand: "mid",
         timeframe: "ongoing",
         safety: "none",
-        emotions: ["shame", "sadness"],
+        emotions: input.emotions ?? ["shame", "sadness"],
         skippedStyles: [],
         model: "mistral-small-latest",
         spotlightStyle: "humorous",
         isPublic: input.isPublic,
+        createdAt: input.createdAt,
       })
       .returning({ id: cards.id });
     const cardId = inserted?.id;
@@ -285,6 +297,72 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(feed[0]?.author).toEqual({ initials: "AL" });
     expect(feed[0]?.isPublic).toBe(true);
     expect(feed[0]?.results.every((item) => item.isFavorite === false)).toBe(true);
+  });
+
+  it("uses OR within each feed facet and AND between facets", async () => {
+    const workFear = await insertOtherCard({
+      thought: "Work keeps making me afraid I am falling behind.",
+      isPublic: true,
+      category: "work",
+      emotions: ["fear"],
+    });
+    const moneyOverwhelm = await insertOtherCard({
+      thought: "Every bill makes the month feel impossible to hold.",
+      isPublic: true,
+      category: "money",
+      emotions: ["overwhelm"],
+    });
+    await insertOtherCard({
+      thought: "I feel lonely even when my family is in the room.",
+      isPublic: true,
+      category: "family",
+      emotions: ["loneliness"],
+    });
+    const workShame = await insertOtherCard({
+      thought: "Work is going well but I still feel ashamed.",
+      isPublic: true,
+      category: "work",
+      emotions: ["shame"],
+    });
+
+    const categories = await listFeed({ limit: 50, categories: ["work", "money"] });
+    expect(new Set(categories.map((card) => card.id))).toEqual(
+      new Set([workFear, moneyOverwhelm, workShame]),
+    );
+
+    const emotions = await listFeed({ limit: 50, emotions: ["fear", "overwhelm"] });
+    expect(new Set(emotions.map((card) => card.id))).toEqual(new Set([workFear, moneyOverwhelm]));
+
+    const combined = await listFeed({
+      limit: 50,
+      categories: ["money"],
+      emotions: ["fear", "overwhelm"],
+    });
+    expect(combined.map((card) => card.id)).toEqual([moneyOverwhelm]);
+  });
+
+  it("pages equal timestamps by id without a gap or duplicate", async () => {
+    const createdAt = new Date("2026-09-11T12:00:00.000Z");
+    const ids = await Promise.all(
+      ["One shared instant.", "Two shared instant.", "Three shared instant."].map((thought) =>
+        insertOtherCard({ thought, isPublic: true, createdAt }),
+      ),
+    );
+
+    const first = await listFeed({ limit: 2 });
+    expect(first).toHaveLength(2);
+    const last = first[1];
+    expect(last).toBeDefined();
+    if (!last) {
+      return;
+    }
+
+    const second = await listFeed({
+      limit: 2,
+      before: { createdAt: new Date(last.createdAt), id: last.id },
+    });
+    expect(second).toHaveLength(1);
+    expect(new Set([...first, ...second].map((card) => card.id))).toEqual(new Set(ids));
   });
 
   it("saves a heart without mutating the author's flags", async () => {

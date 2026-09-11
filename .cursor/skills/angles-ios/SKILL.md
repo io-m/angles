@@ -34,9 +34,9 @@ A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`).
 
 ## UI
 
-Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Profile style chips keep cards that have that style and open the carousel on it; All still uses mixed `spotlightStyle`. Pinned and Favorite angles strips stay unfiltered (max 6); titles open Pins and Favorite angles grids. Heart sits on the answer face (the angle in view); pin is on the thought face only. Owner ⋯ replaces long-press Delete on own cards.
+Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Home is one newest-first paged feed: its title scrolls under the gradient while filter and Settings stay fixed trailing. Its Apply-only filter uses Life areas + Moods tabs. Profile style chips keep cards that have that style and open on it; All still uses mixed `spotlightStyle`. The Favorite angles strip stays unfiltered (max 6).
 
-Cards are three bands. Top chrome (style pill / initials, ⋯) and bottom chrome (date, heart / pin, in-card dots) never flip and never hold the in-card pager, so a horizontal drag there belongs to the enclosing strip. The middle band is the only flip target and the only pager, so a drag on the copy pages angles. Do not put `onTapGesture` on a card `Text`.
+Home, Profile library, and compose cards do not flip: avatar/date/actions, thought, divider, one selected answer, then style chips and the selected style's heart are visible together. Profile Favorite angles alone use equal-height answer/thought flips so the horizontal strip remains level. The top ⋯ and long press reuse the same applicable actions. Original/English swaps inline. Card identity is `card.id`; a heart must not reset style selection. Chip/wash animation belongs only to a user chip tap.
 
 ## Device
 

@@ -172,31 +172,14 @@ export type CardListQuery = {
 
 export type FeedListQuery = {
   limit: number;
-  before?: Date;
-  category?: Category;
-  style?: Style;
-  emotion?: Emotion;
+  before?: FeedCursor;
+  categories?: Category[];
+  emotions?: Emotion[];
 };
 
-export type FeedHomeQuery = {
-  /** Cards that include this style in `results`. Home shelves are capped, so the filter runs in SQL. */
-  style?: Style;
-  perSection: number;
-};
-
-export type FeedHomeSectionKind = "category" | "emotion";
-
-export type FeedHomeSection = {
-  kind: FeedHomeSectionKind;
-  id: Category | Emotion;
-  cardIds: string[];
-};
-
-/** Cards are de-duplicated: one card may be listed by a domain shelf and several mood shelves. */
-export type FeedHomeResponse = {
-  cards: StoredCard[];
-  recent: string[];
-  sections: FeedHomeSection[];
+export type FeedCursor = {
+  createdAt: Date;
+  id: string;
 };
 
 export type PatchCardInput = {

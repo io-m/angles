@@ -33,7 +33,6 @@ struct AppRoot: View {
                 NavigationStack {
                     HomeView(
                         safeAreaInsets: homeSafeAreaInsets,
-                        pageWidth: pageWidth,
                         viewModel: viewModel
                     )
                 }

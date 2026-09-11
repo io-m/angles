@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 struct HomeCardSlide: Identifiable, Equatable {
     let id: UUID
@@ -173,68 +174,19 @@ enum RefinePhase: Equatable {
     case error(String)
 }
 
-/// One Home shelf. `Recent` first, then life-domain and mood shelves zipped together.
-enum FeedShelf: Equatable, Hashable {
-    case recent
-    case category(ThoughtCategory)
-    case emotion(Emotion)
+struct HomeFeedFilter: Equatable, Sendable {
+    var categories: Set<ThoughtCategory> = []
+    var emotions: Set<Emotion> = []
 
-    var key: String {
-        switch self {
-        case .recent:
-            return "recent"
-        case .category(let category):
-            return "category-\(category.rawValue)"
-        case .emotion(let emotion):
-            return "emotion-\(emotion.rawValue)"
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .recent:
-            return "Recent"
-        case .category(let category):
-            return category.displayName
-        case .emotion(let emotion):
-            return emotion.displayName
-        }
-    }
-
-    var hint: String {
-        switch self {
-        case .recent:
-            return "Shows the newest published thoughts"
-        case .category, .emotion:
-            return "Shows every published thought in \(title)"
-        }
-    }
-
-    var emptyCopy: String {
-        switch self {
-        case .recent:
-            return "No recent thoughts"
-        case .category, .emotion:
-            return "No cards in \(title)"
-        }
+    var appliedCount: Int {
+        categories.count + emotions.count
     }
 }
 
-struct FeedSection: Identifiable, Equatable {
-    let shelf: FeedShelf
-    let cards: [HomeCard]
-
-    var id: String { shelf.key }
-}
-
-struct FeedSubsetState: Equatable {
-    var cards: [HomeCard] = []
-    var cardIDs: Set<UUID> = []
-    var loadState: LibraryLoadState = .loading
-    var isLoadingMore = false
-    var hasMore = true
-    /// `createdAt` of the last card in hand; the cursor the next page asks for.
-    var before: String?
+enum FeedFooterState: Equatable {
+    case idle
+    case loading
+    case failed
 }
 
 enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
@@ -278,36 +230,22 @@ final class HomeViewModel {
     /// Set when a recook comes back as `continue` (that style no longer fits).
     private(set) var recookNotice: String?
     var profileGridFilter: ProfileGridFilter = .all
-    /// Home shelves cap at 6, so this filter runs in SQL. Changing it refetches the shelves.
-    var homeGridFilter: ProfileGridFilter = .all {
-        didSet {
-            guard oldValue != homeGridFilter else {
-                return
-            }
-            reloadFeedForFilterChange()
-        }
-    }
+    private(set) var appliedFilter = HomeFeedFilter()
     var selectedModel: LlmModel {
         didSet {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: Self.modelDefaultsKey)
         }
     }
     private(set) var libraryLoadState: LibraryLoadState
-    /// Every card any shelf references, once. Shelves hold ids into this pool.
     private(set) var feedCards: [HomeCard] = []
-    private(set) var feedShelves: [FeedShelfIDs] = []
     private(set) var feedLoadState: LibraryLoadState = .loading
-    private(set) var feedSubsets: [String: FeedSubsetState] = [:]
+    private(set) var feedFooterState: FeedFooterState = .idle
+    private(set) var feedHasMore = true
     private(set) var isSaving = false
     private(set) var saveError: String?
     /// A heart, privacy flag, or delete that did not reach the server. The rollback is
     /// invisible on its own, so the root banner reads this.
     private(set) var writeError: String?
-
-    struct FeedShelfIDs: Equatable {
-        let shelf: FeedShelf
-        let cardIDs: [UUID]
-    }
 
     private let reframeService: ReframeService
     private let cardsService: CardsService
@@ -315,8 +253,10 @@ final class HomeViewModel {
     private var saveTask: Task<Bool, Never>?
     private var libraryTask: Task<Void, Never>?
     private var feedTask: Task<Void, Never>?
-    private var feedSubsetTasks: [String: Task<Void, Never>] = [:]
     private var hasLoadedFeed = false
+    private var feedGeneration = 0
+    private var feedBefore: String?
+    private var feedCardIDs: Set<UUID> = []
     private var hasLoadedLibrary = false
     private var favoriteTasks: [String: Task<Void, Never>] = [:]
     private var publicTasks: [UUID: Task<Void, Never>] = [:]
@@ -350,7 +290,7 @@ final class HomeViewModel {
     }
 
     static let stripLimit = 6
-    static let feedSubsetPageSize = 24
+    static let feedPageSize = 24
 
     var ownedCards: [HomeCard] {
         cards.filter(\.isOwner)
@@ -374,42 +314,10 @@ final class HomeViewModel {
         return ownedCards.filter { $0.hasStyle(style) }
     }
 
-    /// Recent, then the domain/mood zipper. Cards come from the shared pool so an
-    /// optimistic heart lands on every shelf that shows that card.
-    var feedSections: [FeedSection] {
-        guard !feedShelves.isEmpty else {
-            return []
-        }
-
-        var pool: [UUID: HomeCard] = [:]
-        pool.reserveCapacity(feedCards.count)
-        for card in feedCards {
-            pool[card.id] = card
-        }
-
-        return feedShelves.compactMap { shelf in
-            let cards = shelf.cardIDs.compactMap { pool[$0] }
-            guard !cards.isEmpty else {
-                return nil
-            }
-            return FeedSection(shelf: shelf.shelf, cards: cards)
-        }
-    }
-
-    func feedSectionCards(_ shelf: FeedShelf) -> [HomeCard] {
-        guard let match = feedShelves.first(where: { $0.shelf == shelf }) else {
-            return []
-        }
-
-        return match.cardIDs.compactMap { id in feedCards.first(where: { $0.id == id }) }
-    }
-
     var feedEmptyCopy: String {
-        guard let style = homeGridFilter.matchingStyle else {
-            return "No published thoughts yet."
-        }
-
-        return "No cards with a \(style.displayName) angle yet"
+        appliedFilter.appliedCount == 0
+            ? "No published thoughts yet."
+            : "No cards match these filters."
     }
 
     /// The composer stays alive for every turn that is not a finished cook.
@@ -564,7 +472,7 @@ final class HomeViewModel {
         return saved
     }
 
-    /// Popping back from a subset must not re-run a cold load.
+    /// Returning to Profile must not re-run a cold library load.
     func loadLibraryIfNeeded() async {
         guard !hasLoadedLibrary else {
             return
@@ -604,111 +512,137 @@ final class HomeViewModel {
     }
 
     func loadFeedIfNeeded() async {
-        guard !hasLoadedFeed else {
+        guard !hasLoadedFeed, feedTask == nil else {
             return
         }
 
-        await loadFeed()
+        await fetchFeedPage(replacing: true, generation: feedGeneration)
     }
 
-    func loadFeed(showsLoading: Bool = true) async {
-        if showsLoading, feedCards.isEmpty {
-            feedLoadState = .loading
+    func applyFeedFilter(_ filter: HomeFeedFilter) {
+        guard filter != appliedFilter else {
+            return
         }
-        let style = homeGridFilter.matchingStyle
-        do {
-            let home = try await cardsService.homeFeed(style: style, perSection: Self.stripLimit)
-            guard !Task.isCancelled, style == homeGridFilter.matchingStyle else {
-                return
-            }
-            applyHomeFeed(home)
-            hasLoadedFeed = true
-            feedLoadState = .loaded
-        } catch {
-            guard !Task.isCancelled else {
-                return
-            }
-            if feedCards.isEmpty {
-                feedLoadState = .failed("Couldn't load Home.")
-            }
-        }
+
+        resetFeed(filter: filter)
+        startFeedTask(replacing: true)
     }
 
     func retryLoadFeed() {
+        resetFeed(filter: appliedFilter)
+        startFeedTask(replacing: true)
+    }
+
+    func loadMoreFeed() {
+        guard feedHasMore,
+              feedBefore != nil,
+              feedFooterState == .idle,
+              feedTask == nil
+        else {
+            return
+        }
+
+        feedFooterState = .loading
+        startFeedTask(replacing: false)
+    }
+
+    func retryLoadMoreFeed() {
+        guard feedFooterState == .failed, feedBefore != nil, feedTask == nil else {
+            return
+        }
+
+        feedFooterState = .loading
+        startFeedTask(replacing: false)
+    }
+
+    private func resetFeed(filter: HomeFeedFilter) {
         feedTask?.cancel()
+        feedTask = nil
+        feedGeneration &+= 1
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            appliedFilter = filter
+            feedCards = []
+            feedCardIDs = []
+            feedBefore = nil
+            feedHasMore = true
+            feedFooterState = .idle
+            feedLoadState = .loading
+            hasLoadedFeed = false
+        }
+    }
+
+    private func startFeedTask(replacing: Bool) {
+        guard feedTask == nil else {
+            return
+        }
+
+        let generation = feedGeneration
         feedTask = Task { @MainActor in
-            defer { feedTask = nil }
-            await loadFeed()
-        }
-    }
-
-    private func reloadFeedForFilterChange() {
-        for task in feedSubsetTasks.values {
-            task.cancel()
-        }
-        feedSubsetTasks = [:]
-        feedSubsets = [:]
-        feedTask?.cancel()
-        feedTask = Task { @MainActor in
-            defer { feedTask = nil }
-            // Keep the shelves on screen while the filtered payload lands.
-            await loadFeed(showsLoading: false)
-        }
-    }
-
-    private func applyHomeFeed(_ home: FeedHomeResponse) {
-        feedCards = merged(feedCards, with: home.cards)
-        feedShelves = Self.zipperedShelves(home)
-    }
-
-    /// Deterministic zipper: Recent, then next unused life domain, next unused mood, in
-    /// catalog order, skipping shelves the server left out because they were empty.
-    private static func zipperedShelves(_ home: FeedHomeResponse) -> [FeedShelfIDs] {
-        var shelves: [FeedShelfIDs] = []
-        let recent = home.recent.compactMap(UUID.init(uuidString:))
-        if !recent.isEmpty {
-            shelves.append(FeedShelfIDs(shelf: .recent, cardIDs: recent))
-        }
-
-        var categories: [FeedShelfIDs] = []
-        var emotions: [FeedShelfIDs] = []
-        for section in home.sections {
-            let ids = section.cardIds.compactMap(UUID.init(uuidString:))
-            guard !ids.isEmpty else {
-                continue
+            await fetchFeedPage(replacing: replacing, generation: generation)
+            guard feedGeneration == generation else {
+                return
             }
-            switch section.kind {
-            case .category:
-                guard let category = ThoughtCategory(rawValue: section.id) else {
-                    continue
+            feedTask = nil
+        }
+    }
+
+    private func fetchFeedPage(replacing: Bool, generation: Int) async {
+        let filter = appliedFilter
+        let before = replacing ? nil : feedBefore
+
+        do {
+            let stored = try await cardsService.listFeed(
+                limit: Self.feedPageSize,
+                before: before,
+                categories: filter.categories,
+                emotions: filter.emotions
+            )
+            guard !Task.isCancelled, generation == feedGeneration else {
+                return
+            }
+
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if replacing {
+                    feedCards = merged([], with: stored)
+                    feedCardIDs = Set(feedCards.map(\.id))
+                } else {
+                    feedCards.reserveCapacity(feedCards.count + stored.count)
+                    for item in stored {
+                        guard let card = HomeCard(stored: item),
+                              feedCardIDs.insert(card.id).inserted
+                        else {
+                            continue
+                        }
+                        feedCards.append(card)
+                    }
                 }
-                categories.append(FeedShelfIDs(shelf: .category(category), cardIDs: ids))
-            case .emotion:
-                guard let emotion = Emotion(rawValue: section.id) else {
-                    continue
+
+                if let last = stored.last {
+                    feedBefore = "\(last.createdAt)|\(last.id.lowercased())"
                 }
-                emotions.append(FeedShelfIDs(shelf: .emotion(emotion), cardIDs: ids))
+                feedHasMore = stored.count >= Self.feedPageSize
+                feedFooterState = .idle
+                feedLoadState = .loaded
+                hasLoadedFeed = true
+            }
+        } catch {
+            guard !Task.isCancelled, generation == feedGeneration, !Self.isCancellation(error) else {
+                return
+            }
+
+            if replacing && feedCards.isEmpty {
+                feedLoadState = .failed("Couldn't load Home.")
+            } else {
+                feedFooterState = .failed
             }
         }
-
-        var categoryIndex = 0
-        var emotionIndex = 0
-        while categoryIndex < categories.count || emotionIndex < emotions.count {
-            if categoryIndex < categories.count {
-                shelves.append(categories[categoryIndex])
-                categoryIndex += 1
-            }
-            if emotionIndex < emotions.count {
-                shelves.append(emotions[emotionIndex])
-                emotionIndex += 1
-            }
-        }
-
-        return shelves
     }
 
-    /// Updates cards in place so `HomeCardSlide` ids survive a reload and in-card pagers
-    /// keep their page.
+    /// Updates cards in place so per-card style selection remains stable across writes.
     private func merged(_ current: [HomeCard], with stored: [StoredCard]) -> [HomeCard] {
         var pool: [UUID: HomeCard] = [:]
         pool.reserveCapacity(current.count)
@@ -733,106 +667,6 @@ final class HomeViewModel {
         return next
     }
 
-    func feedSubset(_ shelf: FeedShelf) -> FeedSubsetState {
-        feedSubsets[shelf.key] ?? FeedSubsetState()
-    }
-
-    /// Seeds the screen with the shelf's cards. The exact last-card cursor lets threshold
-    /// prefetch append the next page directly instead of replacing these rows after push.
-    func loadFeedSubsetIfNeeded(_ shelf: FeedShelf) async {
-        guard feedSubsets[shelf.key] == nil else {
-            return
-        }
-
-        let seed = feedSectionCards(shelf)
-        var state = FeedSubsetState()
-        state.cards = seed
-        state.cardIDs = Set(seed.map(\.id))
-        state.loadState = seed.isEmpty ? .loading : .loaded
-        state.before = seed.last?.createdAtCursor
-        state.hasMore = seed.isEmpty || seed.count >= Self.stripLimit
-        feedSubsets[shelf.key] = state
-        if seed.isEmpty {
-            await fetchFeedSubsetPage(shelf, replacing: true)
-        }
-    }
-
-    func retryFeedSubset(_ shelf: FeedShelf) {
-        feedSubsetTasks[shelf.key]?.cancel()
-        feedSubsetTasks[shelf.key] = Task { @MainActor in
-            defer { feedSubsetTasks[shelf.key] = nil }
-            await fetchFeedSubsetPage(shelf, replacing: true)
-        }
-    }
-
-    func loadMoreFeedSubset(_ shelf: FeedShelf) {
-        let state = feedSubset(shelf)
-        guard state.hasMore, !state.isLoadingMore, state.before != nil, feedSubsetTasks[shelf.key] == nil else {
-            return
-        }
-
-        feedSubsets[shelf.key]?.isLoadingMore = true
-        feedSubsetTasks[shelf.key] = Task { @MainActor in
-            defer { feedSubsetTasks[shelf.key] = nil }
-            await fetchFeedSubsetPage(shelf, replacing: false)
-        }
-    }
-
-    private func fetchFeedSubsetPage(_ shelf: FeedShelf, replacing: Bool) async {
-        let before = replacing ? nil : feedSubsets[shelf.key]?.before
-        var category: ThoughtCategory?
-        var emotion: Emotion?
-        switch shelf {
-        case .recent:
-            break
-        case .category(let value):
-            category = value
-        case .emotion(let value):
-            emotion = value
-        }
-
-        do {
-            let stored = try await cardsService.listFeed(
-                limit: Self.feedSubsetPageSize,
-                before: before,
-                category: category,
-                emotion: emotion,
-                style: homeGridFilter.matchingStyle
-            )
-            guard !Task.isCancelled, var state = feedSubsets[shelf.key] else {
-                return
-            }
-            if replacing {
-                let page = merged(state.cards, with: stored)
-                state.cards = page
-                state.cardIDs = Set(page.map(\.id))
-            } else {
-                state.cards.reserveCapacity(state.cards.count + stored.count)
-                for item in stored {
-                    guard let card = HomeCard(stored: item),
-                          state.cardIDs.insert(card.id).inserted
-                    else {
-                        continue
-                    }
-                    state.cards.append(card)
-                }
-            }
-            state.before = stored.last?.createdAt
-            state.hasMore = stored.count >= Self.feedSubsetPageSize
-            state.isLoadingMore = false
-            state.loadState = .loaded
-            feedSubsets[shelf.key] = state
-        } catch {
-            guard !Task.isCancelled, var state = feedSubsets[shelf.key] else {
-                return
-            }
-            state.isLoadingMore = false
-            if state.cards.isEmpty {
-                state.loadState = .failed("Couldn't load \(shelf.title).")
-            }
-            feedSubsets[shelf.key] = state
-        }
-    }
 
     func deleteCard(_ id: UUID) {
         guard let index = cards.firstIndex(where: { $0.id == id }), cards[index].isOwner else {
@@ -1029,11 +863,6 @@ final class HomeViewModel {
         if let match = cards.first(where: { $0.id == id }) {
             return match
         }
-        for state in feedSubsets.values {
-            if let match = state.cards.first(where: { $0.id == id }) {
-                return match
-            }
-        }
         return nil
     }
 
@@ -1043,14 +872,6 @@ final class HomeViewModel {
         }
         if let index = cards.firstIndex(where: { $0.id == id }) {
             body(&cards[index])
-        }
-        for (key, state) in feedSubsets {
-            guard let index = state.cards.firstIndex(where: { $0.id == id }) else {
-                continue
-            }
-            var next = state
-            body(&next.cards[index])
-            feedSubsets[key] = next
         }
     }
 
@@ -1074,14 +895,6 @@ final class HomeViewModel {
         }
         if let index = cards.firstIndex(where: { $0.id == card.id }) {
             cards[index] = card
-        }
-        for (key, state) in feedSubsets {
-            guard let index = state.cards.firstIndex(where: { $0.id == card.id }) else {
-                continue
-            }
-            var next = state
-            next.cards[index] = card
-            feedSubsets[key] = next
         }
     }
 

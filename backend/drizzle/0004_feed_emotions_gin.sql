@@ -1,0 +1,1 @@
+CREATE INDEX "cards_emotions_gin_idx" ON "cards" USING gin ("emotions");

@@ -68,6 +68,7 @@ export const cards = pgTable(
     index("cards_user_created_idx").on(table.userId, table.createdAt.desc()),
     index("cards_category_idx").on(table.category),
     index("cards_public_created_idx").on(table.isPublic, table.createdAt.desc()),
+    index("cards_emotions_gin_idx").using("gin", table.emotions),
     check("cards_intensity_range", sql`intensity between 1 and 5`),
   ],
 );

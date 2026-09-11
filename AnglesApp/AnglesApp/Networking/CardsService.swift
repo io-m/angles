@@ -35,35 +35,33 @@ struct CardsService: Sendable {
         try await client.delete(path: "cards/\(id)", timeout: Self.writeTimeout)
     }
 
-    /// Home shelves are capped, so the style filter has to run server-side or a shelf
-    /// would come back with fewer than `perSection` matching cards.
-    func homeFeed(style: Style?, perSection: Int) async throws -> FeedHomeResponse {
-        var queryItems = [URLQueryItem(name: "perSection", value: String(perSection))]
-        if let style {
-            queryItems.append(URLQueryItem(name: "style", value: style.rawValue))
-        }
-        return try await client.get(path: "feed/home", queryItems: queryItems)
-    }
-
     func listFeed(
         limit: Int,
         before: String? = nil,
-        category: ThoughtCategory? = nil,
-        emotion: Emotion? = nil,
-        style: Style? = nil
+        categories: Set<ThoughtCategory> = [],
+        emotions: Set<Emotion> = []
     ) async throws -> [StoredCard] {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {
             queryItems.append(URLQueryItem(name: "before", value: before))
         }
-        if let category {
-            queryItems.append(URLQueryItem(name: "category", value: category.rawValue))
+        let orderedCategories = ThoughtCategory.allCases.filter(categories.contains)
+        if !orderedCategories.isEmpty {
+            queryItems.append(
+                URLQueryItem(
+                    name: "categories",
+                    value: orderedCategories.map(\.rawValue).joined(separator: ",")
+                )
+            )
         }
-        if let emotion {
-            queryItems.append(URLQueryItem(name: "emotion", value: emotion.rawValue))
-        }
-        if let style {
-            queryItems.append(URLQueryItem(name: "style", value: style.rawValue))
+        let orderedEmotions = Emotion.allCases.filter(emotions.contains)
+        if !orderedEmotions.isEmpty {
+            queryItems.append(
+                URLQueryItem(
+                    name: "emotions",
+                    value: orderedEmotions.map(\.rawValue).joined(separator: ",")
+                )
+            )
         }
         let response: CardListResponse = try await client.get(path: "feed", queryItems: queryItems)
         return response.cards

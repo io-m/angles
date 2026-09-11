@@ -1,7 +1,6 @@
-import { and, arrayContains, asc, desc, eq, inArray, lt, ne } from "drizzle-orm";
+import { and, arrayOverlaps, asc, desc, eq, inArray, lt, ne, or } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
-import { groupHomeFeed } from "../lib/homeFeed.js";
-import type { FeedHomeQuery, FeedHomeResponse, FeedListQuery, StoredCard, Style } from "../types/index.js";
+import type { FeedListQuery, StoredCard, Style } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
 import { loadViewerSaves, toStoredCard, type CardLoaded } from "./mapCard.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
@@ -29,22 +28,20 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
     const viewerId = getOwnerUserId();
     const db = getDb();
     const filters = [eq(cards.isPublic, true), ne(cards.userId, viewerId)];
-    if (query.category) {
-      filters.push(eq(cards.category, query.category));
+    if (query.categories?.length) {
+      filters.push(inArray(cards.category, query.categories));
     }
-    if (query.style) {
-      filters.push(
-        inArray(
-          cards.id,
-          db.select({ id: cardReframes.cardId }).from(cardReframes).where(eq(cardReframes.style, query.style)),
-        ),
-      );
-    }
-    if (query.emotion) {
-      filters.push(arrayContains(cards.emotions, [query.emotion]));
+    if (query.emotions?.length) {
+      filters.push(arrayOverlaps(cards.emotions, query.emotions));
     }
     if (query.before) {
-      filters.push(lt(cards.createdAt, query.before));
+      const cursorFilter = or(
+        lt(cards.createdAt, query.before.createdAt),
+        and(eq(cards.createdAt, query.before.createdAt), lt(cards.id, query.before.id)),
+      );
+      if (cursorFilter) {
+        filters.push(cursorFilter);
+      }
     }
 
     const rows = await db.query.cards.findMany({
@@ -66,14 +63,6 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
     }
     throw wrapDbError(error, "listFeed");
   }
-}
-
-/** One scan is enough to fill every capped shelf; the payload the app gets is the grouped subset. */
-const HOME_SCAN_LIMIT = 500;
-
-export async function listHomeFeed(query: FeedHomeQuery): Promise<FeedHomeResponse> {
-  const cardList = await listFeed({ limit: HOME_SCAN_LIMIT, style: query.style });
-  return groupHomeFeed(cardList, query.perSection);
 }
 
 export type FeedSaveResult =

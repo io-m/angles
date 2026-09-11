@@ -14,7 +14,7 @@ struct ProfileSubsetView: View {
     var onToggleFavorite: (HomeCard, Style) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
-    /// Set by shelves that page the server instead of holding the whole list.
+    /// Optional support for a server-paged grid.
     var onLoadMore: (() -> Void)? = nil
     var usesPagination = false
     var isLoadingMore = false
