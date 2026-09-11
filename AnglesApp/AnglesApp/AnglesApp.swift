@@ -18,6 +18,7 @@ struct AppRoot: View {
     @State private var selectedTab: RootTab = .profile
     @State private var lastContentTab: RootTab = .profile
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
+    @State private var pageWidth: CGFloat = 393
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
 
@@ -30,7 +31,11 @@ struct AppRoot: View {
 
             TabView(selection: $selectedTab) {
                 NavigationStack {
-                    HomeView(safeAreaInsets: homeSafeAreaInsets)
+                    HomeView(
+                        safeAreaInsets: homeSafeAreaInsets,
+                        pageWidth: pageWidth,
+                        viewModel: viewModel
+                    )
                 }
                 .tabItem { Label("Home", systemImage: "house") }
                 .tag(RootTab.home)
@@ -42,6 +47,7 @@ struct AppRoot: View {
                 NavigationStack {
                     ProfileView(
                         safeAreaInsets: homeSafeAreaInsets,
+                        pageWidth: pageWidth,
                         viewModel: viewModel,
                         onInspire: presentCompose
                     )
@@ -86,9 +92,13 @@ struct AppRoot: View {
                 Color.clear
                     .onAppear {
                         captureHomeInsets(geo.safeAreaInsets)
+                        pageWidth = geo.size.width
                     }
                     .onChange(of: geo.safeAreaInsets) { _, newInsets in
                         captureHomeInsets(newInsets)
+                    }
+                    .onChange(of: geo.size.width) { _, newWidth in
+                        pageWidth = newWidth
                     }
             }
             .ignoresSafeArea(.keyboard)

@@ -6,10 +6,18 @@ struct ProfileSubsetView: View {
     let loadingLabel: String
     let cards: [HomeCard]
     let presentation: ReframeCardPresentation
+    var openingStyle: Style? = nil
+    var loadState: LibraryLoadState? = nil
+    var onRetry: (() -> Void)? = nil
+    var menuRole: ((HomeCard) -> ReframeCardMenuRole)? = nil
     var onDelete: (HomeCard) -> Void
     var onToggleFavorite: (HomeCard, Style) -> Void
     var onTogglePin: (HomeCard) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
+    var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
+    /// Set by shelves that page the server instead of holding the whole list.
+    var onLoadMore: (() -> Void)? = nil
+    var isLoadingMore = false
 
     @ObservedObject var viewModel: HomeViewModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -17,9 +25,13 @@ struct ProfileSubsetView: View {
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
+    private var resolvedState: LibraryLoadState {
+        loadState ?? viewModel.libraryLoadState
+    }
+
     var body: some View {
         Group {
-            switch viewModel.libraryLoadState {
+            switch resolvedState {
             case .loading:
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -30,7 +42,11 @@ struct ProfileSubsetView: View {
                         .font(.body.weight(.medium))
                         .foregroundStyle(theme.muted)
                     Button("Retry") {
-                        viewModel.retryLoadLibrary()
+                        if let onRetry {
+                            onRetry()
+                        } else {
+                            viewModel.retryLoadLibrary()
+                        }
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(theme.ink)
@@ -44,19 +60,32 @@ struct ProfileSubsetView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        HomeCardGrid(
-                            cards: cards,
-                            usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
-                            columnSpacing: 12,
-                            rowSpacing: 16,
-                            presentation: presentation,
-                            onDelete: onDelete,
-                            onToggleFavorite: onToggleFavorite,
-                            onTogglePin: onTogglePin,
-                            onSetPublic: onSetPublic
-                        )
-                        .equatable()
-                        .padding(.horizontal, 16)
+                        VStack(spacing: 0) {
+                            HomeCardGrid(
+                                cards: cards,
+                                usesSingleColumn: dynamicTypeSize.isAccessibilitySize,
+                                columnSpacing: 12,
+                                rowSpacing: 16,
+                                presentation: presentation,
+                                openingStyle: openingStyle,
+                                menuRole: menuRole ?? { card in card.isOwner ? .owner : .savedFromFeed },
+                                onDelete: onDelete,
+                                onToggleFavorite: onToggleFavorite,
+                                onTogglePin: onTogglePin,
+                                onSetPublic: onSetPublic,
+                                onRemoveFromBoard: onRemoveFromBoard,
+                                onReachEnd: onLoadMore
+                            )
+                            .equatable()
+                            .padding(.horizontal, 16)
+
+                            if isLoadingMore {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, 16)
+                                    .accessibilityLabel(loadingLabel)
+                            }
+                        }
                         .padding(.bottom, 40)
                     }
                     .scrollIndicators(.hidden)

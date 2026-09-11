@@ -510,7 +510,7 @@ struct ComposeSheetView: View {
     }
 
     private var userAvatar: some View {
-        InitialsAvatar(side: 40, fill: theme.ink, symbol: theme.paper)
+        InitialsAvatar(letters: UserInitials.letters, side: 40, fill: theme.ink, symbol: theme.paper)
             .accessibilityHidden(true)
     }
 

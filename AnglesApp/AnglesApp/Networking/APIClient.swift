@@ -61,6 +61,10 @@ final class APIClient: @unchecked Sendable {
         try await decode(try await send(path: path, method: "GET", queryItems: queryItems))
     }
 
+    func put<Response: Decodable>(path: String) async throws -> Response {
+        try await decode(try await send(path: path, method: "PUT"))
+    }
+
     func patch<Body: Encodable, Response: Decodable>(
         path: String,
         body: Body
@@ -70,6 +74,10 @@ final class APIClient: @unchecked Sendable {
 
     func delete(path: String) async throws {
         _ = try await send(path: path, method: "DELETE")
+    }
+
+    func deleteJSON<Response: Decodable>(path: String) async throws -> Response {
+        try await decode(try await send(path: path, method: "DELETE"))
     }
 
     private func decode<Response: Decodable>(_ data: Data) throws -> Response {

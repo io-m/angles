@@ -115,6 +115,10 @@ export type StoredCardTag = {
   label: string;
 };
 
+export type StoredCardAuthor = {
+  initials: string;
+};
+
 export type StoredReframeResult = {
   style: Style;
   reframe: string;
@@ -145,6 +149,8 @@ export type StoredCard = {
   pinnedAt?: string;
   isPublic: boolean;
   createdAt: string;
+  isOwner: boolean;
+  author: StoredCardAuthor;
 };
 
 export type CreateCardInput = {
@@ -162,9 +168,38 @@ export type CardListQuery = {
   category?: Category;
   /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
   style?: Style;
-  /** Cards that have at least one liked style. */
+  /** Cards that have at least one liked style (owner heart or viewer save). */
   favorite?: boolean;
   pinned?: boolean;
+};
+
+export type FeedListQuery = {
+  limit: number;
+  before?: Date;
+  category?: Category;
+  style?: Style;
+  emotion?: Emotion;
+};
+
+export type FeedHomeQuery = {
+  /** Cards that include this style in `results`. Home shelves are capped, so the filter runs in SQL. */
+  style?: Style;
+  perSection: number;
+};
+
+export type FeedHomeSectionKind = "category" | "emotion";
+
+export type FeedHomeSection = {
+  kind: FeedHomeSectionKind;
+  id: Category | Emotion;
+  cardIds: string[];
+};
+
+/** Cards are de-duplicated: one card may be listed by a domain shelf and several mood shelves. */
+export type FeedHomeResponse = {
+  cards: StoredCard[];
+  recent: string[];
+  sections: FeedHomeSection[];
 };
 
 export type PatchCardInput = {

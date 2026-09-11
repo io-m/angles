@@ -4,7 +4,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import { eq } from "drizzle-orm";
 import { STYLES, type CreateCardInput } from "../types/index.js";
+import { DEV_USER_ID } from "../lib/authStub.js";
 import { DbError } from "./client.js";
 
 function loadTestDatabaseUrl(): void {
@@ -41,9 +43,10 @@ if (testUrl) {
   process.env.DATABASE_URL = testUrl;
 }
 
-const { closePool, getSql } = await import("./client.js");
+const { closePool, getDb, getSql } = await import("./client.js");
 const { createCard, deleteCard, getCard, listCards, patchCard } = await import("./cards.js");
-const { cardReframes, cards, tags } = await import("./schema.js");
+const { clearFeedSaves, listFeed, pinFeedCard, saveFeedAngle } = await import("./feed.js");
+const { cardReframes, cards, tags, users } = await import("./schema.js");
 
 const baseInput: CreateCardInput = {
   thought: "I bombed my interview and I keep replaying every shaky answer.",
@@ -71,7 +74,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
   beforeEach(async () => {
     await getSql()`
-      TRUNCATE card_reframes, card_tags, cards, tags, category_proposals RESTART IDENTITY CASCADE
+      TRUNCATE saved_angles, saved_pins, card_reframes, card_tags, cards, tags, category_proposals RESTART IDENTITY CASCADE
     `;
   });
 
@@ -92,6 +95,8 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(stored.thoughtOriginal).toBeUndefined();
     expect(stored.isPinned).toBe(false);
     expect(stored.isPublic).toBe(false);
+    expect(stored.isOwner).toBe(true);
+    expect(stored.author).toEqual({ initials: "JM" });
     expect(stored.results.every((item) => item.isFavorite === false)).toBe(true);
 
     const listed = await listCards({ limit: 50 });
@@ -226,5 +231,121 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
     const missing = await patchCard(slim.id, { isFavorite: true, style: "humorous" });
     expect(missing).toEqual({ ok: false, reason: "unknown_style" });
+  });
+
+  const OTHER_USER_ID = "00000000-0000-4000-8000-000000000099";
+
+  async function insertOtherCard(input: {
+    thought: string;
+    isPublic: boolean;
+    isPinned?: boolean;
+  }): Promise<string> {
+    const db = getDb();
+    await db.insert(users).values({ id: OTHER_USER_ID, initials: "AL" }).onConflictDoNothing();
+    const [inserted] = await db
+      .insert(cards)
+      .values({
+        userId: OTHER_USER_ID,
+        thoughtEn: input.thought,
+        inputLanguage: "en",
+        category: "work",
+        intensity: 3,
+        intensityBand: "mid",
+        timeframe: "ongoing",
+        safety: "none",
+        emotions: ["shame", "sadness"],
+        skippedStyles: [],
+        model: "mistral-small-latest",
+        spotlightStyle: "humorous",
+        isPublic: input.isPublic,
+        isPinned: input.isPinned ?? false,
+      })
+      .returning({ id: cards.id });
+    const cardId = inserted?.id;
+    if (!cardId) {
+      throw new Error("insert failed");
+    }
+    await db.insert(cardReframes).values(
+      STYLES.map((style, position) => ({
+        cardId,
+        style,
+        reframe: `A ${style} take that stays with the original sting.`,
+        position,
+        isFavorite: style === "stoic",
+      })),
+    );
+    return cardId;
+  }
+
+  it("excludes the viewer's cards and private cards from the feed", async () => {
+    const mine = await createCard(baseInput);
+    await patchCard(mine.id, { isPublic: true });
+    const publicOther = await insertOtherCard({
+      thought: "I keep waiting for a reply that is not coming and I feel small.",
+      isPublic: true,
+    });
+    await insertOtherCard({
+      thought: "I keep this one private because it is still too raw to share.",
+      isPublic: false,
+    });
+
+    const feed = await listFeed({ limit: 50 });
+    expect(feed.map((card) => card.id)).toEqual([publicOther]);
+    expect(feed[0]?.isOwner).toBe(false);
+    expect(feed[0]?.author).toEqual({ initials: "AL" });
+    expect(feed[0]?.isPublic).toBe(true);
+    expect(feed[0]?.isPinned).toBe(false);
+    expect(feed[0]?.results.every((item) => item.isFavorite === false)).toBe(true);
+  });
+
+  it("saves pin and heart without mutating the author's flags", async () => {
+    const publicOther = await insertOtherCard({
+      thought: "I keep waiting for a reply that is not coming and I feel small.",
+      isPublic: true,
+      isPinned: true,
+    });
+
+    const pinned = await pinFeedCard(publicOther);
+    expect(pinned.ok).toBe(true);
+    if (!pinned.ok) {
+      return;
+    }
+    expect(pinned.card.isPinned).toBe(true);
+    expect(pinned.card.isOwner).toBe(false);
+
+    const liked = await saveFeedAngle(publicOther, "optimistic");
+    expect(liked.ok).toBe(true);
+    if (!liked.ok) {
+      return;
+    }
+    expect(liked.card.results.find((item) => item.style === "optimistic")?.isFavorite).toBe(true);
+    expect(liked.card.results.find((item) => item.style === "stoic")?.isFavorite).toBe(false);
+
+    const authorRow = await getDb().query.cards.findFirst({
+      where: eq(cards.id, publicOther),
+      with: { reframes: true },
+    });
+    expect(authorRow?.isPinned).toBe(true);
+    expect(authorRow?.reframes.find((item) => item.style === "stoic")?.isFavorite).toBe(true);
+    expect(authorRow?.reframes.find((item) => item.style === "optimistic")?.isFavorite).toBe(false);
+
+    const library = await listCards({ limit: 50 });
+    const saved = library.find((card) => card.id === publicOther);
+    expect(saved?.isOwner).toBe(false);
+    expect(saved?.isPinned).toBe(true);
+    expect(saved?.results.find((item) => item.style === "optimistic")?.isFavorite).toBe(true);
+    expect(library.some((card) => card.isOwner)).toBe(false);
+
+    const own = await createCard(baseInput);
+    const listed = await listCards({ limit: 50 });
+    expect(listed.some((card) => card.id === own.id && card.isOwner)).toBe(true);
+
+    const ownSave = await pinFeedCard(own.id);
+    expect(ownSave).toEqual({ ok: false, reason: "not_found" });
+
+    const cleared = await clearFeedSaves(publicOther);
+    expect(cleared.ok).toBe(true);
+    const after = await listCards({ limit: 50 });
+    expect(after.some((card) => card.id === publicOther)).toBe(false);
   });
 });

@@ -1,31 +1,14 @@
 import SwiftUI
 
-private struct ScrollDistanceKey: PreferenceKey {
-    static var defaultValue: CGFloat?
-
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        if let next = nextValue() {
-            value = next
-        }
-    }
-}
-
 struct ProfileView: View {
     private enum Layout {
-        static let horizontalPadding: CGFloat = 16
         static let gridColumnSpacing: CGFloat = 12
         static let gridRowSpacing: CGFloat = 16
-        static let sectionContentGap: CGFloat = 16
-        static let headerHeight: CGFloat = 44
-        static let headerTopPad: CGFloat = 6
-        static let headerContentGap: CGFloat = 18
-        static let restFadeDistance: CGFloat = 44
-        static let collapsedRevealDistance: CGFloat = 36
-        static let collapseSlide: CGFloat = 10
         static let greetings = ["Hey", "Welcome back", "Hi there", "Good to see you"]
     }
 
     let safeAreaInsets: EdgeInsets
+    let pageWidth: CGFloat
 
     @ObservedObject var viewModel: HomeViewModel
     var onInspire: () -> Void = {}
@@ -38,13 +21,11 @@ struct ProfileView: View {
     @State private var scrolledDistance: CGFloat = 0
     @State private var showRestFilter = false
     @State private var showCollapsedFilter = false
-    @State private var pinnedCardID: UUID?
-    @State private var favoriteCardID: UUID?
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     private var headerOverlayHeight: CGFloat {
-        safeAreaInsets.top + Layout.headerTopPad + Layout.headerHeight
+        HeaderCollapse.overlayHeight(safeTop: safeAreaInsets.top)
     }
 
     private var greeting: String {
@@ -53,7 +34,7 @@ struct ProfileView: View {
     }
 
     private var restProgress: CGFloat {
-        unitProgress(scrolledDistance / Layout.restFadeDistance)
+        HeaderCollapse.restProgress(scrolledDistance, reduceMotion: reduceMotion)
     }
 
     private var restOpacity: CGFloat {
@@ -61,56 +42,40 @@ struct ProfileView: View {
     }
 
     private var collapsedProgress: CGFloat {
-        unitProgress((scrolledDistance - Layout.restFadeDistance) / Layout.collapsedRevealDistance)
-    }
-
-    private func unitProgress(_ raw: CGFloat) -> CGFloat {
-        let clamped = min(1, max(0, raw))
-        if reduceMotion {
-            return clamped > 0.5 ? 1 : 0
-        }
-        return clamped
+        HeaderCollapse.collapsedProgress(scrolledDistance, reduceMotion: reduceMotion)
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .top) {
-                AnglesCanvasBackground()
+        ZStack(alignment: .top) {
+            AnglesCanvasBackground()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Layout.headerContentGap) {
-                        scrollingHeader
+            ScrollView {
+                VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
+                    scrollingHeader
 
-                        pinnedAndFavorites(pageWidth: geometry.size.width)
+                    pinnedAndFavorites
 
-                        gridSection
-                    }
-                    .padding(.top, safeAreaInsets.top + Layout.headerTopPad)
-                    .padding(.bottom, 20)
-                    .background(alignment: .top) {
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: ScrollDistanceKey.self,
-                                value: proxy.frame(in: .named("profileScroll")).minY
-                            )
-                        }
-                        .frame(height: 0)
-                    }
+                    gridSection
                 }
-                .scrollIndicators(.hidden)
-                .coordinateSpace(name: "profileScroll")
-                .modifier(ProfileScrollDistance(distance: $scrolledDistance))
-
-                headerFade
-
-                collapsedHeader
+                .padding(.top, safeAreaInsets.top + HeaderCollapse.headerTopPad)
+                .padding(.bottom, 20)
+                .background(alignment: .top) {
+                    ScrollDistanceProbe(space: "profileScroll")
+                }
             }
+            .scrollIndicators(.hidden)
+            .coordinateSpace(name: "profileScroll")
+            .modifier(ProfileScrollDistance(distance: $scrolledDistance))
+
+            headerFade
+
+            collapsedHeader
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
         .task {
-            await viewModel.loadLibrary()
+            await viewModel.loadLibraryIfNeeded()
         }
     }
 
@@ -131,7 +96,7 @@ struct ProfileView: View {
                 CircleIcon(
                     systemName: filterSystemImage(viewModel.profileGridFilter),
                     fill: theme.surface,
-                    symbol: filterSymbolColor(viewModel.profileGridFilter),
+                    symbol: filterSymbolColor(viewModel.profileGridFilter, ink: theme.ink),
                     weight: .semibold,
                     hairline: theme.cardHairline
                 )
@@ -144,8 +109,8 @@ struct ProfileView: View {
                     .presentationCompactAdaptation(.popover)
             }
         }
-        .padding(.horizontal, Layout.horizontalPadding)
-        .frame(minHeight: Layout.headerHeight, alignment: .center)
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
+        .frame(minHeight: HeaderCollapse.headerHeight, alignment: .center)
         .opacity(restOpacity)
         .animation(nil, value: scrolledDistance)
         .allowsHitTesting(restOpacity > 0.4)
@@ -157,7 +122,7 @@ struct ProfileView: View {
 
         return VStack(spacing: 0) {
             Color.clear
-                .frame(height: safeAreaInsets.top + Layout.headerTopPad)
+                .frame(height: safeAreaInsets.top + HeaderCollapse.headerTopPad)
                 .allowsHitTesting(false)
 
             HStack {
@@ -167,11 +132,11 @@ struct ProfileView: View {
                 Button {
                     showCollapsedFilter = true
                 } label: {
-                    collapsedTitleLabel
+                    CollapsedFilterLabel(filter: viewModel.profileGridFilter)
                 }
                 .buttonStyle(.plain)
                 .opacity(progress)
-                .offset(y: reduceMotion ? 0 : Layout.collapseSlide * (1 - progress))
+                .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
                 .animation(nil, value: scrolledDistance)
                 .accessibilityLabel("Filter")
                 .accessibilityValue(viewModel.profileGridFilter.title)
@@ -185,93 +150,19 @@ struct ProfileView: View {
                 Spacer(minLength: 0)
                     .allowsHitTesting(false)
             }
-            .frame(height: Layout.headerHeight)
+            .frame(height: HeaderCollapse.headerHeight)
         }
         .frame(height: headerOverlayHeight, alignment: .top)
         .frame(maxWidth: .infinity)
         .allowsHitTesting(progress > 0.4)
     }
 
-    private var collapsedTitleLabel: some View {
-        HStack(spacing: 6) {
-            Image(systemName: filterSystemImage(viewModel.profileGridFilter))
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(filterSymbolColor(viewModel.profileGridFilter))
-
-            Text(viewModel.profileGridFilter.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-
-            Image(systemName: "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.muted)
-        }
-        .contentShape(Rectangle())
-    }
-
     private var filterPicker: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(ProfileGridFilter.allCases, id: \.self) { filter in
-                let isSelected = viewModel.profileGridFilter == filter
-
-                Button {
-                    viewModel.profileGridFilter = filter
-                    showRestFilter = false
-                    showCollapsedFilter = false
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: filterSystemImage(filter))
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(filterSymbolColor(filter))
-                            .frame(width: 22, alignment: .center)
-
-                        Text(filter.title)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(theme.ink)
-
-                        Spacer(minLength: 12)
-
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(theme.ink)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
-
-                if filter != ProfileGridFilter.allCases.last {
-                    Rectangle()
-                        .fill(theme.line)
-                        .frame(height: 1)
-                        .padding(.leading, 50)
-                }
-            }
+        GridFilterPicker(selection: viewModel.profileGridFilter) { filter in
+            viewModel.profileGridFilter = filter
+            showRestFilter = false
+            showCollapsedFilter = false
         }
-        .padding(.vertical, 8)
-        .frame(minWidth: 220)
-        .background(theme.surface)
-    }
-
-    private func filterSystemImage(_ filter: ProfileGridFilter) -> String {
-        guard let style = filter.matchingStyle else {
-            return "square.grid.2x2"
-        }
-
-        return CardStyleAppearance(style: style).systemImage
-    }
-
-    private func filterSymbolColor(_ filter: ProfileGridFilter) -> Color {
-        guard let style = filter.matchingStyle else {
-            return theme.ink
-        }
-
-        return CardStyleAppearance(style: style).ink
     }
 
     private var showsEmptyHero: Bool {
@@ -279,7 +170,7 @@ struct ProfileView: View {
             return false
         }
 
-        return viewModel.profileGridFilter == .all && viewModel.cards.isEmpty
+        return viewModel.profileGridFilter == .all && viewModel.ownedCards.isEmpty
     }
 
     private var gridSection: some View {
@@ -312,10 +203,11 @@ struct ProfileView: View {
                         onDelete: deleteCard,
                         onToggleFavorite: toggleFavorite,
                         onTogglePin: togglePinned,
-                        onSetPublic: setPublic
+                        onSetPublic: setPublic,
+                        onRemoveFromBoard: removeFromBoard
                     )
                     .equatable()
-                    .padding(.horizontal, Layout.horizontalPadding)
+                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
                 }
             }
         }
@@ -368,7 +260,7 @@ struct ProfileView: View {
                 .strokeBorder(theme.cardHairline, lineWidth: 1)
         }
         .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-        .padding(.horizontal, Layout.horizontalPadding)
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
         .padding(.top, 8)
         .accessibilityElement(children: .contain)
     }
@@ -377,7 +269,7 @@ struct ProfileView: View {
         Text(emptyFilterMessage)
             .font(.body.weight(.medium))
             .foregroundStyle(theme.muted)
-            .padding(.horizontal, Layout.horizontalPadding)
+            .padding(.horizontal, HeaderCollapse.horizontalPadding)
             .padding(.top, 8)
     }
 
@@ -392,22 +284,22 @@ struct ProfileView: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(theme.ink)
         }
-        .padding(.horizontal, Layout.horizontalPadding)
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
         .padding(.top, 8)
         .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
-    private func pinnedAndFavorites(pageWidth: CGFloat) -> some View {
+    private var pinnedAndFavorites: some View {
         if case .loaded = viewModel.libraryLoadState {
-            VStack(alignment: .leading, spacing: Layout.headerContentGap) {
+            VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
                 if !viewModel.pinnedCards.isEmpty {
-                    pinnedSection(pageWidth: pageWidth)
+                    pinnedSection
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 if !viewModel.favoriteAngleCards.isEmpty {
-                    favoriteAnglesSection(pageWidth: pageWidth)
+                    favoriteAnglesSection
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
@@ -428,7 +320,7 @@ struct ProfileView: View {
             CircleIcon(
                 systemName: filterSystemImage(viewModel.profileGridFilter),
                 fill: theme.surface,
-                symbol: filterSymbolColor(viewModel.profileGridFilter),
+                symbol: filterSymbolColor(viewModel.profileGridFilter, ink: theme.ink),
                 weight: .semibold,
                 hairline: theme.cardHairline
             )
@@ -438,61 +330,65 @@ struct ProfileView: View {
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
         }
-        .padding(.horizontal, Layout.horizontalPadding)
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isHeader)
         .accessibilityLabel(viewModel.profileGridFilter.title)
     }
 
-    private func pinnedSection(pageWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: Layout.sectionContentGap) {
+    private var pinnedSection: some View {
+        VStack(alignment: .leading, spacing: HeaderCollapse.sectionContentGap) {
             subsetSectionTitle("Pinned", hint: "Shows all pinned posts") {
                 PinsView(
                     viewModel: viewModel,
                     onDelete: deleteCard,
                     onToggleFavorite: toggleFavorite,
                     onTogglePin: togglePinned,
-                    onSetPublic: setPublic
+                    onSetPublic: setPublic,
+                    onRemoveFromBoard: removeFromBoard
                 )
             }
 
-            ProfileCardStrip(
+            HomeCardStrip(
                 cards: viewModel.stripPinnedCards,
                 pageWidth: pageWidth,
                 presentation: .pinned,
                 cardRowHeight: cardRowHeight,
-                scrollID: $pinnedCardID,
                 onDelete: deleteCard,
                 onToggleFavorite: toggleFavorite,
                 onTogglePin: togglePinned,
-                onSetPublic: setPublic
+                onSetPublic: setPublic,
+                onRemoveFromBoard: removeFromBoard
             )
+            .equatable()
         }
     }
 
-    private func favoriteAnglesSection(pageWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: Layout.sectionContentGap) {
+    private var favoriteAnglesSection: some View {
+        VStack(alignment: .leading, spacing: HeaderCollapse.sectionContentGap) {
             subsetSectionTitle("Favorite angles", hint: "Shows all favorite angles") {
                 FavoritesView(
                     viewModel: viewModel,
                     onDelete: deleteCard,
                     onToggleFavorite: toggleFavorite,
                     onTogglePin: togglePinned,
-                    onSetPublic: setPublic
+                    onSetPublic: setPublic,
+                    onRemoveFromBoard: removeFromBoard
                 )
             }
 
-            ProfileCardStrip(
+            HomeCardStrip(
                 cards: viewModel.stripFavoriteCards,
                 pageWidth: pageWidth,
                 presentation: .favoriteAngles,
                 cardRowHeight: cardRowHeight,
-                scrollID: $favoriteCardID,
                 onDelete: deleteCard,
                 onToggleFavorite: toggleFavorite,
                 onTogglePin: togglePinned,
-                onSetPublic: setPublic
+                onSetPublic: setPublic,
+                onRemoveFromBoard: removeFromBoard
             )
+            .equatable()
         }
     }
 
@@ -517,7 +413,7 @@ struct ProfileView: View {
             }
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, Layout.horizontalPadding)
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
         .accessibilityAddTraits(.isHeader)
         .accessibilityHint(hint)
     }
@@ -538,7 +434,7 @@ struct ProfileView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: Layout.headerTopPad + Layout.headerHeight + 12)
+            .frame(height: HeaderCollapse.headerTopPad + HeaderCollapse.headerHeight + 12)
         }
         .frame(maxWidth: .infinity)
         .allowsHitTesting(false)
@@ -547,6 +443,10 @@ struct ProfileView: View {
     }
 
     private func deleteCard(_ card: HomeCard) {
+        guard card.isOwner else {
+            return
+        }
+
         withAnimation(.easeInOut(duration: 0.22)) {
             viewModel.deleteCard(card.id)
         }
@@ -573,126 +473,21 @@ struct ProfileView: View {
     private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
         viewModel.setPublic(card.id, isPublic: isPublic)
     }
+
+    private func removeFromBoard(_ card: HomeCard) {
+        withAnimation(favoriteLayoutAnimation) {
+            viewModel.removeFromBoard(card.id)
+        }
+    }
 }
 
 #Preview("Profile") {
     NavigationStack {
         ProfileView(
             safeAreaInsets: EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0),
+            pageWidth: 393,
             viewModel: HomeViewModel()
         )
     }
     .environmentObject(ThemeStore())
-}
-
-private struct ProfileScrollDistance: ViewModifier {
-    @Binding var distance: CGFloat
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.onScrollGeometryChange(for: CGFloat.self) { geometry in
-                max(0, geometry.contentOffset.y)
-            } action: { _, newValue in
-                update(newValue)
-            }
-        } else {
-            content.onPreferenceChange(ScrollDistanceKey.self) { minY in
-                guard let minY else { return }
-                update(max(0, -minY))
-            }
-        }
-    }
-
-    private func update(_ newValue: CGFloat) {
-        guard abs(distance - newValue) > 0.5 else { return }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            distance = newValue
-        }
-    }
-}
-
-private struct ProfileCardStrip: View {
-    let cards: [HomeCard]
-    let pageWidth: CGFloat
-    let presentation: ReframeCardPresentation
-    let cardRowHeight: CGFloat
-    @Binding var scrollID: UUID?
-    var onDelete: (HomeCard) -> Void
-    var onToggleFavorite: (HomeCard, Style) -> Void
-    var onTogglePin: (HomeCard) -> Void
-    var onSetPublic: (HomeCard, Bool) -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    private var cardWidth: CGFloat {
-        min(pageWidth * 0.78, 300)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 12) {
-                    ForEach(cards) { card in
-                        ReframeCardView(
-                            card: card,
-                            presentation: presentation,
-                            onDelete: { onDelete(card) },
-                            onToggleFavorite: { style in onToggleFavorite(card, style) },
-                            onTogglePin: { onTogglePin(card) },
-                            onSetPublic: { isPublic in onSetPublic(card, isPublic) }
-                        )
-                        .frame(width: cardWidth)
-                        .id(card.id)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: .leading).combined(with: .opacity),
-                                removal: .opacity.combined(with: .scale(scale: 0.96))
-                            )
-                        )
-                    }
-                }
-                .padding(.horizontal, 16)
-                .scrollTargetLayout()
-            }
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $scrollID)
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .frame(height: cardRowHeight)
-            .onAppear {
-                if scrollID == nil {
-                    scrollID = cards.first?.id
-                }
-            }
-            .onChange(of: cards.map(\.id)) { _, ids in
-                if let scrollID, ids.contains(scrollID) {
-                    return
-                }
-                scrollID = ids.first
-            }
-
-            if cards.count > 1 {
-                stripPageDots
-            }
-        }
-    }
-
-    private var stripPageDots: some View {
-        let activeID = scrollID ?? cards.first?.id
-        return HStack(spacing: 5) {
-            ForEach(cards) { card in
-                let isActive = card.id == activeID
-                Capsule()
-                    .fill(isActive ? theme.ink : theme.faint)
-                    .frame(width: isActive ? 18 : 6, height: 6)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityHidden(true)
-    }
 }

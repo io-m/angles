@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, not, or, sql } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { normalizeTagSlugs, titleCase } from "../lib/slugs.js";
 import {
@@ -7,84 +7,18 @@ import {
   type CardListQuery,
   type PatchCardInput,
   type StoredCard,
-  type StoredReframeResult,
 } from "../types/index.js";
 import { getDb, wrapDbError, DbError } from "./client.js";
+import { loadViewerSaves, toStoredCard } from "./mapCard.js";
 import {
   cardReframes,
   cardTags,
   cards,
   categoryProposals,
+  savedAngles,
+  savedPins,
   tags,
-  type CardReframeRow,
-  type CardRow,
-  type TagRow,
 } from "./schema.js";
-
-type CardLoaded = CardRow & {
-  reframes: CardReframeRow[];
-  cardTags: { tag: TagRow }[];
-};
-
-function toStoredCard(row: CardLoaded): StoredCard {
-  const tagList = row.cardTags.map((join) => ({
-    slug: join.tag.slug,
-    label: join.tag.label,
-  }));
-  const results: StoredReframeResult[] = [...row.reframes]
-    .sort((left, right) => left.position - right.position)
-    .map((item) => {
-      const stored: StoredReframeResult = {
-        style: item.style,
-        reframe: item.reframe,
-        isFavorite: item.isFavorite,
-      };
-      if (item.favoritedAt) {
-        stored.favoritedAt = item.favoritedAt.toISOString();
-      }
-      return stored;
-    });
-
-  const stored: StoredCard = {
-    id: row.id,
-    thought: row.thoughtEn,
-    inputLanguage: row.inputLanguage,
-    category: row.category,
-    tags: tagList,
-    intensity: row.intensity,
-    intensityBand: intensityBand(row.intensity),
-    timeframe: row.timeframe,
-    emotions: row.emotions,
-    safety: row.safety,
-    skippedStyles: row.skippedStyles,
-    matching: {
-      category: row.category,
-      tags: tagList.map((tag) => tag.slug),
-      intensityBand: intensityBand(row.intensity),
-    },
-    results,
-    model: row.model,
-    spotlightStyle: row.spotlightStyle,
-    isPinned: row.isPinned,
-    isPublic: row.isPublic,
-    createdAt: row.createdAt.toISOString(),
-  };
-
-  if (row.thoughtOriginal) {
-    stored.thoughtOriginal = row.thoughtOriginal;
-  }
-  if (row.proposedCategory) {
-    stored.proposedCategory = row.proposedCategory;
-  }
-  if (row.proposedLabel) {
-    stored.proposedLabel = row.proposedLabel;
-  }
-  if (row.pinnedAt) {
-    stored.pinnedAt = row.pinnedAt.toISOString();
-  }
-
-  return stored;
-}
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
 
@@ -92,6 +26,7 @@ async function loadCard(db: Queryable, id: string): Promise<StoredCard | null> {
   const row = await db.query.cards.findFirst({
     where: and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())),
     with: {
+      user: true,
       reframes: { orderBy: [asc(cardReframes.position)] },
       cardTags: { with: { tag: true } },
     },
@@ -99,7 +34,7 @@ async function loadCard(db: Queryable, id: string): Promise<StoredCard | null> {
   if (!row) {
     return null;
   }
-  return toStoredCard(row);
+  return toStoredCard(row, { pins: new Map(), angles: new Map() });
 }
 
 export async function createCard(input: CreateCardInput): Promise<StoredCard> {
@@ -203,7 +138,25 @@ export async function createCard(input: CreateCardInput): Promise<StoredCard> {
 
 export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
   try {
-    const filters = [eq(cards.userId, getOwnerUserId())];
+    const viewerId = getOwnerUserId();
+    const db = getDb();
+    const savedPinIds = db
+      .select({ id: savedPins.cardId })
+      .from(savedPins)
+      .where(eq(savedPins.userId, viewerId));
+    const savedAngleIds = db
+      .select({ id: savedAngles.cardId })
+      .from(savedAngles)
+      .where(eq(savedAngles.userId, viewerId));
+    const ownedFavoriteIds = db
+      .select({ id: cardReframes.cardId })
+      .from(cardReframes)
+      .innerJoin(cards, eq(cards.id, cardReframes.cardId))
+      .where(and(eq(cardReframes.isFavorite, true), eq(cards.userId, viewerId)));
+
+    const filters = [
+      or(eq(cards.userId, viewerId), inArray(cards.id, savedPinIds), inArray(cards.id, savedAngleIds))!,
+    ];
     if (query.category) {
       filters.push(eq(cards.category, query.category));
     }
@@ -211,54 +164,43 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       filters.push(
         inArray(
           cards.id,
-          getDb()
-            .select({ id: cardReframes.cardId })
-            .from(cardReframes)
-            .where(eq(cardReframes.style, query.style)),
+          db.select({ id: cardReframes.cardId }).from(cardReframes).where(eq(cardReframes.style, query.style)),
         ),
       );
     }
     if (query.favorite === true) {
-      filters.push(
-        inArray(
-          cards.id,
-          getDb()
-            .select({ id: cardReframes.cardId })
-            .from(cardReframes)
-            .where(eq(cardReframes.isFavorite, true)),
-        ),
-      );
+      filters.push(or(inArray(cards.id, ownedFavoriteIds), inArray(cards.id, savedAngleIds))!);
     } else if (query.favorite === false) {
-      filters.push(
-        notInArray(
-          cards.id,
-          getDb()
-            .select({ id: cardReframes.cardId })
-            .from(cardReframes)
-            .where(eq(cardReframes.isFavorite, true)),
-        ),
-      );
+      filters.push(not(or(inArray(cards.id, ownedFavoriteIds), inArray(cards.id, savedAngleIds))!));
     }
     if (query.pinned === true) {
-      filters.push(eq(cards.isPinned, true));
+      filters.push(
+        or(and(eq(cards.userId, viewerId), eq(cards.isPinned, true)), inArray(cards.id, savedPinIds))!,
+      );
     } else if (query.pinned === false) {
-      filters.push(eq(cards.isPinned, false));
+      filters.push(
+        not(
+          or(and(eq(cards.userId, viewerId), eq(cards.isPinned, true)), inArray(cards.id, savedPinIds))!,
+        ),
+      );
     }
     if (query.before) {
       filters.push(lt(cards.createdAt, query.before));
     }
 
-    const rows = await getDb().query.cards.findMany({
+    const rows = await db.query.cards.findMany({
       where: and(...filters),
       orderBy: [desc(cards.createdAt), desc(cards.id)],
       limit: query.limit,
       with: {
+        user: true,
         reframes: { orderBy: [asc(cardReframes.position)] },
         cardTags: { with: { tag: true } },
       },
     });
 
-    return rows.map((row) => toStoredCard(row));
+    const saves = await loadViewerSaves(viewerId);
+    return rows.map((row) => toStoredCard(row, saves, viewerId));
   } catch (error) {
     if (error instanceof DbError) {
       throw error;

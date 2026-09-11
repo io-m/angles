@@ -43,6 +43,7 @@ struct CircleIcon: View {
 }
 
 struct InitialsAvatar: View {
+    var letters: String
     var side: CGFloat = 40
     var fill: Color
     var symbol: Color
@@ -52,7 +53,7 @@ struct InitialsAvatar: View {
     }
 
     var body: some View {
-        Text(UserInitials.letters)
+        Text(letters)
             .font(.system(size: fontSize, weight: .semibold))
             .foregroundStyle(symbol)
             .frame(width: side, height: side)

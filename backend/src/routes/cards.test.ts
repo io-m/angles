@@ -76,6 +76,8 @@ function storedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     isPinned: false,
     isPublic: false,
     createdAt: "2026-09-10T12:00:00.000Z",
+    isOwner: true,
+    author: { initials: "JM" },
     ...overrides,
   };
 }

@@ -34,7 +34,9 @@ A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`).
 
 ## UI
 
-Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Profile style chips keep cards that have that style and open the carousel on it; All still uses mixed `spotlightStyle`. Pinned and Favorite angles strips stay unfiltered (max 6); titles open Pins and Favorite angles grids. Heart sits on each answer page (that style); pin is on the thought face only. Owner ⋯ replaces long-press Delete on own cards. Flip misses ⋯, heart, and pin.
+Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Profile style chips keep cards that have that style and open the carousel on it; All still uses mixed `spotlightStyle`. Pinned and Favorite angles strips stay unfiltered (max 6); titles open Pins and Favorite angles grids. Heart sits on the answer face (the angle in view); pin is on the thought face only. Owner ⋯ replaces long-press Delete on own cards.
+
+Cards are three bands. Top chrome (style pill / initials, ⋯) and bottom chrome (date, heart / pin, in-card dots) never flip and never hold the in-card pager, so a horizontal drag there belongs to the enclosing strip. The middle band is the only flip target and the only pager, so a drag on the copy pages angles. Do not put `onTapGesture` on a card `Text`.
 
 ## Device
 

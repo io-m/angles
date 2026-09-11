@@ -15,6 +15,13 @@
       "when": 1789050000000,
       "tag": "0001_per_style_favorites",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789114679389,
+      "tag": "0002_whole_stellaris",
+      "breakpoints": true
     }
   ]
 }

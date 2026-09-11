@@ -5,6 +5,7 @@ import { logger } from "hono/logger";
 import { DbError } from "./db/client.js";
 import { errorBody } from "./lib/http.js";
 import { cardsRoute } from "./routes/cards.js";
+import { feedRoute } from "./routes/feed.js";
 import { healthRoute } from "./routes/health.js";
 import { reframeRoute } from "./routes/reframe.js";
 
@@ -25,6 +26,7 @@ export function createApp(): Hono {
   app.route("/health", healthRoute);
   app.route("/reframe", reframeRoute);
   app.route("/cards", cardsRoute);
+  app.route("/feed", feedRoute);
 
   app.notFound((c) => c.json(errorBody("Not found", "NOT_FOUND"), 404));
 

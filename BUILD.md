@@ -23,7 +23,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Core loop
 
-Tab shell: **Home | Sparkle | Profile**. Sparkle opens the compose overlay. Profile is the private library. Home is an empty community placeholder.
+Tab shell: **Home | Sparkle | Profile**. Sparkle opens the compose overlay. Profile is the private library. Home is the community feed of other people’s public cards.
 
 Loading and error are **states on Results**, not their own screens.
 
@@ -45,6 +45,8 @@ Loading and error are **states on Results**, not their own screens.
 | 5d | Owner ⋯ menu | feature | done | `ReframeCardView.swift`; `cards.ts` | Ellipsis replaces long-press Delete; confirm delete, privacy flag, original-vs-English; menu rows have leading icons. |
 | 5e | Thought type + card height | polish | done | `ReframeCardView.swift` | Thought is slightly smaller and heavier; height hugs max thought/reframe plus chrome. |
 | 5f | List and in-card chrome | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `ProfileView.swift` | Strip list-dots; compact in-card dots on the answer face; tighter grid rows. |
+| 9 | Public opt-in / community Home | screen | done | `HomeView.swift`; `feed.ts`; `schema.ts`; `CardsService.swift` | Public-others feed by Recent, category, and emotion; viewer pin/heart saves; `pnpm db:seed-community`. |
+| 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 
 ### 1. Compose (home)
 
@@ -83,7 +85,7 @@ Not a new screen. `POST /reframe` is `{ text, followUps?, styles?, model? }` →
 
 ### 4b. Tabs + Profile shell
 
-Three-target bar: Home (empty community placeholder, Settings gear), Sparkle (existing compose overlay, not a page), Profile (private library). Favorites strip stays unfiltered. Header picker keeps every card that **has** that style and opens the carousel on it. **All** still uses mixed `spotlightStyle` so the grid is not a stoic wall. Style is not a category; real taxonomy is `category` / tags / intensity.
+Three-target bar: Home (community feed, Settings gear), Sparkle (existing compose overlay, not a page), Profile (private library). Favorites strip stays unfiltered. Header picker keeps every card that **has** that style and opens the carousel on it. **All** still uses mixed `spotlightStyle` so the grid is not a stoic wall. Style is not a category; real taxonomy is `category` / tags / intensity. Home shelves use `category` (life-domain) and `emotions` (mood).
 
 ### 4c. Real LLM
 
@@ -117,7 +119,7 @@ Pin is the thought/post, independent of hearts. Profile **Pinned** is a thought-
 
 ### 5d. Owner ⋯ menu
 
-Top-trailing ellipsis on the owner's library cards replaces long-press Delete. Menu: Delete (confirm), Make public / Make private (`isPublic`, default false, no Home feed), Language when a cleaned original exists (client toggle, no new translate). Heart (current style) and pin stay on the card.
+Top-trailing ellipsis on the owner's library cards replaces long-press Delete. Menu: Delete (confirm), Make public / Make private (`isPublic`, default false), Language when a cleaned original exists (client toggle, no new translate). Heart (current style) and pin stay on the card. Public posts appear on other people’s Home, never the author’s.
 
 ### 5e. Thought type + card height
 
@@ -127,6 +129,21 @@ Thought face is slightly smaller and heavier than title3 regular, still distinct
 
 Pinned and Favorite angles strips have page-dots for which **card** is in view; cards in those strips have no list-dots. In-card AI carousel uses compact dots at the bottom center of the answer face when there is more than one AI page. Thought face has no pager chrome. Grid rows are slightly tighter than the strip's horizontal gap.
 
+### 9. Public opt-in / community Home
+
+Home is other people’s public cards (never the viewer’s). Style filter matches Profile (keeps cards that have that angle; All mixes covers). Sections: Recent, one strip per life-domain `category`, one strip per `emotion`. Pin/heart on someone else’s post writes viewer-scoped saves, not the author’s flags. Profile Pinned / Favorite angles union owned flags with those saves. Making a post public is so other people see it on their Home later.
+
+### 9b. Home perf, header, card gestures
+
+Not a new screen. Polish on 9.
+
+- **Payload.** `GET /feed/home?style=&perSection=6` returns `{ cards, recent, sections }` — shelf ids into one de-duplicated card list, so Home downloads ~140 KB instead of ~500 KB. Shelves cap at 6, so the style filter runs in SQL; changing it refetches without blanking the shelves. Chevron screens page `GET /feed?category=|emotion=&limit=24&before=` as the grid scrolls.
+- **Shelf order.** Recent, then a deterministic zipper of life domain and mood in catalog order (Work, Anger, Money, Shame, …). Empty shelves never ship.
+- **Scroll cost.** `LazyVStack` mounts shelves near the viewport instead of ~20 strips of flip cards at once. Strips own their scroll position, strips and cards are `Equatable`, and a heart no longer animates or re-renders the page. No page-wide `GeometryReader`: card width comes from `containerRelativeFrame`.
+- **Header.** One 44pt row — “Home” leading, style filter then Settings trailing — collapsing into Profile’s centered filter chip (`HeaderChrome.swift` is now shared by both tabs). Settings stays trailing when collapsed.
+- **Card bands.** Top chrome (pill / initials, ⋯), middle (copy), bottom chrome (date, heart / pin, dots). Only the middle flips and only the middle holds the in-card pager, so a drag on the date moves to the next card while a drag on the copy pages styles. The date no longer flips; the wash and pill follow the active angle from outside the pager.
+- **Cache.** Home and Profile load once; popping a shelf keeps the cards and the scroll position instead of a cold refetch.
+
 ## Postponed (do not start)
 
 | # | Item | Kind | Status | Why later |
@@ -134,13 +151,11 @@ Pinned and Favorite angles strips have page-dots for which **card** is in view; 
 | 6 | Onboarding taste | screen | not started | Reuses Compose + Results; one thought, all four styles, then paywall |
 | 7 | Paywall | screen | not started | StoreKit, hard gate after the taste |
 | 8 | Auth | feature | not started | Sign in with Apple / Better Auth; needed for restore, not for typing a thought |
-| 9 | Public opt-in / community Home | feature | not started | After persistence. Anonymous; user asks, AI writes; optional per-card publish into Home. No accounts or feed plumbing yet. |
 
 Account / auth settings wait until auth exists. Appearance + accent already shipped in 2a.
 
 ## Out of scope (until listed)
 
-- Public feed until postponed opt-in (row 9)
 - Extra reframe styles
 - Client-side LLM keys
 - Browser CORS
@@ -148,9 +163,8 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
-Newest first. Add a line when something moves to `done`.
-
-- 2026-09-10 — Profile pins, per-style favorite angles, owner ⋯ menu, tighter thought type, list vs in-card chrome.
+- 2026-09-11 — Home polish: lazy shelves and a grouped `GET /feed/home` (140 KB, not 500 KB), one collapsing header like Profile, three-band cards (middle flips and pages, chrome swipes the strip), domain/mood zipper, paged shelf screens, no cold refetch on pop.
+- 2026-09-11 — Community Home: public-others feed (Recent, life-domain, mood), viewer-scoped pin/heart, seed via `pnpm db:seed-community` (docker compose up, migrate, seed).
 - 2026-09-10 — Profile style filter keeps every card that has that angle and opens the carousel on it; All still mixes covers.
 - 2026-09-10 — Cook latency polish: one batched style JSON after the decision; 10s cook budget; cycling cooking copy; icon-only Original; leave confirms while a cook or unsaved session is open.
 - 2026-09-10 — Empty Profile hero opens compose; Original sits on card chrome; thought and reframe budgets match the two-column card.

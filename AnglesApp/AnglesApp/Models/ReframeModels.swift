@@ -28,6 +28,22 @@ enum ThoughtCategory: String, Codable, CaseIterable, Sendable {
         let raw = try decoder.singleValueContainer().decode(String.self)
         self = ThoughtCategory(rawValue: raw) ?? .other
     }
+
+    var displayName: String {
+        switch self {
+        case .work: return "Work"
+        case .money: return "Money"
+        case .romantic: return "Romantic"
+        case .family: return "Family"
+        case .friendsSocial: return "Friends"
+        case .health: return "Health"
+        case .selfWorth: return "Self-worth"
+        case .future: return "Future"
+        case .griefLoss: return "Grief"
+        case .identity: return "Identity"
+        case .other: return "Other"
+        }
+    }
 }
 
 enum Emotion: String, Codable, CaseIterable, Sendable {
@@ -40,6 +56,20 @@ enum Emotion: String, Codable, CaseIterable, Sendable {
     case overwhelm
     case numbness
     case hope
+
+    var displayName: String {
+        switch self {
+        case .anger: return "Anger"
+        case .shame: return "Shame"
+        case .fear: return "Fear"
+        case .sadness: return "Sadness"
+        case .envy: return "Envy"
+        case .loneliness: return "Loneliness"
+        case .overwhelm: return "Overwhelm"
+        case .numbness: return "Numbness"
+        case .hope: return "Hope"
+        }
+    }
 }
 
 enum Timeframe: String, Codable, CaseIterable, Sendable {
@@ -263,6 +293,10 @@ struct StoredCardTag: Codable, Equatable, Sendable {
     let label: String
 }
 
+struct StoredCardAuthor: Codable, Equatable, Sendable {
+    let initials: String
+}
+
 struct StoredCard: Decodable, Equatable, Sendable {
     let id: String
     let thought: String
@@ -286,6 +320,8 @@ struct StoredCard: Decodable, Equatable, Sendable {
     let pinnedAt: String?
     let isPublic: Bool
     let createdAt: String
+    let isOwner: Bool
+    let author: StoredCardAuthor
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -310,6 +346,8 @@ struct StoredCard: Decodable, Equatable, Sendable {
         case pinnedAt
         case isPublic
         case createdAt
+        case isOwner
+        case author
     }
 
     var reframeMeta: ReframeMeta {
@@ -363,6 +401,9 @@ struct StoredCard: Decodable, Equatable, Sendable {
         pinnedAt = try container.decodeIfPresent(String.self, forKey: .pinnedAt)
         isPublic = try container.decodeIfPresent(Bool.self, forKey: .isPublic) ?? false
         createdAt = try container.decode(String.self, forKey: .createdAt)
+        isOwner = try container.decodeIfPresent(Bool.self, forKey: .isOwner) ?? true
+        author = try container.decodeIfPresent(StoredCardAuthor.self, forKey: .author)
+            ?? StoredCardAuthor(initials: "JM")
         matching = try container.decodeIfPresent(MatchingKey.self, forKey: .matching)
             ?? MatchingKey(
                 category: category,
@@ -433,6 +474,40 @@ struct CardListResponse: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
         cards = raw.compactMap(\.value)
+    }
+}
+
+enum FeedHomeSectionKind: String, Decodable, Sendable {
+    case category
+    case emotion
+}
+
+/// One Home shelf. Ids point into `FeedHomeResponse.cards`, so a card that belongs to
+/// one life domain and several moods is only sent once.
+struct FeedHomeSection: Decodable, Equatable, Sendable {
+    let kind: FeedHomeSectionKind
+    let id: String
+    let cardIds: [String]
+}
+
+struct FeedHomeResponse: Decodable, Equatable, Sendable {
+    let cards: [StoredCard]
+    let recent: [String]
+    let sections: [FeedHomeSection]
+
+    private enum CodingKeys: String, CodingKey {
+        case cards
+        case recent
+        case sections
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cards = (try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? [])
+            .compactMap(\.value)
+        recent = try container.decodeIfPresent([String].self, forKey: .recent) ?? []
+        sections = (try container.decodeIfPresent([Failable<FeedHomeSection>].self, forKey: .sections) ?? [])
+            .compactMap(\.value)
     }
 }
 

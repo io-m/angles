@@ -72,7 +72,7 @@ const createCardSchema = z
   });
 
 const listQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  limit: z.coerce.number().int().min(1).max(500).optional().default(50),
   before: z
     .string()
     .refine((value) => !Number.isNaN(Date.parse(value)), "before must be an ISO-8601 timestamp")

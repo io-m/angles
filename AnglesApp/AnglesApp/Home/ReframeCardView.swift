@@ -6,6 +6,12 @@ enum ReframeCardPresentation: String, Equatable {
     case favoriteAngles
 }
 
+enum ReframeCardMenuRole: Equatable {
+    case owner
+    case feed
+    case savedFromFeed
+}
+
 enum ReframeCardMetrics {
     /// Two-column cell on iPhone 14 Pro Max (~193pt) plus chrome (pill, date, heart/pin/menu, initials)
     /// fits max thought (140) and max reframe (190) at the thought type below, with min-scale for Dynamic Type.
@@ -16,16 +22,21 @@ enum ReframeCardMetrics {
     static let controlSize: CGFloat = 32
 
     static var contentBottomPad: CGFloat { chromeInset + controlSize }
+    /// Top chrome band: style pill / initials on the leading side, ⋯ on the trailing side.
+    /// Nothing in this band flips, and the in-card pager never reaches into it.
+    static var topBandHeight: CGFloat { chromeInset + controlSize }
 }
 
-struct ReframeCardView: View {
+struct ReframeCardView: View, Equatable {
     let card: HomeCard
     var presentation: ReframeCardPresentation = .library
+    var menuRole: ReframeCardMenuRole = .owner
     var openingStyle: Style? = nil
     var onDelete: () -> Void = {}
     var onToggleFavorite: (Style) -> Void = { _ in }
     var onTogglePin: () -> Void = {}
     var onSetPublic: (Bool) -> Void = { _ in }
+    var onRemoveFromBoard: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -39,6 +50,13 @@ struct ReframeCardView: View {
     @State private var pinHaptic = 0
     @State private var showDeleteConfirm = false
     @State private var didSetInitialFace = false
+
+    static func == (lhs: ReframeCardView, rhs: ReframeCardView) -> Bool {
+        lhs.card == rhs.card
+            && lhs.presentation == rhs.presentation
+            && lhs.menuRole == rhs.menuRole
+            && lhs.openingStyle == rhs.openingStyle
+    }
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var cardShape: RoundedRectangle {
@@ -120,7 +138,7 @@ struct ReframeCardView: View {
 
     private var clippedCard: some View {
         FlipStack(progress: isFlipped ? 1 : 0) {
-            answerPager
+            answerFace
         } back: {
             thoughtFace
         }
@@ -134,8 +152,10 @@ struct ReframeCardView: View {
         }
         .shadow(color: theme.shadowSoft, radius: 10, y: 3)
         .overlay(alignment: .topTrailing) {
-            ownerMenu
-                .padding(ReframeCardMetrics.chromeInset)
+            if showsMenu {
+                cardMenu
+                    .padding(ReframeCardMetrics.chromeInset)
+            }
         }
         .overlay(alignment: .bottom) {
             bottomChrome
@@ -150,23 +170,21 @@ struct ReframeCardView: View {
     }
 
     private var thoughtFace: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            InitialsAvatar(side: ReframeCardMetrics.controlSize, fill: theme.ink, symbol: theme.paper)
-
-            Text(showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought)
-                .font(.system(size: thoughtSize, weight: .medium))
-                .foregroundStyle(theme.ink)
-                .multilineTextAlignment(.leading)
-                .minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        cardFace {
+            InitialsAvatar(
+                letters: card.authorInitials,
+                side: ReframeCardMetrics.controlSize,
+                fill: theme.ink,
+                symbol: theme.paper
+            )
+        } middle: {
+            copyBand(
+                Text(showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought)
+                    .font(.system(size: thoughtSize, weight: .medium))
+                    .foregroundStyle(theme.ink)
+            )
         }
-        .padding(.horizontal, ReframeCardMetrics.chromeInset)
-        .padding(.top, ReframeCardMetrics.chromeInset)
-        .padding(.bottom, ReframeCardMetrics.contentBottomPad)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.surface)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: flip)
     }
 
     private var hasOriginal: Bool {
@@ -177,29 +195,78 @@ struct ReframeCardView: View {
         return original != card.thought
     }
 
+    private var activeAppearance: CardStyleAppearance {
+        CardStyleAppearance(style: visibleSlides[safe: activeSlideIndex]?.result.style ?? card.spotlightStyle)
+    }
+
+    /// The wash and the pill sit outside the pager: a horizontal drag on the chrome bands
+    /// has to belong to the enclosing strip, so only the copy pages.
+    private var answerFace: some View {
+        let appearance = activeAppearance
+
+        return cardFace {
+            stylePill(appearance)
+        } middle: {
+            answerPager
+        }
+        .background {
+            appearance.washFill(over: theme.surface)
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appearance.style)
+    }
+
     private var answerPager: some View {
         Group {
             if visibleSlides.count > 1 {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 0) {
-                        ForEach(visibleSlides) { slide in
-                            answerPage(slide.result)
-                                .containerRelativeFrame(.horizontal)
-                                .id(slide.id)
+                // The page width comes from the band, not from `containerRelativeFrame`:
+                // nested scroll views resolve that against the wrong container.
+                GeometryReader { proxy in
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 0) {
+                            ForEach(visibleSlides) { slide in
+                                answerCopy(slide.result)
+                                    .frame(width: proxy.size.width, height: proxy.size.height)
+                                    .id(slide.id)
+                            }
                         }
+                        .scrollTargetLayout()
                     }
-                    .scrollTargetLayout()
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.paging)
+                    .scrollPosition(id: $pagedSlideID)
+                    .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $pagedSlideID)
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             } else if let slide = visibleSlides.first {
-                answerPage(slide.result)
+                answerCopy(slide.result)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
+    }
+
+    /// Three bands: chrome, the flip/page target, chrome. The bottom band is empty space
+    /// the `bottomChrome` overlay draws into.
+    private func cardFace<Top: View, Middle: View>(
+        @ViewBuilder top: () -> Top,
+        @ViewBuilder middle: () -> Middle
+    ) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                top()
+                Spacer(minLength: 0)
+            }
+            .frame(height: ReframeCardMetrics.controlSize)
+            .padding(.horizontal, ReframeCardMetrics.chromeInset)
+            .padding(.top, ReframeCardMetrics.chromeInset)
+            .allowsHitTesting(false)
+
+            middle()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Color.clear
+                .frame(height: ReframeCardMetrics.contentBottomPad)
+                .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var bottomChrome: some View {
@@ -209,7 +276,6 @@ struct ReframeCardView: View {
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
                 .frame(height: ReframeCardMetrics.controlSize, alignment: .leading)
-                .onTapGesture(perform: flip)
 
             Spacer(minLength: 0)
                 .allowsHitTesting(false)
@@ -236,31 +302,36 @@ struct ReframeCardView: View {
         .accessibilityHidden(true)
     }
 
-    private func answerPage(_ result: ReframeResult) -> some View {
-        let appearance = CardStyleAppearance(style: result.style)
-
-        return VStack(alignment: .leading, spacing: 12) {
-            stylePill(appearance)
-                .onTapGesture(perform: flip)
-
+    private func answerCopy(_ result: ReframeResult) -> some View {
+        copyBand(
             Text(result.reframe)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(theme.ink)
-                .multilineTextAlignment(.leading)
-                .minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .onTapGesture(perform: flip)
-        }
-        .padding(.horizontal, ReframeCardMetrics.chromeInset)
-        .padding(.top, ReframeCardMetrics.chromeInset)
-        .padding(.bottom, ReframeCardMetrics.contentBottomPad)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background {
-            appearance.washFill(over: theme.surface)
+        )
+    }
+
+    /// One tap target for the whole middle band, including the empty space under the copy.
+    private func copyBand(_ copy: Text) -> some View {
+        copy
+            .multilineTextAlignment(.leading)
+            .minimumScaleFactor(0.72)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, ReframeCardMetrics.chromeInset)
+            .padding(.top, 8)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: flip)
+    }
+
+    private var showsMenu: Bool {
+        switch menuRole {
+        case .owner, .savedFromFeed:
+            return true
+        case .feed:
+            return hasOriginal
         }
     }
 
-    private var ownerMenu: some View {
+    private var cardMenu: some View {
         Menu {
             if hasOriginal {
                 Button {
@@ -276,17 +347,26 @@ struct ReframeCardView: View {
                 }
             }
 
-            Button {
-                onSetPublic(!card.isPublic)
-            } label: {
-                Label(
-                    card.isPublic ? "Make private" : "Make public",
-                    systemImage: card.isPublic ? "lock.fill" : "globe"
-                )
-            }
+            switch menuRole {
+            case .feed:
+                EmptyView()
+            case .savedFromFeed:
+                Button("Remove from board", systemImage: "rectangle.badge.minus") {
+                    onRemoveFromBoard()
+                }
+            case .owner:
+                Button {
+                    onSetPublic(!card.isPublic)
+                } label: {
+                    Label(
+                        card.isPublic ? "Make private" : "Make public",
+                        systemImage: card.isPublic ? "lock.fill" : "globe"
+                    )
+                }
 
-            Button("Delete", systemImage: "trash", role: .destructive) {
-                showDeleteConfirm = true
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    showDeleteConfirm = true
+                }
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -413,7 +493,7 @@ struct OverlayProposalCard: View {
         VStack(spacing: 8) {
             ZStack(alignment: .topTrailing) {
                 FlipStack(progress: isFlipped ? 1 : 0) {
-                    answerPager
+                    answerFace
                 } back: {
                     thoughtFace
                 }
@@ -478,71 +558,98 @@ struct OverlayProposalCard: View {
     }
 
     private var thoughtFace: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            InitialsAvatar(side: ReframeCardMetrics.controlSize, fill: theme.ink, symbol: theme.paper)
-
-            Text(showingOriginal ? (thoughtOriginal ?? thought) : thought)
-                .font(.system(size: thoughtSize, weight: .medium))
-                .foregroundStyle(theme.ink)
-                .multilineTextAlignment(.leading)
-                .minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .padding(.horizontal, ReframeCardMetrics.chromeInset)
-        .padding(.top, ReframeCardMetrics.chromeInset)
-        .padding(.bottom, ReframeCardMetrics.contentBottomPad)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(theme.surface)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: flip)
-    }
-
-    private var answerPager: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 0) {
-                ForEach(results, id: \.style) { result in
-                    answerPage(result)
-                        .containerRelativeFrame(.horizontal)
-                        .id(result.style)
-                }
-            }
-            .scrollTargetLayout()
-        }
-        .scrollIndicators(.hidden)
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $pagedStyle)
-        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .clipped()
-    }
-
-    private func answerPage(_ result: ReframeResult) -> some View {
-        let appearance = CardStyleAppearance(style: result.style)
-
-        return ZStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: 12) {
-                stylePill(appearance)
-                    .onTapGesture(perform: flip)
-
-                Text(result.reframe)
-                    .font(.callout.weight(.medium))
+        cardFace {
+            InitialsAvatar(
+                letters: UserInitials.letters,
+                side: ReframeCardMetrics.controlSize,
+                fill: theme.ink,
+                symbol: theme.paper
+            )
+        } middle: {
+            copyBand(
+                Text(showingOriginal ? (thoughtOriginal ?? thought) : thought)
+                    .font(.system(size: thoughtSize, weight: .medium))
                     .foregroundStyle(theme.ink)
-                    .multilineTextAlignment(.leading)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .onTapGesture(perform: flip)
-            }
-            .padding(.horizontal, ReframeCardMetrics.chromeInset)
-            .padding(.top, ReframeCardMetrics.chromeInset)
-            .padding(.bottom, ReframeCardMetrics.contentBottomPad)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            )
+        } bottom: {
+            EmptyView()
+        }
+        .background(theme.surface)
+    }
 
-            recookButton(for: result.style, ink: appearance.ink)
-                .padding(.bottom, ReframeCardMetrics.chromeInset)
-                .zIndex(1)
+    private var activeAppearance: CardStyleAppearance {
+        CardStyleAppearance(style: results[safe: activeIndex]?.style ?? .stoic)
+    }
+
+    private var answerFace: some View {
+        let appearance = activeAppearance
+
+        return cardFace {
+            stylePill(appearance)
+        } middle: {
+            GeometryReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        ForEach(results, id: \.style) { result in
+                            copyBand(
+                                Text(result.reframe)
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(theme.ink)
+                            )
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .id(result.style)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $pagedStyle)
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            }
+        } bottom: {
+            recookButton(for: appearance.style, ink: appearance.ink)
         }
         .background {
             appearance.washFill(over: theme.surface)
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appearance.style)
+    }
+
+    /// Same three bands as `ReframeCardView`: chrome, flip/page target, chrome.
+    private func cardFace<Top: View, Middle: View, Bottom: View>(
+        @ViewBuilder top: () -> Top,
+        @ViewBuilder middle: () -> Middle,
+        @ViewBuilder bottom: () -> Bottom
+    ) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                top()
+                Spacer(minLength: 0)
+            }
+            .frame(height: ReframeCardMetrics.controlSize)
+            .padding(.horizontal, ReframeCardMetrics.chromeInset)
+            .padding(.top, ReframeCardMetrics.chromeInset)
+            .allowsHitTesting(false)
+
+            middle()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            bottom()
+                .frame(height: ReframeCardMetrics.contentBottomPad)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func copyBand(_ copy: Text) -> some View {
+        copy
+            .multilineTextAlignment(.leading)
+            .minimumScaleFactor(0.72)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, ReframeCardMetrics.chromeInset)
+            .padding(.top, 8)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: flip)
     }
 
     private func recookButton(for style: Style, ink: Color) -> some View {
@@ -695,12 +802,10 @@ private struct FlipStack<Front: View, Back: View>: View, Animatable {
 
         ZStack {
             front
-                .compositingGroup()
                 .opacity(showingBack ? 0 : 1)
                 .allowsHitTesting(!showingBack)
 
             back
-                .compositingGroup()
                 .scaleEffect(x: -1, y: 1)
                 .opacity(showingBack ? 1 : 0)
                 .allowsHitTesting(showingBack)

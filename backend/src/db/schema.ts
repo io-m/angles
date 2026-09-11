@@ -30,10 +30,15 @@ export const timeframeEnum = pgEnum("timeframe", [...TIMEFRAMES]);
 export const safetyFlagEnum = pgEnum("safety_flag", [...SAFETY_FLAGS]);
 export const intensityBandEnum = pgEnum("intensity_band", [...INTENSITY_BANDS]);
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    initials: text("initials").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [check("users_initials_len", sql`char_length(initials) = 2`)],
+);
 
 export const cards = pgTable(
   "cards",
@@ -65,6 +70,7 @@ export const cards = pgTable(
     index("cards_user_created_idx").on(table.userId, table.createdAt.desc()),
     index("cards_category_idx").on(table.category),
     index("cards_user_pinned_idx").on(table.userId, table.pinnedAt.desc()),
+    index("cards_public_created_idx").on(table.isPublic, table.createdAt.desc()),
     check("cards_intensity_range", sql`intensity between 1 and 5`),
   ],
 );
@@ -108,6 +114,43 @@ export const cardTags = pgTable(
   ],
 );
 
+export const savedPins = pgTable(
+  "saved_pins",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.cardId] }),
+    index("saved_pins_user_pinned_idx").on(table.userId, table.pinnedAt.desc()),
+  ],
+);
+
+export const savedAngles = pgTable(
+  "saved_angles",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    style: styleEnum("style").notNull(),
+    favoritedAt: timestamp("favorited_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.cardId, table.style] }),
+    index("saved_angles_user_favorited_idx").on(table.userId, table.favoritedAt.desc()),
+  ],
+);
+
 export const categoryProposals = pgTable("category_proposals", {
   slug: text("slug").primaryKey(),
   label: text("label").notNull(),
@@ -118,9 +161,28 @@ export const categoryProposals = pgTable("category_proposals", {
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 
-export const cardsRelations = relations(cards, ({ many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
+  cards: many(cards),
+  savedPins: many(savedPins),
+  savedAngles: many(savedAngles),
+}));
+
+export const cardsRelations = relations(cards, ({ many, one }) => ({
+  user: one(users, { fields: [cards.userId], references: [users.id] }),
   reframes: many(cardReframes),
   cardTags: many(cardTags),
+  savedPins: many(savedPins),
+  savedAngles: many(savedAngles),
+}));
+
+export const savedPinsRelations = relations(savedPins, ({ one }) => ({
+  user: one(users, { fields: [savedPins.userId], references: [users.id] }),
+  card: one(cards, { fields: [savedPins.cardId], references: [cards.id] }),
+}));
+
+export const savedAnglesRelations = relations(savedAngles, ({ one }) => ({
+  user: one(users, { fields: [savedAngles.userId], references: [users.id] }),
+  card: one(cards, { fields: [savedAngles.cardId], references: [cards.id] }),
 }));
 
 export const cardReframesRelations = relations(cardReframes, ({ one }) => ({
@@ -139,3 +201,4 @@ export const cardTagsRelations = relations(cardTags, ({ one }) => ({
 export type CardRow = typeof cards.$inferSelect;
 export type CardReframeRow = typeof cardReframes.$inferSelect;
 export type TagRow = typeof tags.$inferSelect;
+export type UserRow = typeof users.$inferSelect;

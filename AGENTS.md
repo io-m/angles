@@ -20,6 +20,8 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/index.ts` — `serve()`, `PORT` (default 8787), bind `0.0.0.0`, schema check, pool shutdown
 - `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, decision call then one batched style JSON (recook is a single style)
 - `backend/src/routes/cards.ts` — `POST/GET/PATCH/DELETE /cards`
+- `backend/src/routes/feed.ts` — `GET /feed` (paged, filterable), `GET /feed/home` (grouped shelves), viewer pin/heart saves
+- `backend/src/lib/homeFeed.ts` — `groupHomeFeed`: one card scan into Recent + capped domain/mood shelves
 - `backend/src/routes/health.ts` — `GET /health` (includes a DB probe)
 - `backend/src/db/schema.ts` — Drizzle tables
 - `backend/src/db/cards.ts` — SQL seam for the library
@@ -30,8 +32,11 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/project.yml` — XcodeGen source of truth; run `xcodegen generate` after structural file changes
 - `AnglesApp/AnglesApp/AnglesApp.swift` — AppRoot: TabView (Home, Profile), compose overlay, shared `HomeViewModel`
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
-- `AnglesApp/AnglesApp/Home/HomeView.swift` — empty Home tab + Settings
+- `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: collapsing header (title, style filter, Settings) over lazily mounted shelves
+- `AnglesApp/AnglesApp/Home/HeaderChrome.swift` — collapse metrics, scroll-distance modifier, and filter popover shared by Home and Profile
 - `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library: pinned strip, favorite-angles grid, All/style library. Style chips keep cards that have that angle and open on it; All mixes covers. Pinned and Favorite angles stay unfiltered.
+- `AnglesApp/AnglesApp/Home/HomeCardStrip.swift` — horizontal strip (max 6) that owns its scroll position
+- `AnglesApp/AnglesApp/Home/FeedSubsetView.swift` — one Home shelf in full, paged with the `before` cursor
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — 2-column card grid
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`, `CardsService`
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
