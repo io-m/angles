@@ -264,7 +264,7 @@ final class HomeViewModel {
     private let reframeService: ReframeService
     private let cardsService: CardsService
     private var refineTask: Task<Void, Never>?
-    private var saveTask: Task<Bool, Never>?
+    private var saveTask: Task<HomeCard?, Never>?
     private var libraryTask: Task<Void, Never>?
     private var feedTask: Task<Void, Never>?
     private var hasLoadedFeed = false
@@ -357,6 +357,13 @@ final class HomeViewModel {
         return false
     }
 
+    var isCookReady: Bool {
+        if case .ready = phase {
+            return true
+        }
+        return false
+    }
+
     var isCooking: Bool {
         if case .cooking = phase {
             return true
@@ -441,16 +448,16 @@ final class HomeViewModel {
         startRefine()
     }
 
-    func saveCook() async -> Bool {
+    func saveCook() async -> HomeCard? {
         guard case .ready(let cook) = phase, !cook.results.isEmpty, !isSaving else {
-            return false
+            return nil
         }
 
         isSaving = true
         saveError = nil
         let styles = cook.results.map(\.style)
         let spotlight = styles[cards.count % styles.count]
-        let task = Task { @MainActor in
+        let task = Task<HomeCard?, Never> { @MainActor in
             do {
                 let stored = try await cardsService.create(
                     CreateCardRequest(
@@ -465,26 +472,29 @@ final class HomeViewModel {
                 )
                 guard !Task.isCancelled else {
                     isSaving = false
-                    return false
+                    return nil
                 }
-                if let card = HomeCard(stored: stored) {
-                    cards.insert(card, at: 0)
+                guard let card = HomeCard(stored: stored) else {
+                    isSaving = false
+                    saveError = "Saved, but couldn't display this card."
+                    return nil
                 }
+                cards.insert(card, at: 0)
                 isSaving = false
-                return true
+                return card
             } catch {
                 isSaving = false
                 guard !Task.isCancelled, !Self.isCancellation(error) else {
-                    return false
+                    return nil
                 }
                 saveError = "Couldn't save this card. Try again."
-                return false
+                return nil
             }
         }
         saveTask = task
-        let saved = await task.value
+        let savedCard = await task.value
         saveTask = nil
-        return saved
+        return savedCard
     }
 
     /// Returning to Profile must not re-run a cold library load.

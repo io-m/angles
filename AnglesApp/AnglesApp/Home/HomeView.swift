@@ -3,6 +3,10 @@ import SwiftUI
 struct HomeView: View {
     let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
+    let storeKitManager: StoreKitManager
+    var glimpseCard: HomeCard? = nil
+    var isGlimpseActive = false
+    var onResetOnboarding: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeStore: ThemeStore
@@ -18,23 +22,41 @@ struct HomeView: View {
             AnglesCanvasBackground()
                 .ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
-                    HomeScrollingTitle(scrollState: headerScrollState)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
+                        Color.clear
+                            .frame(height: 0)
+                            .id("home-top")
 
-                    HomeFeedList(viewModel: viewModel)
+                        HomeScrollingTitle(scrollState: headerScrollState)
+
+                        HomeFeedList(
+                            viewModel: viewModel,
+                            glimpseCard: glimpseCard
+                        )
+                    }
+                    .padding(.top, HeaderCollapse.headerTopPad)
+                    .padding(.bottom, 20)
+                    .background(alignment: .top) {
+                        ScrollDistanceProbe(space: "homeScroll")
+                    }
                 }
-                .padding(.top, HeaderCollapse.headerTopPad)
-                .padding(.bottom, 20)
-                .background(alignment: .top) {
-                    ScrollDistanceProbe(space: "homeScroll")
+                .scrollIndicators(.hidden)
+                .scrollDisabled(isGlimpseActive)
+                .coordinateSpace(name: "homeScroll")
+                .modifier(ProfileScrollDistance(state: headerScrollState))
+                .refreshable {
+                    await viewModel.refreshFeed()
                 }
-            }
-            .scrollIndicators(.hidden)
-            .coordinateSpace(name: "homeScroll")
-            .modifier(ProfileScrollDistance(state: headerScrollState))
-            .refreshable {
-                await viewModel.refreshFeed()
+                .onChange(of: glimpseCard?.id) { _, cardID in
+                    guard cardID != nil else {
+                        return
+                    }
+                    withAnimation(.easeOut(duration: 0.35)) {
+                        proxy.scrollTo("home-top", anchor: .top)
+                    }
+                }
             }
 
             CollapsingHeaderFade(
@@ -52,6 +74,7 @@ struct HomeView: View {
             )
             .ignoresSafeArea(.container, edges: .top)
         }
+        .allowsHitTesting(!isGlimpseActive)
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
         .task {
@@ -66,7 +89,10 @@ struct HomeView: View {
             .presentationBackground(theme.grey)
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView()
+            SettingsView(storeKitManager: storeKitManager, onResetOnboarding: {
+                showSettings = false
+                onResetOnboarding?()
+            })
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.grey)
@@ -208,12 +234,33 @@ private struct HomeSettingsButton: View {
 
 private struct HomeFeedList: View {
     let viewModel: HomeViewModel
+    let glimpseCard: HomeCard?
 
     @Environment(\.colorScheme) private var colorScheme
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
+        if let glimpseCard {
+            VStack(spacing: 0) {
+                cardGrid(cards: [glimpseCard] + viewModel.feedCards.filter { $0.id != glimpseCard.id })
+
+                if viewModel.feedLoadState == .loading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .accessibilityLabel("Loading Home")
+                } else {
+                    feedFooter
+                }
+            }
+        } else {
+            feedContent
+        }
+    }
+
+    @ViewBuilder
+    private var feedContent: some View {
         switch viewModel.feedLoadState {
         case .loading:
             ProgressView()
@@ -241,27 +288,42 @@ private struct HomeFeedList: View {
                     .padding(.top, 8)
             } else {
                 VStack(spacing: 0) {
-                    HomeCardGrid(
-                        cards: viewModel.feedCards,
-                        rowSpacing: HeaderCollapse.horizontalPadding,
-                        presentation: .library,
-                        menuRole: { _ in .feed },
-                        onDelete: { _ in },
-                        onToggleFavorite: { card, style in
-                            viewModel.toggleFavorite(card.id, style: style)
-                        },
-                        onSetPublic: { _, _ in },
-                        onRemoveFromBoard: { _ in },
-                        onReachEnd: viewModel.loadMoreFeed,
-                        loadMorePrefetchDistance: 6
-                    )
-                    .equatable()
-                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
-
+                    cardGrid(cards: viewModel.feedCards)
                     feedFooter
                 }
             }
         }
+    }
+
+    private func cardGrid(cards: [HomeCard]) -> some View {
+        HomeCardGrid(
+            cards: cards,
+            rowSpacing: HeaderCollapse.horizontalPadding,
+            presentation: .library,
+            menuRole: { card in card.isOwner ? .owner : .feed },
+            onDelete: { card in
+                if card.isOwner {
+                    viewModel.deleteCard(card.id)
+                }
+            },
+            onToggleFavorite: { card, style in
+                viewModel.toggleFavorite(card.id, style: style)
+            },
+            onSetPublic: { card, isPublic in
+                if card.isOwner {
+                    viewModel.setPublic(card.id, isPublic: isPublic)
+                }
+            },
+            onRemoveFromBoard: { card in
+                if !card.isOwner {
+                    viewModel.removeFromBoard(card.id)
+                }
+            },
+            onReachEnd: viewModel.loadMoreFeed,
+            loadMorePrefetchDistance: 6
+        )
+        .equatable()
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
     }
 
     @ViewBuilder
@@ -291,7 +353,8 @@ private struct HomeFeedList: View {
     NavigationStack {
         HomeView(
             safeAreaInsets: EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0),
-            viewModel: HomeViewModel()
+            viewModel: HomeViewModel(),
+            storeKitManager: StoreKitManager()
         )
     }
     .environmentObject(ThemeStore())

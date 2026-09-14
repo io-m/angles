@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**6. Onboarding taste** — Reuses Compose + Results; one thought, all four styles, then paywall.
+**8. Auth** — Sign in with Apple / Better Auth and guest-card claim after subscription.
 
 ## Core loop
 
@@ -45,6 +45,8 @@ Loading and error are **states on Results**, not their own screens.
 | 5d | Owner card menu | feature | done | `ReframeCardView.swift`; `cards.ts` | Long press opens the card menu (9c moved it off the ⋯ button): confirm delete, privacy flag, original-vs-English. |
 | 5e | Thought type + card height | polish | done | `ReframeCardView.swift` | Thought is slightly smaller and heavier; height hugs max thought/reframe plus chrome. |
 | 5f | List and in-card chrome | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `ProfileView.swift` | Strip list-dots and tighter grid rows. In-card dots went away with the pager in 9c. |
+| 6 | Onboarding taste | screen | done | `ComposeSheetView.swift`; `AnglesApp.swift`; `HomeViewModel.swift`; `SettingsView.swift` | Native chat welcome hero ('Break the spiral' + tactile prompt chips) directly inside ComposeSheetView; zero survey, zero auth at launch; auto-presents on fresh install; resets in Settings. |
+| 7 | Paywall | screen | done | `Paywall/*.swift`; `Resources/celebration-checkmark.json`; `StoreKit/StoreKitManager.swift`; `Angles.storekit`; `AnglesApp.swift`; `HomeView.swift`; `SettingsView.swift` | Saved taste flashes atop Home; a green Lottie celebration settles into three benefits and waits for Continue before the hard paywall. |
 | 9 | Public opt-in / community Home | screen | done | `HomeView.swift`; `feed.ts`; `schema.ts`; `CardsService.swift` | Public-others feed by Recent, category, and emotion; viewer pin/heart saves; `pnpm db:seed-community`. |
 | 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 | 9c | Style chips, flip chevron, no pins | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `APIClient.swift`; `feed.ts`; `cards.ts` | Chips replace the in-card pager; heart top-right, flip chevron bottom-right; pins gone; failed writes say so. |
@@ -190,12 +192,26 @@ Not a new screen. This replaces the grouped Home and flip-card language from 9b�
 - **Cards.** Home, library, and compose cards show a slightly quieter thought, divider, and dominant selected answer together over the selected style wash. Stored cards put avatar/date/⋯ at the top and style chips/heart at the bottom; ⋯ and long press share actions. Profile Favorite angles alone retain equal-height answer/thought flips so their strip stays level.
 - **Removed.** Grouped response types, shelf zipper/state, `homeFeed.ts`, and `FeedSubsetView.swift`. Category, emotion, matching, language, style results, and per-style favorite data remain.
 
+### 6. Onboarding taste
+
+Frictionless first-run experience directly in the real app compose canvas:
+
+- Zero profiling survey (no questions about personal demographics or body metrics).
+- Zero auth at launch: no email, no password, no login gate. Complies with Apple Guideline 2.1 (no reviewer demo credentials required) and 5.1.1(v).
+- Native welcome hero in `ComposeSheetView`: "Break the spiral." with subtitle capturing the mental loop/overthinking problem, plus 3 tactile starter prompt chips ("I am constantly falling behind.", "I can't stop overthinking that conversation.", "What if all this effort leads nowhere?").
+- Auto-presents the native compose sheet on first install.
+- Tapping a starter chip or sending custom text runs the cook with cycling progress lines, arriving at the ready card.
+- Completing the taste (Save to private library or close ready card) marks `hasCompletedOnboardingTaste = true` in `UserDefaults`.
+- Settings includes a quiet "Reset Onboarding" row for repeatable testing.
+
+### 7. Paywall
+
+The first saved taste dismisses Compose onto Home with that owner card temporarily pinned above the real community feed for about half a second. A full-window material screen then plays the green ThinLine checkmark/confetti Lottie; its final checkmark settles into the header before three benefits arrive: four cognitive angles, anonymous community relatability, and private-by-default storage. A dissipating green bottom glow and top-left-lit green CTA replace the app accent on this success state. It stays until the user taps Continue to plans; there is no timed paywall jump. Annual (`app.angles.ios.annual`) bills $39.99/year immediately; monthly (`app.angles.ios.monthly`) bills $4.99/month. There is no free trial. Verified purchases and restores persist `hasUnlockedFullApp`; Settings reports subscribed or inactive and can reset the full test flow.
+
 ## Postponed (do not start)
 
 | # | Item | Kind | Status | Why later |
 | --- | --- | --- | --- | --- |
-| 6 | Onboarding taste | screen | not started | Reuses Compose + Results; one thought, all four styles, then paywall |
-| 7 | Paywall | screen | not started | StoreKit, hard gate after the taste |
 | 8 | Auth | feature | not started | Sign in with Apple / Better Auth; needed for restore, not for typing a thought |
 
 Account / auth settings wait until auth exists. Appearance + accent already shipped in 2a.
@@ -209,6 +225,9 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-14 — Paywall: half-second saved-card glimpse; green Lottie success-to-benefits choreography with anonymous-community value and Continue CTA; StoreKit 2 annual/monthly hard gate, restore, entitlement persistence, and Settings status/reset.
+
+- 2026-09-14 — Onboarding taste: native chat welcome hero ('Break the spiral' + tactile prompt chips) inside ComposeSheetView; auto-launches on first install; zero survey, zero auth; reset in Settings.
 - 2026-09-11 — Home and Profile pull-to-refresh re-fetch feed and library without clearing on-screen cards.
 - 2026-09-11 — Flat Home + stacked cards: one faceted vertical feed with composite paging and a mood GIN index; grouped Home removed; Home/library/compose show thought + answer while Favorite angles keep equal-height flips.
 - 2026-09-11 — Shelf pagination no longer jitters at page arrival: field-level Observation, capped header-only scroll state, exact-cursor append paging with early prefetch and stable footer; chips animate only on tap and hearts bounce.

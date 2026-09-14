@@ -1,4 +1,6 @@
 name: AnglesApp
+fileGroups:
+  - Angles.storekit
 options:
   bundleIdPrefix: app.angles
   deploymentTarget:
@@ -12,6 +14,10 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1"
+packages:
+  Lottie:
+    url: https://github.com/airbnb/lottie-ios.git
+    from: 4.5.0
 targets:
   AnglesApp:
     type: application
@@ -20,6 +26,8 @@ targets:
       - path: AnglesApp
         excludes:
           - "**/.DS_Store"
+    dependencies:
+      - package: Lottie
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.angles.ios
@@ -45,4 +53,5 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: Angles talks to the API on your Mac while developing.
-    scheme: {}
+    scheme:
+      storeKitConfiguration: Angles.storekit

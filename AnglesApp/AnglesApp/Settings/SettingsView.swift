@@ -1,13 +1,19 @@
 import SwiftUI
 
 struct SettingsView: View {
+    let storeKitManager: StoreKitManager
+
     @EnvironmentObject private var themeStore: ThemeStore
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accentPalette) private var accentPalette
+    @Environment(\.dismiss) private var dismiss
+
+    var onResetOnboarding: (() -> Void)? = nil
 
     @State private var showAppearance = false
     @State private var showAccent = false
     @State private var showSubscription = false
+    @AppStorage("hasCompletedOnboardingTaste") private var hasCompletedTaste = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private let edgePad: CGFloat = 20
@@ -59,9 +65,25 @@ struct SettingsView: View {
                     cardRow(
                         symbol: "creditcard",
                         title: "Subscription",
-                        subtitle: "Active"
+                        subtitle: storeKitManager.subscriptionStatus.settingsLabel
                     ) {
                         showSubscription = true
+                    } trailing: {
+                        EmptyView()
+                    }
+
+                    rowDivider
+
+                    cardRow(
+                        symbol: "arrow.counterclockwise",
+                        title: "Reset Onboarding",
+                        subtitle: hasCompletedTaste ? "Taste completed — tap to restart" : "Ready to restart"
+                    ) {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        hasCompletedTaste = false
+                        storeKitManager.resetForOnboardingTest()
+                        dismiss()
+                        onResetOnboarding?()
                     } trailing: {
                         EmptyView()
                     }

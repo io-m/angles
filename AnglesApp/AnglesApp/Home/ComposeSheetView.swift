@@ -41,7 +41,7 @@ struct ComposeSheetView: View {
     @Bindable var viewModel: HomeViewModel
     var isActive: Bool = true
     var onClose: () -> Void = {}
-    var onSave: () -> Void = {}
+    var onSave: (HomeCard) -> Void = { _ in }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -265,20 +265,27 @@ struct ComposeSheetView: View {
                     Image(systemName: "sparkle")
                         .font(.system(size: 56, weight: .medium))
                         .foregroundStyle(theme.ink)
-                    Text("Tell me what's on your mind...")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(theme.ink)
-                        .tracking(-0.4)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+
+                    VStack(spacing: 8) {
+                        Text("Break the spiral.")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(theme.ink)
+                            .tracking(-0.4)
+
+                        Text("When a thought keeps looping in your head, see it from another angle.")
+                            .font(.subheadline)
+                            .foregroundStyle(theme.muted)
+                            .lineSpacing(3)
+                            .multilineTextAlignment(.center)
+                    }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 28)
                 .position(x: geo.size.width / 2, y: geo.size.height * 0.38)
             }
             .ignoresSafeArea(.keyboard)
             .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Tell me what's on your mind...")
+            .accessibilityLabel("Break the spiral. When a thought keeps looping in your head, see it from another angle.")
         }
     }
 
@@ -564,7 +571,7 @@ struct ComposeSheetView: View {
                     Image(systemName: "icloud.and.arrow.up")
                         .font(.system(size: 15, weight: .semibold))
                 }
-                Text(viewModel.isSaving ? "Saving" : "Save")
+                Text(viewModel.isSaving ? "Saving" : saveButtonTitle)
                     .font(.subheadline.weight(.semibold))
             }
             .foregroundStyle(theme.ink)
@@ -592,8 +599,12 @@ struct ComposeSheetView: View {
         .padding(.top, 8)
         .padding(.bottom, 8)
         .background { composerGlow }
-        .accessibilityLabel("Save")
+        .accessibilityLabel(saveButtonTitle)
         .accessibilityHint("Adds all four answers to Profile and closes")
+    }
+
+    private var saveButtonTitle: String {
+        viewModel.composeIsPublic ? "Save to public library" : "Save to private library"
     }
 
     private var composer: some View {
@@ -753,9 +764,8 @@ struct ComposeSheetView: View {
         }
 
         Task {
-            let saved = await viewModel.saveCook()
-            if saved {
-                onSave()
+            if let savedCard = await viewModel.saveCook() {
+                onSave(savedCard)
                 onClose()
             }
         }
