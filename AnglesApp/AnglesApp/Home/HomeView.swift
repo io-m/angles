@@ -16,6 +16,9 @@ struct HomeView: View {
     @State private var showHomeFilter = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    private var canLoadFullAppContent: Bool {
+        storeKitManager.entitlementsReady && storeKitManager.hasUnlockedFullApp
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -77,7 +80,10 @@ struct HomeView: View {
         .allowsHitTesting(!isGlimpseActive)
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
-        .task {
+        .task(id: canLoadFullAppContent) {
+            guard canLoadFullAppContent else {
+                return
+            }
             await viewModel.loadFeedIfNeeded()
         }
         .sheet(isPresented: $showHomeFilter) {
@@ -92,8 +98,8 @@ struct HomeView: View {
             SettingsView(
                 storeKitManager: storeKitManager,
                 onLogOut: {
-                    showSettings = false
                     onLogOut?()
+                    showSettings = false
                 }
             )
                 .presentationDetents([.large])

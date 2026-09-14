@@ -57,7 +57,6 @@
 		40B602E536EA39A5C8524CE6 /* ReframeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeService.swift; sourceTree = "<group>"; };
 		4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModalScreen.swift; sourceTree = "<group>"; };
 		4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
-		51351AFB6054F1ADDB32CE67 /* Angles.storekit */ = {isa = PBXFileReference; path = Angles.storekit; sourceTree = "<group>"; };
 		54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		551EA9251B494B0E82C36D47 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
 		55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentPickerView.swift; sourceTree = "<group>"; };
@@ -140,7 +139,6 @@
 		3817F9C2798DE0FC018778ED = {
 			isa = PBXGroup;
 			children = (
-				51351AFB6054F1ADDB32CE67 /* Angles.storekit */,
 				E5867170AF5329B3B1527D6E /* AnglesApp */,
 				36A7FDF3680174422F75E625 /* Products */,
 			);

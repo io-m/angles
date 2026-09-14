@@ -43,6 +43,7 @@ struct ComposeSheetView: View {
     var isOnboardingTaste: Bool = false
     var storeKitManager: StoreKitManager?
     var onClose: () -> Void = {}
+    var onShowMembership: () -> Void = {}
     var onSave: (HomeCard) -> Void = { _ in }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -171,7 +172,7 @@ struct ComposeSheetView: View {
         .padding(.top, 6)
         .padding(.bottom, showsTwoLineRestore ? 12 : 10)
         .animation(onboardingRestoreAnimation, value: storeKitManager?.errorMessage)
-        .animation(onboardingRestoreAnimation, value: storeKitManager?.canOfferAppleRenew)
+        .animation(onboardingRestoreAnimation, value: storeKitManager?.priorMembershipProductID)
         .task(id: showsOnboardingRestore) {
             guard showsOnboardingRestore else {
                 return
@@ -196,7 +197,7 @@ struct ComposeSheetView: View {
 
     private var showsTwoLineRestore: Bool {
         showsOnboardingRestore
-            && (storeKitManager?.canOfferAppleRenew == true || hasOnboardingRestoreError)
+            && (storeKitManager?.hasEndedMembership == true || hasOnboardingRestoreError)
     }
 
     private var standardHeader: some View {
@@ -230,7 +231,7 @@ struct ComposeSheetView: View {
             }
             .frame(minHeight: 40)
 
-            if storeKitManager?.canOfferAppleRenew == true {
+            if storeKitManager?.hasEndedMembership == true {
                 restoreRenewButton
             }
         }
@@ -238,8 +239,8 @@ struct ComposeSheetView: View {
     }
 
     private var restoreHeadlineText: String {
-        if storeKitManager?.canOfferAppleRenew == true {
-            return "We found your previous subscription."
+        if storeKitManager?.hasEndedMembership == true {
+            return storeKitManager?.errorMessage ?? "We found your previous subscription."
         }
         return storeKitManager?.errorMessage ?? ""
     }
@@ -256,21 +257,19 @@ struct ComposeSheetView: View {
     @ViewBuilder
     private var restoreRenewButton: some View {
         Button {
-            guard let storeKitManager, !storeKitManager.isBusy else {
+            guard storeKitManager?.isBusy != true else {
                 return
             }
             composerFocused = false
-            Task {
-                await storeKitManager.offerAppleRenew()
-            }
+            onShowMembership()
         } label: {
-            Text(storeKitManager?.isOpeningSubscriptions == true ? "Opening Apple…" : "Renew in App Store")
+            Text("Renew membership")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color(uiColor: .link))
         }
         .buttonStyle(.plain)
         .disabled(storeKitManager?.isBusy == true)
-        .accessibilityLabel("Renew subscription in the App Store")
+        .accessibilityLabel("View membership options")
         .transition(onboardingRestoreSwapTransition)
     }
 
@@ -302,7 +301,7 @@ struct ComposeSheetView: View {
         guard let errorMessage = storeKitManager?.errorMessage, !errorMessage.isEmpty else {
             return false
         }
-        return storeKitManager?.canOfferAppleRenew != true
+        return storeKitManager?.hasEndedMembership != true
     }
 
     private var modelPickerButton: some View {
@@ -927,7 +926,9 @@ struct ComposeSheetView: View {
         Task {
             if let savedCard = await viewModel.saveCook() {
                 onSave(savedCard)
-                onClose()
+                if !isOnboardingTaste {
+                    onClose()
+                }
             }
         }
     }

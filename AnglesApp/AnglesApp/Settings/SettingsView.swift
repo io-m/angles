@@ -6,7 +6,6 @@ struct SettingsView: View {
     @EnvironmentObject private var themeStore: ThemeStore
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accentPalette) private var accentPalette
-    @Environment(\.dismiss) private var dismiss
 
     var onLogOut: (() -> Void)? = nil
 
@@ -79,7 +78,6 @@ struct SettingsView: View {
                         subtitle: "Start over on this iPhone. Does not cancel Apple."
                     ) {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        dismiss()
                         onLogOut?()
                     } trailing: {
                         EmptyView()

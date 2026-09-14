@@ -45,14 +45,15 @@ Loading and error are **states on Results**, not their own screens.
 | 5d | Owner card menu | feature | done | `ReframeCardView.swift`; `cards.ts` | Long press opens the card menu (9c moved it off the ⋯ button): confirm delete, privacy flag, original-vs-English. |
 | 5e | Thought type + card height | polish | done | `ReframeCardView.swift` | Thought is slightly smaller and heavier; height hugs max thought/reframe plus chrome. |
 | 5f | List and in-card chrome | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `ProfileView.swift` | Strip list-dots and tighter grid rows. In-card dots went away with the pager in 9c. |
-| 6 | Onboarding taste | screen | done | `ComposeSheetView.swift`; `AnglesApp.swift`; `HomeViewModel.swift`; `SettingsView.swift` | Native chat welcome hero ('Break the spiral') in ComposeSheetView; zero survey, zero auth at launch; auto-presents on fresh install. Taste is install-local (`hasCompletedOnboardingTaste`). Starter chips are not in the compose hero. Settings Log out replays first-run. |
-| 7 | Paywall | screen | done | `Paywall/*.swift`; `Resources/celebration-checkmark.json`; `StoreKit/StoreKitManager.swift`; `Angles.storekit`; `AnglesApp.swift`; `HomeView.swift`; `SettingsView.swift` | Saved taste crossfades onto a green Lottie celebration, then three benefits wait for Continue before the hard paywall. |
-| 7b | StoreKit sandbox | feature | done | `StoreKitManager.swift`; `PaywallView.swift`; `project.yml`; `Angles.storekit` | Angles Sandbox scheme has no StoreKit config; verified entitlements unlock; empty catalog shows Retry; DEBUG product/transaction logs. |
+| 6 | Onboarding taste | screen | done | `ComposeSheetView.swift`; `AnglesApp.swift`; `HomeViewModel.swift`; `SettingsView.swift` | Native chat welcome hero ('Break the spiral') in ComposeSheetView; zero survey, zero auth at launch; auto-presents on fresh install. A successful taste Save stamps install-local `hasCompletedOnboardingTaste`; Settings Log out replays first-run. |
+| 7 | Paywall | screen | done | `Paywall/*.swift`; `Resources/celebration-checkmark.json`; `StoreKit/StoreKitManager.swift`; `AnglesApp.swift`; `HomeView.swift`; `SettingsView.swift` | Saved taste crossfades onto the Lottie celebration, then the four-angle paper and annual/monthly hard paywall. |
+| 7b | StoreKit sandbox | feature | done | `StoreKitManager.swift`; `PaywallView.swift`; `project.yml` | Debug on device always uses App Store sandbox; verified entitlements unlock; empty catalog shows Retry; DEBUG product/transaction logs. |
 | 7c | Taste-once routing | polish | done | `AnglesApp.swift`; `StoreKitManager.swift`; `ComposeSheetView.swift`; `PaywallView.swift`; `SettingsView.swift`; `HomeView.swift` | Launch waits for StoreKit entitlements; only live status, `currentEntitlements`, or a fresh verified purchase unlock Home; taste header link restores purchases; overlay is not dismissible until ready; paywall Restore purchases; Settings Log out is a local session and does not cancel Apple. |
 | 7d | Frost handoffs | polish | done | `AnglesApp.swift`; `PaywallGlimpseView.swift`; `PaywallView.swift`; `StoreKitManager.swift` | One covering frost; checkout glass overlay over the paywall; a single applyGate destination so launch/logout never flash Home; an expired subscription stays on the paywall with Renew. |
-| 7e | Membership paywall | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Celebration, three benefit rows, and annual-first checkout share one screen; monthly is a quiet row; no Continue-to-plans. |
-| 7f | Taste header + membership | polish | done | `ComposeSheetView.swift`; `PaywallView.swift`; `AnglesApp.swift` | Taste restore sits in the model-button row; no Close on taste; paywall hero is the saved card with type-led yearly price, or Renew-only when the subscription ended. |
+| 7e | Membership paywall | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Celebration, four-angle paper, 44pt price, and annual/monthly checkout share one screen; there is no intermediate plans step. |
+| 7f | Taste header + membership | polish | done | `ComposeSheetView.swift`; `PaywallView.swift`; `StoreKitManager.swift`; `AnglesApp.swift` | Taste restore sits in the model-button row; ended membership opens the same two-plan paywall, preselects the prior plan, and purchases the selected SKU. |
 | 7g | Paywall positive capture | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Paper sells four angles as a 2x2 of style tiles; purchase module is spread commerce (44pt price, both plans, CTA); (i) holds library/Home, restore, legal. |
+| 7h | Sandbox-only checkout | polish | done | `project.yml`; `StoreKitManager.swift`; `AnglesApp.swift`; `PaywallView.swift`; `HomeView.swift`; `ProfileView.swift`; `HomeViewModel.swift` | No local StoreKit file; prior-plan-aware renewal; neutral checkout copy; one serialized checkout/feed/frost handoff; first loads wait for entitlement readiness. |
 | 9 | Public opt-in / community Home | screen | done | `HomeView.swift`; `feed.ts`; `schema.ts`; `CardsService.swift` | Public-others feed by Recent, category, and emotion; viewer pin/heart saves; `pnpm db:seed-community`. |
 | 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 | 9c | Style chips, flip chevron, no pins | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `APIClient.swift`; `feed.ts`; `cards.ts` | Chips replace the in-card pager; heart top-right, flip chevron bottom-right; pins gone; failed writes say so. |
@@ -207,12 +208,12 @@ Frictionless first-run experience directly in the real app compose canvas:
 - Native welcome hero in `ComposeSheetView`: "Break the spiral." with subtitle capturing the mental loop/overthinking problem. Starter prompt chips are not in the compose hero.
 - Auto-presents the native compose sheet on first install after StoreKit entitlements are known. An active subscription skips taste.
 - Sending a thought runs the cook with cycling progress lines, arriving at the ready card.
-- The first ready cook stamps `hasCompletedOnboardingTaste = true`. The overlay cannot be dismissed until that cook is ready. Save crossfades onto the celebration frost, not the Home feed.
+- The overlay cannot be dismissed during the taste. Only a successful Save stamps `hasCompletedOnboardingTaste = true` and crossfades onto the celebration frost, so killing the app on an unsaved result cannot skip to the paywall.
 - Settings **Log out** starts over on this iPhone (taste again). It does not cancel Apple. Taste **Already have an account?** and paywall Restore purchases sign the session back in.
 
 ### 7. Paywall
 
-The first saved taste keeps a covering frost and plays the green ThinLine checkmark/confetti Lottie on it; the Home feed is not shown in between. Its final checkmark settles into the header before three benefits arrive: four cognitive angles, anonymous community relatability, and private-by-default storage. A dissipating green bottom glow and top-left-lit green CTA replace the app accent on this success state. It stays until the user taps Continue to plans; there is no timed paywall jump. Annual (`app.angles.ios.annual`) bills $39.99/year immediately; monthly (`app.angles.ios.monthly`) bills $4.99/month. There is no free trial. Verified purchases and restores persist `hasUnlockedFullApp`; Settings reports subscribed or inactive. Paywall restore is labeled Restore purchases. Taste shows a top **Already have an account?** link that runs the same restore path. Successful Subscribe or restore dissolves the covering frost to reveal Home.
+The first saved taste keeps a covering frost and plays the ThinLine checkmark/confetti Lottie; the Home feed is not shown in between. It then reveals **“One thought. Four ways out.”**, the 2×2 angle tiles, and the annual/monthly purchase module on the same screen. Annual (`app.angles.ios.annual`) bills $39.99/year immediately; monthly (`app.angles.ios.monthly`) bills $4.99/month. There is no free trial. Verified purchases and restores persist the unlock cache, but Apple overwrites it before routing and Settings. Paywall restore is labeled Restore purchases. Taste shows a top **Already have an account?** link that runs the same restore path. Successful purchase or restore dissolves the covering frost to reveal Home.
 
 ### 7b. StoreKit sandbox
 
@@ -221,7 +222,8 @@ Not a new screen. Hardens row 7 for App Store sandbox:
 - Native StoreKit 2 only: `Product.products(for:)`, `product.purchase()`, `Transaction.currentEntitlements`, `Transaction.updates`, `AppStore.sync()`. Unfinished transactions are finished on the same verify path so interrupted purchases recover.
 - Unlock after a verified, unrevoked Angles purchase transaction, or a live subscription status / `currentEntitlements`. `Transaction.latest(for:)` never unlocks. `hasUnlockedFullApp` is a launch cache, then StoreKit overwrites it when Apple reports expired or revoked — not when `currentEntitlements` is briefly empty after `finish()`.
 - Paywall never disables Subscribe because the catalog is empty: it shows Loading, Retry, or a clear error, and prices come from StoreKit `displayPrice`.
-- The local `AnglesApp` scheme still attaches `Angles.storekit`. The `Angles Sandbox` scheme has no StoreKit configuration and fetches products from App Store Connect.
+- Debug on device always uses App Store sandbox. The `AnglesApp` scheme has no StoreKit configuration file, so Xcode Run and `devicectl` install hit the same store. Products come from App Store Connect.
+- A subscription group is ended only when nothing in it is live. An expired Annual must not override an active Monthly.
 - DEBUG logs requested/returned product IDs, verified transaction product ID, and transaction environment. Thought text is never logged.
 
 ### 7c. Taste-once routing
@@ -229,22 +231,22 @@ Not a new screen. Hardens row 7 for App Store sandbox:
 Not a new screen. Hardens rows 6–7 so a returning subscriber is not sent through the free chat:
 
 - Launch holds chrome until `StoreKitManager.prepare()` finishes. Active entitlements skip taste, stamp `hasCompletedOnboardingTaste`, and open Home. Entitlement is `Product.SubscriptionInfo.Status` (subscribed / grace / billing retry), an unexpired verified `currentEntitlements` transaction, or a just-completed verified purchase — which unlocks immediately and is not overwritten if that refresh is still empty. `Transaction.latest(for:)` is ended-subscription detection only and never opens Home, so Restore on an expired subscription offers Renew instead of Home.
-- Taste overlay hides Close and Start again, blocks canvas dismiss and recook, and stamps taste when the first cook becomes ready. Save raises the celebration frost before compose dismisses so the Home feed never flashes.
-- Taste: optional top-leading **Already have an account?** unless an ended subscription is found — then the overlay shows **We found your previous subscription** and **Renew in App Store**. The probe runs at the end of `prepare()` and again when the paywall appears, in parallel with the product load, and only offers Renew when there is no live status or `currentEntitlements`. Paywall hides **Restore purchases** once Renew is offered. Restore (tap) still uses `AppStore.sync()` for receipts not on this phone. The probe does not call `AppStore.sync()`, so it never raises a password sheet.
+- Taste overlay hides Close and Start again, blocks canvas dismiss and recook, and stamps taste only after a successful Save. Save raises the celebration frost before compose dismisses so the Home feed never flashes.
+- Taste: optional top-leading **Already have an account?** unless an ended subscription is found — then the overlay shows **We found your previous subscription** and **Renew membership**, which opens the normal two-plan paywall. The probe runs at the end of `prepare()` and again when the paywall appears, and only records ended history when no Annual or Monthly is live. Restore remains available and uses `AppStore.sync()` for receipts not on this phone; the probe never syncs or raises a password sheet.
 - Settings **Log out** is a local session: start over on this iPhone, ignore StoreKit until the next taste restore, paywall Subscribe, or Restore. It does not cancel Apple. Sign in with Apple waits for row 8.
 - One local flag (`hasCompletedOnboardingTaste`). The old `hasEnteredPaywallFlow` value is migrated once and removed. No Keychain device fingerprint. Auth / `tasteCompletedAt` wait for row 8.
 
 ### 7d. Frost handoffs
 
-Not a new screen. Taste, paywall, purchase, restore, and App Store renew share one AppRoot covering frost. Checkout uses an ultra-thin glass overlay above the still-visible paywall. A single `applyGate()` picks Home, paywall, or taste only after StoreKit is ready, with animations disabled, so launch and logout never flash Home. Incoming StoreKit transactions do not pulse unlock on then off. Successful Subscribe/restore/renew snap-removes the paywall under that glass, then dissolves it to Home. Close after a ready cook raises the plans overlay before compose dismisses.
+Not a new screen. Taste, paywall, purchase, and restore share one AppRoot covering frost. Checkout uses an ultra-thin glass overlay above the still-visible paywall. A single `applyGate()` picks Home, paywall, or taste only after StoreKit is ready. A successful entitlement structurally removes Taste/paywall under the cover, waits for the StoreKit operation and first Home result, then runs one frost-to-Home crossfade. Failed checks remove the checkout glass and leave an actionable paywall/taste state.
 
 ### 7e. Membership paywall
 
-Not a new screen. Folds the post-taste celebration and checkout into one `PaywallView`. First save plays the Lottie, then the checkmark settles and the three benefits, yearly tile, and sticky Continue fade in — there is no Continue-to-plans. Relaunch and expired skip Lottie (`Keep going.` / `Pick up where you left off.`). Yearly is the product (monthly equivalent plus billed-once line); monthly is a text row. Continue names the charge underneath. Paper canvas; mint is only the first-save eyebrow.
+Not a new screen. Folds the post-taste celebration and checkout into one `PaywallView`. First save plays the Lottie, then the four-angle paper and purchase module arrive — there is no intermediate plans step. Yearly and Monthly are always full selectable rows; price and billing cadence come from StoreKit.
 
 ### 7f. Taste header + membership
 
-Not a new screen. Taste restore copy shares the 40pt header row with the model button. Taste never shows Close; Save is the only way forward. After the Lottie, the paywall is the saved card, **Keep going.**, and yearly as type (`$3.33` / billed yearly). Monthly is a line under Continue. An ended subscription hides the plan chooser and makes **Renew in App Store** the only primary. Legal and Restore sit under the button.
+Not a new screen. Taste restore copy shares the 40pt header row with the model button. Taste never shows Close; Save is the normal way forward. When Apple reports ended membership, Taste offers **Renew membership** and opens the same full Yearly/Monthly paywall without marking the taste complete. The most recently ended App Store-backed SKU is preselected: that row says **Renew membership**; choosing the other says **Switch to Yearly/Monthly**. Both call StoreKit `Product.purchase`; `Transaction.latest` supplies only this UI hint and never unlocks.
 
 ### 7g. Paywall positive capture
 
@@ -252,8 +254,16 @@ Not a new screen. Polish on 7f. Earlier revisions scattered furniture (value lin
 
 - **No scroll.** Paper sells the product as a 2x2 of style tiles (wash, glyph, name, one-line benefit) under **"One thought. Four ways out."** plus one miss line. No membership card.
 - **Purchase module.** Commerce only, spread: 44pt morphing price, both plan rows (64pt), ink CTA. Spacing uses leftover sheet height.
-- **(i) sheet.** Private library, Home, Restore, Apple legal.
-- **Motion.** Celebration fades while the membership group rises 12pt as one unit; Reduce Motion unchanged.
+- **(i) sheet.** Keep cooking, Home, Restore, Apple legal. Opens on the large detent so membership legal is on screen.
+- **Motion.** Celebration fades while the membership group rises 12pt as one unit; Reduce Motion unchanged. Checkout text rotates with stable opacity content transitions and only describes Apple checking/confirmation, never promises an unlock.
+
+### 7h. Sandbox-only checkout
+
+Not a new screen. Debug on device talks only to App Store sandbox — no `.storekit` file, no extra Sandbox scheme. Ended-subscription detection is group-wide (expired Annual does not win over live Monthly). Leftover Xcode StoreKit Testing receipts (`.xcode`) never unlock Home or report Subscribed; only App Store sandbox or production does. Home does not fetch from a cached unlock: its first task waits for `entitlementsReady && hasUnlockedFullApp`; Profile waits until its tab is selected. Intermediate transient retries stay in Loading and only the final failure exposes Retry.
+
+**Checkout race regression:** `holdCheckoutUntilHome()` is armed before purchase/restore can change entitlement. A transaction update may arrive while that async call is suspended, so no continuation may arm the hold again. StoreKit owns `isPurchasing`/`isRestoring` until their `defer` runs; AppRoot can release only the visual confirmation hold. `AppRoot.applyGate()` moves an Apple-backed unlock through hidden → waiting for checkout → waiting for the first Home result → one animated visible state. The full native TabView pre-renders behind an opaque curtain so cards, bottom gradient, and tab bar arrive as one frame. Home never animates underneath checkout glass, and Taste Save never runs a second close transaction. Cancel, pending, no-active-subscription, and verification failure release the glass with clear feedback.
+
+**Logout race regression:** Apple status/history calls already in flight when Log out is tapped must re-check `hasSignedOutSession` after every await. They may finish and clean up transactions, but only an explicit purchase or Restore can sign the local session back in; passive refresh/probe work cannot leave Home visible while Settings reports Inactive.
 
 ## Postponed (do not start)
 
@@ -272,6 +282,15 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-14 — Ended membership uses the normal two-plan StoreKit paywall: prior SKU preselected with Renew membership, alternate SKU labeled Switch; Taste no longer opens Manage Subscriptions.
+- 2026-09-14 — Checkout, first Home result, and frost removal are one serialized reveal; operation flags stay owned by StoreKit and Home cannot bleed under checkout glass.
+- 2026-09-14 — Home and the native bottom bar now pre-render behind an opaque reveal curtain; Log out also rejects entitlement/history results that complete after the local session was cleared.
+- 2026-09-14 — Intermediate Home/Profile retries stay in Loading, Profile defers its 200-card load until selected, and rotating checkout text no longer promises an unlock.
+- 2026-09-14 — Paid handoff crossfades Home in while the frost and checkout glass fade away; the gate remains non-interactive until Home is the destination.
+- 2026-09-14 — The first unlocked Home/Profile load retries transient local-network startup failures automatically; successful payment no longer lands on a one-shot Retry state.
+- 2026-09-14 — Checkout is armed before StoreKit can unlock, never re-armed after Home, and always ends at Home or visible failure; both fresh and already-entitled Continue use the same gate.
+- 2026-09-14 — Home/Profile wait for an Apple-confirmed, ready StoreKit unlock before fetching, so the launch cache cannot leave a stale Retry after paywall.
+- 2026-09-14 — Sandbox-only checkout: deleted `Angles.storekit` and the extra Sandbox scheme; ended-sub looks at the whole group; checkout overlay holds until Home and rotates copy; (i) opens large.
 - 2026-09-14 — Paywall light wash pulled to a midpoint; Confirm with Apple sits under the CTA; (i) sheet is titled rows with icons, restore, and membership legal.
 - 2026-09-14 — Paywall light mode: stronger style washes, style-ink tile edges, deeper canvas and sheet shadow so surfaces separate like dark.
 - 2026-09-14 — Paywall paper is a 2x2 of style tiles (why four angles exist); purchase module is spread commerce; (i) holds library/Home/legal.
@@ -286,16 +305,13 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 - 2026-09-14 — Only Apple’s live status, `currentEntitlements`, or a fresh verified purchase unlock Home; a leftover `Transaction.latest` receipt no longer sends Restore to Home or reports Subscribed in Settings.
 - 2026-09-14 — Home feed is hidden until the gate is Home; late StoreKit unlocks cannot yank paywall off without a user checkout.
 - 2026-09-14 — Launch/logout routing uses one gate and never flashes Home; checkout glass sits over the paywall and dissolves only after Home is ready.
-- 2026-09-14 — After App Store renew, the paywall stays locked behind a checking overlay until Home opens or confirmation fails.
-- 2026-09-14 — Paywall and taste probe local ended subscriptions in the background; Renew in App Store replaces Restore when found.
-- 2026-09-14 — Ended subscriptions offer Renew in App Store via Apple’s manage-subscriptions sheet.
 - 2026-09-14 — Paywall Restore always reports a result and checks local entitlements before `AppStore.sync()`.
 - 2026-09-14 — Frost handoffs: one covering frost across taste/paywall/unlock; Home is revealed through glass; the half-second feed glimpse is gone.
 - 2026-09-14 — Settings Log out starts over on this iPhone without canceling Apple; taste **Already have an account?** restores the session.
 - 2026-09-14 — StoreKit unlocks from the verified purchase and subscription status; an empty `currentEntitlements` after `finish()` no longer keeps the paywall up.
 - 2026-09-14 — Paywall Subscribe unlocks when StoreKit already has an active Angles entitlement instead of starting a new purchase.
-- 2026-09-14 — Taste-once routing: wait for StoreKit entitlements before compose; skip taste when subscribed; stamp taste on first ready cook; non-dismissible onboarding overlay; taste restore link; paywall Restore purchases; DEBUG-only onboarding reset.
-- 2026-09-14 — StoreKit sandbox: Angles Sandbox scheme with no StoreKit config, verified-entitlement unlock, Retry on empty catalog, DEBUG product/transaction logs.
+- 2026-09-14 — Taste-once routing: wait for StoreKit entitlements before compose; skip taste when subscribed; stamp taste after a successful Save; non-dismissible onboarding overlay; taste restore link; paywall Restore purchases.
+- 2026-09-14 — StoreKit sandbox foundation: verified-entitlement unlock, Retry on empty catalog, and DEBUG product/transaction logs.
 - 2026-09-14 — Paywall: half-second saved-card glimpse; green Lottie success-to-benefits choreography with anonymous-community value and Continue CTA; StoreKit 2 annual/monthly hard gate, restore, entitlement persistence, and Settings status/reset.
 
 - 2026-09-14 — Onboarding taste: native chat welcome hero ('Break the spiral' + tactile prompt chips) inside ComposeSheetView; auto-launches on first install; zero survey, zero auth; reset in Settings.

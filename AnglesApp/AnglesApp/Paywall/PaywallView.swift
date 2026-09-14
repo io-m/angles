@@ -25,6 +25,17 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
             return "app.angles.ios.monthly"
         }
     }
+
+    init?(productID: String) {
+        switch productID {
+        case StoreKitManager.annualProductID:
+            self = .annual
+        case StoreKitManager.monthlyProductID:
+            self = .monthly
+        default:
+            return nil
+        }
+    }
 }
 
 private enum PaywallRevealStage {
@@ -41,9 +52,11 @@ struct PaywallView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var selectedPlan: PaywallPlan = .annual
+    @State private var hasChosenPlan = false
     @State private var stage: PaywallRevealStage
     @State private var completionHandled: Bool
     @State private var showsInfoSheet = false
+    @State private var infoSheetDetent: PresentationDetent = .large
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -55,6 +68,9 @@ struct PaywallView: View {
         self.storeKitManager = storeKitManager
         self.showsCelebration = showsCelebration
         self.savedCard = savedCard
+        let initialPlan = storeKitManager.priorMembershipProductID
+            .flatMap { PaywallPlan(productID: $0) } ?? .annual
+        _selectedPlan = State(initialValue: initialPlan)
         _stage = State(initialValue: showsCelebration ? .celebrating : .membership)
         _completionHandled = State(initialValue: !showsCelebration)
     }
@@ -98,6 +114,12 @@ struct PaywallView: View {
                 await storeKitManager.loadProducts()
             }
         }
+        .onChange(of: storeKitManager.priorMembershipProductID) { _, productID in
+            guard !hasChosenPlan, let productID, let priorPlan = PaywallPlan(productID: productID) else {
+                return
+            }
+            selectedPlan = priorPlan
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -110,8 +132,11 @@ struct PaywallView: View {
         reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 12))
     }
 
-    private var offersRenew: Bool {
-        storeKitManager.canOfferAppleRenew
+    private var priorPlan: PaywallPlan? {
+        guard let productID = storeKitManager.priorMembershipProductID else {
+            return nil
+        }
+        return PaywallPlan(productID: productID)
     }
 
     private var celebrationStage: some View {
@@ -180,7 +205,7 @@ struct PaywallView: View {
             .frame(maxWidth: 560)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .animation(restoreFeedbackAnimation, value: storeKitManager.canOfferAppleRenew)
+        .animation(restoreFeedbackAnimation, value: storeKitManager.priorMembershipProductID)
         .animation(restoreFeedbackAnimation, value: storeKitManager.errorMessage)
         .animation(planSwitchAnimation, value: selectedPlan)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -188,6 +213,7 @@ struct PaywallView: View {
         }
         .sheet(isPresented: $showsInfoSheet) {
             paywallInfoSheet
+                .onAppear { infoSheetDetent = .large }
         }
         .allowsHitTesting(!storeKitManager.isBusy || showsInfoSheet)
         .accessibilityHidden(storeKitManager.isBusy && !showsInfoSheet)
@@ -210,10 +236,10 @@ struct PaywallView: View {
     private var paywallInfoSheet: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("What’s included")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
                             .tracking(-0.5)
                             .foregroundStyle(theme.ink)
 
@@ -236,9 +262,7 @@ struct PaywallView: View {
                         )
                     }
 
-                    if !offersRenew {
-                        restoreButton
-                    }
+                    restoreButton
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Membership")
@@ -267,7 +291,7 @@ struct PaywallView: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $infoSheetDetent)
         .presentationDragIndicator(.visible)
     }
 
@@ -291,7 +315,7 @@ struct PaywallView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
+        .padding(14)
         .background(theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -327,7 +351,7 @@ struct PaywallView: View {
     /// dark-mode fix.
     private var purchaseModule: some View {
         VStack(spacing: 22) {
-            if let errorMessage = storeKitManager.errorMessage, !offersRenew {
+            if let errorMessage = storeKitManager.errorMessage {
                 Text(errorMessage)
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(theme.ink)
@@ -342,14 +366,6 @@ struct PaywallView: View {
             planRows
 
             purchaseButton
-
-            if offersRenew {
-                Text("Confirm with Apple. It takes a moment.")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(theme.muted)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 26)
@@ -359,7 +375,7 @@ struct PaywallView: View {
             moduleBackground
         }
         .animation(planSwitchAnimation, value: selectedPlan)
-        .animation(restoreFeedbackAnimation, value: storeKitManager.canOfferAppleRenew)
+        .animation(restoreFeedbackAnimation, value: storeKitManager.priorMembershipProductID)
     }
 
     private var moduleBackground: some View {
@@ -486,7 +502,7 @@ struct PaywallView: View {
         }
         .buttonStyle(PaywallPressStyle())
         .disabled(storeKitManager.isBusy)
-        .opacity(storeKitManager.isBusy && !storeKitManager.isPurchasing && !storeKitManager.isOpeningSubscriptions ? 0.5 : 1)
+        .opacity(storeKitManager.isBusy && !storeKitManager.isPurchasing ? 0.5 : 1)
         .accessibilityLabel(primaryButtonAccessibilityLabel)
     }
 
@@ -548,17 +564,14 @@ struct PaywallView: View {
     }
 
     private var showsPrimarySpinner: Bool {
-        if offersRenew {
-            return storeKitManager.isOpeningSubscriptions
-        }
         return storeKitManager.isPurchasing || (storeKitManager.isLoadingProducts && selectedProduct == nil)
     }
 
     private var primaryButtonTitle: String {
-        if offersRenew {
-            return storeKitManager.isOpeningSubscriptions ? "Opening Apple…" : "Renew membership"
-        }
         if storeKitManager.isPurchasing {
+            if let priorPlan {
+                return selectedPlan == priorPlan ? "Renewing" : "Switching"
+            }
             return "Subscribing"
         }
         if storeKitManager.isLoadingProducts && selectedProduct == nil {
@@ -567,6 +580,9 @@ struct PaywallView: View {
         if selectedProduct == nil {
             return "Retry"
         }
+        if let priorPlan {
+            return selectedPlan == priorPlan ? "Renew membership" : "Switch to \(selectedPlan.title)"
+        }
         return "Continue"
     }
 
@@ -574,8 +590,8 @@ struct PaywallView: View {
         if primaryButtonTitle == "Continue" {
             return "Continue, \(heroPrice), \(heroPriceCaption)"
         }
-        if primaryButtonTitle == "Renew membership" {
-            return "Renew membership, confirms with Apple"
+        if priorPlan != nil {
+            return "\(primaryButtonTitle), \(heroPrice), \(heroPriceCaption)"
         }
         return primaryButtonTitle
     }
@@ -613,6 +629,7 @@ struct PaywallView: View {
         guard !storeKitManager.isBusy, selectedPlan != plan else {
             return
         }
+        hasChosenPlan = true
         UISelectionFeedbackGenerator().selectionChanged()
         storeKitManager.clearError()
         withAnimation(planSwitchAnimation) {
@@ -621,10 +638,6 @@ struct PaywallView: View {
     }
 
     private func handlePrimaryAction() async {
-        if offersRenew {
-            await storeKitManager.offerAppleRenew()
-            return
-        }
         if storeKitManager.isLoadingProducts {
             return
         }
@@ -969,11 +982,20 @@ private struct PaywallPressStyle: ButtonStyle {
 }
 
 struct CheckoutLockOverlay: View {
-    let message: String
+    let lines: [String]
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lineIndex = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    private var currentLine: String {
+        guard !lines.isEmpty else {
+            return ""
+        }
+        return lines[min(lineIndex, lines.count - 1)]
+    }
 
     var body: some View {
         ZStack {
@@ -985,23 +1007,34 @@ struct CheckoutLockOverlay: View {
                     .controlSize(.large)
                     .tint(theme.ink)
 
-                Text(message)
+                Text(currentLine)
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(theme.ink)
                     .multilineTextAlignment(.center)
-
-                Text("This can take a few seconds.")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(theme.muted)
-                    .multilineTextAlignment(.center)
+                    .contentTransition(.opacity)
             }
             .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .ignoresSafeArea()
+        .task(id: lines.joined(separator: "\n")) {
+            lineIndex = 0
+            guard !reduceMotion, lines.count > 1 else {
+                return
+            }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(2500))
+                guard !Task.isCancelled, lines.count > 1 else {
+                    return
+                }
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                    lineIndex = (lineIndex + 1) % lines.count
+                }
+            }
+        }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(message) This can take a few seconds.")
+        .accessibilityLabel(currentLine)
         .accessibilityAddTraits(.updatesFrequently)
     }
 }

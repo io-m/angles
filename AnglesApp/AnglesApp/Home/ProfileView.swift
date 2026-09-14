@@ -11,6 +11,7 @@ struct ProfileView: View {
 
     let viewModel: HomeViewModel
     var onInspire: () -> Void = {}
+    var canLoadFullAppContent = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -73,7 +74,10 @@ struct ProfileView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
-        .task {
+        .task(id: canLoadFullAppContent) {
+            guard canLoadFullAppContent else {
+                return
+            }
             await viewModel.loadLibraryIfNeeded()
         }
     }

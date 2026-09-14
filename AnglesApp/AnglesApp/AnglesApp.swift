@@ -5,6 +5,14 @@ private enum PaywallPresentationPhase: Equatable {
     case locked
 }
 
+private enum HomeRevealPhase: Equatable {
+    case hidden
+    case waitingForCheckout
+    case waitingForHome
+    case animating
+    case visible
+}
+
 @main
 struct AnglesApp: App {
     @StateObject private var themeStore = ThemeStore()
@@ -30,7 +38,7 @@ struct AppRoot: View {
     @State private var paywallPhase: PaywallPresentationPhase = .idle
     @State private var paywallShowsCelebration = false
     @State private var paywallHeroCard: HomeCard?
-    @State private var isRevealingHome = false
+    @State private var homeRevealPhase: HomeRevealPhase = .hidden
     @AppStorage("hasCompletedOnboardingTaste") private var hasCompletedTaste = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -64,7 +72,8 @@ struct AppRoot: View {
                         safeAreaInsets: homeSafeAreaInsets,
                         pageWidth: pageWidth,
                         viewModel: viewModel,
-                        onInspire: presentCompose
+                        onInspire: presentCompose,
+                        canLoadFullAppContent: canLoadProfileContent
                     )
                 }
                 .tabItem { Label("Profile", systemImage: "person") }
@@ -72,19 +81,24 @@ struct AppRoot: View {
             }
             .tint(theme.ink)
             .opacity(showsHomeFeed ? 1 : 0)
-            .allowsHitTesting(showsHomeFeed)
-            .accessibilityHidden(!showsHomeFeed)
+            .allowsHitTesting(showsHomeFeed && homeRevealPhase == .visible)
+            .accessibilityHidden(!showsHomeFeed || homeRevealPhase != .visible)
             .onChange(of: selectedTab) { _, newTab in
                 handleTabChange(newTab)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.keyboard)
 
+            theme.paper
+                .ignoresSafeArea()
+                .opacity(isHomeRevealPending ? 1 : 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+
             ComposeFrost()
                 .opacity(showsCoveringFrost ? 1 : 0)
                 .allowsHitTesting(false)
                 .ignoresSafeArea()
-                .animation(hasRoutedLaunch ? coveringFrostAnimation : nil, value: showsCoveringFrost)
 
             ComposeSheetView(
                 viewModel: viewModel,
@@ -92,6 +106,7 @@ struct AppRoot: View {
                 isOnboardingTaste: isOnboardingTasteSession,
                 storeKitManager: storeKitManager,
                 onClose: handleComposeClose,
+                onShowMembership: presentMembershipPaywall,
                 onSave: handleSavedCard
             )
             .opacity(isComposePresented ? 1 : 0)
@@ -113,14 +128,19 @@ struct AppRoot: View {
                     showsCelebration: paywallShowsCelebration,
                     savedCard: paywallHeroCard
                 )
-                    .id(paywallShowsCelebration ? "paywall-celebrate" : "paywall-locked")
                     .transition(.identity)
                     .zIndex(20)
             }
 
+            if showsHomeArrivalStatus {
+                HomeArrivalStatus()
+                    .transition(.opacity)
+                    .zIndex(24)
+            }
+
             Group {
                 if storeKitManager.isBusy {
-                    CheckoutLockOverlay(message: storeKitManager.checkoutLockMessage)
+                    CheckoutLockOverlay(lines: storeKitManager.checkoutLockLines)
                         .transition(.opacity)
                 }
             }
@@ -166,13 +186,14 @@ struct AppRoot: View {
             }
             applyGate()
         }
-        .onChange(of: viewModel.phase) { _, newPhase in
-            guard isOnboardingTasteSession, isComposePresented else {
+        .onChange(of: storeKitManager.isBusy) { _, _ in
+            guard storeKitManager.entitlementsReady, storeKitManager.hasUnlockedFullApp else {
                 return
             }
-            if case .ready = newPhase {
-                hasCompletedTaste = true
-            }
+            applyGate()
+        }
+        .onChange(of: viewModel.feedLoadState) { _, _ in
+            advanceHomeRevealIfPossible()
         }
         .background {
             GeometryReader { geo in
@@ -203,16 +224,53 @@ struct AppRoot: View {
 
     private var showsCoveringFrost: Bool {
         isComposePresented
-            || isRevealingHome
+            || isHomeRevealPending
             || paywallPhase == .locked
     }
 
+    private var isHomeRevealPending: Bool {
+        switch homeRevealPhase {
+        case .waitingForCheckout, .waitingForHome, .animating:
+            return true
+        case .hidden, .visible:
+            return false
+        }
+    }
+
+    private var showsHomeArrivalStatus: Bool {
+        switch homeRevealPhase {
+        case .waitingForHome, .animating:
+            return true
+        case .hidden, .waitingForCheckout, .visible:
+            return false
+        }
+    }
+
+    private var hasResolvedInitialHomeLoad: Bool {
+        switch viewModel.feedLoadState {
+        case .loading:
+            return false
+        case .loaded, .failed:
+            return true
+        }
+    }
+
     private var coveringFrostAnimation: Animation? {
-        reduceMotion ? nil : .easeInOut(duration: 0.35)
+        reduceMotion ? nil : .easeInOut(duration: 0.45)
     }
 
     private var needsOnboardingTaste: Bool {
         !hasCompletedTaste && !storeKitManager.hasUnlockedFullApp
+    }
+
+    private var hasConfirmedFullAppAccess: Bool {
+        storeKitManager.entitlementsReady && storeKitManager.hasUnlockedFullApp
+    }
+
+    private var canLoadProfileContent: Bool {
+        hasConfirmedFullAppAccess
+            && homeRevealPhase == .visible
+            && selectedTab == .profile
     }
 
     private func withoutAnimations(_ updates: () -> Void) {
@@ -237,13 +295,12 @@ struct AppRoot: View {
         }
 
         if storeKitManager.hasUnlockedFullApp {
-            if hasRoutedLaunch,
-               !storeKitManager.isBusy,
-               (paywallPhase == .locked || isComposePresented) {
-                return
-            }
-            revealHome()
+            beginHomeReveal()
             return
+        }
+
+        withoutAnimations {
+            homeRevealPhase = .hidden
         }
 
         if paywallPhase == .locked {
@@ -258,7 +315,6 @@ struct AppRoot: View {
             withoutAnimations {
                 isComposePresented = false
                 isOnboardingTasteSession = false
-                isRevealingHome = false
                 paywallPhase = .locked
             }
             return
@@ -266,52 +322,114 @@ struct AppRoot: View {
 
         withoutAnimations {
             paywallPhase = .idle
-            isRevealingHome = false
             presentCompose()
         }
     }
 
-    private func revealHome() {
+    private func beginHomeReveal() {
+        switch homeRevealPhase {
+        case .waitingForCheckout, .waitingForHome, .animating:
+            advanceHomeRevealIfPossible()
+            return
+        case .visible:
+            storeKitManager.releaseCheckoutLock()
+            return
+        case .hidden:
+            break
+        }
+
         hasCompletedTaste = true
         isOnboardingTasteSession = false
         paywallShowsCelebration = false
         paywallHeroCard = nil
 
         let wasCovered = isComposePresented
-            || isRevealingHome
             || paywallPhase == .locked
 
+        viewModel.prepareForFullAppAccess()
         withoutAnimations {
             isComposePresented = false
             paywallPhase = .idle
-            isRevealingHome = false
+            homeRevealPhase = wasCovered || !hasResolvedInitialHomeLoad
+                ? .waitingForCheckout
+                : .visible
         }
 
-        if wasCovered, storeKitManager.isBusy {
-            Task { @MainActor in
-                await Task.yield()
-                withAnimation(coveringFrostAnimation) {
-                    storeKitManager.releaseCheckoutLock()
-                }
-            }
+        if homeRevealPhase == .visible {
+            storeKitManager.releaseCheckoutLock()
             return
         }
 
         storeKitManager.releaseCheckoutLock()
+        advanceHomeRevealIfPossible()
+    }
+
+    private func advanceHomeRevealIfPossible() {
+        guard storeKitManager.entitlementsReady, storeKitManager.hasUnlockedFullApp else {
+            return
+        }
+
+        switch homeRevealPhase {
+        case .waitingForCheckout:
+            guard !storeKitManager.isBusy else {
+                return
+            }
+            withoutAnimations {
+                homeRevealPhase = .waitingForHome
+            }
+            advanceHomeRevealIfPossible()
+        case .waitingForHome:
+            guard hasResolvedInitialHomeLoad else {
+                return
+            }
+            withoutAnimations {
+                homeRevealPhase = .animating
+            }
+            Task { @MainActor in
+                await Task.yield()
+                guard homeRevealPhase == .animating else {
+                    return
+                }
+                guard storeKitManager.hasUnlockedFullApp else {
+                    withoutAnimations {
+                        homeRevealPhase = .hidden
+                    }
+                    return
+                }
+                guard !storeKitManager.isBusy else {
+                    withoutAnimations {
+                        homeRevealPhase = .waitingForCheckout
+                    }
+                    return
+                }
+                guard hasResolvedInitialHomeLoad else {
+                    withoutAnimations {
+                        homeRevealPhase = .waitingForHome
+                    }
+                    return
+                }
+                withAnimation(coveringFrostAnimation) {
+                    homeRevealPhase = .visible
+                }
+            }
+        case .hidden, .animating, .visible:
+            return
+        }
     }
 
     private func logOut() {
+        storeKitManager.signOut()
         withoutAnimations {
             hasCompletedTaste = false
             paywallShowsCelebration = false
             paywallHeroCard = nil
             paywallPhase = .idle
             viewModel.resetCompose()
-            isOnboardingTasteSession = false
-            isRevealingHome = true
-            storeKitManager.signOut()
-            presentCompose()
-            isRevealingHome = false
+            homeRevealPhase = .hidden
+            selectedTab = .home
+            lastContentTab = .home
+            isOnboardingTasteSession = true
+            isComposePresented = true
         }
     }
 
@@ -345,18 +463,27 @@ struct AppRoot: View {
     }
 
     private func handleComposeClose() {
-        let finishOnboarding = isOnboardingTasteSession && viewModel.isCookReady
-        isOnboardingTasteSession = false
-
-        if finishOnboarding, !storeKitManager.hasUnlockedFullApp, paywallPhase == .idle {
-            hasCompletedTaste = true
-            paywallShowsCelebration = false
-            withoutAnimations {
-                paywallPhase = .locked
-            }
+        guard !isOnboardingTasteSession else {
+            return
         }
 
+        isOnboardingTasteSession = false
         isComposePresented = false
+    }
+
+    private func presentMembershipPaywall() {
+        guard isOnboardingTasteSession, storeKitManager.hasEndedMembership else {
+            return
+        }
+
+        paywallShowsCelebration = false
+        paywallHeroCard = nil
+        withoutAnimations {
+            homeRevealPhase = .hidden
+            isComposePresented = false
+            isOnboardingTasteSession = false
+            paywallPhase = .locked
+        }
     }
 
     private func handleSavedCard(_ card: HomeCard) {
@@ -371,13 +498,12 @@ struct AppRoot: View {
         paywallHeroCard = card
         paywallShowsCelebration = true
         withoutAnimations {
+            homeRevealPhase = .hidden
             paywallPhase = .locked
+            isComposePresented = false
+            isOnboardingTasteSession = false
         }
         hasCompletedTaste = true
-        withAnimation(coveringFrostAnimation) {
-            isComposePresented = false
-        }
-        isOnboardingTasteSession = false
     }
 
     private func captureHomeInsets(_ insets: EdgeInsets) {
@@ -386,6 +512,28 @@ struct AppRoot: View {
             next.bottom = homeSafeAreaInsets.bottom
         }
         homeSafeAreaInsets = next
+    }
+}
+
+private struct HomeArrivalStatus: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(theme.ink)
+
+            Text("Loading Home.")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(theme.ink)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Loading Home")
     }
 }
 

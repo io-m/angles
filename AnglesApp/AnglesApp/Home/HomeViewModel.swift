@@ -280,6 +280,11 @@ final class HomeViewModel {
 
     private static let modelDefaultsKey = "angles.llmModel"
     private static let writeErrorDuration: Duration = .seconds(3)
+    private static let initialLoadRetryDelays: [Duration] = [
+        .milliseconds(400),
+        .seconds(1),
+        .seconds(2),
+    ]
 
     init(
         cards: [HomeCard] = [],
@@ -503,10 +508,26 @@ final class HomeViewModel {
             return
         }
 
-        await loadLibrary()
+        for attempt in 0 ... Self.initialLoadRetryDelays.count {
+            let reportsFailure = attempt == Self.initialLoadRetryDelays.count
+            await loadLibrary(reportsFailure: reportsFailure)
+            guard !hasLoadedLibrary, !Task.isCancelled else {
+                return
+            }
+            guard attempt < Self.initialLoadRetryDelays.count else {
+                return
+            }
+
+            libraryLoadState = .loading
+            do {
+                try await Task.sleep(for: Self.initialLoadRetryDelays[attempt])
+            } catch {
+                return
+            }
+        }
     }
 
-    func loadLibrary(showsLoading: Bool = true) async {
+    func loadLibrary(showsLoading: Bool = true, reportsFailure: Bool = true) async {
         if showsLoading, cards.isEmpty {
             libraryLoadState = .loading
         }
@@ -522,7 +543,7 @@ final class HomeViewModel {
             guard !Task.isCancelled else {
                 return
             }
-            if cards.isEmpty {
+            if reportsFailure, cards.isEmpty {
                 libraryLoadState = .failed("Couldn't load your cards.")
             }
         }
@@ -543,12 +564,45 @@ final class HomeViewModel {
         await loadLibrary(showsLoading: false)
     }
 
+    /// Clears a stale failure before the root decides whether Home is ready to reveal.
+    func prepareForFullAppAccess() {
+        guard !hasLoadedFeed, feedCards.isEmpty else {
+            return
+        }
+        feedLoadState = .loading
+    }
+
     func loadFeedIfNeeded() async {
-        guard !hasLoadedFeed, feedTask == nil else {
+        guard !hasLoadedFeed else {
             return
         }
 
-        await fetchFeedPage(replacing: true, generation: feedGeneration)
+        for attempt in 0 ... Self.initialLoadRetryDelays.count {
+            if let feedTask {
+                await feedTask.value
+            } else {
+                if feedCards.isEmpty {
+                    feedLoadState = .loading
+                }
+                let reportsFailure = attempt == Self.initialLoadRetryDelays.count
+                startFeedTask(replacing: true, reportsFailure: reportsFailure)
+                await feedTask?.value
+            }
+
+            guard !hasLoadedFeed, !Task.isCancelled else {
+                return
+            }
+            guard attempt < Self.initialLoadRetryDelays.count else {
+                return
+            }
+
+            feedLoadState = .loading
+            do {
+                try await Task.sleep(for: Self.initialLoadRetryDelays[attempt])
+            } catch {
+                return
+            }
+        }
     }
 
     func applyFeedFilter(_ filter: HomeFeedFilter) {
@@ -626,14 +680,18 @@ final class HomeViewModel {
         }
     }
 
-    private func startFeedTask(replacing: Bool) {
+    private func startFeedTask(replacing: Bool, reportsFailure: Bool = true) {
         guard feedTask == nil else {
             return
         }
 
         let generation = feedGeneration
         feedTask = Task { @MainActor in
-            await fetchFeedPage(replacing: replacing, generation: generation)
+            await fetchFeedPage(
+                replacing: replacing,
+                generation: generation,
+                reportsFailure: reportsFailure
+            )
             guard feedGeneration == generation else {
                 return
             }
@@ -641,7 +699,11 @@ final class HomeViewModel {
         }
     }
 
-    private func fetchFeedPage(replacing: Bool, generation: Int) async {
+    private func fetchFeedPage(
+        replacing: Bool,
+        generation: Int,
+        reportsFailure: Bool = true
+    ) async {
         let filter = appliedFilter
         let before = replacing ? nil : feedBefore
 
@@ -687,9 +749,9 @@ final class HomeViewModel {
                 return
             }
 
-            if replacing && feedCards.isEmpty {
+            if reportsFailure, replacing, feedCards.isEmpty {
                 feedLoadState = .failed("Couldn't load Home.")
-            } else {
+            } else if reportsFailure {
                 feedFooterState = .failed
             }
         }
