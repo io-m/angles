@@ -2,7 +2,6 @@ import SwiftUI
 
 private enum PaywallPresentationPhase: Equatable {
     case idle
-    case cardHold
     case benefits
     case locked
 }
@@ -23,17 +22,19 @@ struct AppRoot: View {
     @State private var viewModel = HomeViewModel()
     @State private var storeKitManager = StoreKitManager()
     @State private var isComposePresented = false
+    @State private var isOnboardingTasteSession = false
+    @State private var hasRoutedLaunch = false
     @State private var selectedTab: RootTab = .home
     @State private var lastContentTab: RootTab = .home
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
     @State private var pageWidth: CGFloat = 393
     @State private var glimpseCard: HomeCard?
     @State private var paywallPhase: PaywallPresentationPhase = .idle
-    @State private var glimpseToken = UUID()
+    @State private var isRevealingHome = false
     @AppStorage("hasCompletedOnboardingTaste") private var hasCompletedTaste = false
-    @AppStorage("hasEnteredPaywallFlow") private var hasEnteredPaywallFlow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -50,7 +51,7 @@ struct AppRoot: View {
                         storeKitManager: storeKitManager,
                         glimpseCard: glimpseCard,
                         isGlimpseActive: isGlimpseActive,
-                        onResetOnboarding: resetToOnboarding
+                        onLogOut: logOut
                     )
                 }
                 .tabItem { Label("Home", systemImage: "house") }
@@ -72,8 +73,9 @@ struct AppRoot: View {
                 .tag(RootTab.profile)
             }
             .tint(theme.ink)
-            .allowsHitTesting(!blocksAppInteraction)
-            .accessibilityHidden(blocksAppInteraction)
+            .opacity(showsHomeFeed ? 1 : 0)
+            .allowsHitTesting(showsHomeFeed)
+            .accessibilityHidden(!showsHomeFeed)
             .onChange(of: selectedTab) { _, newTab in
                 handleTabChange(newTab)
             }
@@ -81,14 +83,16 @@ struct AppRoot: View {
             .ignoresSafeArea(.keyboard)
 
             ComposeFrost()
-                .opacity(isComposePresented ? 1 : 0)
+                .opacity(showsCoveringFrost ? 1 : 0)
                 .allowsHitTesting(false)
                 .ignoresSafeArea()
-                .animation(ComposeMotion.fade(reduceMotion), value: isComposePresented)
+                .animation(hasRoutedLaunch ? coveringFrostAnimation : nil, value: showsCoveringFrost)
 
             ComposeSheetView(
                 viewModel: viewModel,
                 isActive: isComposePresented,
+                isOnboardingTaste: isOnboardingTasteSession,
+                storeKitManager: storeKitManager,
                 onClose: handleComposeClose,
                 onSave: handleSavedCard
             )
@@ -105,7 +109,7 @@ struct AppRoot: View {
             }
             .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86), value: viewModel.writeError)
 
-            if paywallPhase == .benefits, !storeKitManager.hasUnlockedFullApp {
+            if paywallPhase == .benefits {
                 PaywallGlimpseView(
                     safeAreaInsets: homeSafeAreaInsets,
                     onContinue: continueToPaywall
@@ -115,43 +119,67 @@ struct AppRoot: View {
                     .zIndex(10)
             }
 
-            if paywallPhase == .locked, !storeKitManager.hasUnlockedFullApp {
+            if paywallPhase == .locked {
                 PaywallView(storeKitManager: storeKitManager)
-                    .transition(.opacity)
+                    .transition(.identity)
                     .zIndex(20)
             }
-        }
-        .onAppear {
-            if needsOnboardingTaste {
-                presentCompose()
-            } else if !storeKitManager.hasUnlockedFullApp {
-                paywallPhase = .locked
+
+            Group {
+                if storeKitManager.isBusy {
+                    CheckoutLockOverlay(message: storeKitManager.checkoutLockMessage)
+                        .transition(.opacity)
+                }
+            }
+            .animation(coveringFrostAnimation, value: storeKitManager.isBusy)
+            .zIndex(25)
+
+            if !hasRoutedLaunch {
+                theme.paper
+                    .ignoresSafeArea()
+                    .zIndex(30)
+                    .accessibilityHidden(true)
             }
         }
         .task {
+            migrateLegacyPaywallFlag()
             await storeKitManager.prepare()
-            reconcileSubscriptionGate()
-        }
-        .onChange(of: hasCompletedTaste) { _, completed in
-            if !completed && !isComposePresented {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    if !hasCompletedTaste && !isComposePresented {
-                        presentCompose()
-                    }
-                }
-            } else if completed {
-                reconcileSubscriptionGate()
+            withoutAnimations {
+                applyGate()
+                hasRoutedLaunch = true
             }
         }
-        .onChange(of: hasEnteredPaywallFlow) { _, entered in
-            if !entered, !isComposePresented {
-                presentCompose()
-            } else if entered {
-                reconcileSubscriptionGate()
+        .onChange(of: hasCompletedTaste) { _, completed in
+            if completed {
+                applyGate()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // A subscription can lapse while the app is alive. Ask Apple again on every
+            // foreground so Home cannot outlive the entitlement until the next cold launch.
+            guard phase == .active,
+                  storeKitManager.entitlementsReady,
+                  !storeKitManager.isBusy else {
+                return
+            }
+            Task {
+                await storeKitManager.refreshEntitlements()
+                await storeKitManager.probeSubscriptionOffer()
             }
         }
         .onChange(of: storeKitManager.hasUnlockedFullApp) { _, _ in
-            reconcileSubscriptionGate()
+            guard storeKitManager.entitlementsReady else {
+                return
+            }
+            applyGate()
+        }
+        .onChange(of: viewModel.phase) { _, newPhase in
+            guard isOnboardingTasteSession, isComposePresented else {
+                return
+            }
+            if case .ready = newPhase {
+                hasCompletedTaste = true
+            }
         }
         .background {
             GeometryReader { geo in
@@ -172,28 +200,129 @@ struct AppRoot: View {
     }
 
     private var isGlimpseActive: Bool {
-        paywallPhase == .cardHold || paywallPhase == .benefits
+        paywallPhase == .benefits
+    }
+
+    /// Home chrome stays invisible unless this is the real destination.
+    /// Paper/paywall/taste sit on top; a cover gap must never reveal the feed.
+    private var showsHomeFeed: Bool {
+        hasRoutedLaunch
+            && storeKitManager.hasUnlockedFullApp
+            && paywallPhase == .idle
+            && !isComposePresented
+    }
+
+    private var showsCoveringFrost: Bool {
+        isComposePresented
+            || isRevealingHome
+            || paywallPhase == .benefits
+            || paywallPhase == .locked
+    }
+
+    private var coveringFrostAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.35)
     }
 
     private var needsOnboardingTaste: Bool {
-        !hasCompletedTaste || !hasEnteredPaywallFlow
+        !hasCompletedTaste && !storeKitManager.hasUnlockedFullApp
     }
 
-    private var blocksAppInteraction: Bool {
-        isGlimpseActive || (paywallPhase == .locked && !storeKitManager.hasUnlockedFullApp)
+    private func withoutAnimations(_ updates: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, updates)
     }
 
-    private func resetToOnboarding() {
-        glimpseToken = UUID()
-        glimpseCard = nil
-        paywallPhase = .idle
-        storeKitManager.resetForOnboardingTest()
-        hasEnteredPaywallFlow = false
-        hasCompletedTaste = false
-        viewModel.resetCompose()
-        isComposePresented = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+    private func migrateLegacyPaywallFlag() {
+        if !hasCompletedTaste, UserDefaults.standard.bool(forKey: "hasEnteredPaywallFlow") {
+            hasCompletedTaste = true
+        }
+        UserDefaults.standard.removeObject(forKey: "hasEnteredPaywallFlow")
+    }
+
+    /// Single destination for launch, entitlements, logout, and taste-complete.
+    /// Home only when StoreKit says unlocked. Paywall only when taste is done and locked.
+    /// Taste compose stays up until Save or Close. Benefits stays up until Continue.
+    private func applyGate() {
+        guard storeKitManager.entitlementsReady else {
+            return
+        }
+
+        if storeKitManager.hasUnlockedFullApp {
+            if hasRoutedLaunch,
+               !storeKitManager.isBusy,
+               (paywallPhase == .locked || paywallPhase == .benefits || isComposePresented) {
+                return
+            }
+            revealHome()
+            return
+        }
+
+        if paywallPhase == .benefits {
+            return
+        }
+
+        if isComposePresented, isOnboardingTasteSession {
+            return
+        }
+
+        if hasCompletedTaste {
+            withoutAnimations {
+                isComposePresented = false
+                isOnboardingTasteSession = false
+                isRevealingHome = false
+                paywallPhase = .locked
+            }
+            return
+        }
+
+        withoutAnimations {
+            paywallPhase = .idle
+            isRevealingHome = false
             presentCompose()
+        }
+    }
+
+    private func revealHome() {
+        hasCompletedTaste = true
+        isOnboardingTasteSession = false
+        glimpseCard = nil
+
+        let wasCovered = isComposePresented
+            || isRevealingHome
+            || paywallPhase == .benefits
+            || paywallPhase == .locked
+
+        withoutAnimations {
+            isComposePresented = false
+            paywallPhase = .idle
+            isRevealingHome = false
+        }
+
+        if wasCovered, storeKitManager.isBusy {
+            Task { @MainActor in
+                await Task.yield()
+                withAnimation(coveringFrostAnimation) {
+                    storeKitManager.releaseCheckoutLock()
+                }
+            }
+            return
+        }
+
+        storeKitManager.releaseCheckoutLock()
+    }
+
+    private func logOut() {
+        withoutAnimations {
+            hasCompletedTaste = false
+            glimpseCard = nil
+            paywallPhase = .idle
+            viewModel.resetCompose()
+            isOnboardingTasteSession = false
+            isRevealingHome = true
+            storeKitManager.signOut()
+            presentCompose()
+            isRevealingHome = false
         }
     }
 
@@ -218,83 +347,56 @@ struct AppRoot: View {
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         viewModel.resetCompose()
-        if needsOnboardingTaste {
+        isOnboardingTasteSession = needsOnboardingTaste
+        if isOnboardingTasteSession {
             viewModel.composeIsPublic = false
+            storeKitManager.clearError()
         }
         isComposePresented = true
     }
 
     private func handleComposeClose() {
-        isComposePresented = false
-        guard needsOnboardingTaste, viewModel.isCookReady else {
-            return
+        let finishOnboarding = isOnboardingTasteSession && viewModel.isCookReady
+        isOnboardingTasteSession = false
+
+        if finishOnboarding, !storeKitManager.hasUnlockedFullApp, paywallPhase == .idle {
+            hasCompletedTaste = true
+            withoutAnimations {
+                paywallPhase = .locked
+            }
         }
 
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
-            hasCompletedTaste = true
-            hasEnteredPaywallFlow = true
-            paywallPhase = .locked
-        }
+        isComposePresented = false
     }
 
-    private func handleSavedCard(_ card: HomeCard) {
-        guard needsOnboardingTaste else {
+    private func handleSavedCard(_: HomeCard) {
+        guard isOnboardingTasteSession else {
             lastContentTab = .profile
             selectedTab = .profile
             return
         }
 
-        let token = UUID()
-        glimpseToken = token
-        glimpseCard = card
-        paywallPhase = .cardHold
         lastContentTab = .home
         selectedTab = .home
         hasCompletedTaste = true
-        hasEnteredPaywallFlow = true
-
-        Task { @MainActor in
-            do {
-                try await Task.sleep(for: .milliseconds(500))
-            } catch {
-                return
-            }
-            guard glimpseToken == token, !storeKitManager.hasUnlockedFullApp else {
-                return
-            }
-
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.42)) {
-                paywallPhase = .benefits
-            }
+        glimpseCard = nil
+        withAnimation(coveringFrostAnimation) {
+            paywallPhase = .benefits
+            isComposePresented = false
         }
+        isOnboardingTasteSession = false
     }
 
     private func continueToPaywall() {
         guard paywallPhase == .benefits else {
             return
         }
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
+        withAnimation(coveringFrostAnimation) {
             glimpseCard = nil
             paywallPhase = .locked
         }
     }
 
-    private func reconcileSubscriptionGate() {
-        if storeKitManager.hasUnlockedFullApp {
-            glimpseToken = UUID()
-            glimpseCard = nil
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
-                paywallPhase = .idle
-            }
-        } else if hasCompletedTaste,
-                  hasEnteredPaywallFlow,
-                  paywallPhase == .idle,
-                  !isComposePresented {
-            paywallPhase = .locked
-        }
-    }
-
-    /// Keyboard bottom inset is hundreds of points; the home indicator is not.
     private func captureHomeInsets(_ insets: EdgeInsets) {
         var next = insets
         if next.bottom > 80 {

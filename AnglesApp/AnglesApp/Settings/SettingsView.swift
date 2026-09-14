@@ -8,12 +8,11 @@ struct SettingsView: View {
     @Environment(\.accentPalette) private var accentPalette
     @Environment(\.dismiss) private var dismiss
 
-    var onResetOnboarding: (() -> Void)? = nil
+    var onLogOut: (() -> Void)? = nil
 
     @State private var showAppearance = false
     @State private var showAccent = false
     @State private var showSubscription = false
-    @AppStorage("hasCompletedOnboardingTaste") private var hasCompletedTaste = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private let edgePad: CGFloat = 20
@@ -75,15 +74,13 @@ struct SettingsView: View {
                     rowDivider
 
                     cardRow(
-                        symbol: "arrow.counterclockwise",
-                        title: "Reset Onboarding",
-                        subtitle: hasCompletedTaste ? "Taste completed — tap to restart" : "Ready to restart"
+                        symbol: "rectangle.portrait.and.arrow.right",
+                        title: "Log out",
+                        subtitle: "Start over on this iPhone. Does not cancel Apple."
                     ) {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        hasCompletedTaste = false
-                        storeKitManager.resetForOnboardingTest()
                         dismiss()
-                        onResetOnboarding?()
+                        onLogOut?()
                     } trailing: {
                         EmptyView()
                     }

@@ -55,3 +55,18 @@ targets:
         NSLocalNetworkUsageDescription: Angles talks to the API on your Mac while developing.
     scheme:
       storeKitConfiguration: Angles.storekit
+schemes:
+  Angles Sandbox:
+    build:
+      targets:
+        AnglesApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

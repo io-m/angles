@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 private enum PaywallPlan: String, CaseIterable, Identifiable {
@@ -21,6 +22,7 @@ struct PaywallView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accentPalette) private var accentPalette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedPlan: PaywallPlan = .annual
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -59,22 +61,11 @@ struct PaywallView: View {
                     }
                     .padding(.horizontal, 20)
 
-                    if let errorMessage = storeKitManager.errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(theme.muted)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 28)
-                            .padding(.top, 14)
-                            .accessibilityLabel(errorMessage)
-                    }
-
                     purchaseButton
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
 
-                    restoreButton
+                    restoreSection
                         .padding(.top, 14)
 
                     legalFooter
@@ -84,10 +75,17 @@ struct PaywallView: View {
                 }
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
+                .animation(restoreFeedbackAnimation, value: storeKitManager.canOfferAppleRenew)
+                .animation(restoreFeedbackAnimation, value: storeKitManager.errorMessage)
             }
             .scrollIndicators(.hidden)
+            .allowsHitTesting(!storeKitManager.isBusy)
+            .accessibilityHidden(storeKitManager.isBusy)
         }
         .tint(theme.ink)
+        .task {
+            await storeKitManager.probeSubscriptionOffer()
+        }
         .task {
             if storeKitManager.products.isEmpty {
                 await storeKitManager.loadProducts()
@@ -158,15 +156,13 @@ struct PaywallView: View {
                             .foregroundStyle(theme.ink)
                     }
 
-                    if plan == .annual {
-                        Text("$3.33/mo")
+                    if plan == .annual, let monthly = monthlyEquivalent(for: storeKitManager.annualProduct) {
+                        Text(monthly)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(theme.muted)
                     }
 
-                    Text(plan == .annual
-                         ? "Billed annually at $39.99. Cancel anytime."
-                         : "Billed monthly. Cancel anytime.")
+                    Text(billingCopy(for: plan))
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(theme.muted)
                         .lineSpacing(2)
@@ -214,11 +210,11 @@ struct PaywallView: View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             Task {
-                await storeKitManager.purchase(productID: selectedPlan.productID)
+                await handlePrimaryAction()
             }
         } label: {
             HStack(spacing: 10) {
-                if storeKitManager.isPurchasing {
+                if showsPrimarySpinner {
                     ProgressView()
                         .tint(theme.paper)
                 }
@@ -238,6 +234,75 @@ struct PaywallView: View {
         .accessibilityLabel(primaryButtonTitle)
     }
 
+    private var restoreFeedbackAnimation: Animation? {
+        reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86)
+    }
+
+    private var restoreSection: some View {
+        VStack(spacing: 6) {
+            if storeKitManager.canOfferAppleRenew {
+                endedSubscriptionOffer
+                    .transition(restoreSwapTransition)
+            } else {
+                VStack(spacing: 6) {
+                    if let errorMessage = storeKitManager.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(theme.ink)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityLabel(errorMessage)
+                    }
+
+                    restoreButton
+                }
+                .transition(restoreSwapTransition)
+                .allowsHitTesting(!storeKitManager.canOfferAppleRenew)
+            }
+        }
+        .padding(.horizontal, 28)
+        .frame(maxWidth: .infinity)
+        .clipped()
+    }
+
+    private var endedSubscriptionOffer: some View {
+        VStack(spacing: 6) {
+            Text("We found your previous subscription.")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(theme.ink)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("We found your previous subscription.")
+
+            Button {
+                Task {
+                    await storeKitManager.offerAppleRenew()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if storeKitManager.isOpeningSubscriptions {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(storeKitManager.isOpeningSubscriptions ? "Opening Apple…" : "Renew in App Store")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(Color(uiColor: .link))
+                .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(storeKitManager.isBusy)
+            .accessibilityLabel("Renew subscription in the App Store")
+        }
+    }
+
+    private var restoreSwapTransition: AnyTransition {
+        .asymmetric(
+            insertion: .offset(y: 16).combined(with: .opacity),
+            removal: .offset(y: -12).combined(with: .opacity)
+        )
+    }
+
     private var restoreButton: some View {
         Button {
             Task {
@@ -249,7 +314,7 @@ struct PaywallView: View {
                     ProgressView()
                         .controlSize(.small)
                 }
-                Text(storeKitManager.isRestoring ? "Restoring Purchases" : "Restore Purchases")
+                Text(storeKitManager.isRestoring ? "Restoring…" : "Restore purchases")
                     .font(.system(size: 14, weight: .semibold))
             }
             .foregroundStyle(theme.ink)
@@ -257,6 +322,7 @@ struct PaywallView: View {
         }
         .buttonStyle(.plain)
         .disabled(storeKitManager.isBusy)
+        .accessibilityLabel(storeKitManager.isRestoring ? "Restoring purchases" : "Restore purchases")
     }
 
     private var legalFooter: some View {
@@ -277,26 +343,108 @@ struct PaywallView: View {
         }
     }
 
+    private var selectedProduct: Product? {
+        storeKitManager.product(for: selectedPlan.productID)
+    }
+
+    private var showsPrimarySpinner: Bool {
+        storeKitManager.isPurchasing || (storeKitManager.isLoadingProducts && selectedProduct == nil)
+    }
+
     private var primaryButtonTitle: String {
         if storeKitManager.isPurchasing {
             return "Subscribing"
         }
+        if storeKitManager.isLoadingProducts && selectedProduct == nil {
+            return "Loading"
+        }
+        if selectedProduct == nil {
+            return "Retry"
+        }
         return selectedPlan == .annual ? "Subscribe Annually" : "Subscribe Monthly"
     }
 
+    private func handlePrimaryAction() async {
+        if storeKitManager.isLoadingProducts {
+            return
+        }
+        if selectedProduct == nil {
+            await storeKitManager.loadProducts()
+            return
+        }
+        await storeKitManager.purchase(productID: selectedPlan.productID)
+    }
+
     private func priceLine(for plan: PaywallPlan) -> String {
-        let fallback = plan == .annual ? "$39.99" : "$4.99"
-        let displayPrice: String
+        let period = plan == .annual ? "year" : "month"
+        guard let displayPrice = storeKitManager.product(for: plan.productID)?.displayPrice else {
+            if storeKitManager.isLoadingProducts {
+                return "Loading"
+            }
+            return "Unavailable"
+        }
+        return "\(displayPrice) / \(period)"
+    }
+
+    private func billingCopy(for plan: PaywallPlan) -> String {
         switch plan {
         case .annual:
-            displayPrice = storeKitManager.annualProduct?.displayPrice ?? fallback
+            if let price = storeKitManager.annualProduct?.displayPrice {
+                return "Billed annually at \(price). Cancel anytime."
+            }
+            return "Billed annually. Cancel anytime."
         case .monthly:
-            displayPrice = storeKitManager.monthlyProduct?.displayPrice ?? fallback
+            return "Billed monthly. Cancel anytime."
         }
-        return "\(displayPrice) / \(plan == .annual ? "year" : "month")"
+    }
+
+    private func monthlyEquivalent(for product: Product?) -> String? {
+        guard let product else {
+            return nil
+        }
+        let monthly = product.price / 12
+        return "\(monthly.formatted(product.priceFormatStyle))/mo"
     }
 }
 
 #Preview {
     PaywallView(storeKitManager: StoreKitManager())
+}
+
+struct CheckoutLockOverlay: View {
+    let message: String
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+
+            VStack(spacing: 14) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(theme.ink)
+
+                Text(message)
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(theme.ink)
+                    .multilineTextAlignment(.center)
+
+                Text("This can take a few seconds.")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(theme.muted)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .ignoresSafeArea()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(message) This can take a few seconds.")
+        .accessibilityAddTraits(.updatesFrequently)
+    }
 }

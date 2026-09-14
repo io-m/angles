@@ -597,6 +597,7 @@ struct OverlayProposalCard: View {
     let results: [ReframeResult]
     var recookingStyle: Style?
     @Binding var isPublic: Bool
+    var allowsRecook: Bool = true
     var onRecook: (Style) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -732,7 +733,9 @@ struct OverlayProposalCard: View {
                 stylePill(activeAppearance)
             }
 
-            recookButton(for: activeAppearance.style, ink: activeAppearance.ink)
+            if allowsRecook {
+                recookButton(for: activeAppearance.style, ink: activeAppearance.ink)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, ReframeCardMetrics.chromeInset)

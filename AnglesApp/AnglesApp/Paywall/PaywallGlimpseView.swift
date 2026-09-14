@@ -118,12 +118,6 @@ struct PaywallGlimpseView: View {
 
     private var frostedBackdrop: some View {
         ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-
-            theme.surface
-                .opacity(colorScheme == .dark ? 0.62 : 0.50)
-
             RadialGradient(
                 colors: [
                     successMint.opacity(colorScheme == .dark ? 0.10 : 0.08),

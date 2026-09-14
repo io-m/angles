@@ -40,6 +40,8 @@ private enum LeaveKind {
 struct ComposeSheetView: View {
     @Bindable var viewModel: HomeViewModel
     var isActive: Bool = true
+    var isOnboardingTaste: Bool = false
+    var storeKitManager: StoreKitManager?
     var onClose: () -> Void = {}
     var onSave: (HomeCard) -> Void = { _ in }
 
@@ -78,6 +80,9 @@ struct ComposeSheetView: View {
             .onChange(of: isActive) { _, active in
                 if active {
                     composerFocused = viewModel.phase == .composing
+                    if isOnboardingTaste {
+                        storeKitManager?.clearError()
+                    }
                 } else {
                     composerFocused = false
                     resetAfterDismiss()
@@ -155,40 +160,126 @@ struct ComposeSheetView: View {
     }
 
     private var header: some View {
-        HStack {
-            Button(action: requestLeave) {
-                CircleIcon(
-                    systemName: "xmark",
-                    fill: theme.surface,
-                    symbol: theme.ink,
-                    weight: .semibold,
-                    hairline: theme.cardHairline
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close without saving")
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                headerLeadingControl
+                    .frame(height: 40)
 
-            Spacer(minLength: 8)
+                Spacer(minLength: 8)
 
-            HStack(spacing: 12) {
-                if hasStatement {
-                    Button("Start again") {
-                        showRestartAlert = true
+                HStack(spacing: 12) {
+                    if hasStatement, !isOnboardingTaste {
+                        Button("Start again") {
+                            showRestartAlert = true
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+                        .accessibilityHint("Wipes this session and starts a new thought")
                     }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(theme.ink)
-                    .accessibilityHint("Wipes this session and starts a new thought")
-                }
 
-                modelPickerButton
+                    modelPickerButton
+                }
+            }
+
+            if showsOnboardingRestore, (storeKitManager?.canOfferAppleRenew == true || hasOnboardingRestoreError) {
+                onboardingRestoreSection
             }
         }
         .padding(.horizontal, edgePad)
         .padding(.top, 6)
         .padding(.bottom, 10)
+        .animation(onboardingRestoreAnimation, value: storeKitManager?.errorMessage)
+        .animation(onboardingRestoreAnimation, value: storeKitManager?.canOfferAppleRenew)
+        .task(id: showsOnboardingRestore) {
+            guard showsOnboardingRestore else {
+                return
+            }
+            await storeKitManager?.probeSubscriptionOffer()
+        }
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.frame(in: .global).maxY
         } action: { headerStrip = $0 }
+    }
+
+    private var onboardingRestoreAnimation: Animation? {
+        reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86)
+    }
+
+    private var onboardingRestoreSwapTransition: AnyTransition {
+        .asymmetric(
+            insertion: .offset(y: 10).combined(with: .opacity),
+            removal: .offset(y: -8).combined(with: .opacity)
+        )
+    }
+
+    private var headerLeadingControl: some View {
+        Group {
+            if showsCloseButton {
+                Button(action: requestLeave) {
+                    CircleIcon(
+                        systemName: "xmark",
+                        fill: theme.surface,
+                        symbol: theme.ink,
+                        weight: .semibold,
+                        hairline: theme.cardHairline
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    isOnboardingTaste ? "Close and continue to unlock" : "Close without saving"
+                )
+            } else if showsOnboardingRestore, storeKitManager?.canOfferAppleRenew != true {
+                onboardingAccountLink
+            } else {
+                Color.clear
+                    .frame(width: 40, height: 40)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private var hasOnboardingRestoreError: Bool {
+        guard let errorMessage = storeKitManager?.errorMessage, !errorMessage.isEmpty else {
+            return false
+        }
+        return storeKitManager?.canOfferAppleRenew != true
+    }
+
+    private var onboardingRestoreSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if storeKitManager?.canOfferAppleRenew == true {
+                Text("We found your previous subscription.")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("We found your previous subscription.")
+
+                Button {
+                    guard let storeKitManager, !storeKitManager.isBusy else {
+                        return
+                    }
+                    composerFocused = false
+                    Task {
+                        await storeKitManager.offerAppleRenew()
+                    }
+                } label: {
+                    Text(storeKitManager?.isOpeningSubscriptions == true ? "Opening Apple…" : "Renew in App Store")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Color(uiColor: .link))
+                }
+                .buttonStyle(.plain)
+                .disabled(storeKitManager?.isBusy == true)
+                .accessibilityLabel("Renew subscription in the App Store")
+            } else if let errorMessage = storeKitManager?.errorMessage, !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(errorMessage)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .transition(onboardingRestoreSwapTransition)
     }
 
     private var modelPickerButton: some View {
@@ -372,6 +463,7 @@ struct ComposeSheetView: View {
                         results: cook.results,
                         recookingStyle: viewModel.recookingStyle,
                         isPublic: $viewModel.composeIsPublic,
+                        allowsRecook: !isOnboardingTaste,
                         onRecook: { style in
                             viewModel.recookStyle(style)
                         }
@@ -543,6 +635,14 @@ struct ComposeSheetView: View {
         )
     }
 
+    private var showsCloseButton: Bool {
+        !isOnboardingTaste || viewModel.isCookReady
+    }
+
+    private var showsOnboardingRestore: Bool {
+        isOnboardingTaste && isComposing && !hasStatement
+    }
+
     @ViewBuilder
     private var bottomChrome: some View {
         if viewModel.isComposerVisible {
@@ -615,6 +715,37 @@ struct ComposeSheetView: View {
             .background {
                 composerGlow
             }
+    }
+
+    private var onboardingAccountLink: some View {
+        let isRestoring = storeKitManager?.isRestoring == true
+        return Button {
+            guard let storeKitManager, !storeKitManager.isBusy else {
+                return
+            }
+            composerFocused = false
+            Task {
+                _ = await storeKitManager.restorePurchases()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                if isRestoring {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Color(uiColor: .link))
+                }
+                Text(isRestoring ? "Checking subscription…" : "Already have an account?")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color(uiColor: .link))
+                    .lineLimit(1)
+            }
+            .frame(height: 40)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(storeKitManager?.isBusy == true)
+        .accessibilityLabel("Restore purchases if you already subscribe")
+        .accessibilityAddTraits(.isLink)
     }
 
     private var composerGlow: some View {
@@ -724,6 +855,10 @@ struct ComposeSheetView: View {
     }
 
     private func handleCanvasTap() {
+        if isOnboardingTaste {
+            dismissKeyboard()
+            return
+        }
         if isComposing && !hasStatement {
             requestLeave()
         } else {
@@ -736,6 +871,9 @@ struct ComposeSheetView: View {
     }
 
     private func requestLeave() {
+        if isOnboardingTaste && !viewModel.isCookReady {
+            return
+        }
         if viewModel.isSaving {
             leaveKind = .busySaving
             showLeaveAlert = true

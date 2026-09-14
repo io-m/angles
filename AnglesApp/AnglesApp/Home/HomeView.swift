@@ -6,7 +6,7 @@ struct HomeView: View {
     let storeKitManager: StoreKitManager
     var glimpseCard: HomeCard? = nil
     var isGlimpseActive = false
-    var onResetOnboarding: (() -> Void)? = nil
+    var onLogOut: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeStore: ThemeStore
@@ -89,10 +89,13 @@ struct HomeView: View {
             .presentationBackground(theme.grey)
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView(storeKitManager: storeKitManager, onResetOnboarding: {
-                showSettings = false
-                onResetOnboarding?()
-            })
+            SettingsView(
+                storeKitManager: storeKitManager,
+                onLogOut: {
+                    showSettings = false
+                    onLogOut?()
+                }
+            )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.grey)
