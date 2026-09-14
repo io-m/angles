@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composeConversation, DecisionParseError, parseDecision } from "./decision.js";
+import { composeConversation, DecisionParseError, isGenericBounceContinue, looksLikeThought, parseDecision } from "./decision.js";
 
 function raw(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -144,5 +144,45 @@ describe("composeConversation", () => {
     expect(composed).toContain("Then you asked: Behind whom?");
     expect(composed).toContain("They answered: My old classmates.");
     expect(composed).toContain("do not ask again");
+  });
+});
+
+describe("looksLikeThought", () => {
+  it("treats a family irritation sentence as a thought", () => {
+    expect(
+      looksLikeThought(
+        "I do not have a willpower to take a walk with my wife and small annoying son",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects lone gestures even when they repeat past the word floor", () => {
+    expect(looksLikeThought("ugh")).toBe(false);
+    expect(looksLikeThought("test")).toBe(false);
+    expect(looksLikeThought("hi")).toBe(false);
+    expect(looksLikeThought("ugh ugh ugh ugh ugh ugh ugh ugh")).toBe(false);
+  });
+});
+
+describe("isGenericBounceContinue", () => {
+  it("matches the dead-end bounce from a model that pretended not to understand", () => {
+    expect(isGenericBounceContinue("I didn't catch a clear thought there. Try again?")).toBe(
+      true,
+    );
+    expect(isGenericBounceContinue("I did not catch a real thought. Please rephrase.")).toBe(
+      true,
+    );
+    expect(isGenericBounceContinue("I don't understand.")).toBe(true);
+  });
+
+  it("lets a continue through when it names the missing fact", () => {
+    expect(
+      isGenericBounceContinue("You mentioned 'the thing yesterday' — what actually happened?"),
+    ).toBe(false);
+    expect(
+      isGenericBounceContinue(
+        "You said the interview went badly — what part are you still replaying?",
+      ),
+    ).toBe(false);
   });
 });

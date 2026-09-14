@@ -23,12 +23,14 @@ import {
 } from "../types/index.js";
 import { generateJson, LlmError, timeoutMsUntil, type LlmModelId } from "./llmClient.js";
 import {
+  DECISION_BOUNCE_REPAIR,
   DECISION_FORCE_READY,
   DECISION_PROMPT,
   DECISION_REPAIR_PROMPT,
   SAFETY_FALLBACK_MESSAGE,
   THOUGHT_HARD_MAX_CHARS,
   THOUGHT_HARD_MAX_WORDS,
+  THOUGHT_MIN_WORDS,
 } from "./prompts.js";
 import { slugify, titleCase, normalizeTagSlugs } from "./slugs.js";
 
@@ -108,6 +110,53 @@ export function wordCount(text: string): number {
     .trim()
     .split(/\s+/)
     .filter((part) => part.length > 0).length;
+}
+
+const EMPTY_GESTURE =
+  /^(?:ugh+|ok(?:ay)?|hi+|hey+|hello+|test+|asdf+|lol+|lmao+|hmm+|idk|yes|no|k)(?:[.!?…,\s]+(?:ugh+|ok(?:ay)?|hi+|hey+|hello+|test+|asdf+|lol+|lmao+|hmm+|idk|yes|no|k))*[.!?…\s]*$/i;
+
+/** First-turn input that already names a situation, not a lone gesture. */
+export function looksLikeThought(text: string): boolean {
+  const trimmed = text.trim();
+  if (wordCount(trimmed) < THOUGHT_MIN_WORDS) {
+    return false;
+  }
+  return !EMPTY_GESTURE.test(trimmed);
+}
+
+/** Dead-end continue copy: "didn't catch a thought" / "try again" / "rephrase". */
+export function isGenericBounceContinue(message: string): boolean {
+  const lower = message.trim().toLowerCase();
+  if (lower.length === 0) {
+    return false;
+  }
+
+  if (
+    /(didn['’]?t|did not|couldn['’]?t|could not)\s+(catch|figure(?:\s+out)?).{0,80}thought/.test(
+      lower,
+    ) ||
+    /not\s+(a\s+)?(clear|real|actual)\s+thought/.test(lower) ||
+    /no\s+(clear|real|actual)\s+thought/.test(lower) ||
+    /\brephrase\b/.test(lower) ||
+    /\btry again\b/.test(lower)
+  ) {
+    return true;
+  }
+
+  return (
+    /\b(i don['’]?t understand|i do not understand)\b/.test(lower) &&
+    wordCount(message) <= 12
+  );
+}
+
+function isRejectedBounceContinue(decision: Decision, input: RunDecisionInput): boolean {
+  return (
+    decision.kind === "continue" &&
+    decision.safety === "none" &&
+    input.followUps.length === 0 &&
+    looksLikeThought(input.text) &&
+    isGenericBounceContinue(decision.message)
+  );
 }
 
 export function composeConversation(text: string, followUps: FollowUpAnswer[]): string {
@@ -345,8 +394,16 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
     ...callOptions,
   });
 
+  let bounceRejected = false;
   try {
-    return refuseUnsafeReframe(parseDecision(first, { requireReady: input.forceReady }));
+    const decision = refuseUnsafeReframe(
+      parseDecision(first, { requireReady: input.forceReady }),
+    );
+    if (isRejectedBounceContinue(decision, input)) {
+      bounceRejected = true;
+      throw new DecisionParseError("continue bounced a thought that was already clear");
+    }
+    return decision;
   } catch (error) {
     if (!(error instanceof DecisionParseError) && !(error instanceof SyntaxError)) {
       throw error;
@@ -355,7 +412,9 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
 
   const repaired = await generateJson({
     text: `${conversation}\n\n---\nYour previous reply, which was rejected:\n${first.slice(0, MAX_ECHOED_OUTPUT)}`,
-    systemPrompt: `${systemPrompt}\n\n${DECISION_REPAIR_PROMPT}`,
+    systemPrompt: bounceRejected
+      ? `${systemPrompt}\n\n${DECISION_REPAIR_PROMPT}\n\n${DECISION_BOUNCE_REPAIR}`
+      : `${systemPrompt}\n\n${DECISION_REPAIR_PROMPT}`,
     model: input.model,
     abortSignal: input.abortSignal,
     ...(input.deadlineAt !== undefined ? { timeoutMs: timeoutMsUntil(input.deadlineAt) } : {}),

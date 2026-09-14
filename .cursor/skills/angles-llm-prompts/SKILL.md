@@ -14,6 +14,7 @@ The one call that decides `continue` vs `ready`, cleans the thought into card co
 Load-bearing rules, do not weaken them casually:
 
 - `ready` is the default. Heavy is not the same as unclear: grief, loss, self-hatred and hopelessness get cooked, with the wrong styles skipped.
+- If you can name the situation in one clause, cook it. Broken English, typos, rudeness, and irritation at family are thoughts. Never bounce with "I didn't catch a thought" / "try again".
 - Safety is only suicide, self-harm, harm to others, or abuse. Only those mention a crisis line, and they never get a reframe.
 - Skip reasons are written as user-facing sentences: a recook of a skipped style returns that reason verbatim.
 - Worked examples at the bottom of the decide section carry a lot of weight on small models. Test any edit against them.

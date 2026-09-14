@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { STYLE_BATCH_PROMPT, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
+import { DECISION_PROMPT, STYLE_BATCH_PROMPT, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
 import { CATEGORIES, STYLES, type Style } from "./types/index.js";
 
 vi.mock("./lib/llmClient.js", async (importOriginal) => {
@@ -193,6 +193,12 @@ describe("SYSTEM_PROMPTS", () => {
   it("defines a batched style prompt", () => {
     expect(STYLE_BATCH_PROMPT).toContain("Each JSON field is that style only");
   });
+
+  it("cooks a named situation instead of bouncing it as nonsense", () => {
+    expect(DECISION_PROMPT).toContain("small annoying son");
+    expect(DECISION_PROMPT).toContain("If you can name the situation in one clause");
+    expect(DECISION_PROMPT).not.toContain("invite them to try again");
+  });
 });
 
 describe("GET /health", () => {
@@ -244,6 +250,54 @@ describe("POST /reframe", () => {
       options: ["A question I fumbled", "How I came across"],
       safety: "none",
     });
+    expect(generateReframe).not.toHaveBeenCalled();
+  });
+
+  it("repairs a generic bounce continue on a thought that was already clear", async () => {
+    stubDecision(
+      continueDecision({
+        message: "I didn't catch a clear thought there. Try again?",
+        options: [],
+      }),
+      readyDecision({
+        thought_en:
+          "I don't have the willpower to take a walk with my wife and small annoying son.",
+        category: "family",
+        tags: ["willpower", "walk", "parenting"],
+        emotions: ["overwhelm"],
+        timeframe: "ongoing",
+      }),
+    );
+
+    const response = await post({
+      text: "I do not have a willpower to take a walk with my wife and small annoying son",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await jsonOf(response)) as ReadyBody;
+    expect(body.kind).toBe("ready");
+    expect(body.meta.category).toBe("family");
+    expect(body.thought).toContain("annoying son");
+    expect(generateJson).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(generateJson).mock.calls[1]?.[0].systemPrompt).toContain(
+      "already names a situation",
+    );
+  });
+
+  it("keeps a continue that names the missing fact", async () => {
+    stubDecision(
+      continueDecision({
+        message: "You mentioned 'the thing yesterday' — what actually happened?",
+        options: ["My boss called me out"],
+      }),
+    );
+
+    const body = (await jsonOf(
+      await post({ text: "everything is fine i guess but the thing yesterday" }),
+    )) as ContinueBody;
+    expect(body.kind).toBe("continue");
+    expect(body.message).toContain("the thing yesterday");
+    expect(generateJson).toHaveBeenCalledTimes(1);
     expect(generateReframe).not.toHaveBeenCalled();
   });
 
