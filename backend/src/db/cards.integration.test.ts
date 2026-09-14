@@ -111,6 +111,14 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(fetched?.thought).toBe(baseInput.thought);
   });
 
+  it("persists isPublic when create sets it", async () => {
+    const stored = await createCard({ ...baseInput, isPublic: true });
+    expect(stored.isPublic).toBe(true);
+
+    const fetched = await getCard(stored.id);
+    expect(fetched?.isPublic).toBe(true);
+  });
+
   it("ignores client matching and re-derives the intensity band", async () => {
     const stored = await createCard({
       ...baseInput,

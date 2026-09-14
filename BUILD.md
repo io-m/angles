@@ -31,7 +31,7 @@ Loading and error are **states on Results**, not their own screens.
 | --- | --- | --- | --- | --- | --- |
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Favorites strip (max 6) + mixed-style grid; answer-first flip; long-press Delete. |
 | 1b | Favorites | screen | done | `FavoritesView.swift`; `ProfileSubsetView.swift`; `ProfileView.swift` | Title opens a full favorites grid. Server-backed with the library. |
-| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `SampleCardCopy.swift` | Statement + kept questions; AI card with per-style recook; Start again. |
+| 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `ReframeCardView.swift`; `SampleCardCopy.swift` | Ready card header with JM avatar + Public/Private (Public default); Save sends `isPublic`. |
 | 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
 | 3 | Multi-style results | same screen as 2 | done | `ComposeSheetView.swift`; `ReframeCardView.swift` | Always all 4 styles. Answer-first carousels on home and overlay. |
 | 4 | Hook up fetching | feature | done | `ReframeService.swift`; `backend/src/routes/reframe.ts` | API contract exists. Overlay mocks on-device until a real LLM. |
@@ -72,10 +72,10 @@ Tappable Favorites title on Profile. Full grid of favorite cards (same heart/del
 One statement, then AI refine (not a chat transcript).
 
 - The API may answer with `continue`: its message plus up to 3 chips. Turns and the user's replies stay on screen as a chat, and the composer never leaves.
-- The chosen styles show in one answer-first carousel (AI sparkle avatar left, flippable card right). New answer sits at the bottom center. Loading and error live on this overlay.
+- The chosen styles show in one stacked card (AI sparkle avatar left of the card). The card header has the author initials top-left and a Public/Private control (Public default); Original stays trailing when the thought was not typed in English. New answer sits in the footer. Loading and error live on this overlay.
 - Each style has New answer (overlay only); recook requests that style from the API.
-- Start again (header) asks to confirm, then wipes the session and returns the composer. Overlay stays open.
-- Save (icon + label) sits where the composer was and publishes all 4. X discards.
+- Start again (header) asks to confirm, then wipes the session and returns the composer (and the Public default). Overlay stays open.
+- Save (icon + label) sits where the composer was and writes all 4 with the chosen privacy. X discards.
 
 ### 2a. Settings (appearance + accent)
 
@@ -125,7 +125,7 @@ Pins are gone, app and schema. A card is saved by hearting an angle, and the tho
 
 ### 5d. Owner card menu
 
-Long press on the owner's library cards. Menu: Delete (confirm), Make public / Make private (`isPublic`, default false), Language when a cleaned original exists (client toggle, no new translate). It lived on a top-trailing ⋯ button until 9c gave that slot to the heart. Public posts appear on other people’s Home, never the author’s.
+Long press on the owner's library cards. Menu: Delete (confirm), Make public / Make private (`isPublic`; omit on `POST /cards` still stores private). Compose Save defaults public with a toggle. Language when a cleaned original exists (client toggle, no new translate). It lived on a top-trailing ⋯ button until 9c gave that slot to the heart. Public posts appear on other people’s Home, never the author’s.
 
 ### 5e. Thought type + card height
 

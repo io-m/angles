@@ -364,6 +364,7 @@ struct ComposeSheetView: View {
                         thoughtOriginal: cook.thoughtOriginal,
                         results: cook.results,
                         recookingStyle: viewModel.recookingStyle,
+                        isPublic: $viewModel.composeIsPublic,
                         onRecook: { style in
                             viewModel.recookStyle(style)
                         }

@@ -58,6 +58,7 @@ export async function createCard(input: CreateCardInput): Promise<StoredCard> {
           skippedStyles: input.meta.skippedStyles,
           model: input.model,
           spotlightStyle: input.spotlightStyle,
+          ...(input.isPublic === undefined ? {} : { isPublic: input.isPublic }),
         })
         .returning({ id: cards.id });
 

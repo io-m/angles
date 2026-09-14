@@ -66,6 +66,7 @@ const createCardSchema = z
     meta: createMetaSchema,
     model: z.enum(LLM_MODEL_IDS),
     spotlightStyle: z.enum(STYLES),
+    isPublic: z.boolean().optional(),
   })
   .refine((body) => body.results.some((item) => item.style === body.spotlightStyle), {
     message: "spotlightStyle must be one of the results",

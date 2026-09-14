@@ -234,6 +234,8 @@ final class HomeViewModel {
     private(set) var cards: [HomeCard]
 
     var composeText = ""
+    /// Compose Save defaults public; Start again and a new overlay reset this.
+    var composeIsPublic = true
     private(set) var statement = ""
     private(set) var turns: [RefineTurn] = []
     private(set) var phase: RefinePhase = .composing
@@ -457,7 +459,8 @@ final class HomeViewModel {
                         results: cook.results,
                         meta: cook.meta,
                         model: cook.model.rawValue,
-                        spotlightStyle: spotlight
+                        spotlightStyle: spotlight,
+                        isPublic: composeIsPublic
                     )
                 )
                 guard !Task.isCancelled else {
@@ -1024,6 +1027,7 @@ final class HomeViewModel {
         recookNotice = nil
         saveError = nil
         isSaving = false
+        composeIsPublic = true
         phase = .composing
     }
 

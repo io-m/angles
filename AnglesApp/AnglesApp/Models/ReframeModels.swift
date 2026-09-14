@@ -453,6 +453,7 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
     let meta: ReframeMeta
     let model: String
     let spotlightStyle: Style
+    let isPublic: Bool
 
     private enum CodingKeys: String, CodingKey {
         case thought
@@ -461,6 +462,7 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
         case meta
         case model
         case spotlightStyle
+        case isPublic
     }
 
     func encode(to encoder: Encoder) throws {
@@ -471,6 +473,7 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
         try container.encode(meta, forKey: .meta)
         try container.encode(model, forKey: .model)
         try container.encode(spotlightStyle, forKey: .spotlightStyle)
+        try container.encode(isPublic, forKey: .isPublic)
     }
 }
 

@@ -158,6 +158,7 @@ export type CreateCardInput = {
   meta: Omit<ReframeMeta, "matching">;
   model: string;
   spotlightStyle: Style;
+  isPublic?: boolean;
 };
 
 export type CardListQuery = {

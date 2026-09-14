@@ -20,7 +20,7 @@ enum ReframeCardMetrics {
     static let favoriteChromeInset: CGFloat = 12
     /// Header + footer chrome reserved when sizing the strip scroll region.
     static let favoriteStripChromeHeight: CGFloat = 96
-    static let overlayMinimumHeight: CGFloat = 248
+    static let overlayMinimumHeight: CGFloat = 300
     static let thoughtFont: Font = .callout.weight(.regular)
     /// Flip-back thought: solo on the card, so a step up from stacked secondary copy.
     static let favoriteThoughtFont: Font = .body.weight(.medium)
@@ -36,6 +36,8 @@ enum ReframeCardMetrics {
     static let chipHitSize: CGFloat = 40
     static let lifeAreaBadgeMaxWidth: CGFloat = 148
     static let lifeAreaBadgeStripMaxWidth: CGFloat = 120
+    /// Favorite footer: heart vs flip chevron (modest — not layout-breaking).
+    static let favoriteHeartChevronSpacing: CGFloat = 8
 }
 
 struct ReframeCardView: View, Equatable {
@@ -324,31 +326,46 @@ struct ReframeCardView: View, Equatable {
 
     @ViewBuilder
     private func headerTrailingCluster(menuGlyphSize: CGFloat) -> some View {
-        HStack(spacing: 8) {
-            if let lifeArea = card.lifeAreaPresentation {
-                LifeAreaBadge(
-                    category: lifeArea.category,
-                    label: lifeAreaLabel(lifeArea),
-                    maxWidth: limitsFavoriteCopyHeight
-                        ? ReframeCardMetrics.lifeAreaBadgeStripMaxWidth
-                        : ReframeCardMetrics.lifeAreaBadgeMaxWidth
-                )
-            }
-
-            if showsMenu {
-                Menu {
-                    cardMenuItems
-                } label: {
-                    chromeIcon(
-                        "ellipsis",
-                        size: menuGlyphSize,
-                        color: theme.muted
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Card actions")
-            }
+        if showsMenu {
+            cardActionsTrigger(menuGlyphSize: menuGlyphSize)
+        } else if let lifeArea = card.lifeAreaPresentation {
+            LifeAreaBadge(
+                category: lifeArea.category,
+                label: lifeAreaLabel(lifeArea),
+                maxWidth: limitsFavoriteCopyHeight
+                    ? ReframeCardMetrics.lifeAreaBadgeStripMaxWidth
+                    : ReframeCardMetrics.lifeAreaBadgeMaxWidth
+            )
         }
+    }
+
+    /// Category + ⋯ stay visually tight; tap anywhere on the cluster for the same menu as long-press.
+    private func cardActionsTrigger(menuGlyphSize: CGFloat) -> some View {
+        Menu {
+            cardMenuItems
+        } label: {
+            HStack(spacing: 8) {
+                if let lifeArea = card.lifeAreaPresentation {
+                    LifeAreaBadge(
+                        category: lifeArea.category,
+                        label: lifeAreaLabel(lifeArea),
+                        maxWidth: limitsFavoriteCopyHeight
+                            ? ReframeCardMetrics.lifeAreaBadgeStripMaxWidth
+                            : ReframeCardMetrics.lifeAreaBadgeMaxWidth
+                    )
+                    .accessibilityHidden(true)
+                }
+
+                Image(systemName: "ellipsis")
+                    .font(.system(size: menuGlyphSize, weight: .semibold))
+                    .foregroundStyle(theme.muted)
+            }
+            .frame(minHeight: ReframeCardMetrics.controlSize, alignment: .trailing)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Card actions")
     }
 
     private func lifeAreaLabel(_ presentation: (category: ThoughtCategory, label: String)) -> String {
@@ -379,19 +396,21 @@ struct ReframeCardView: View, Equatable {
 
             Spacer(minLength: 4)
 
-            if let style = activeStyle {
-                favoriteButton(for: style)
-            }
+            HStack(spacing: ReframeCardMetrics.favoriteHeartChevronSpacing) {
+                if let style = activeStyle {
+                    favoriteButton(for: style)
+                }
 
-            Button(action: flipFavorite) {
-                chromeIcon(
-                    isFavoriteFlipped ? "chevron.left" : "chevron.right",
-                    size: 16,
-                    color: theme.muted
-                )
+                Button(action: flipFavorite) {
+                    chromeIcon(
+                        isFavoriteFlipped ? "chevron.left" : "chevron.right",
+                        size: 16,
+                        color: theme.muted
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isFavoriteFlipped ? "Show selected answer" : "Show thought")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isFavoriteFlipped ? "Show selected answer" : "Show thought")
         }
         .padding(.horizontal, ReframeCardMetrics.favoriteChromeInset)
         .padding(.bottom, ReframeCardMetrics.favoriteChromeInset)
@@ -458,12 +477,7 @@ struct ReframeCardView: View, Equatable {
     @ViewBuilder
     private var cardMenuItems: some View {
         if hasOriginal {
-            Button {
-                showingOriginal.toggle()
-                if presentation == .favoriteAngles {
-                    showFavoriteThought()
-                }
-            } label: {
+            Button(action: toggleOriginalLanguage) {
                 Label(
                     showingOriginal ? "Show English" : "Show original",
                     systemImage: showingOriginal ? "character.bubble.fill" : "character.bubble"
@@ -506,6 +520,13 @@ struct ReframeCardView: View, Equatable {
                 .foregroundStyle(Color(uiColor: .systemRed))
         }
         .tint(Color(uiColor: .systemRed))
+    }
+
+    private func toggleOriginalLanguage() {
+        showingOriginal.toggle()
+        if presentation == .favoriteAngles {
+            showFavoriteThought()
+        }
     }
 
     private var accessibilityLabel: String {
@@ -575,6 +596,7 @@ struct OverlayProposalCard: View {
     var thoughtOriginal: String?
     let results: [ReframeResult]
     var recookingStyle: Style?
+    @Binding var isPublic: Bool
     var onRecook: (Style) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -582,6 +604,7 @@ struct OverlayProposalCard: View {
     @State private var showingOriginal = false
     @State private var selectedStyle: Style?
     @State private var recookHaptic = 0
+    @State private var privacyHaptic = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var cardShape: RoundedRectangle {
@@ -614,16 +637,7 @@ struct OverlayProposalCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if hasOriginal {
-                HStack {
-                    Spacer(minLength: 0)
-                    OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
-                        showingOriginal.toggle()
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
-            }
+            overlayHeader
 
             ReframeCopyStack(
                 thought: displayedThought,
@@ -651,12 +665,61 @@ struct OverlayProposalCard: View {
             }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: recookHaptic)
+        .sensoryFeedback(.selection, trigger: privacyHaptic)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
     }
 
-    private var overlayFooter: some View {
+    private var overlayHeader: some View {
         HStack(spacing: 10) {
+            InitialsAvatar(
+                letters: UserInitials.letters,
+                side: ReframeCardMetrics.avatarSize,
+                fill: theme.ink,
+                symbol: theme.paper
+            )
+            .accessibilityHidden(true)
+
+            Spacer(minLength: 4)
+
+            overlayPrivacyToggle
+
+            if hasOriginal {
+                OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
+                    showingOriginal.toggle()
+                }
+            }
+        }
+        .padding(.horizontal, ReframeCardMetrics.chromeInset)
+        .padding(.top, ReframeCardMetrics.chromeInset)
+    }
+
+    private var overlayPrivacyToggle: some View {
+        Button {
+            privacyHaptic += 1
+            isPublic.toggle()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: isPublic ? "globe" : "lock.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(isPublic ? "Public" : "Private")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(theme.ink)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 32)
+            .background(theme.ink.opacity(0.10), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isPublic ? "Public" : "Private")
+        .accessibilityHint(isPublic ? "Makes this card private" : "Makes this card public")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var overlayFooter: some View {
+        VStack(alignment: .leading, spacing: 12) {
             if results.count > 1 {
                 StyleChipRow(
                     styles: results.map(\.style),
@@ -669,13 +732,12 @@ struct OverlayProposalCard: View {
                 stylePill(activeAppearance)
             }
 
-            Spacer(minLength: 6)
-
             recookButton(for: activeAppearance.style, ink: activeAppearance.ink)
         }
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, ReframeCardMetrics.chromeInset)
         .padding(.top, 12)
-        .padding(.bottom, 12)
+        .padding(.bottom, ReframeCardMetrics.chromeInset)
     }
 
     private func recookButton(for style: Style, ink: Color) -> some View {
@@ -684,22 +746,22 @@ struct OverlayProposalCard: View {
             recookHaptic += 1
             onRecook(style)
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 if isRecooking {
                     ProgressView()
-                        .controlSize(.mini)
+                        .controlSize(.small)
                         .tint(ink)
                 } else {
                     Image(systemName: "sparkle")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                 }
                 Text(isRecooking ? "New \(style.displayName.lowercased()) angle…" : "New answer")
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
             }
             .foregroundStyle(ink)
-            .padding(.horizontal, 8)
-            .frame(minHeight: 40)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
             .background(ink.opacity(0.12), in: Capsule())
             .contentShape(Capsule())
         }

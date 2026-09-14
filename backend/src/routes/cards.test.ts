@@ -108,6 +108,26 @@ describe("POST /cards", () => {
     expect(createCard).toHaveBeenCalledTimes(1);
   });
 
+  it("forwards isPublic on create", async () => {
+    vi.mocked(createCard).mockResolvedValue(storedCard({ isPublic: true }));
+
+    const response = await app.request(
+      jsonRequest("/cards", "POST", { ...cookBody, isPublic: true }),
+    );
+    expect(response.status).toBe(201);
+    const payload = vi.mocked(createCard).mock.calls[0]?.[0] as CreateCardInput;
+    expect(payload.isPublic).toBe(true);
+  });
+
+  it("omits isPublic when the client does not send it", async () => {
+    vi.mocked(createCard).mockResolvedValue(storedCard());
+
+    const response = await app.request(jsonRequest("/cards", "POST", cookBody));
+    expect(response.status).toBe(201);
+    const payload = vi.mocked(createCard).mock.calls[0]?.[0] as CreateCardInput;
+    expect(payload.isPublic).toBeUndefined();
+  });
+
   it("strips client matching before the db seam", async () => {
     vi.mocked(createCard).mockResolvedValue(storedCard());
 
