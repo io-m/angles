@@ -44,12 +44,13 @@ struct HomeCardStrip: View, Equatable {
 
     private var stripOuterPadding: EdgeInsets {
         let halo = cardHaloPadding
-        let horizontal = max(16, halo)
         switch presentation {
         case .favoriteAngles:
-            // Title sits above: no top inset (shadow paints upward with scrollClipDisabled).
-            return EdgeInsets(top: 0, leading: horizontal, bottom: 8, trailing: horizontal)
+            // Match Profile section inset; card halos paint outside via scrollClipDisabled.
+            let edge = HeaderCollapse.horizontalPadding
+            return EdgeInsets(top: 0, leading: edge, bottom: 8, trailing: edge)
         case .library:
+            let horizontal = max(HeaderCollapse.horizontalPadding, halo)
             return EdgeInsets(top: halo, leading: horizontal, bottom: halo, trailing: horizontal)
         }
     }

@@ -211,19 +211,22 @@ struct ReframeCardView: View, Equatable {
                 font: ReframeCardMetrics.answerFont,
                 foreground: activeAppearance.responseInk
             )
+            .background {
+                activeAppearance.washFill(over: theme.surface)
+            }
         } back: {
             favoriteFace(
                 copy: displayedThought,
                 font: ReframeCardMetrics.favoriteThoughtFont,
                 foreground: theme.sub
             )
+            .background {
+                theme.surface
+            }
         }
         .frame(maxWidth: .infinity)
         .frame(minHeight: favoriteCardMinHeight)
         .frame(maxHeight: limitsFavoriteCopyHeight ? favoriteCardMaxHeight : nil)
-        .background {
-            activeAppearance.washFill(over: theme.surface)
-        }
         .clipShape(cardShape)
         .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
         .accessibilityHint(isFavoriteFlipped ? "Shows the selected answer" : "Shows the thought")
@@ -472,9 +475,11 @@ struct ReframeCardView: View, Equatable {
         case .feed:
             EmptyView()
         case .savedFromFeed:
-            Button("Remove from board", systemImage: "rectangle.badge.minus") {
-                onRemoveFromBoard()
-            }
+            cardDestructiveMenuButton(
+                "Remove from board",
+                systemImage: "rectangle.badge.minus",
+                action: onRemoveFromBoard
+            )
         case .owner:
             Button {
                 onSetPublic(!card.isPublic)
@@ -485,10 +490,22 @@ struct ReframeCardView: View, Equatable {
                 )
             }
 
-            Button("Delete", systemImage: "trash", role: .destructive) {
+            cardDestructiveMenuButton("Delete", systemImage: "trash") {
                 showDeleteConfirm = true
             }
         }
+    }
+
+    private func cardDestructiveMenuButton(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: .destructive, action: action) {
+            Label(title, systemImage: systemImage)
+                .foregroundStyle(Color(uiColor: .systemRed))
+        }
+        .tint(Color(uiColor: .systemRed))
     }
 
     private var accessibilityLabel: String {
