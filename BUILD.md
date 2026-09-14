@@ -50,6 +50,9 @@ Loading and error are **states on Results**, not their own screens.
 | 7b | StoreKit sandbox | feature | done | `StoreKitManager.swift`; `PaywallView.swift`; `project.yml`; `Angles.storekit` | Angles Sandbox scheme has no StoreKit config; verified entitlements unlock; empty catalog shows Retry; DEBUG product/transaction logs. |
 | 7c | Taste-once routing | polish | done | `AnglesApp.swift`; `StoreKitManager.swift`; `ComposeSheetView.swift`; `PaywallView.swift`; `SettingsView.swift`; `HomeView.swift` | Launch waits for StoreKit entitlements; only live status, `currentEntitlements`, or a fresh verified purchase unlock Home; taste header link restores purchases; overlay is not dismissible until ready; paywall Restore purchases; Settings Log out is a local session and does not cancel Apple. |
 | 7d | Frost handoffs | polish | done | `AnglesApp.swift`; `PaywallGlimpseView.swift`; `PaywallView.swift`; `StoreKitManager.swift` | One covering frost; checkout glass overlay over the paywall; a single applyGate destination so launch/logout never flash Home; an expired subscription stays on the paywall with Renew. |
+| 7e | Membership paywall | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Celebration, three benefit rows, and annual-first checkout share one screen; monthly is a quiet row; no Continue-to-plans. |
+| 7f | Taste header + membership | polish | done | `ComposeSheetView.swift`; `PaywallView.swift`; `AnglesApp.swift` | Taste restore sits in the model-button row; no Close on taste; paywall hero is the saved card with type-led yearly price, or Renew-only when the subscription ended. |
+| 7g | Paywall positive capture | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Paper sells four angles as a 2x2 of style tiles; purchase module is spread commerce (44pt price, both plans, CTA); (i) holds library/Home, restore, legal. |
 | 9 | Public opt-in / community Home | screen | done | `HomeView.swift`; `feed.ts`; `schema.ts`; `CardsService.swift` | Public-others feed by Recent, category, and emotion; viewer pin/heart saves; `pnpm db:seed-community`. |
 | 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 | 9c | Style chips, flip chevron, no pins | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `APIClient.swift`; `feed.ts`; `cards.ts` | Chips replace the in-card pager; heart top-right, flip chevron bottom-right; pins gone; failed writes say so. |
@@ -235,6 +238,23 @@ Not a new screen. Hardens rows 6–7 so a returning subscriber is not sent throu
 
 Not a new screen. Taste, paywall, purchase, restore, and App Store renew share one AppRoot covering frost. Checkout uses an ultra-thin glass overlay above the still-visible paywall. A single `applyGate()` picks Home, paywall, or taste only after StoreKit is ready, with animations disabled, so launch and logout never flash Home. Incoming StoreKit transactions do not pulse unlock on then off. Successful Subscribe/restore/renew snap-removes the paywall under that glass, then dissolves it to Home. Close after a ready cook raises the plans overlay before compose dismisses.
 
+### 7e. Membership paywall
+
+Not a new screen. Folds the post-taste celebration and checkout into one `PaywallView`. First save plays the Lottie, then the checkmark settles and the three benefits, yearly tile, and sticky Continue fade in — there is no Continue-to-plans. Relaunch and expired skip Lottie (`Keep going.` / `Pick up where you left off.`). Yearly is the product (monthly equivalent plus billed-once line); monthly is a text row. Continue names the charge underneath. Paper canvas; mint is only the first-save eyebrow.
+
+### 7f. Taste header + membership
+
+Not a new screen. Taste restore copy shares the 40pt header row with the model button. Taste never shows Close; Save is the only way forward. After the Lottie, the paywall is the saved card, **Keep going.**, and yearly as type (`$3.33` / billed yearly). Monthly is a line under Continue. An ended subscription hides the plan chooser and makes **Renew in App Store** the only primary. Legal and Restore sit under the button.
+
+### 7g. Paywall positive capture
+
+Not a new screen. Polish on 7f. Earlier revisions scattered furniture (value lines, library deck, legal) onto the paper and forced a scroll. Current shape is one locked screen:
+
+- **No scroll.** Paper sells the product as a 2x2 of style tiles (wash, glyph, name, one-line benefit) under **"One thought. Four ways out."** plus one miss line. No membership card.
+- **Purchase module.** Commerce only, spread: 44pt morphing price, both plan rows (64pt), ink CTA. Spacing uses leftover sheet height.
+- **(i) sheet.** Private library, Home, Restore, Apple legal.
+- **Motion.** Celebration fades while the membership group rises 12pt as one unit; Reduce Motion unchanged.
+
 ## Postponed (do not start)
 
 | # | Item | Kind | Status | Why later |
@@ -252,6 +272,16 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-14 — Paywall light wash pulled to a midpoint; Confirm with Apple sits under the CTA; (i) sheet is titled rows with icons, restore, and membership legal.
+- 2026-09-14 — Paywall light mode: stronger style washes, style-ink tile edges, deeper canvas and sheet shadow so surfaces separate like dark.
+- 2026-09-14 — Paywall paper is a 2x2 of style tiles (why four angles exist); purchase module is spread commerce; (i) holds library/Home/legal.
+- 2026-09-14 — Paywall purchase module sells the miss and three opportunities; slogans off the paper; (i) is legal/restore only.
+- 2026-09-14 — Paywall is one unscrollable screen: compact first-save card, one headline, purchase module; (i) sheet holds value/legal/restore. Guest library no longer leaks onto the paywall.
+- 2026-09-14 — Paywall sells ownership and opportunity: library deck hero behind the lock, three value lines (four angles, private library, others' feed), both plan rows in an elevated module.
+- 2026-09-14 — Paywall hierarchy rebuild: paper content over an elevated purchase module, both plan rows always visible, morphing price hero, concrete three-state copy.
+- 2026-09-14 — Paywall positive capture: full-height membership composition, kept-card hero or style motif, price type in every state, winback primary Renew membership.
+- 2026-09-14 — Taste restore aligns with the model button; Close is gone on taste; paywall hero is the saved card with type-led yearly price, or Renew-only when the subscription ended.
+- 2026-09-14 — Membership paywall: celebration, three benefit rows, and annual-first checkout share one screen; monthly is a quiet row; no Continue-to-plans.
 - 2026-09-14 — Decision no longer ships "didn't catch a thought" continues on a named situation; family irritation and broken English cook, and a continue must name the missing fact.
 - 2026-09-14 — Only Apple’s live status, `currentEntitlements`, or a fresh verified purchase unlock Home; a leftover `Transaction.latest` receipt no longer sends Restore to Home or reports Subscribed in Settings.
 - 2026-09-14 — Home feed is hidden until the gate is Home; late StoreKit unlocks cannot yank paywall off without a user checkout.

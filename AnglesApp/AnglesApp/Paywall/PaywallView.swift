@@ -1,3 +1,4 @@
+import Lottie
 import StoreKit
 import SwiftUI
 
@@ -6,6 +7,15 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
     case monthly
 
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .annual:
+            return "Yearly"
+        case .monthly:
+            return "Monthly"
+        }
+    }
 
     var productID: String {
         switch self {
@@ -17,72 +27,69 @@ private enum PaywallPlan: String, CaseIterable, Identifiable {
     }
 }
 
+private enum PaywallRevealStage {
+    case celebrating
+    case membership
+}
+
 struct PaywallView: View {
     let storeKitManager: StoreKitManager
+    var showsCelebration = false
+    var savedCard: HomeCard? = nil
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accentPalette) private var accentPalette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var selectedPlan: PaywallPlan = .annual
+    @State private var stage: PaywallRevealStage
+    @State private var completionHandled: Bool
+    @State private var showsInfoSheet = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
+    init(
+        storeKitManager: StoreKitManager,
+        showsCelebration: Bool = false,
+        savedCard: HomeCard? = nil
+    ) {
+        self.storeKitManager = storeKitManager
+        self.showsCelebration = showsCelebration
+        self.savedCard = savedCard
+        _stage = State(initialValue: showsCelebration ? .celebrating : .membership)
+        _completionHandled = State(initialValue: !showsCelebration)
+    }
+
     var body: some View {
         ZStack {
-            theme.paper
-                .ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    logo
-                        .padding(.top, 34)
-                        .padding(.bottom, 24)
-
-                    VStack(spacing: 10) {
-                        Text("Unlock Angles.")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .tracking(-0.8)
-                            .foregroundStyle(theme.ink)
-                            .multilineTextAlignment(.center)
-
-                        Text("Unlimited perspectives for whenever your mind loops.")
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundStyle(theme.muted)
-                            .lineSpacing(3)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
+            AnglesCanvasBackground()
+                .overlay {
+                    if !theme.isDark {
+                        LinearGradient(
+                            colors: [
+                                Color.clear,
+                                Color(red: 0xE8 / 255, green: 0xE4 / 255, blue: 0xDC / 255).opacity(0.40)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
                     }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 30)
-
-                    VStack(spacing: 12) {
-                        planCard(.annual)
-                        planCard(.monthly)
-                    }
-                    .padding(.horizontal, 20)
-
-                    purchaseButton
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-
-                    restoreSection
-                        .padding(.top, 14)
-
-                    legalFooter
-                        .padding(.horizontal, 28)
-                        .padding(.top, 22)
-                        .padding(.bottom, 26)
                 }
-                .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity)
-                .animation(restoreFeedbackAnimation, value: storeKitManager.canOfferAppleRenew)
-                .animation(restoreFeedbackAnimation, value: storeKitManager.errorMessage)
+
+            if showsCelebratingHero {
+                celebrationStage
+                    .transition(.opacity)
+            } else {
+                membershipStage
+                    .transition(membershipTransition)
             }
-            .scrollIndicators(.hidden)
-            .allowsHitTesting(!storeKitManager.isBusy)
-            .accessibilityHidden(storeKitManager.isBusy)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tint(theme.ink)
+        .task {
+            await runCelebrationWatchdog()
+        }
         .task {
             await storeKitManager.probeSubscriptionOffer()
         }
@@ -91,119 +98,368 @@ struct PaywallView: View {
                 await storeKitManager.loadProducts()
             }
         }
+        .accessibilityElement(children: .contain)
     }
 
-    private var logo: some View {
-        ZStack {
-            Circle()
-                .fill(accentPalette.accent.opacity(colorScheme == .dark ? 0.22 : 0.14))
-                .frame(width: 104, height: 104)
-                .blur(radius: 24)
+    private var showsCelebratingHero: Bool {
+        showsCelebration && stage == .celebrating
+    }
 
-            Circle()
-                .fill(theme.surface)
-                .frame(width: 76, height: 76)
-                .overlay {
-                    Circle().strokeBorder(theme.cardHairline, lineWidth: 1)
+    /// Act 2 arrives as one group: a quiet rise under the celebration fade. No stagger.
+    private var membershipTransition: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 12))
+    }
+
+    private var offersRenew: Bool {
+        storeKitManager.canOfferAppleRenew
+    }
+
+    private var celebrationStage: some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 0)
+
+            ZStack {
+                if !reduceMotion {
+                    PaywallHeroWash(diameter: 280)
                 }
-                .shadow(color: theme.shadowLift, radius: 16, y: 5)
 
-            Image(systemName: "sparkle")
-                .font(.system(size: 31, weight: .semibold))
+                Group {
+                    if reduceMotion {
+                        finalCheckmark
+                    } else {
+                        playingCheckmark
+                    }
+                }
+                .frame(width: 220, height: 220)
+            }
+
+            Text("Saved privately")
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(theme.ink)
+
+            Spacer(minLength: 0)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Angles")
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Saved privately")
     }
 
-    private func planCard(_ plan: PaywallPlan) -> some View {
-        let selected = selectedPlan == plan
+    /// One locked screen: four-angle specimen on paper, commerce spread in the floor.
+    /// Furniture lives behind the (i) sheet so this never scrolls.
+    private var membershipStage: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer(minLength: 0)
+                infoButton
+            }
+            .padding(.horizontal, 8)
 
-        return Button {
-            guard !storeKitManager.isBusy else {
-                return
+            VStack(spacing: 16) {
+                Spacer(minLength: 8)
+
+                Text("One thought. Four ways out.")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .tracking(-0.6)
+                    .foregroundStyle(theme.ink)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+
+                PaywallAngleGrid()
+
+                Text("Without this, the next thought has nowhere to go.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(theme.muted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 4)
+
+                Spacer(minLength: 8)
             }
-            UISelectionFeedbackGenerator().selectionChanged()
-            storeKitManager.clearError()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-                selectedPlan = plan
-            }
+            .padding(.horizontal, 20)
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .animation(restoreFeedbackAnimation, value: storeKitManager.canOfferAppleRenew)
+        .animation(restoreFeedbackAnimation, value: storeKitManager.errorMessage)
+        .animation(planSwitchAnimation, value: selectedPlan)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            purchaseModule
+        }
+        .sheet(isPresented: $showsInfoSheet) {
+            paywallInfoSheet
+        }
+        .allowsHitTesting(!storeKitManager.isBusy || showsInfoSheet)
+        .accessibilityHidden(storeKitManager.isBusy && !showsInfoSheet)
+    }
+
+    private var infoButton: some View {
+        Button {
+            showsInfoSheet = true
         } label: {
-            HStack(alignment: .top, spacing: 14) {
-                radio(isSelected: selected)
-                    .padding(.top, plan == .annual ? 4 : 2)
-
-                VStack(alignment: .leading, spacing: 7) {
-                    if plan == .annual {
-                        Text("BEST VALUE")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(0.7)
-                            .foregroundStyle(theme.ink)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(accentPalette.accent.opacity(0.22), in: Capsule())
-                    }
-
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(plan == .annual ? "Annual" : "Monthly")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(theme.ink)
-
-                        Spacer(minLength: 8)
-
-                        Text(priceLine(for: plan))
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(theme.ink)
-                    }
-
-                    if plan == .annual, let monthly = monthlyEquivalent(for: storeKitManager.annualProduct) {
-                        Text(monthly)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(theme.muted)
-                    }
-
-                    Text(billingCopy(for: plan))
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(theme.muted)
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                selected ? theme.surface : theme.grey.opacity(0.72),
-                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(
-                        selected ? theme.ink.opacity(0.72) : theme.cardHairline,
-                        lineWidth: selected ? 1.5 : 1
-                    )
-            }
-            .shadow(color: selected ? theme.shadowLift : .clear, radius: 14, y: 4)
-            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            Image(systemName: "info.circle")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(theme.muted)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(plan == .annual ? "Annual plan" : "Monthly plan")
-        .accessibilityValue(selected ? "Selected, \(priceLine(for: plan))" : priceLine(for: plan))
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityLabel("What’s included")
     }
 
-    private func radio(isSelected: Bool) -> some View {
-        Circle()
-            .strokeBorder(isSelected ? theme.ink : theme.faint, lineWidth: 1.5)
-            .frame(width: 22, height: 22)
-            .overlay {
-                if isSelected {
-                    Circle()
-                        .fill(theme.ink)
-                        .frame(width: 12, height: 12)
-                        .transition(.scale.combined(with: .opacity))
+    private var paywallInfoSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("What’s included")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .tracking(-0.5)
+                            .foregroundStyle(theme.ink)
+
+                        Text("Membership keeps the practice going after the taste.")
+                            .font(.system(size: 15, weight: .regular))
+                            .foregroundStyle(theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    VStack(spacing: 12) {
+                        infoIncludedRow(
+                            icon: "arrow.triangle.2.circlepath",
+                            title: "Keep cooking",
+                            detail: "The next thought gets four angles too. This wasn’t a one-time trick."
+                        )
+                        infoIncludedRow(
+                            icon: "house.fill",
+                            title: "Home",
+                            detail: "See how others turned it around. You’re not the only one."
+                        )
+                    }
+
+                    if !offersRenew {
+                        restoreButton
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Membership")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(theme.sub)
+                            .textCase(.uppercase)
+                            .tracking(0.6)
+
+                        legalFooter
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
+            }
+            .background(AnglesCanvasBackground())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        showsInfoSheet = false
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(theme.ink)
                 }
             }
-            .accessibilityHidden(true)
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func infoIncludedRow(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(theme.ink)
+                .frame(width: 40, height: 40)
+                .background(theme.ink.opacity(theme.isDark ? 0.10 : 0.06), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(theme.ink)
+
+                Text(detail)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .background(theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(theme.isDark ? theme.cardHairline : Color.black.opacity(0.06), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(detail)")
+    }
+
+    private var priceType: some View {
+        VStack(spacing: 6) {
+            Text(heroPrice)
+                .font(.system(size: 44, weight: .bold, design: .rounded))
+                .tracking(-1.2)
+                .foregroundStyle(theme.ink)
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            Text(heroPriceCaption)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(theme.muted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(heroPrice), \(heroPriceCaption)")
+    }
+
+    /// The floor of the screen: one elevated sheet holding the price, both plans, and the
+    /// single action. Surface over paper is what separates commerce from content — the
+    /// dark-mode fix.
+    private var purchaseModule: some View {
+        VStack(spacing: 22) {
+            if let errorMessage = storeKitManager.errorMessage, !offersRenew {
+                Text(errorMessage)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(theme.ink)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityLabel(errorMessage)
+            }
+
+            priceType
+
+            planRows
+
+            purchaseButton
+
+            if offersRenew {
+                Text("Confirm with Apple. It takes a moment.")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(theme.muted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 26)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .background {
+            moduleBackground
+        }
+        .animation(planSwitchAnimation, value: selectedPlan)
+        .animation(restoreFeedbackAnimation, value: storeKitManager.canOfferAppleRenew)
+    }
+
+    private var moduleBackground: some View {
+        UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous)
+            .fill(theme.surface)
+            .overlay {
+                UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous)
+                    .strokeBorder(moduleEdge, lineWidth: 1)
+            }
+            .shadow(color: moduleShadow, radius: theme.isDark ? 18 : 20, y: theme.isDark ? -6 : -7)
+            .ignoresSafeArea(edges: .bottom)
+    }
+
+    /// Light needs a real sheet edge; dark already has surface-on-paper contrast.
+    private var moduleEdge: Color {
+        theme.isDark ? theme.cardHairline : Color.black.opacity(0.06)
+    }
+
+    private var moduleShadow: Color {
+        theme.isDark ? theme.shadowLift : Color.black.opacity(0.08)
+    }
+
+    /// Both plans, always visible. Yearly leads and is pre-selected; monthly stands as an
+    /// equal row — nothing is hidden behind a text link.
+    private var planRows: some View {
+        VStack(spacing: 12) {
+            planRow(.annual)
+            planRow(.monthly)
+        }
+    }
+
+    private func planRow(_ plan: PaywallPlan) -> some View {
+        let isSelected = selectedPlan == plan
+        let rowShape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
+        return Button {
+            selectPlan(plan)
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(plan.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.ink)
+
+                    Text(planDetail(plan))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(theme.muted)
+                }
+
+                Spacer(minLength: 12)
+
+                Text(planPrice(plan))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.ink)
+                    .contentTransition(.numericText())
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(isSelected ? theme.ink : theme.faint)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 64)
+            .background {
+                rowShape.fill(theme.ink.opacity(isSelected ? 0.05 : 0))
+            }
+            .overlay {
+                rowShape.strokeBorder(
+                    isSelected ? theme.ink : (theme.isDark ? theme.cardHairline : Color.black.opacity(0.06)),
+                    lineWidth: isSelected ? 1.5 : 1
+                )
+            }
+            .contentShape(rowShape)
+        }
+        .buttonStyle(.plain)
+        .disabled(storeKitManager.isBusy)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(plan.title), \(planPrice(plan))")
+        .accessibilityValue(planDetail(plan))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityHint(isSelected ? "" : "Double-tap to select")
+    }
+
+    private func planPrice(_ plan: PaywallPlan) -> String {
+        let product = plan == .annual ? storeKitManager.annualProduct : storeKitManager.monthlyProduct
+        if let product {
+            return product.displayPrice
+        }
+        return "—"
+    }
+
+    private func planDetail(_ plan: PaywallPlan) -> String {
+        switch plan {
+        case .annual:
+            if let monthly = monthlyEquivalentAmount(for: storeKitManager.annualProduct) {
+                return "\(monthly) a month · billed yearly"
+            }
+            return "Billed yearly"
+        case .monthly:
+            return "Billed monthly"
+        }
     }
 
     private var purchaseButton: some View {
@@ -228,79 +484,18 @@ struct PaywallView: View {
             .background(theme.ink, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .shadow(color: theme.shadowLift, radius: 14, y: 5)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PaywallPressStyle())
         .disabled(storeKitManager.isBusy)
-        .opacity(storeKitManager.isBusy && !storeKitManager.isPurchasing ? 0.5 : 1)
-        .accessibilityLabel(primaryButtonTitle)
+        .opacity(storeKitManager.isBusy && !storeKitManager.isPurchasing && !storeKitManager.isOpeningSubscriptions ? 0.5 : 1)
+        .accessibilityLabel(primaryButtonAccessibilityLabel)
     }
 
     private var restoreFeedbackAnimation: Animation? {
         reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86)
     }
 
-    private var restoreSection: some View {
-        VStack(spacing: 6) {
-            if storeKitManager.canOfferAppleRenew {
-                endedSubscriptionOffer
-                    .transition(restoreSwapTransition)
-            } else {
-                VStack(spacing: 6) {
-                    if let errorMessage = storeKitManager.errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(theme.ink)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityLabel(errorMessage)
-                    }
-
-                    restoreButton
-                }
-                .transition(restoreSwapTransition)
-                .allowsHitTesting(!storeKitManager.canOfferAppleRenew)
-            }
-        }
-        .padding(.horizontal, 28)
-        .frame(maxWidth: .infinity)
-        .clipped()
-    }
-
-    private var endedSubscriptionOffer: some View {
-        VStack(spacing: 6) {
-            Text("We found your previous subscription.")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(theme.ink)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel("We found your previous subscription.")
-
-            Button {
-                Task {
-                    await storeKitManager.offerAppleRenew()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    if storeKitManager.isOpeningSubscriptions {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Text(storeKitManager.isOpeningSubscriptions ? "Opening Apple…" : "Renew in App Store")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundStyle(Color(uiColor: .link))
-                .frame(minHeight: 44)
-            }
-            .buttonStyle(.plain)
-            .disabled(storeKitManager.isBusy)
-            .accessibilityLabel("Renew subscription in the App Store")
-        }
-    }
-
-    private var restoreSwapTransition: AnyTransition {
-        .asymmetric(
-            insertion: .offset(y: 16).combined(with: .opacity),
-            removal: .offset(y: -12).combined(with: .opacity)
-        )
+    private var planSwitchAnimation: Animation? {
+        reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.82)
     }
 
     private var restoreButton: some View {
@@ -313,12 +508,18 @@ struct PaywallView: View {
                 if storeKitManager.isRestoring {
                     ProgressView()
                         .controlSize(.small)
+                        .tint(theme.ink)
                 }
                 Text(storeKitManager.isRestoring ? "Restoring…" : "Restore purchases")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
             }
             .foregroundStyle(theme.ink)
-            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 50)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(theme.isDark ? theme.cardHairline : Color.black.opacity(0.08), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
         .disabled(storeKitManager.isBusy)
@@ -326,20 +527,19 @@ struct PaywallView: View {
     }
 
     private var legalFooter: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Payment is charged to your Apple ID at confirmation. Subscriptions renew automatically unless canceled at least 24 hours before the current period ends.")
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(theme.faint)
-                .lineSpacing(2)
-                .multilineTextAlignment(.center)
+                .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 16) {
+            HStack(spacing: 20) {
                 Link("Terms of Service", destination: URL(string: "https://angles.app/terms")!)
                 Link("Privacy Policy", destination: URL(string: "https://angles.app/privacy")!)
             }
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(theme.muted)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(theme.ink)
         }
     }
 
@@ -348,10 +548,16 @@ struct PaywallView: View {
     }
 
     private var showsPrimarySpinner: Bool {
-        storeKitManager.isPurchasing || (storeKitManager.isLoadingProducts && selectedProduct == nil)
+        if offersRenew {
+            return storeKitManager.isOpeningSubscriptions
+        }
+        return storeKitManager.isPurchasing || (storeKitManager.isLoadingProducts && selectedProduct == nil)
     }
 
     private var primaryButtonTitle: String {
+        if offersRenew {
+            return storeKitManager.isOpeningSubscriptions ? "Opening Apple…" : "Renew membership"
+        }
         if storeKitManager.isPurchasing {
             return "Subscribing"
         }
@@ -361,10 +567,64 @@ struct PaywallView: View {
         if selectedProduct == nil {
             return "Retry"
         }
-        return selectedPlan == .annual ? "Subscribe Annually" : "Subscribe Monthly"
+        return "Continue"
+    }
+
+    private var primaryButtonAccessibilityLabel: String {
+        if primaryButtonTitle == "Continue" {
+            return "Continue, \(heroPrice), \(heroPriceCaption)"
+        }
+        if primaryButtonTitle == "Renew membership" {
+            return "Renew membership, confirms with Apple"
+        }
+        return primaryButtonTitle
+    }
+
+    private var heroPrice: String {
+        switch selectedPlan {
+        case .annual:
+            if let monthly = monthlyEquivalentAmount(for: storeKitManager.annualProduct) {
+                return monthly
+            }
+        case .monthly:
+            if let price = storeKitManager.monthlyProduct?.displayPrice {
+                return price
+            }
+        }
+        if storeKitManager.isLoadingProducts {
+            return "—"
+        }
+        return "Unavailable"
+    }
+
+    private var heroPriceCaption: String {
+        switch selectedPlan {
+        case .annual:
+            if let price = storeKitManager.annualProduct?.displayPrice {
+                return "a month, billed yearly at \(price)"
+            }
+            return "a month, billed yearly"
+        case .monthly:
+            return "a month, billed monthly"
+        }
+    }
+
+    private func selectPlan(_ plan: PaywallPlan) {
+        guard !storeKitManager.isBusy, selectedPlan != plan else {
+            return
+        }
+        UISelectionFeedbackGenerator().selectionChanged()
+        storeKitManager.clearError()
+        withAnimation(planSwitchAnimation) {
+            selectedPlan = plan
+        }
     }
 
     private func handlePrimaryAction() async {
+        if offersRenew {
+            await storeKitManager.offerAppleRenew()
+            return
+        }
         if storeKitManager.isLoadingProducts {
             return
         }
@@ -375,35 +635,332 @@ struct PaywallView: View {
         await storeKitManager.purchase(productID: selectedPlan.productID)
     }
 
-    private func priceLine(for plan: PaywallPlan) -> String {
-        let period = plan == .annual ? "year" : "month"
-        guard let displayPrice = storeKitManager.product(for: plan.productID)?.displayPrice else {
-            if storeKitManager.isLoadingProducts {
-                return "Loading"
-            }
-            return "Unavailable"
-        }
-        return "\(displayPrice) / \(period)"
-    }
-
-    private func billingCopy(for plan: PaywallPlan) -> String {
-        switch plan {
-        case .annual:
-            if let price = storeKitManager.annualProduct?.displayPrice {
-                return "Billed annually at \(price). Cancel anytime."
-            }
-            return "Billed annually. Cancel anytime."
-        case .monthly:
-            return "Billed monthly. Cancel anytime."
-        }
-    }
-
-    private func monthlyEquivalent(for product: Product?) -> String? {
+    private func monthlyEquivalentAmount(for product: Product?) -> String? {
         guard let product else {
             return nil
         }
         let monthly = product.price / 12
-        return "\(monthly.formatted(product.priceFormatStyle))/mo"
+        return monthly.formatted(product.priceFormatStyle)
+    }
+
+    private var playingCheckmark: some View {
+        LottieView(animation: .named("celebration-checkmark"))
+            .playing()
+            .animationDidFinish { finished in
+                guard finished else {
+                    return
+                }
+                Task { @MainActor in
+                    await holdThenFinishCelebration()
+                }
+            }
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+    }
+
+    private var finalCheckmark: some View {
+        LottieView(animation: .named("celebration-checkmark"))
+            .paused(at: .progress(1))
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+    }
+
+    @MainActor
+    private func runCelebrationWatchdog() async {
+        guard showsCelebration else {
+            return
+        }
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+        if reduceMotion {
+            await holdThenFinishCelebration(milliseconds: 700)
+            return
+        }
+
+        do {
+            try await Task.sleep(for: .milliseconds(2500))
+        } catch {
+            return
+        }
+        finishCelebration()
+    }
+
+    @MainActor
+    private func holdThenFinishCelebration(milliseconds: Int = 1100) async {
+        do {
+            try await Task.sleep(for: .milliseconds(milliseconds))
+        } catch {
+            return
+        }
+        finishCelebration()
+    }
+
+    @MainActor
+    private func finishCelebration() {
+        guard showsCelebration, !completionHandled else {
+            return
+        }
+        completionHandled = true
+
+        if reduceMotion {
+            stage = .membership
+            return
+        }
+
+        withAnimation(.spring(response: 0.68, dampingFraction: 0.84)) {
+            stage = .membership
+        }
+    }
+}
+
+private struct PaywallAngleGrid: View {
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 12) {
+            ForEach(Style.allCases, id: \.self) { style in
+                PaywallAngleTile(style: style)
+            }
+        }
+    }
+}
+
+private struct PaywallAngleTile: View {
+    let style: Style
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    private var appearance: CardStyleAppearance { CardStyleAppearance(style: style) }
+    private var tileShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: appearance.systemImage)
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(appearance.ink)
+
+                Text(style.displayName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(theme.ink)
+                    .lineLimit(1)
+            }
+
+            Text(benefit)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(theme.muted)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+        .background {
+            tileFill
+        }
+        .clipShape(tileShape)
+        .overlay {
+            tileShape.strokeBorder(tileEdge, lineWidth: 1)
+        }
+        .shadow(color: tileShadow, radius: theme.isDark ? 10 : 12, y: theme.isDark ? 0 : 2)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(style.displayName). \(benefit)")
+    }
+
+    /// Midway: light tiles read as color without shouting. Dark is unchanged.
+    private var tileFill: some View {
+        let stops: (top: Double, mid: Double, bottom: Double) = theme.isDark
+            ? (0.025, 0.06, 0.12)
+            : (0.05, 0.11, 0.20)
+        return theme.surface.overlay(
+            LinearGradient(
+                stops: [
+                    .init(color: appearance.ink.opacity(stops.top), location: 0),
+                    .init(color: appearance.ink.opacity(stops.mid), location: 0.55),
+                    .init(color: appearance.ink.opacity(stops.bottom), location: 1)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+
+    private var tileEdge: Color {
+        theme.isDark ? theme.cardHairline : appearance.ink.opacity(0.08)
+    }
+
+    private var tileShadow: Color {
+        theme.isDark ? theme.cardAmbientShadow : Color.black.opacity(0.05)
+    }
+
+    private var benefit: String {
+        switch style {
+        case .stoic:
+            return "What’s yours to carry, and what isn’t"
+        case .optimistic:
+            return "What could still go right"
+        case .humorous:
+            return "It doesn’t have to be this heavy"
+        case .toughLove:
+            return "Stop spinning. Next step."
+        }
+    }
+}
+
+private struct PaywallHeroCard: View {
+    let card: HomeCard
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    private var cardShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+    }
+
+    private var spotlightSlide: HomeCardSlide? {
+        card.slides.first(where: { $0.result.style == card.spotlightStyle }) ?? card.slides.first
+    }
+
+    private var appearance: CardStyleAppearance {
+        CardStyleAppearance(style: spotlightSlide?.result.style ?? card.spotlightStyle)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(card.thought)
+                .font(ReframeCardMetrics.thoughtFont)
+                .foregroundStyle(theme.muted)
+                .multilineTextAlignment(.leading)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+
+            Rectangle()
+                .fill(theme.cardHairline)
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+
+            if let answer = spotlightSlide?.result.reframe {
+                Text(answer)
+                    .font(ReframeCardMetrics.answerFont)
+                    .foregroundStyle(appearance.responseInk)
+                    .lineSpacing(2)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+            }
+
+            staticChips
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+        }
+        .background {
+            appearance.washFill(over: theme.surface)
+        }
+        .clipShape(cardShape)
+        .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityCopy)
+    }
+
+    private var staticChips: some View {
+        HStack(spacing: 8) {
+            ForEach(card.slides.map(\.result.style), id: \.self) { style in
+                staticChip(style)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func staticChip(_ style: Style) -> some View {
+        let chipAppearance = CardStyleAppearance(style: style)
+        let isSelected = style == appearance.style
+
+        return HStack(spacing: 6) {
+            Image(systemName: chipAppearance.systemImage)
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 12, weight: .semibold))
+
+            if isSelected {
+                Text(style.displayName)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
+        .foregroundStyle(
+            isSelected
+                ? chipAppearance.ink
+                : chipAppearance.ink.opacity(chipAppearance.chipUnselectedInkOpacity(for: colorScheme))
+        )
+        .padding(.horizontal, isSelected ? 10 : 0)
+        .frame(width: isSelected ? nil : 30, height: 30, alignment: .center)
+        .background {
+            Capsule(style: .continuous)
+                .fill(
+                    chipAppearance.ink.opacity(
+                        isSelected
+                            ? chipAppearance.chipFillOpacity(for: colorScheme)
+                            : chipAppearance.chipUnselectedFillOpacity(for: colorScheme)
+                    )
+                )
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var accessibilityCopy: String {
+        let thought = card.thought
+        let answer = spotlightSlide?.result.reframe ?? ""
+        let style = appearance.style.displayName
+        return "\(thought). \(style): \(answer)"
+    }
+}
+
+private struct PaywallHeroWash: View {
+    let diameter: CGFloat
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 12) / 12
+            ZStack {
+                ForEach(Array(Style.allCases.enumerated()), id: \.offset) { index, style in
+                    Circle()
+                        .fill(CardStyleAppearance(style: style).ink.opacity(0.08 * Self.weight(index: index, t: t)))
+                }
+            }
+            .frame(width: diameter, height: diameter)
+            .blur(radius: 28)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private static func weight(index: Int, t: Double) -> Double {
+        let center = (Double(index) + 0.5) / 4.0
+        let delta = abs(t - center)
+        let dist = min(delta, 1 - delta)
+        return max(0, 1 - dist / 0.35)
+    }
+}
+
+private struct PaywallPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.spring(response: 0.30, dampingFraction: 0.82), value: configuration.isPressed)
     }
 }
 

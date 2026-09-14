@@ -160,34 +160,16 @@ struct ComposeSheetView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
-                headerLeadingControl
-                    .frame(height: 40)
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 12) {
-                    if hasStatement, !isOnboardingTaste {
-                        Button("Start again") {
-                            showRestartAlert = true
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(theme.ink)
-                        .accessibilityHint("Wipes this session and starts a new thought")
-                    }
-
-                    modelPickerButton
-                }
-            }
-
-            if showsOnboardingRestore, (storeKitManager?.canOfferAppleRenew == true || hasOnboardingRestoreError) {
-                onboardingRestoreSection
+        Group {
+            if showsTwoLineRestore {
+                restoreHeader
+            } else {
+                standardHeader
             }
         }
         .padding(.horizontal, edgePad)
         .padding(.top, 6)
-        .padding(.bottom, 10)
+        .padding(.bottom, showsTwoLineRestore ? 12 : 10)
         .animation(onboardingRestoreAnimation, value: storeKitManager?.errorMessage)
         .animation(onboardingRestoreAnimation, value: storeKitManager?.canOfferAppleRenew)
         .task(id: showsOnboardingRestore) {
@@ -212,6 +194,86 @@ struct ComposeSheetView: View {
         )
     }
 
+    private var showsTwoLineRestore: Bool {
+        showsOnboardingRestore
+            && (storeKitManager?.canOfferAppleRenew == true || hasOnboardingRestoreError)
+    }
+
+    private var standardHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            headerLeadingControl
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+
+            HStack(spacing: 12) {
+                if hasStatement, !isOnboardingTaste {
+                    Button("Start again") {
+                        showRestartAlert = true
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                    .accessibilityHint("Wipes this session and starts a new thought")
+                }
+
+                modelPickerButton
+            }
+        }
+        .frame(minHeight: 40)
+    }
+
+    private var restoreHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 12) {
+                restoreHeadline
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                modelPickerButton
+            }
+            .frame(minHeight: 40)
+
+            if storeKitManager?.canOfferAppleRenew == true {
+                restoreRenewButton
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var restoreHeadlineText: String {
+        if storeKitManager?.canOfferAppleRenew == true {
+            return "We found your previous subscription."
+        }
+        return storeKitManager?.errorMessage ?? ""
+    }
+
+    private var restoreHeadline: some View {
+        Text(restoreHeadlineText)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(theme.muted)
+            .lineSpacing(4)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var restoreRenewButton: some View {
+        Button {
+            guard let storeKitManager, !storeKitManager.isBusy else {
+                return
+            }
+            composerFocused = false
+            Task {
+                await storeKitManager.offerAppleRenew()
+            }
+        } label: {
+            Text(storeKitManager?.isOpeningSubscriptions == true ? "Opening Apple…" : "Renew in App Store")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color(uiColor: .link))
+        }
+        .buttonStyle(.plain)
+        .disabled(storeKitManager?.isBusy == true)
+        .accessibilityLabel("Renew subscription in the App Store")
+        .transition(onboardingRestoreSwapTransition)
+    }
+
     private var headerLeadingControl: some View {
         Group {
             if showsCloseButton {
@@ -225,10 +287,8 @@ struct ComposeSheetView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(
-                    isOnboardingTaste ? "Close and continue to unlock" : "Close without saving"
-                )
-            } else if showsOnboardingRestore, storeKitManager?.canOfferAppleRenew != true {
+                .accessibilityLabel("Close without saving")
+            } else if showsOnboardingRestore {
                 onboardingAccountLink
             } else {
                 Color.clear
@@ -243,43 +303,6 @@ struct ComposeSheetView: View {
             return false
         }
         return storeKitManager?.canOfferAppleRenew != true
-    }
-
-    private var onboardingRestoreSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if storeKitManager?.canOfferAppleRenew == true {
-                Text("We found your previous subscription.")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("We found your previous subscription.")
-
-                Button {
-                    guard let storeKitManager, !storeKitManager.isBusy else {
-                        return
-                    }
-                    composerFocused = false
-                    Task {
-                        await storeKitManager.offerAppleRenew()
-                    }
-                } label: {
-                    Text(storeKitManager?.isOpeningSubscriptions == true ? "Opening Apple…" : "Renew in App Store")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(Color(uiColor: .link))
-                }
-                .buttonStyle(.plain)
-                .disabled(storeKitManager?.isBusy == true)
-                .accessibilityLabel("Renew subscription in the App Store")
-            } else if let errorMessage = storeKitManager?.errorMessage, !errorMessage.isEmpty {
-                Text(errorMessage)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel(errorMessage)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .transition(onboardingRestoreSwapTransition)
     }
 
     private var modelPickerButton: some View {
@@ -636,7 +659,7 @@ struct ComposeSheetView: View {
     }
 
     private var showsCloseButton: Bool {
-        !isOnboardingTaste || viewModel.isCookReady
+        !isOnboardingTaste
     }
 
     private var showsOnboardingRestore: Bool {
@@ -871,7 +894,7 @@ struct ComposeSheetView: View {
     }
 
     private func requestLeave() {
-        if isOnboardingTaste && !viewModel.isCookReady {
+        if isOnboardingTaste {
             return
         }
         if viewModel.isSaving {
