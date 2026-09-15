@@ -1,5 +1,13 @@
 import SwiftUI
 
+private enum HomeMetrics {
+    static let pagerSpace = "homePager"
+
+    static func chromeHeight(safeTop: CGFloat) -> CGFloat {
+        HeaderCollapse.overlayHeight(safeTop: safeTop) + StyleTabMetrics.chromeBottomInset
+    }
+}
+
 struct HomeView: View {
     let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
@@ -9,10 +17,10 @@ struct HomeView: View {
     var onLogOut: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
-    @EnvironmentObject private var themeStore: ThemeStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var headerScrollState = HeaderScrollState()
-    @State private var showSettings = false
+    @State private var pagerState = StyleTabPagerState<HomeFeedTab>(initialTab: .all)
+    @State private var committedTab: HomeFeedTab = .all
     @State private var showHomeFilter = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -20,62 +28,32 @@ struct HomeView: View {
         storeKitManager.entitlementsReady && storeKitManager.hasUnlockedFullApp
     }
 
+    private var fixedChromeHeight: CGFloat {
+        HomeMetrics.chromeHeight(safeTop: safeAreaInsets.top)
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
-            AnglesCanvasBackground()
+            StyleTabPageBackground(pagerState: pagerState)
                 .ignoresSafeArea()
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: HeaderCollapse.headerContentGap) {
-                        Color.clear
-                            .frame(height: 0)
-                            .id("home-top")
+            pager
+                .ignoresSafeArea(edges: .top)
 
-                        HomeScrollingTitle(scrollState: headerScrollState)
-
-                        HomeFeedList(
-                            viewModel: viewModel,
-                            glimpseCard: glimpseCard
-                        )
-                    }
-                    .padding(.top, HeaderCollapse.headerTopPad)
-                    .padding(.bottom, 20)
-                    .background(alignment: .top) {
-                        ScrollDistanceProbe(space: "homeScroll")
-                    }
-                }
-                .scrollIndicators(.hidden)
-                .scrollDisabled(isGlimpseActive)
-                .coordinateSpace(name: "homeScroll")
-                .modifier(ProfileScrollDistance(state: headerScrollState))
-                .refreshable {
-                    await viewModel.refreshFeed()
-                }
-                .onChange(of: glimpseCard?.id) { _, cardID in
-                    guard cardID != nil else {
-                        return
-                    }
-                    withAnimation(.easeOut(duration: 0.35)) {
-                        proxy.scrollTo("home-top", anchor: .top)
-                    }
-                }
-            }
-
-            CollapsingHeaderFade(
-                scrollState: headerScrollState,
-                safeTop: safeAreaInsets.top
-            )
-            .ignoresSafeArea(.container, edges: .top)
-
-            HomeFixedActions(
-                scrollState: headerScrollState,
+            HomeChrome(
                 safeTop: safeAreaInsets.top,
+                pagerState: pagerState,
+                settledSelection: committedTab,
                 appliedCount: viewModel.appliedFilter.appliedCount,
                 showFilter: $showHomeFilter,
-                showSettings: $showSettings
+                onSelectTab: selectTab
             )
-            .ignoresSafeArea(.container, edges: .top)
+            .ignoresSafeArea(edges: .top)
+
+            StyleTabBottomFade(pagerState: pagerState, safeBottom: safeAreaInsets.bottom)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .ignoresSafeArea(.container, edges: .bottom)
+                .allowsHitTesting(false)
         }
         .allowsHitTesting(!isGlimpseActive)
         .toolbar(.hidden, for: .navigationBar)
@@ -94,93 +72,300 @@ struct HomeView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.grey)
         }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(
-                storeKitManager: storeKitManager,
-                onLogOut: {
-                    onLogOut?()
-                    showSettings = false
+    }
+
+    private var pager: some View {
+        GeometryReader { proxy in
+            ScrollViewReader { scrollProxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        ForEach(HomeFeedTab.allCases, id: \.self) { tab in
+                            HomeFeedTabPage(
+                                tab: tab,
+                                cards: cards(for: tab),
+                                loadState: viewModel.feedLoadState,
+                                footerState: viewModel.feedFooterState,
+                                emptyCopy: viewModel.feedEmptyCopy(for: tab),
+                                chromeHeight: fixedChromeHeight,
+                                glimpseCard: tab == .all ? glimpseCard : nil,
+                                isScrollDisabled: isGlimpseActive,
+                                onRetry: viewModel.retryLoadFeed,
+                                onRefresh: { await viewModel.refreshFeed() },
+                                onLoadMore: viewModel.loadMoreFeed,
+                                onRetryLoadMore: viewModel.retryLoadMoreFeed,
+                                onDelete: deleteCard,
+                                onToggleFavorite: toggleFavorite,
+                                onSetPublic: setPublic,
+                                onRemoveFromBoard: removeFromBoard
+                            )
+                            .containerRelativeFrame(.horizontal)
+                            .frame(maxHeight: .infinity)
+                            .id(tab)
+                        }
+                    }
+                    .background(alignment: .leading) {
+                        StyleTabPagerOffsetProbe(space: HomeMetrics.pagerSpace)
+                    }
+                    .scrollTargetLayout()
                 }
-            )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(theme.grey)
-                .modifier(UserAppearance(store: themeStore))
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.paging)
+                .scrollDisabled(isGlimpseActive)
+                .coordinateSpace(name: HomeMetrics.pagerSpace)
+                .modifier(
+                    StyleTabPagerTracking(
+                        state: pagerState,
+                        fallbackWidth: proxy.size.width,
+                        onReachPage: commitPage
+                    )
+                )
+                .onChange(of: pagerState.requestSerial) { _, _ in
+                    withAnimation(tabAnimation) {
+                        scrollProxy.scrollTo(
+                            pagerState.requestedTab,
+                            anchor: .leading
+                        )
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var tabAnimation: Animation? {
+        reduceMotion ? nil : StyleTabMetrics.chipSpring
+    }
+
+    private func cards(for tab: HomeFeedTab) -> [HomeCard] {
+        let base = viewModel.homeCards(for: tab)
+        guard tab == .all, let glimpseCard else {
+            return base
+        }
+        return [glimpseCard] + base.filter { $0.id != glimpseCard.id }
+    }
+
+    private func selectTab(_ tab: HomeFeedTab) {
+        guard tab != committedTab else {
+            return
+        }
+        pagerState.requestPage(tab)
+    }
+
+    private func commitPage(_ tab: HomeFeedTab) {
+        guard tab != committedTab else {
+            return
+        }
+
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            committedTab = tab
+            if tab != viewModel.homeFeedTab {
+                viewModel.homeFeedTab = tab
+            }
+        }
+    }
+
+    private func deleteCard(_ card: HomeCard) {
+        guard card.isOwner else {
+            return
+        }
+        viewModel.deleteCard(card.id)
+    }
+
+    private func toggleFavorite(_ card: HomeCard, _ style: Style) {
+        viewModel.toggleFavorite(card.id, style: style)
+    }
+
+    private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
+        if card.isOwner {
+            viewModel.setPublic(card.id, isPublic: isPublic)
+        }
+    }
+
+    private func removeFromBoard(_ card: HomeCard) {
+        if !card.isOwner {
+            viewModel.removeFromBoard(card.id)
         }
     }
 }
 
-private struct HomeScrollingTitle: View {
-    let scrollState: HeaderScrollState
-
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        let opacity = 1 - HeaderCollapse.restProgress(
-            scrollState.distance,
-            reduceMotion: reduceMotion
-        )
-
-        Text("Home")
-            .font(.title.bold())
-            .foregroundStyle(theme.ink)
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .padding(.horizontal, HeaderCollapse.horizontalPadding)
-            .frame(height: HeaderCollapse.headerHeight, alignment: .leading)
-            .opacity(opacity)
-            .animation(nil, value: scrollState.distance)
-            .accessibilityAddTraits(.isHeader)
-            .accessibilityHidden(opacity <= 0.4)
-    }
-}
-
-private struct HomeFixedActions: View {
-    let scrollState: HeaderScrollState
+private struct HomeChrome: View {
     let safeTop: CGFloat
+    let pagerState: StyleTabPagerState<HomeFeedTab>
+    let settledSelection: HomeFeedTab
     let appliedCount: Int
     @Binding var showFilter: Bool
-    @Binding var showSettings: Bool
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let onSelectTab: (HomeFeedTab) -> Void
 
     var body: some View {
-        let progress = HeaderCollapse.collapsedProgress(
-            scrollState.distance,
-            reduceMotion: reduceMotion
-        )
-
         VStack(spacing: 0) {
             Color.clear
                 .frame(height: safeTop + HeaderCollapse.headerTopPad)
                 .allowsHitTesting(false)
 
-            ZStack {
-                CollapsedInlineTitle(title: "Home", progress: progress)
-                    .animation(nil, value: scrollState.distance)
+            HStack(alignment: .center, spacing: 12) {
+                StyleTabBar(
+                    pagerState: pagerState,
+                    settledSelection: settledSelection,
+                    includesTrailingSpacer: true,
+                    padded: false,
+                    onSelect: onSelectTab
+                )
 
-                HStack(spacing: 12) {
-                    Spacer(minLength: 0)
-
-                    Button {
-                        showFilter = true
-                    } label: {
-                        HomeFilterIcon(appliedCount: appliedCount)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Filter Home")
-                    .accessibilityValue(filterAccessibilityValue(appliedCount))
-
-                    HomeSettingsButton(showSettings: $showSettings)
+                Button {
+                    showFilter = true
+                } label: {
+                    HomeFilterIcon(appliedCount: appliedCount)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Filter Home")
+                .accessibilityValue(filterAccessibilityValue(appliedCount))
             }
             .padding(.horizontal, HeaderCollapse.horizontalPadding)
             .frame(height: HeaderCollapse.headerHeight)
+
+            Color.clear
+                .frame(height: StyleTabMetrics.chromeBottomInset)
+                .allowsHitTesting(false)
+        }
+        .frame(
+            height: HomeMetrics.chromeHeight(safeTop: safeTop),
+            alignment: .top
+        )
+        .background {
+            StyleTabChromeBackground(pagerState: pagerState)
+                .ignoresSafeArea(edges: .top)
+        }
+    }
+}
+
+private struct HomeFeedTabPage: View {
+    let tab: HomeFeedTab
+    let cards: [HomeCard]
+    let loadState: LibraryLoadState
+    let footerState: FeedFooterState
+    let emptyCopy: String
+    let chromeHeight: CGFloat
+    let glimpseCard: HomeCard?
+    let isScrollDisabled: Bool
+    let onRetry: () -> Void
+    let onRefresh: () async -> Void
+    let onLoadMore: () -> Void
+    let onRetryLoadMore: () -> Void
+    let onDelete: (HomeCard) -> Void
+    let onToggleFavorite: (HomeCard, Style) -> Void
+    let onSetPublic: (HomeCard, Bool) -> Void
+    let onRemoveFromBoard: (HomeCard) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Color.clear
+                            .frame(height: chromeHeight)
+                            .id("home-tab-top")
+
+                        tabContent
+                            .padding(.bottom, 20)
+                    }
+                    .frame(
+                        minHeight: proxy.size.height,
+                        alignment: .top
+                    )
+                }
+                .scrollIndicators(.hidden)
+                .scrollDisabled(isScrollDisabled)
+                .refreshable {
+                    await onRefresh()
+                }
+                .onChange(of: glimpseCard?.id) { _, cardID in
+                    guard tab == .all, cardID != nil else {
+                        return
+                    }
+                    withAnimation(.easeOut(duration: 0.35)) {
+                        scrollProxy.scrollTo("home-tab-top", anchor: .top)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch loadState {
+        case .loading:
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.top, 24)
+                .accessibilityLabel("Loading Home")
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 12) {
+                Text(message)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                Button("Retry", action: onRetry)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+            }
+            .padding(.horizontal, HeaderCollapse.horizontalPadding)
+        case .loaded:
+            if cards.isEmpty {
+                Text(emptyCopy)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                    .padding(.top, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(spacing: 0) {
+                    HomeCardGrid(
+                        cards: cards,
+                        rowSpacing: HeaderCollapse.horizontalPadding,
+                        presentation: .library,
+                        openingStyle: tab.matchingStyle,
+                        menuRole: { card in card.isOwner ? .owner : .feed },
+                        onDelete: onDelete,
+                        onToggleFavorite: onToggleFavorite,
+                        onSetPublic: onSetPublic,
+                        onRemoveFromBoard: onRemoveFromBoard,
+                        onReachEnd: onLoadMore,
+                        loadMorePrefetchDistance: 6
+                    )
+                    .equatable()
+                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                    .padding(.top, 10)
+
+                    feedFooter
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var feedFooter: some View {
+        Group {
+            switch footerState {
+            case .idle:
+                Color.clear
+                    .accessibilityHidden(true)
+            case .loading:
+                ProgressView()
+                    .accessibilityLabel("Loading more thoughts")
+            case .failed:
+                Button("Retry loading more", action: onRetryLoadMore)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+            }
         }
         .frame(maxWidth: .infinity)
+        .frame(height: 44)
     }
 }
 
@@ -216,146 +401,6 @@ private struct HomeFilterIcon: View {
 
 private func filterAccessibilityValue(_ appliedCount: Int) -> String {
     appliedCount == 0 ? "No filters applied" : "\(appliedCount) filters applied"
-}
-
-private struct HomeSettingsButton: View {
-    @Binding var showSettings: Bool
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        Button {
-            showSettings = true
-        } label: {
-            CircleIcon(
-                systemName: "gearshape",
-                fill: theme.surface,
-                symbol: theme.ink,
-                hairline: theme.cardHairline
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Settings")
-    }
-}
-
-private struct HomeFeedList: View {
-    let viewModel: HomeViewModel
-    let glimpseCard: HomeCard?
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        if let glimpseCard {
-            VStack(spacing: 0) {
-                cardGrid(cards: [glimpseCard] + viewModel.feedCards.filter { $0.id != glimpseCard.id })
-
-                if viewModel.feedLoadState == .loading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .accessibilityLabel("Loading Home")
-                } else {
-                    feedFooter
-                }
-            }
-        } else {
-            feedContent
-        }
-    }
-
-    @ViewBuilder
-    private var feedContent: some View {
-        switch viewModel.feedLoadState {
-        case .loading:
-            ProgressView()
-                .frame(maxWidth: .infinity)
-                .padding(.top, 24)
-                .accessibilityLabel("Loading Home")
-        case .failed(let message):
-            VStack(alignment: .leading, spacing: 12) {
-                Text(message)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                Button("Retry") {
-                    viewModel.retryLoadFeed()
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.ink)
-            }
-            .padding(.horizontal, HeaderCollapse.horizontalPadding)
-        case .loaded:
-            if viewModel.feedCards.isEmpty {
-                Text(viewModel.feedEmptyCopy)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                    .padding(.top, 8)
-            } else {
-                VStack(spacing: 0) {
-                    cardGrid(cards: viewModel.feedCards)
-                    feedFooter
-                }
-            }
-        }
-    }
-
-    private func cardGrid(cards: [HomeCard]) -> some View {
-        HomeCardGrid(
-            cards: cards,
-            rowSpacing: HeaderCollapse.horizontalPadding,
-            presentation: .library,
-            menuRole: { card in card.isOwner ? .owner : .feed },
-            onDelete: { card in
-                if card.isOwner {
-                    viewModel.deleteCard(card.id)
-                }
-            },
-            onToggleFavorite: { card, style in
-                viewModel.toggleFavorite(card.id, style: style)
-            },
-            onSetPublic: { card, isPublic in
-                if card.isOwner {
-                    viewModel.setPublic(card.id, isPublic: isPublic)
-                }
-            },
-            onRemoveFromBoard: { card in
-                if !card.isOwner {
-                    viewModel.removeFromBoard(card.id)
-                }
-            },
-            onReachEnd: viewModel.loadMoreFeed,
-            loadMorePrefetchDistance: 6
-        )
-        .equatable()
-        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-    }
-
-    @ViewBuilder
-    private var feedFooter: some View {
-        Group {
-            switch viewModel.feedFooterState {
-            case .idle:
-                Color.clear
-                    .accessibilityHidden(true)
-            case .loading:
-                ProgressView()
-                    .accessibilityLabel("Loading more thoughts")
-            case .failed:
-                Button("Retry loading more") {
-                    viewModel.retryLoadMoreFeed()
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.ink)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 44)
-    }
 }
 
 #Preview("Home") {

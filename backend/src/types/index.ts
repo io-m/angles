@@ -176,6 +176,8 @@ export type FeedListQuery = {
   before?: FeedCursor;
   categories?: Category[];
   emotions?: Emotion[];
+  /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
+  style?: Style;
 };
 
 export type FeedCursor = {

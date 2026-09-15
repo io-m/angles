@@ -70,6 +70,7 @@ Loading and error are **states on Results**, not their own screens.
 | 9n | Synchronous Profile handoff | polish | done | `ProfileView.swift` | Mounted vertical scroll views receive destination Y immediately, removing the delayed post-settle header jump. |
 | 9o | Single-scroll Profile | polish | removed | `ProfileView.swift` | Removed in 9p: one maximum-height envelope caused expensive tab relayout and trailing space on shorter lists. |
 | 9p | Fixed Profile header | polish | done | `ProfileView.swift` | Independent native vertical lists restore lazy performance and real per-tab extents; the shared glass header stays compact and horizontal paging remains interactive. |
+| 9q | Home style tabs | polish | done | `HomeView.swift`; `HomeViewModel.swift`; `StyleTabPager.swift`; `ProfileView.swift`; `HeaderChrome.swift`; `CardsService.swift`; `feed.ts`; `db/feed.ts` | All-default tabs aligned with trailing filter; no Home Settings; one feed; tab-bar footer fade. |
 
 ### 1. Compose (home)
 
@@ -207,13 +208,21 @@ Not a new screen. This replaces the grouped Home and flip-card language from 9b�
 - **Cards.** Home, library, and compose cards show a slightly quieter thought, divider, and dominant selected answer together over the selected style wash. Stored cards put avatar/date/⋯ at the top and style chips/heart at the bottom; ⋯ and long press share actions. Profile Favorite angles alone retain equal-height answer/thought flips so their strip stays level.
 - **Removed.** Grouped response types, shelf zipper/state, `homeFeed.ts`, and `FeedSubsetView.swift`. Category, emotion, matching, language, style results, and per-style favorite data remain.
 
+### 9q. Home style tabs
+
+Not a new screen. Replaces the scrolling **Home** title from 9f/9h with Profile-like chrome.
+
+- **Tabs.** Five expanding chips: **All** (default, mixed `spotlightStyle`) plus the four styles. No Favorites. One `GET /feed` (life area / mood only); style tabs are in-memory like Profile — same cards, open on that angle. Filter sheet resets the shared feed.
+- **Layout.** One overlay row: expanding tabs leading, filter trailing, same height and center as the filter icon, with a little extra space under the chips. No Home Settings gear (Profile keeps it). Quiet style-tinted paper-to-grey canvas, style-tinted glass header, tab-bar footer fade. `StyleTabPager.swift` shares pager state, chips, and wash with Profile. Each tab is its own vertical `ScrollView` + lazy `HomeCardGrid`.
+- **API.** Optional `style` on `GET /feed` remains for later; Home tabs do not refetch it.
+
 ### 9i. Profile identity + style tabs
 
 Not a new screen. Profile is a private identity page, not a greeting plus two card lists.
 
 - **Header.** Large JM initials and **On this iPhone**. `displayName` is a nil seam for Auth (row 8). No mock full name.
 - **Tabs.** Five pinned icon tabs replace the style popover: Stoic, Optimistic, Humorous, Tough love, Favorite angles. Default is Stoic. There is no All tab. Style tabs show owned cards that have that angle and open on it; Favorites is the full liked-angle grid. Empty library still uses the Inspire me hero under the tabs.
-- **Removed.** Favorite angles strip, `HomeCardStrip`, `FavoritesView`, `ProfileSubsetView`, and the header filter popover. Home Settings stays; Profile also has a trailing gear.
+- **Removed.** Favorite angles strip, `HomeCardStrip`, `FavoritesView`, `ProfileSubsetView`, and the header filter popover. Home has no Settings gear; Profile keeps the trailing gear.
 
 ### 9j. Profile wash, chips, paging
 

@@ -23,6 +23,13 @@ function isFeedSaveTarget(row: CardLoaded, viewerId: string): boolean {
   return row.isPublic && row.userId !== viewerId;
 }
 
+function styleExistsFilter(db: ReturnType<typeof getDb>, style: Style) {
+  return inArray(
+    cards.id,
+    db.select({ id: cardReframes.cardId }).from(cardReframes).where(eq(cardReframes.style, style)),
+  );
+}
+
 export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
   try {
     const viewerId = getOwnerUserId();
@@ -33,6 +40,9 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
     }
     if (query.emotions?.length) {
       filters.push(arrayOverlaps(cards.emotions, query.emotions));
+    }
+    if (query.style) {
+      filters.push(styleExistsFilter(db, query.style));
     }
     if (query.before) {
       const cursorFilter = or(

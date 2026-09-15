@@ -50,6 +50,7 @@ const listQuerySchema = z
     before: feedCursorSchema().optional(),
     categories: enumCsvSchema(CATEGORIES).optional(),
     emotions: enumCsvSchema(EMOTIONS).optional(),
+    style: z.enum(STYLES).optional(),
   })
   .strict();
 
@@ -79,6 +80,7 @@ feedRoute.get(
       before: query.before,
       categories: query.categories,
       emotions: query.emotions,
+      style: query.style,
     });
     return c.json({ cards: cardList });
   },

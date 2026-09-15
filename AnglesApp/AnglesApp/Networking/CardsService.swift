@@ -39,7 +39,8 @@ struct CardsService: Sendable {
         limit: Int,
         before: String? = nil,
         categories: Set<ThoughtCategory> = [],
-        emotions: Set<Emotion> = []
+        emotions: Set<Emotion> = [],
+        style: Style? = nil
     ) async throws -> [StoredCard] {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {
@@ -62,6 +63,9 @@ struct CardsService: Sendable {
                     value: orderedEmotions.map(\.rawValue).joined(separator: ",")
                 )
             )
+        }
+        if let style {
+            queryItems.append(URLQueryItem(name: "style", value: style.rawValue))
         }
         let response: CardListResponse = try await client.get(path: "feed", queryItems: queryItems)
         return response.cards

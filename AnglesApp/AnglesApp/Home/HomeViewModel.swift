@@ -201,6 +201,72 @@ enum FeedFooterState: Equatable {
     case failed
 }
 
+enum HomeFeedTab: Equatable, Hashable, CaseIterable {
+    case all
+    case stoic
+    case optimistic
+    case humorous
+    case toughLove
+
+    var title: String {
+        matchingStyle?.displayName ?? "All published thoughts"
+    }
+
+    var chipTitle: String {
+        matchingStyle?.displayName ?? "All"
+    }
+
+    var matchingStyle: Style? {
+        switch self {
+        case .all:
+            return nil
+        case .stoic:
+            return .stoic
+        case .optimistic:
+            return .optimistic
+        case .humorous:
+            return .humorous
+        case .toughLove:
+            return .toughLove
+        }
+    }
+
+    var systemImage: String {
+        guard let style = matchingStyle else {
+            return "square.grid.2x2"
+        }
+
+        return CardStyleAppearance(style: style).systemImage
+    }
+
+    func symbolColor(ink: Color) -> Color {
+        guard let style = matchingStyle else {
+            return ink
+        }
+
+        return CardStyleAppearance(style: style).ink
+    }
+
+    var headerWashInk: Color {
+        guard let style = matchingStyle else {
+            return .clear
+        }
+
+        return CardStyleAppearance(style: style).ink
+    }
+
+    func emptyCopy(appliedFilter: HomeFeedFilter) -> String {
+        if let style = matchingStyle {
+            return appliedFilter.appliedCount == 0
+                ? "No published \(style.displayName) angles yet."
+                : "No cards match these filters."
+        }
+        return appliedFilter.appliedCount == 0
+            ? "No published thoughts yet."
+            : "No cards match these filters."
+    }
+}
+
 enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
     case favorites
     case stoic
@@ -285,6 +351,7 @@ final class HomeViewModel {
     /// Set when a recook comes back as `continue` (that style no longer fits).
     private(set) var recookNotice: String?
     var profileGridFilter: ProfileGridFilter = .favorites
+    var homeFeedTab: HomeFeedTab = .all
     private(set) var appliedFilter = HomeFeedFilter()
     var selectedModel: LlmModel {
         didSet {
@@ -378,10 +445,16 @@ final class HomeViewModel {
         }
     }
 
-    var feedEmptyCopy: String {
-        appliedFilter.appliedCount == 0
-            ? "No published thoughts yet."
-            : "No cards match these filters."
+    func homeCards(for tab: HomeFeedTab) -> [HomeCard] {
+        guard let style = tab.matchingStyle else {
+            return feedCards
+        }
+
+        return feedCards.filter { $0.hasStyle(style) }
+    }
+
+    func feedEmptyCopy(for tab: HomeFeedTab) -> String {
+        tab.emptyCopy(appliedFilter: appliedFilter)
     }
 
     /// The composer stays alive for every turn that is not a finished cook.
@@ -664,7 +737,7 @@ final class HomeViewModel {
         startFeedTask(replacing: true)
     }
 
-    /// Pull-to-refresh: reload page one for the active filter without blanking the feed.
+    /// Pull-to-refresh: reload page one without blanking visible cards.
     func refreshFeed() async {
         feedTask?.cancel()
         feedTask = nil

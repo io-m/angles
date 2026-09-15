@@ -38,6 +38,10 @@ enum HeaderCollapse {
     static func topFadeHeight(safeTop: CGFloat) -> CGFloat {
         safeTop + headerTopPad + headerHeight + 12
     }
+
+    static func bottomFadeHeight(safeBottom: CGFloat) -> CGFloat {
+        safeBottom + 52
+    }
 }
 
 /// Shared edge fades over `AnglesCanvasBackground` — softer than a solid bar, aligned with the tab-area gradient.

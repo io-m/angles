@@ -37,6 +37,7 @@
 		A822B18D9B139FF8129822CC /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7E4784E528CDE420C415B939 /* Lottie */; };
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
 		C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564F37666F47FDFD54D03D2D /* HomeView.swift */; };
+		E2DC973B158B0229CB1C3AD1 /* StyleTabPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA854E5DFB79BE265F1D553D /* StyleTabPager.swift */; };
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
 		EBDA2E1E27376A11583D19E9 /* AccentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */; };
 		F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551EA9251B494B0E82C36D47 /* ColorTokens.swift */; };
@@ -77,6 +78,7 @@
 		D3BCFBFF2318D9F3BE56CB22 /* HomeFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFilterSheet.swift; sourceTree = "<group>"; };
 		DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentPalette.swift; sourceTree = "<group>"; };
 		F2D55F6643C769B38928FD8B /* ReframeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeModels.swift; sourceTree = "<group>"; };
+		FA854E5DFB79BE265F1D553D /* StyleTabPager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleTabPager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -202,6 +204,7 @@
 				4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */,
 				A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */,
 				B05847EC66A8A1B53179B539 /* ReframeCardView.swift */,
+				FA854E5DFB79BE265F1D553D /* StyleTabPager.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -332,6 +335,7 @@
 				1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */,
 				ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */,
 				99EEAB90C5E209CBF852F02A /* StoreKitManager.swift in Sources */,
+				E2DC973B158B0229CB1C3AD1 /* StyleTabPager.swift in Sources */,
 				26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */,
 				978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */,
 			);

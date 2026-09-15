@@ -88,6 +88,20 @@ describe("GET /feed", () => {
       before: undefined,
       categories: undefined,
       emotions: undefined,
+      style: undefined,
+    });
+  });
+
+  it("passes a style filter", async () => {
+    vi.mocked(listFeed).mockResolvedValue([]);
+    const response = await app.request("/feed?style=stoic&limit=24");
+    expect(response.status).toBe(200);
+    expect(listFeed).toHaveBeenCalledWith({
+      limit: 24,
+      before: undefined,
+      categories: undefined,
+      emotions: undefined,
+      style: "stoic",
     });
   });
 
@@ -100,6 +114,7 @@ describe("GET /feed", () => {
       before: undefined,
       categories: ["work", "money"],
       emotions: undefined,
+      style: undefined,
     });
   });
 
@@ -112,6 +127,7 @@ describe("GET /feed", () => {
       before: undefined,
       categories: undefined,
       emotions: ["fear", "overwhelm"],
+      style: undefined,
     });
   });
 
@@ -124,6 +140,7 @@ describe("GET /feed", () => {
       before: undefined,
       categories: ["work", "money"],
       emotions: ["fear", "overwhelm"],
+      style: undefined,
     });
   });
 
@@ -137,6 +154,7 @@ describe("GET /feed", () => {
       before: { createdAt: new Date("2026-09-10T12:00:00.000Z"), id: CARD_ID },
       categories: undefined,
       emotions: undefined,
+      style: undefined,
     });
   });
 
@@ -145,7 +163,7 @@ describe("GET /feed", () => {
     "/feed?categories=work,",
     "/feed?emotions=fear,calm",
     "/feed?before=not-a-cursor",
-    "/feed?style=stoic",
+    "/feed?style=unknown",
     "/feed?category=work",
     "/feed?emotion=fear",
   ])("rejects invalid or removed query values: %s", async (path) => {
