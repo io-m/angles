@@ -62,6 +62,14 @@ Loading and error are **states on Results**, not their own screens.
 | 9f | Flat filtered Home + stacked cards | feature | done | `HomeView.swift`; `HomeFilterSheet.swift`; `HomeViewModel.swift`; `ReframeCardView.swift`; `CardsService.swift`; `feed.ts`; `db/feed.ts`; `schema.ts`; `0004_feed_emotions_gin.sql` | One faceted vertical feed; scrolling title with fixed trailing actions; full-card style wash; Favorite angles keep equal-height flips. |
 | 9g | Card life-area chrome | polish | done | `ReframeCardView.swift`; `HomeViewModel.swift`; `ReframeModels.swift` | Quiet icon + label left of ⋯; equal 16pt chrome inset; `other` uses `circle.grid.2x2`. |
 | 9h | Home inline title | polish | done | `HomeView.swift`; `HeaderChrome.swift` | Large Home fades on scroll; compact headline title fades and slides into the bar center. |
+| 9i | Profile identity + style tabs | polish | done | `ProfileView.swift`; `HomeViewModel.swift`; `HeaderChrome.swift`; `AnglesApp.swift` | JM avatar + session name; five pinned tabs (four styles + Favorites); Settings gear on Profile; strip and All popover gone. |
+| 9j | Profile wash, chips, paging | polish | done | `ProfileView.swift`; `HomeViewModel.swift`; `HomePalette.swift` | Opaque -45° style chrome; Favorites-first expanding tabs; horizontal paging card lists. |
+| 9k | Interactive Profile pager | polish | done | `ProfileView.swift`; `HomeViewModel.swift`; `HomePalette.swift` | Native page offset scrubs one frosted chrome tint and both expanding chips; Favorites is white glass. |
+| 9l | Profile scroll coordination | polish | done | `ProfileView.swift`; `HomeViewModel.swift`; `HomePalette.swift` | Delta-coordinated vertical collapse; native-only horizontal progress; one quiet glass plane and accessible Favorites. |
+| 9m | Native Profile header sync | polish | done | `ProfileView.swift` | Fixed page spacers plus real per-tab Y synchronization make every collapse/tab/expand combination native and deterministic. |
+| 9n | Synchronous Profile handoff | polish | done | `ProfileView.swift` | Mounted vertical scroll views receive destination Y immediately, removing the delayed post-settle header jump. |
+| 9o | Single-scroll Profile | polish | removed | `ProfileView.swift` | Removed in 9p: one maximum-height envelope caused expensive tab relayout and trailing space on shorter lists. |
+| 9p | Fixed Profile header | polish | done | `ProfileView.swift` | Independent native vertical lists restore lazy performance and real per-tab extents; the shared glass header stays compact and horizontal paging remains interactive. |
 
 ### 1. Compose (home)
 
@@ -199,6 +207,53 @@ Not a new screen. This replaces the grouped Home and flip-card language from 9b�
 - **Cards.** Home, library, and compose cards show a slightly quieter thought, divider, and dominant selected answer together over the selected style wash. Stored cards put avatar/date/⋯ at the top and style chips/heart at the bottom; ⋯ and long press share actions. Profile Favorite angles alone retain equal-height answer/thought flips so their strip stays level.
 - **Removed.** Grouped response types, shelf zipper/state, `homeFeed.ts`, and `FeedSubsetView.swift`. Category, emotion, matching, language, style results, and per-style favorite data remain.
 
+### 9i. Profile identity + style tabs
+
+Not a new screen. Profile is a private identity page, not a greeting plus two card lists.
+
+- **Header.** Large JM initials and **On this iPhone**. `displayName` is a nil seam for Auth (row 8). No mock full name.
+- **Tabs.** Five pinned icon tabs replace the style popover: Stoic, Optimistic, Humorous, Tough love, Favorite angles. Default is Stoic. There is no All tab. Style tabs show owned cards that have that angle and open on it; Favorites is the full liked-angle grid. Empty library still uses the Inspire me hero under the tabs.
+- **Removed.** Favorite angles strip, `HomeCardStrip`, `FavoritesView`, `ProfileSubsetView`, and the header filter popover. Home Settings stays; Profile also has a trailing gear.
+
+### 9j. Profile wash, chips, paging
+
+Not a new screen. Polish on 9i.
+
+- **Chrome.** Opaque paper plus a stronger style wash, lit from -45° (top-leading to bottom-trailing). Favorites uses a quiet ink tint. Cards cannot show through the identity or tab row. Wash crossfades when the settled tab changes.
+- **Tabs.** Favorites is first and the default. The selected tab is a labeled pill (glyph + name) like card chips; the rest stay icon circles. Spring only on selection change.
+- **Paging.** Identity, tabs, and Settings stay put. Card lists page horizontally (`scrollTargetBehavior(.paging)`), not an inner TabView. Each page is its own vertical `ScrollView` + `HomeCardGrid`.
+
+### 9k. Interactive Profile pager
+
+Not a new screen. Polish on 9j.
+
+- **Finger-tracked paging.** A capped header-only pager state reads native horizontal content offset every frame (scroll geometry on iOS 18, named-space probe on iOS 17). The card lists, glass tint, and tabs share the same continuous page position; the settled id remains data state only.
+- **Continuous chrome.** One ultra-thin material plane covers the status bar, compact title, Settings, identity, and tabs. Adjacent -45° tint gradients crossfade by page progress; Favorites uses white highlights instead of grey ink, and card contours blur beneath the collapsing glass.
+- **Continuous chips.** The leaving label stays mounted while its pill contracts and fades; the entering circle expands as its label fades/scales in. Live offset updates disable animation, while taps and final settling retain the short chip spring (no spring with Reduce Motion).
+
+### 9l. Profile scroll coordination
+
+Not a new screen. Corrective polish on 9k.
+
+- **Vertical physics.** The active page sends raw offset deltas into one capped Profile header state. Page insets are stable during a gesture and rebased before horizontal arrival, so cards and chrome move 1:1 and switching tabs preserves the current collapse. Negative overscroll rebound cannot re-collapse an extended header, and deep cards return to the collapse boundary before the header grows.
+- **Horizontal physics.** Native page geometry is the only live visual source. The midpoint-changing `scrollPosition` binding is gone; settled data/header state commits only at a physical page endpoint, while chip taps use `ScrollViewReader`. Idle normalization is non-animated, observation is limited to tint/chips, and chip layout caches intrinsic sizes.
+- **One accessible glass.** A quiet uniform style tint and diagonal sheen share one thin-material plane across status, identity, Settings, and tabs. Favorites uses adaptive theme ink on a surfaced hairline chip instead of white-on-white.
+
+### 9m. Native Profile header sync
+
+Not a new screen. Replaces 9l's synthetic inset coordinator.
+
+- **One vertical truth.** Every tab has the same fixed expanded-header spacer. Active collapse is the clamped native vertical content offset, so scrolling down traverses real content distance before elastic overscroll and bounce cannot move the header.
+- **Prepared destinations.** An adjacent shallower tab is moved to at least the current collapse before arrival (`ScrollPosition` on iOS 18, a fixed-marker `ScrollViewReader` fallback on iOS 17). Tab changes never expand the header; deeper destinations may collapse it further with horizontal progress.
+- **Transition matrix.** Tap, swipe, cancel, reverse, partial collapse, full collapse, deep lists, and short/empty pages share the same prepare → native scroll → endpoint commit flow. Only the active vertical page and small chrome views publish per frame.
+
+### 9n. Synchronous Profile handoff
+
+Not a new screen. Corrective polish on 9m.
+
+- **No deferred restore.** Each mounted page registers its native vertical scroll view with the Profile coordinator. The destination offset is set synchronously and without animation while that page is still offscreen, rather than waiting for a SwiftUI scroll-position request after landing.
+- **One visual timeline.** Header height continues to interpolate from horizontal geometry, then endpoint commit only changes data ownership. There is no delayed second transition to the destination's expanded/collapsed state.
+
 ### 6. Onboarding taste
 
 Frictionless first-run experience directly in the real app compose canvas:
@@ -282,6 +337,15 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-15 — Profile dropped the shared maximum-height envelope; independent lazy tab lists remove Stoic’s paging hitch and shorter-tab trailing space, with a fixed compact header.
+- 2026-09-15 — Profile destination Y now applies synchronously to mounted native scroll views, eliminating the delayed expanded/collapsed jump after a tab lands.
+- 2026-09-15 — Profile now synchronizes real per-tab vertical offsets behind fixed spacers; collapsed-tab handoffs expand smoothly without overscroll fighting.
+- 2026-09-15 — Profile ignores pull-down rebound as an upward gesture and delays header expansion until deep cards return to the collapse boundary.
+- 2026-09-15 — Profile’s midpoint hitch is gone: horizontal drag has no `scrollPosition` binding mutation, and tab data/header activation waits for the physical page endpoint.
+- 2026-09-15 — Profile scroll coordination removes inset feedback and settle fighting; collapse survives tab changes; one quiet glass plane and adaptive Favorites restore contrast.
+- 2026-09-15 — Profile paging now tracks the finger 1:1: one frosted header blends adjacent tints, both chips morph continuously, and Favorites uses white glass.
+- 2026-09-15 — Profile chrome is an opaque -45° style wash; Favorites is the first expanding tab; card lists page horizontally like Instagram.
+- 2026-09-15 — Profile is identity plus five pinned tabs (four styles and Favorites); session label until Auth; Settings gear on Profile; favorites strip and style popover removed.
 - 2026-09-14 — Ended membership uses the normal two-plan StoreKit paywall: prior SKU preselected with Renew membership, alternate SKU labeled Switch; Taste no longer opens Manage Subscriptions.
 - 2026-09-14 — Checkout, first Home result, and frost removal are one serialized reveal; operation flags stay owned by StoreKit and Home cannot bleed under checkout glass.
 - 2026-09-14 — Home and the native bottom bar now pre-render behind an opaque reveal curtain; Log out also rejects entitlement/history results that complete after the local session was cleared.

@@ -49,7 +49,11 @@ struct InitialsAvatar: View {
     var symbol: Color
 
     private var fontSize: CGFloat {
-        side >= 48 ? 18 : 13
+        if side >= 72 {
+            return 28
+        }
+
+        return side >= 48 ? 18 : 13
     }
 
     var body: some View {

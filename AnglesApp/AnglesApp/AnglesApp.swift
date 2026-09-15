@@ -34,7 +34,6 @@ struct AppRoot: View {
     @State private var selectedTab: RootTab = .home
     @State private var lastContentTab: RootTab = .home
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
-    @State private var pageWidth: CGFloat = 393
     @State private var paywallPhase: PaywallPresentationPhase = .idle
     @State private var paywallShowsCelebration = false
     @State private var paywallHeroCard: HomeCard?
@@ -70,9 +69,10 @@ struct AppRoot: View {
                 NavigationStack {
                     ProfileView(
                         safeAreaInsets: homeSafeAreaInsets,
-                        pageWidth: pageWidth,
                         viewModel: viewModel,
+                        storeKitManager: storeKitManager,
                         onInspire: presentCompose,
+                        onLogOut: logOut,
                         canLoadFullAppContent: canLoadProfileContent
                     )
                 }
@@ -200,13 +200,9 @@ struct AppRoot: View {
                 Color.clear
                     .onAppear {
                         captureHomeInsets(geo.safeAreaInsets)
-                        pageWidth = geo.size.width
                     }
                     .onChange(of: geo.safeAreaInsets) { _, newInsets in
                         captureHomeInsets(newInsets)
-                    }
-                    .onChange(of: geo.size.width) { _, newWidth in
-                        pageWidth = newWidth
                     }
             }
             .ignoresSafeArea(.keyboard)

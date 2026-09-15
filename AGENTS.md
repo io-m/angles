@@ -33,9 +33,8 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
 - `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: scrolling title/gradient over one newest-first grid; filter + Settings stay fixed right
 - `AnglesApp/AnglesApp/Home/HomeFilterSheet.swift` — draft/apply Life area and Mood tabbed multi-select
-- `AnglesApp/AnglesApp/Home/HeaderChrome.swift` — collapse metrics, scroll-distance modifier, and Profile style filter
-- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library: favorite-angles strip, All/style library. Style filters keep cards that have that angle and open on it; All mixes covers. Favorite angles stays unfiltered.
-- `AnglesApp/AnglesApp/Home/HomeCardStrip.swift` — Profile Favorite angles strip (max 6) with natural card height
+- `AnglesApp/AnglesApp/Home/HeaderChrome.swift` — collapse metrics and scroll-distance modifier
+- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private identity (JM avatar, session name) plus Favorites-first expanding tabs and horizontally paged style lists; Settings gear; opaque style wash chrome
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — one card per row (`LazyVStack`)
 - `AnglesApp/AnglesApp/Home/ReframeCardView.swift` — stacked thought + selected answer everywhere except equal-height flipping Favorite angles; per-style chips/hearts and shared tap/long-press actions
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`, `CardsService`

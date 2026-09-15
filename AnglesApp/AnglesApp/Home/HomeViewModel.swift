@@ -202,20 +202,22 @@ enum FeedFooterState: Equatable {
 }
 
 enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
-    case all
+    case favorites
     case stoic
     case optimistic
     case humorous
     case toughLove
 
     var title: String {
-        matchingStyle?.displayName ?? "All"
+        matchingStyle?.displayName ?? "Favorite angles"
+    }
+
+    var chipTitle: String {
+        matchingStyle?.displayName ?? "Favorites"
     }
 
     var matchingStyle: Style? {
         switch self {
-        case .all:
-            return nil
         case .stoic:
             return .stoic
         case .optimistic:
@@ -224,7 +226,46 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
             return .humorous
         case .toughLove:
             return .toughLove
+        case .favorites:
+            return nil
         }
+    }
+
+    var systemImage: String {
+        guard let style = matchingStyle else {
+            return "heart.fill"
+        }
+
+        return CardStyleAppearance(style: style).systemImage
+    }
+
+    func symbolColor(ink: Color) -> Color {
+        guard let style = matchingStyle else {
+            return ink
+        }
+
+        return CardStyleAppearance(style: style).ink
+    }
+
+    var presentation: ReframeCardPresentation {
+        self == .favorites ? .favoriteAngles : .library
+    }
+
+    var emptyCopy: String {
+        switch self {
+        case .favorites:
+            return "No favorite angles"
+        case .stoic, .optimistic, .humorous, .toughLove:
+            return "No cards with a \(title) angle yet"
+        }
+    }
+
+    var headerWashInk: Color {
+        guard let style = matchingStyle else {
+            return .clear
+        }
+
+        return CardStyleAppearance(style: style).ink
     }
 }
 
@@ -243,7 +284,7 @@ final class HomeViewModel {
     private(set) var recookingStyle: Style?
     /// Set when a recook comes back as `continue` (that style no longer fits).
     private(set) var recookNotice: String?
-    var profileGridFilter: ProfileGridFilter = .all
+    var profileGridFilter: ProfileGridFilter = .favorites
     private(set) var appliedFilter = HomeFeedFilter()
     var selectedModel: LlmModel {
         didSet {
@@ -308,7 +349,6 @@ final class HomeViewModel {
         isCooking || recookingStyle != nil
     }
 
-    static let stripLimit = 6
     static let feedPageSize = 24
 
     var ownedCards: [HomeCard] {
@@ -321,16 +361,21 @@ final class HomeViewModel {
             .sorted { ($0.latestFavoritedAt ?? .distantPast) > ($1.latestFavoritedAt ?? .distantPast) }
     }
 
-    var stripFavoriteCards: [HomeCard] {
-        Array(favoriteAngleCards.prefix(Self.stripLimit))
+    var filteredProfileCards: [HomeCard] {
+        profileCards(for: profileGridFilter)
     }
 
-    var filteredProfileCards: [HomeCard] {
-        guard let style = profileGridFilter.matchingStyle else {
-            return ownedCards
-        }
+    func profileCards(for filter: ProfileGridFilter) -> [HomeCard] {
+        switch filter {
+        case .favorites:
+            return favoriteAngleCards
+        case .stoic, .optimistic, .humorous, .toughLove:
+            guard let style = filter.matchingStyle else {
+                return []
+            }
 
-        return ownedCards.filter { $0.hasStyle(style) }
+            return ownedCards.filter { $0.hasStyle(style) }
+        }
     }
 
     var feedEmptyCopy: String {

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Collapse language shared by Home and Profile: a left-aligned title row at rest that
 /// fades as the page scrolls. Home reveals a centered inline title; Profile reveals
-/// a centered filter chip.
+/// compact initials and the session name.
 enum HeaderCollapse {
     static let horizontalPadding: CGFloat = 16
     static let headerHeight: CGFloat = 44
@@ -78,22 +78,6 @@ final class HeaderScrollState {
     }
 }
 
-func filterSystemImage(_ filter: ProfileGridFilter) -> String {
-    guard let style = filter.matchingStyle else {
-        return "square.grid.2x2"
-    }
-
-    return CardStyleAppearance(style: style).systemImage
-}
-
-func filterSymbolColor(_ filter: ProfileGridFilter, ink: Color) -> Color {
-    guard let style = filter.matchingStyle else {
-        return ink
-    }
-
-    return CardStyleAppearance(style: style).ink
-}
-
 /// Compact nav title that fades and slides into the bar, matching UIKit inline titles.
 struct CollapsedInlineTitle: View {
     let title: String
@@ -114,88 +98,6 @@ struct CollapsedInlineTitle: View {
             .allowsHitTesting(false)
             .accessibilityAddTraits(.isHeader)
             .accessibilityHidden(progress <= 0.4)
-    }
-}
-
-/// The collapsed chrome: icon + title + chevron, centered.
-struct CollapsedFilterLabel: View {
-    let filter: ProfileGridFilter
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: filterSystemImage(filter))
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(filterSymbolColor(filter, ink: theme.ink))
-
-            Text(filter.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-
-            Image(systemName: "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.muted)
-        }
-        .contentShape(Rectangle())
-    }
-}
-
-struct GridFilterPicker: View {
-    let selection: ProfileGridFilter
-    let onSelect: (ProfileGridFilter) -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(ProfileGridFilter.allCases, id: \.self) { filter in
-                let isSelected = selection == filter
-
-                Button {
-                    onSelect(filter)
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: filterSystemImage(filter))
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(filterSymbolColor(filter, ink: theme.ink))
-                            .frame(width: 22, alignment: .center)
-
-                        Text(filter.title)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(theme.ink)
-
-                        Spacer(minLength: 12)
-
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(theme.ink)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
-
-                if filter != ProfileGridFilter.allCases.last {
-                    Rectangle()
-                        .fill(theme.line)
-                        .frame(height: 1)
-                        .padding(.leading, 50)
-                }
-            }
-        }
-        .padding(.vertical, 8)
-        .frame(minWidth: 220)
-        .background(theme.surface)
     }
 }
 

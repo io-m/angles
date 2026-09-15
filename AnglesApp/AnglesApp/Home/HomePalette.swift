@@ -125,37 +125,125 @@ struct CardStyleAppearance {
     }
 
     func washOpacityStops(for scheme: ColorScheme) -> (top: Double, mid: Double, bottom: Double) {
-        if scheme == .dark {
-            return (0.025, 0.06, 0.12)
-        }
-        // Original was 0.02 / 0.05 / 0.10 — nudged up just a touch.
-        return (0.028, 0.058, 0.112)
+        StyleWashStrength.card.opacityStops(for: scheme)
     }
 
-    /// Top-left fades out; color collects toward the bottom-right.
+    /// Top-left fades out; color collects toward the bottom-right. Light from -45°.
     func washFill(over surface: Color) -> some View {
-        StyleWashFill(appearance: self, surface: surface)
+        StyleWashFill(ink: ink, surface: surface, strength: .card)
+    }
+
+    func headerWashFill(over surface: Color) -> some View {
+        StyleWashFill(ink: ink, surface: surface, strength: .header)
     }
 }
 
-private struct StyleWashFill: View {
-    let appearance: CardStyleAppearance
-    let surface: Color
+enum StyleWashStrength {
+    case card
+    case header
+
+    func opacityStops(for scheme: ColorScheme) -> (top: Double, mid: Double, bottom: Double) {
+        switch self {
+        case .card:
+            if scheme == .dark {
+                return (0.025, 0.06, 0.12)
+            }
+            return (0.028, 0.058, 0.112)
+        case .header:
+            if scheme == .dark {
+                return (0.08, 0.16, 0.26)
+            }
+            return (0.09, 0.17, 0.28)
+        }
+    }
+}
+
+enum StyleWash {
+    /// Opaque surface with a header-strength tint.
+    static func headerFill(ink: Color, over surface: Color) -> some View {
+        StyleWashFill(ink: ink, surface: surface, strength: .header)
+    }
+
+    /// One material plane whose positional tint follows horizontal pager progress.
+    static func headerGlassFill(
+        fromInk: Color,
+        toInk: Color,
+        progress: CGFloat
+    ) -> some View {
+        HeaderGlassFill(
+            fromInk: fromInk,
+            toInk: toInk,
+            progress: progress
+        )
+    }
+}
+
+private struct HeaderGlassFill: View {
+    let fromInk: Color
+    let toInk: Color
+    let progress: CGFloat
+
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
-        let stops = appearance.washOpacityStops(for: colorScheme)
+        let amount = min(1, max(0, progress))
+        let tintOpacity = colorScheme == .dark ? 0.15 : 0.10
+        let sheenOpacity = colorScheme == .dark ? 0.08 : 0.14
 
-        surface.overlay(
+        ZStack {
+            if reduceTransparency {
+                theme.paper
+            } else {
+                Rectangle().fill(.thinMaterial)
+            }
+
+            fromInk.opacity(tintOpacity * (1 - amount))
+            toInk.opacity(tintOpacity * amount)
+
             LinearGradient(
-                stops: [
-                    .init(color: appearance.ink.opacity(stops.top), location: 0),
-                    .init(color: appearance.ink.opacity(stops.mid), location: 0.55),
-                    .init(color: appearance.ink.opacity(stops.bottom), location: 1)
+                colors: [
+                    .white.opacity(sheenOpacity),
+                    .clear,
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+struct StyleWashFill: View {
+    let ink: Color
+    let surface: Color
+    var strength: StyleWashStrength = .card
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        surface.overlay(StyleWashTint(ink: ink, strength: strength))
+    }
+}
+
+private struct StyleWashTint: View {
+    let ink: Color
+    let strength: StyleWashStrength
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let stops = strength.opacityStops(for: colorScheme)
+
+        LinearGradient(
+            stops: [
+                .init(color: ink.opacity(stops.top), location: 0),
+                .init(color: ink.opacity(stops.mid), location: 0.55),
+                .init(color: ink.opacity(stops.bottom), location: 1)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
     }
 }
