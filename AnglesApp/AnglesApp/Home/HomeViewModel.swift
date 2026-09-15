@@ -362,6 +362,7 @@ final class HomeViewModel {
     private(set) var feedCards: [HomeCard] = []
     private(set) var feedLoadState: LibraryLoadState = .loading
     private(set) var feedFooterState: FeedFooterState = .idle
+    private(set) var isFeedRefreshing = false
     private(set) var feedHasMore = true
     private(set) var isSaving = false
     private(set) var saveError: String?
@@ -739,6 +740,12 @@ final class HomeViewModel {
 
     /// Pull-to-refresh: reload page one without blanking visible cards.
     func refreshFeed() async {
+        guard !isFeedRefreshing else {
+            return
+        }
+        isFeedRefreshing = true
+        defer { isFeedRefreshing = false }
+
         feedTask?.cancel()
         feedTask = nil
         feedGeneration &+= 1
@@ -750,9 +757,7 @@ final class HomeViewModel {
             feedBefore = nil
             feedHasMore = true
             feedFooterState = .idle
-            if !feedCards.isEmpty {
-                feedLoadState = .loaded
-            }
+            feedLoadState = feedCards.isEmpty ? .loading : .loaded
         }
 
         await fetchFeedPage(replacing: true, generation: generation)

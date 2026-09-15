@@ -71,6 +71,7 @@ Loading and error are **states on Results**, not their own screens.
 | 9o | Single-scroll Profile | polish | removed | `ProfileView.swift` | Removed in 9p: one maximum-height envelope caused expensive tab relayout and trailing space on shorter lists. |
 | 9p | Fixed Profile header | polish | done | `ProfileView.swift` | Independent native vertical lists restore lazy performance and real per-tab extents; the shared glass header stays compact and horizontal paging remains interactive. |
 | 9q | Home style tabs | polish | done | `HomeView.swift`; `HomeViewModel.swift`; `StyleTabPager.swift`; `ProfileView.swift`; `HeaderChrome.swift`; `CardsService.swift`; `feed.ts`; `db/feed.ts` | All-default tabs aligned with trailing filter; no Home Settings; one feed; tab-bar footer fade. |
+| 9r | Native Home pull-to-refresh | polish | done | `HomeFeedPullRefresh.swift`; `HomeView.swift`; `HomeViewModel.swift` | SwiftUI's native refresh interaction starts below the fixed tabs while the shared feed refreshes in place. |
 
 ### 1. Compose (home)
 
@@ -216,6 +217,14 @@ Not a new screen. Replaces the scrolling **Home** title from 9f/9h with Profile-
 - **Layout.** One overlay row: expanding tabs leading, filter trailing, same height and center as the filter icon, with a little extra space under the chips. No Home Settings gear (Profile keeps it). Quiet style-tinted paper-to-grey canvas, style-tinted glass header, tab-bar footer fade. `StyleTabPager.swift` shares pager state, chips, and wash with Profile. Each tab is its own vertical `ScrollView` + lazy `HomeCardGrid`.
 - **API.** Optional `style` on `GET /feed` remains for later; Home tabs do not refetch it.
 
+### 9r. Native Home pull-to-refresh
+
+Not a new screen. Corrective polish on 9q.
+
+- **Native motion.** Each tab uses SwiftUI `.refreshable`; there is no added drag recognizer, synthetic threshold, layout hold, or refresh-time scroll lock.
+- **Indicator placement.** The vertical scroll viewport begins below the fixed Home chrome instead of behind the safe area. Its system spinner therefore emerges directly below the style tabs without UIKit positioning overrides.
+- **Shared refresh.** The native async action awaits `HomeViewModel.refreshFeed()`. Existing cards stay visible and all tabs continue filtering the same in-memory feed.
+
 ### 9i. Profile identity + style tabs
 
 Not a new screen. Profile is a private identity page, not a greeting plus two card lists.
@@ -346,6 +355,7 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-15 — Native Home pull-to-refresh: SwiftUI's system refresh interaction starts below the fixed style tabs and refreshes the shared feed without blanking cards.
 - 2026-09-15 — Profile dropped the shared maximum-height envelope; independent lazy tab lists remove Stoic’s paging hitch and shorter-tab trailing space, with a fixed compact header.
 - 2026-09-15 — Profile destination Y now applies synchronously to mounted native scroll views, eliminating the delayed expanded/collapsed jump after a tab lands.
 - 2026-09-15 — Profile now synchronizes real per-tab vertical offsets behind fixed spacers; collapsed-tab handoffs expand smoothly without overscroll fighting.

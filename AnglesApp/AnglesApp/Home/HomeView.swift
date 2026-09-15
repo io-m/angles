@@ -89,6 +89,9 @@ struct HomeView: View {
                                 chromeHeight: fixedChromeHeight,
                                 glimpseCard: tab == .all ? glimpseCard : nil,
                                 isScrollDisabled: isGlimpseActive,
+                                allowsPullToRefresh: canLoadFullAppContent
+                                    && !isGlimpseActive
+                                    && tab == committedTab,
                                 onRetry: viewModel.retryLoadFeed,
                                 onRefresh: { await viewModel.refreshFeed() },
                                 onLoadMore: viewModel.loadMoreFeed,
@@ -249,6 +252,7 @@ private struct HomeFeedTabPage: View {
     let chromeHeight: CGFloat
     let glimpseCard: HomeCard?
     let isScrollDisabled: Bool
+    let allowsPullToRefresh: Bool
     let onRetry: () -> Void
     let onRefresh: () async -> Void
     let onLoadMore: () -> Void
@@ -268,22 +272,27 @@ private struct HomeFeedTabPage: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         Color.clear
-                            .frame(height: chromeHeight)
+                            .frame(height: 0)
                             .id("home-tab-top")
 
                         tabContent
                             .padding(.bottom, 20)
                     }
                     .frame(
-                        minHeight: proxy.size.height,
+                        minHeight: max(0, proxy.size.height - chromeHeight),
                         alignment: .top
                     )
                 }
                 .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.always)
                 .scrollDisabled(isScrollDisabled)
-                .refreshable {
-                    await onRefresh()
-                }
+                .modifier(
+                    HomeFeedNativeRefresh(
+                        headerHeight: chromeHeight,
+                        enabled: allowsPullToRefresh,
+                        onRefresh: onRefresh
+                    )
+                )
                 .onChange(of: glimpseCard?.id) { _, cardID in
                     guard tab == .all, cardID != nil else {
                         return
