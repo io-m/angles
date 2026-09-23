@@ -355,6 +355,7 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-23 — Profile style tabs now use the Home tall card.
 - 2026-09-15 — Native Home pull-to-refresh: SwiftUI's system refresh interaction starts below the fixed style tabs and refreshes the shared feed without blanking cards.
 - 2026-09-15 — Profile dropped the shared maximum-height envelope; independent lazy tab lists remove Stoic’s paging hitch and shorter-tab trailing space, with a fixed compact header.
 - 2026-09-15 — Profile destination Y now applies synchronously to mounted native scroll views, eliminating the delayed expanded/collapsed jump after a tab lands.

@@ -399,12 +399,19 @@ private struct ProfileTabPage: View {
 
     var body: some View {
         GeometryReader { proxy in
+            // Same cap as Home: space under the chrome, minus the 16-point list gap,
+            // minus a peek of the next card. Favorites never receive it.
+            let viewportBelowChrome = max(0, proxy.size.height - chromeHeight)
+            let tallCardMaxHeight = max(
+                0,
+                viewportBelowChrome - HeaderCollapse.horizontalPadding - 72
+            )
             ScrollView {
                 VStack(spacing: 0) {
                     Color.clear
                         .frame(height: chromeHeight)
 
-                    tabContent
+                    tabContent(tallCardMaxHeight: tallCardMaxHeight)
                         .padding(.bottom, 20)
                 }
                 .frame(
@@ -421,7 +428,7 @@ private struct ProfileTabPage: View {
     }
 
     @ViewBuilder
-    private var tabContent: some View {
+    private func tabContent(tallCardMaxHeight: CGFloat) -> some View {
         switch loadState {
         case .loading:
             ProgressView()
@@ -440,7 +447,7 @@ private struct ProfileTabPage: View {
                     .padding(.horizontal, HeaderCollapse.horizontalPadding)
                     .padding(.top, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
+            } else if tab == .favorites {
                 HomeCardGrid(
                     cards: cards,
                     rowSpacing: HeaderCollapse.horizontalPadding,
@@ -454,6 +461,21 @@ private struct ProfileTabPage: View {
                 .equatable()
                 .padding(.horizontal, HeaderCollapse.horizontalPadding)
                 .padding(.top, 10)
+            } else {
+                TallHomeCardGrid(
+                    cards: cards,
+                    cardMaxHeight: tallCardMaxHeight,
+                    rowSpacing: HeaderCollapse.horizontalPadding,
+                    openingStyle: tab.matchingStyle,
+                    menuRole: { _ in .owner },
+                    onDelete: onDelete,
+                    onToggleFavorite: onToggleFavorite,
+                    onSetPublic: onSetPublic,
+                    onRemoveFromBoard: onRemoveFromBoard
+                )
+                .equatable()
+                .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                .padding(.top, HeaderCollapse.horizontalPadding)
             }
         }
     }
