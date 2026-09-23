@@ -24,6 +24,7 @@ struct HomeView: View {
     @State private var pagerState = StyleTabPagerState<HomeFeedTab>(initialTab: .all)
     @State private var committedTab: HomeFeedTab = .all
     @State private var showHomeFilter = false
+    @State private var sameTabScrollToken = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var canLoadFullAppContent: Bool {
@@ -93,6 +94,8 @@ struct HomeView: View {
                                 scrollToTopToken: tab == .all && viewModel.saveLanding == .home
                                     ? viewModel.saveLandingToken
                                     : 0,
+                                sameTabScrollToken: sameTabScrollToken,
+                                isCurrentPage: tab == committedTab,
                                 shiningCardID: viewModel.shiningCardID,
                                 isScrollDisabled: isGlimpseActive,
                                 allowsPullToRefresh: canLoadFullAppContent
@@ -185,6 +188,7 @@ struct HomeView: View {
 
     private func selectTab(_ tab: HomeFeedTab) {
         guard tab != committedTab else {
+            sameTabScrollToken &+= 1
             return
         }
         pagerState.requestPage(tab)
@@ -288,6 +292,8 @@ private struct HomeFeedTabPage: View {
     let chromeHeight: CGFloat
     let glimpseCard: HomeCard?
     let scrollToTopToken: Int
+    let sameTabScrollToken: Int
+    let isCurrentPage: Bool
     var shiningCardID: UUID? = nil
     let isScrollDisabled: Bool
     let allowsPullToRefresh: Bool
@@ -302,6 +308,7 @@ private struct HomeFeedTabPage: View {
     let onOpenAuthor: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -321,11 +328,14 @@ private struct HomeFeedTabPage: View {
                             .frame(height: 0)
                             .id("home-tab-top")
 
+                        Color.clear
+                            .frame(height: chromeHeight)
+
                         tabContent(cardMaxHeight: tallCardMaxHeight)
                             .padding(.bottom, 20)
                     }
                     .frame(
-                        minHeight: max(0, proxy.size.height - chromeHeight),
+                        minHeight: proxy.size.height,
                         alignment: .top
                     )
                 }
@@ -334,7 +344,6 @@ private struct HomeFeedTabPage: View {
                 .scrollDisabled(isScrollDisabled)
                 .modifier(
                     HomeFeedNativeRefresh(
-                        headerHeight: chromeHeight,
                         enabled: allowsPullToRefresh,
                         onRefresh: onRefresh
                     )
@@ -354,6 +363,18 @@ private struct HomeFeedTabPage: View {
                     scrollFeedToTop(scrollProxy)
                     Task { @MainActor in
                         scrollFeedToTop(scrollProxy)
+                    }
+                }
+                .onChange(of: sameTabScrollToken) { _, token in
+                    guard token > 0, isCurrentPage else {
+                        return
+                    }
+                    if reduceMotion {
+                        scrollFeedToTop(scrollProxy)
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.45)) {
+                            scrollProxy.scrollTo("home-tab-top", anchor: .top)
+                        }
                     }
                 }
             }

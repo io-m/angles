@@ -471,7 +471,8 @@ private struct StyleTabChip<T: StyleTabRepresentable>: View {
         let clampedExpansion = min(1, max(0, expansion))
 
         Button {
-            guard !isSettledSelection else {
+            if isSettledSelection {
+                onSelect()
                 return
             }
             selectHaptic += 1

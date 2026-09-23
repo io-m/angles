@@ -260,11 +260,14 @@ private struct AuthorTabPage: View {
             )
             ScrollView {
                 VStack(spacing: 0) {
+                    Color.clear
+                        .frame(height: chromeHeight)
+
                     tabContent(cardMaxHeight: tallCardMaxHeight)
                         .padding(.bottom, 20)
                 }
                 .frame(
-                    minHeight: max(0, proxy.size.height - chromeHeight),
+                    minHeight: proxy.size.height,
                     alignment: .top
                 )
             }
@@ -272,7 +275,6 @@ private struct AuthorTabPage: View {
             .scrollBounceBehavior(.always)
             .modifier(
                 HomeFeedNativeRefresh(
-                    headerHeight: chromeHeight,
                     enabled: allowsPullToRefresh,
                     onRefresh: onRefresh
                 )

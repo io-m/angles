@@ -1,15 +1,13 @@
 import SwiftUI
 
-/// Starts the native vertical ScrollView below Home's fixed chrome so the
-/// system refresh control emerges directly beneath the style tabs.
+/// Pull-to-refresh on a full-bleed feed. The page keeps a clear chrome spacer
+/// inside the scroll content so cards can pass behind the frosted header.
 struct HomeFeedNativeRefresh: ViewModifier {
-    let headerHeight: CGFloat
     let enabled: Bool
     let onRefresh: () async -> Void
 
     func body(content: Content) -> some View {
         content
-            .padding(.top, headerHeight)
             .refreshable {
                 guard enabled else {
                     return
