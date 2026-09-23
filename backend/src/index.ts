@@ -2,6 +2,7 @@ import { loadLocalEnvFile } from "./lib/loadEnv.js";
 import { serve } from "@hono/node-server";
 import { assertSchemaCurrent, closePool } from "./db/client.js";
 import { app } from "./app.js";
+import { assertCookSigningKey } from "./lib/cookSignature.js";
 
 loadLocalEnvFile();
 
@@ -14,6 +15,7 @@ function parsePort(raw: string | undefined): number {
 }
 
 async function main(): Promise<void> {
+  assertCookSigningKey();
   await assertSchemaCurrent();
 
   const port = parsePort(process.env.PORT);

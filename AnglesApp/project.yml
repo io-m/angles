@@ -38,6 +38,13 @@ targets:
         DEVELOPMENT_TEAM: 36U79UTZM9
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"
+      configs:
+        # Devices cannot reach localhost; Debug points at the Mac's LAN IP.
+        Debug:
+          ANGLES_API_BASE_URL: "http://192.168.0.39:8787"
+        # Empty until the production host exists; requests fail locally rather than guess a host.
+        Release:
+          ANGLES_API_BASE_URL: ""
     info:
       path: AnglesApp/Info.plist
       properties:
@@ -45,6 +52,7 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
+        AnglesAPIBaseURL: "$(ANGLES_API_BASE_URL)"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

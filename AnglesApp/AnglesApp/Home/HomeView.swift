@@ -419,12 +419,18 @@ private struct HomeFeedTabPage: View {
             .padding(.horizontal, HeaderCollapse.horizontalPadding)
         case .loaded:
             if cards.isEmpty {
-                Text(emptyCopy)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                    .padding(.top, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if footerState == .idle {
+                    Text(emptyCopy)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.muted)
+                        .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                        .padding(.top, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    // Older pages may still carry this angle; the copy waits for them.
+                    feedFooter
+                        .padding(.top, 16)
+                }
             } else {
                 VStack(spacing: 0) {
                     TallHomeCardGrid(

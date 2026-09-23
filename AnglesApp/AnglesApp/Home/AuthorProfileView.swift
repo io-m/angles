@@ -214,6 +214,7 @@ struct AuthorProfileView: View {
         withTransaction(transaction) {
             committedTab = tab
         }
+        viewModel.selectAuthorTab(route.id, tab)
     }
 
     private func deleteCard(_ card: HomeCard) {
@@ -324,12 +325,17 @@ private struct AuthorTabPage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         case .loaded:
             if cards.isEmpty {
-                Text(emptyCopy)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                    .padding(.top, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if footerState == .idle {
+                    Text(emptyCopy)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.muted)
+                        .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                        .padding(.top, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    footer
+                        .padding(.top, 16)
+                }
             } else {
                 VStack(spacing: 0) {
                     TallHomeCardGrid(
@@ -378,6 +384,15 @@ private struct AuthorTabPage: View {
     }
 }
 
+/// Begins an edge-swipe back only when there is a screen to go back to.
+private final class PopGate: NSObject, UIGestureRecognizerDelegate {
+    weak var navigation: UINavigationController?
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        (navigation?.viewControllers.count ?? 0) > 1
+    }
+}
+
 /// Keeps the system edge-swipe back while the style pager also claims horizontal drags.
 private struct AuthorPopGesture: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> Controller {
@@ -388,6 +403,9 @@ private struct AuthorPopGesture: UIViewControllerRepresentable {
 
     final class Controller: UIViewController {
         private var didAttachScroll = false
+        private let gate = PopGate()
+        private weak var gatedPop: UIGestureRecognizer?
+        private weak var originalDelegate: UIGestureRecognizerDelegate?
 
         override func viewDidLoad() {
             super.viewDidLoad()
@@ -405,6 +423,11 @@ private struct AuthorPopGesture: UIViewControllerRepresentable {
             attach()
         }
 
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            restore()
+        }
+
         private func attach() {
             guard let navigation = navigationController,
                   let pop = navigation.interactivePopGestureRecognizer,
@@ -413,12 +436,26 @@ private struct AuthorPopGesture: UIViewControllerRepresentable {
                 return
             }
             pop.isEnabled = true
-            pop.delegate = nil
+            if pop.delegate !== gate {
+                originalDelegate = pop.delegate
+                gate.navigation = navigation
+                pop.delegate = gate
+                gatedPop = pop
+            }
             guard !didAttachScroll, let scroll = nearestHorizontalScrollView() else {
                 return
             }
             scroll.panGestureRecognizer.require(toFail: pop)
             didAttachScroll = true
+        }
+
+        /// Hands the recognizer back so the root of the stack never starts a pop with nothing to pop.
+        private func restore() {
+            guard let pop = gatedPop, pop.delegate === gate else {
+                return
+            }
+            pop.delegate = originalDelegate
+            gatedPop = nil
         }
 
         private func nearestHorizontalScrollView() -> UIScrollView? {

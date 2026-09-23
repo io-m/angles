@@ -7,28 +7,8 @@ import { authorOf } from "../db/mapCard.js";
 import { getUserById } from "../db/users.js";
 import { authStub, getOwnerUserId } from "../lib/authStub.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
-import type { AuthorCardsResponse, FeedCursor, FollowStateResponse } from "../types/index.js";
-
-function feedCursorSchema() {
-  return z.string().transform((raw, context): FeedCursor => {
-    const parts = raw.split("|");
-    const createdAt = parts[0] ? new Date(parts[0]) : new Date(Number.NaN);
-    const id = parts[1];
-    if (
-      parts.length !== 2 ||
-      Number.isNaN(createdAt.getTime()) ||
-      !id ||
-      !z.uuid().safeParse(id).success
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "before must be an ISO-8601 timestamp and UUID separated by |",
-      });
-      return z.NEVER;
-    }
-    return { createdAt, id };
-  });
-}
+import { cardCursorSchema } from "../lib/cursor.js";
+import type { AuthorCardsResponse, FollowStateResponse } from "../types/index.js";
 
 const paramsSchema = z.object({
   id: z.uuid(),
@@ -37,7 +17,7 @@ const paramsSchema = z.object({
 const querySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(500).optional().default(24),
-    before: feedCursorSchema().optional(),
+    before: cardCursorSchema().optional(),
   })
   .strict();
 

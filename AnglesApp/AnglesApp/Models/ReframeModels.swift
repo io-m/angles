@@ -262,6 +262,17 @@ struct ReframeResult: Codable, Equatable, Sendable {
     let reframe: String
 }
 
+/// A reframe from `POST /reframe`. `POST /cards` only accepts results the server signed.
+struct SignedReframeResult: Codable, Equatable, Sendable {
+    let style: Style
+    let reframe: String
+    let signature: String
+
+    var result: ReframeResult {
+        ReframeResult(style: style, reframe: reframe)
+    }
+}
+
 struct StoredReframeResult: Decodable, Equatable, Sendable {
     let style: Style
     let reframe: String
@@ -287,7 +298,14 @@ struct StoredReframeResult: Decodable, Equatable, Sendable {
 enum ReframeResponse: Decodable, Equatable, Sendable {
     /// Not ready to cook: the composer stays up and the user can answer or say more.
     case continueTurn(message: String, options: [String], safety: SafetyFlag)
-    case ready(thought: String, thoughtOriginal: String?, results: [ReframeResult], meta: ReframeMeta)
+    /// `signature` covers the thought and meta; each result carries its own.
+    case ready(
+        thought: String,
+        thoughtOriginal: String?,
+        results: [SignedReframeResult],
+        meta: ReframeMeta,
+        signature: String
+    )
 
     private enum CodingKeys: String, CodingKey {
         case kind
@@ -298,6 +316,7 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
         case thoughtOriginal
         case results
         case meta
+        case signature
     }
 
     init(from decoder: Decoder) throws {
@@ -314,8 +333,9 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
             self = .ready(
                 thought: try container.decode(String.self, forKey: .thought),
                 thoughtOriginal: try container.decodeIfPresent(String.self, forKey: .thoughtOriginal),
-                results: try container.decode([ReframeResult].self, forKey: .results),
-                meta: try container.decode(ReframeMeta.self, forKey: .meta)
+                results: try container.decode([SignedReframeResult].self, forKey: .results),
+                meta: try container.decode(ReframeMeta.self, forKey: .meta),
+                signature: try container.decode(String.self, forKey: .signature)
             )
         default:
             throw DecodingError.dataCorruptedError(
@@ -399,6 +419,7 @@ struct FollowedPerson: Identifiable, Equatable, Hashable, Sendable {
 struct AuthorCardsResponse: Decodable, Equatable, Sendable {
     let user: StoredCardAuthor
     let cards: [StoredCard]
+    let page: CardPage
 
     private enum CodingKeys: String, CodingKey {
         case user
@@ -410,6 +431,7 @@ struct AuthorCardsResponse: Decodable, Equatable, Sendable {
         user = try container.decode(StoredCardAuthor.self, forKey: .user)
         let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
         cards = raw.compactMap(\.value)
+        page = try CardPage(container: container, key: .cards)
     }
 }
 
@@ -526,8 +548,9 @@ struct StoredCard: Decodable, Equatable, Sendable {
 struct CreateCardRequest: Encodable, Equatable, Sendable {
     let thought: String
     let thoughtOriginal: String?
-    let results: [ReframeResult]
+    let results: [SignedReframeResult]
     let meta: ReframeMeta
+    let signature: String
     let model: String
     let spotlightStyle: Style
     let isPublic: Bool
@@ -537,6 +560,7 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
         case thoughtOriginal
         case results
         case meta
+        case signature
         case model
         case spotlightStyle
         case isPublic
@@ -548,6 +572,7 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
         try container.encodeIfPresent(thoughtOriginal, forKey: .thoughtOriginal)
         try container.encode(results, forKey: .results)
         try container.encode(meta, forKey: .meta)
+        try container.encode(signature, forKey: .signature)
         try container.encode(model, forKey: .model)
         try container.encode(spotlightStyle, forKey: .spotlightStyle)
         try container.encode(isPublic, forKey: .isPublic)
@@ -575,6 +600,7 @@ struct PatchCardRequest: Encodable, Equatable, Sendable {
 
 struct CardListResponse: Decodable, Equatable, Sendable {
     let cards: [StoredCard]
+    let page: CardPage
 
     private enum CodingKeys: String, CodingKey {
         case cards
@@ -584,24 +610,52 @@ struct CardListResponse: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
         cards = raw.compactMap(\.value)
+        page = try CardPage(container: container, key: .cards)
     }
 }
 
+/// What the server sent, before cards this build cannot decode are dropped. Paging reads this,
+/// so one unreadable card neither ends the list early nor moves the cursor off the server's order.
+struct CardPage: Equatable, Sendable {
+    let receivedCount: Int
+    /// `createdAt|id` of the last card the server sent.
+    let nextCursor: String?
+
+    private struct Key: Decodable {
+        let id: String
+        let createdAt: String
+    }
+
+    init<K: CodingKey>(container: KeyedDecodingContainer<K>, key: K) throws {
+        let keys = try container.decodeIfPresent([Failable<Key>].self, forKey: key) ?? []
+        receivedCount = keys.count
+        nextCursor = keys.last?.value.map { "\($0.createdAt)|\($0.id.lowercased())" }
+    }
+
+    func hasMore(pageSize: Int) -> Bool {
+        receivedCount >= pageSize
+    }
+}
+
+/// `ISO8601DateFormatter` is thread-safe, so one of each serves every decode.
 enum ISO8601Dates {
+    private static let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let plain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     static func date(from raw: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) {
-            return date
-        }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: raw)
+        fractional.date(from: raw) ?? plain.date(from: raw)
     }
 
     static func string(from date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: date)
+        fractional.string(from: date)
     }
 }

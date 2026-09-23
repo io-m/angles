@@ -7,8 +7,12 @@ struct FollowingSheet: View {
     var onRetry: () -> Void
     var onUnfollow: (FollowedPerson) -> Void
     var onOpen: (FollowedPerson) -> Void
+    /// A failed unfollow puts the row back; this says why.
+    var writeError: String? = nil
+    var onDismissError: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var query = ""
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -38,6 +42,14 @@ struct FollowingSheet: View {
                 }
             }
             .padding(.horizontal, 20)
+        }
+        .overlay {
+            WriteErrorBanner(message: writeError, onDismiss: onDismissError)
+                .padding(.top, 8)
+                .animation(
+                    reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86),
+                    value: writeError
+                )
         }
     }
 

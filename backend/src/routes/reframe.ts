@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import { authStub } from "../lib/authStub.js";
+import { signCook, signResult } from "../lib/cookSignature.js";
 import { runDecision, type ReadyDecision } from "../lib/decision.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import {
@@ -336,12 +337,22 @@ reframeRoute.post(
         ? [await generateStyle(decision, recookStyle, options)]
         : await generateStyleBatch(decision, chosen, options);
 
+      // A recook keeps the card's thought and meta, and the client sends that thought as `text`.
+      const signedThought = recookStyle ? text : decision.thought;
       const body: ReframeResponse = {
         kind: "ready",
         thought: decision.thought,
         ...(decision.thoughtOriginal ? { thoughtOriginal: decision.thoughtOriginal } : {}),
-        results,
+        results: results.map((item) => ({
+          ...item,
+          signature: signResult(signedThought, item.style, item.reframe),
+        })),
         meta: decision.meta,
+        signature: signCook({
+          thought: decision.thought,
+          thoughtOriginal: decision.thoughtOriginal,
+          meta: decision.meta,
+        }),
       };
       return c.json(body);
     } catch (error) {

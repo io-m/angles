@@ -224,7 +224,7 @@ describe("DELETE /feed/cards/:id/saves", () => {
   });
 
   it("returns 204", async () => {
-    vi.mocked(clearFeedSaves).mockResolvedValue({ ok: true, card: feedCard() });
+    vi.mocked(clearFeedSaves).mockResolvedValue({ ok: true });
     const response = await app.request(`/feed/cards/${CARD_ID}/saves`, { method: "DELETE" });
     expect(response.status).toBe(204);
   });

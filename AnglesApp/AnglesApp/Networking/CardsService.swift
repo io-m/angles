@@ -15,12 +15,12 @@ struct CardsService: Sendable {
         try await client.post(path: "cards", body: body)
     }
 
-    func list(limit: Int = 200) async throws -> [StoredCard] {
-        let response: CardListResponse = try await client.get(
-            path: "cards",
-            queryItems: [URLQueryItem(name: "limit", value: String(limit))]
-        )
-        return response.cards
+    func list(limit: Int, before: String? = nil) async throws -> CardListResponse {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let before {
+            queryItems.append(URLQueryItem(name: "before", value: before))
+        }
+        return try await client.get(path: "cards", queryItems: queryItems)
     }
 
     func get(id: String) async throws -> StoredCard {
@@ -41,7 +41,7 @@ struct CardsService: Sendable {
         categories: Set<ThoughtCategory> = [],
         emotions: Set<Emotion> = [],
         style: Style? = nil
-    ) async throws -> [StoredCard] {
+    ) async throws -> CardListResponse {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {
             queryItems.append(URLQueryItem(name: "before", value: before))
@@ -67,8 +67,7 @@ struct CardsService: Sendable {
         if let style {
             queryItems.append(URLQueryItem(name: "style", value: style.rawValue))
         }
-        let response: CardListResponse = try await client.get(path: "feed", queryItems: queryItems)
-        return response.cards
+        return try await client.get(path: "feed", queryItems: queryItems)
     }
 
     func saveFeedAngle(id: String, style: Style) async throws -> StoredCard {

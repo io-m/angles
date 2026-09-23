@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var showAppearance = false
     @State private var showSubscription = false
     @State private var photoItem: PhotosPickerItem?
+    @FocusState private var nameFocused: Bool
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private let edgePad: CGFloat = 20
@@ -81,6 +82,10 @@ struct SettingsView: View {
             guard let item else { return }
             Task { await loadPhoto(from: item) }
         }
+        .onDisappear {
+            guard let identityStore else { return }
+            Task { await identityStore.commitName() }
+        }
     }
 
     private var headerBlock: some View {
@@ -133,8 +138,14 @@ struct SettingsView: View {
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .submitLabel(.done)
+                .focused($nameFocused)
                 .onSubmit {
                     Task { await identityStore.commitName() }
+                }
+                .onChange(of: nameFocused) { _, focused in
+                    if !focused {
+                        Task { await identityStore.commitName() }
+                    }
                 }
                 .accessibilityLabel("Display name")
 
@@ -190,12 +201,11 @@ struct SettingsView: View {
     private func loadPhoto(from item: PhotosPickerItem) async {
         defer { photoItem = nil }
         guard let identityStore else { return }
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else {
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
             identityStore.photoSync = .failed("Couldn't read that photo.")
             return
         }
-        await identityStore.uploadPhoto(image)
+        await identityStore.uploadPhoto(data: data)
     }
 
     private var rowDivider: some View {

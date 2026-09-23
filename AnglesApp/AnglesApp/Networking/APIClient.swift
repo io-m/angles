@@ -27,11 +27,11 @@ extension APIError: LocalizedError {
 
 final class APIClient: @unchecked Sendable {
     private let session: URLSession
-    private let baseURL: URL
+    private let baseURL: URL?
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    init(baseURL: URL = AppConfig.baseURL, session: URLSession? = nil) {
+    init(baseURL: URL? = AppConfig.baseURL, session: URLSession? = nil) {
         self.baseURL = baseURL
         if let session {
             self.session = session
@@ -186,7 +186,7 @@ final class APIClient: @unchecked Sendable {
 
     private func resolvedURL(path: String, queryItems: [URLQueryItem] = []) -> URL? {
         let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard !trimmed.isEmpty else {
+        guard let baseURL, !trimmed.isEmpty else {
             return nil
         }
         let url = baseURL.appending(path: trimmed)

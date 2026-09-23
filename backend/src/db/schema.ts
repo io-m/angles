@@ -63,12 +63,22 @@ export const cards = pgTable(
     model: text("model").notNull(),
     spotlightStyle: styleEnum("spotlight_style").notNull(),
     isPublic: boolean("is_public").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    // Millisecond precision so the `createdAt|id` page cursor round-trips through a JS Date exactly.
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
-    index("cards_user_created_idx").on(table.userId, table.createdAt.desc()),
+    // NULLS FIRST matches the default of `ORDER BY ... DESC`, so the planner can walk these in order.
+    index("cards_user_created_idx").on(
+      table.userId,
+      table.createdAt.desc().nullsFirst(),
+      table.id.desc().nullsFirst(),
+    ),
     index("cards_category_idx").on(table.category),
-    index("cards_public_created_idx").on(table.isPublic, table.createdAt.desc()),
+    index("cards_public_created_idx")
+      .on(table.createdAt.desc().nullsFirst(), table.id.desc().nullsFirst())
+      .where(sql`${table.isPublic} = true`),
     index("cards_emotions_gin_idx").using("gin", table.emotions),
     check("cards_intensity_range", sql`intensity between 1 and 5`),
   ],

@@ -135,7 +135,9 @@ struct ProfileView: View {
                 onOpen: { person in
                     showFollowing = false
                     onOpenFollowed(person)
-                }
+                },
+                writeError: viewModel.writeError,
+                onDismissError: viewModel.dismissWriteError
             )
             .task { await viewModel.loadFollowing() }
             .presentationDetents([.large])
@@ -155,6 +157,7 @@ struct ProfileView: View {
                                 tab: tab,
                                 cards: viewModel.profileCards(for: tab),
                                 loadState: viewModel.libraryLoadState,
+                                footerState: viewModel.libraryFooterState,
                                 ownedIsEmpty: viewModel.ownedCards.isEmpty,
                                 chromeHeight: fixedChromeHeight,
                                 scrollToTopToken: {
@@ -167,6 +170,8 @@ struct ProfileView: View {
                                 onInspire: onInspire,
                                 onRetry: viewModel.retryLoadLibrary,
                                 onRefresh: { await viewModel.refreshLibrary() },
+                                onLoadMore: viewModel.loadMoreLibrary,
+                                onRetryLoadMore: viewModel.retryLoadMoreLibrary,
                                 onDelete: deleteCard,
                                 onToggleFavorite: toggleFavorite,
                                 onSetPublic: setPublic,
@@ -470,6 +475,7 @@ private struct ProfileTabPage: View {
     let tab: ProfileGridFilter
     let cards: [HomeCard]
     let loadState: LibraryLoadState
+    let footerState: FeedFooterState
     let ownedIsEmpty: Bool
     let chromeHeight: CGFloat
     var scrollToTopToken = 0
@@ -477,6 +483,8 @@ private struct ProfileTabPage: View {
     var onInspire: () -> Void
     var onRetry: () -> Void
     var onRefresh: () async -> Void
+    var onLoadMore: () -> Void
+    var onRetryLoadMore: () -> Void
     var onDelete: (HomeCard) -> Void
     var onToggleFavorite: (HomeCard, Style) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
@@ -563,47 +571,83 @@ private struct ProfileTabPage: View {
             if showsEmptyHero {
                 ProfileEmptyLibraryHero(onInspire: onInspire)
             } else if cards.isEmpty {
-                Text(tab.emptyCopy)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.muted)
-                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                    .padding(.top, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if footerState == .idle {
+                    Text(tab.emptyCopy)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.muted)
+                        .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                        .padding(.top, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    footer
+                        .padding(.top, 16)
+                }
             } else if tab == .favorites {
-                HomeCardGrid(
-                    cards: cards,
-                    rowSpacing: HeaderCollapse.horizontalPadding,
-                    presentation: tab.presentation,
-                    openingStyle: tab.matchingStyle,
-                    onDelete: onDelete,
-                    onToggleFavorite: onToggleFavorite,
-                    onSetPublic: onSetPublic,
-                    onRemoveFromBoard: onRemoveFromBoard,
-                    onOpenAuthor: onOpenAuthor,
-                    onToggleFollow: onToggleFollow
-                )
-                .equatable()
-                .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                .padding(.top, 10)
+                VStack(spacing: 0) {
+                    HomeCardGrid(
+                        cards: cards,
+                        rowSpacing: HeaderCollapse.horizontalPadding,
+                        presentation: tab.presentation,
+                        openingStyle: tab.matchingStyle,
+                        onDelete: onDelete,
+                        onToggleFavorite: onToggleFavorite,
+                        onSetPublic: onSetPublic,
+                        onRemoveFromBoard: onRemoveFromBoard,
+                        onOpenAuthor: onOpenAuthor,
+                        onToggleFollow: onToggleFollow,
+                        onReachEnd: onLoadMore,
+                        loadMorePrefetchDistance: 6
+                    )
+                    .equatable()
+                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                    .padding(.top, 10)
+
+                    footer
+                }
             } else {
-                TallHomeCardGrid(
-                    cards: cards,
-                    cardMaxHeight: tallCardMaxHeight,
-                    rowSpacing: HeaderCollapse.horizontalPadding,
-                    openingStyle: tab.matchingStyle,
-                    menuRole: { _ in .owner },
-                    onDelete: onDelete,
-                    onToggleFavorite: onToggleFavorite,
-                    onSetPublic: onSetPublic,
-                    onRemoveFromBoard: onRemoveFromBoard,
-                    shiningCardID: shiningCardID,
-                    onOpenAuthor: onOpenAuthor,
-                    onToggleFollow: onToggleFollow
-                )
-                .equatable()
-                .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                .padding(.top, HeaderCollapse.horizontalPadding)
+                VStack(spacing: 0) {
+                    TallHomeCardGrid(
+                        cards: cards,
+                        cardMaxHeight: tallCardMaxHeight,
+                        rowSpacing: HeaderCollapse.horizontalPadding,
+                        openingStyle: tab.matchingStyle,
+                        menuRole: { _ in .owner },
+                        onDelete: onDelete,
+                        onToggleFavorite: onToggleFavorite,
+                        onSetPublic: onSetPublic,
+                        onRemoveFromBoard: onRemoveFromBoard,
+                        shiningCardID: shiningCardID,
+                        onOpenAuthor: onOpenAuthor,
+                        onToggleFollow: onToggleFollow,
+                        onReachEnd: onLoadMore,
+                        loadMorePrefetchDistance: 6
+                    )
+                    .equatable()
+                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                    .padding(.top, HeaderCollapse.horizontalPadding)
+
+                    footer
+                }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var footer: some View {
+        switch footerState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .accessibilityLabel("Loading more cards")
+        case .failed:
+            Button("Retry loading more", action: onRetryLoadMore)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.ink)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
         }
     }
 

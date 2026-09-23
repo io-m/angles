@@ -1,6 +1,6 @@
 # Angles
 
-Private iOS app: type a negative thought, get it reframed in Stoic, Optimistic, Humorous, or Tough Love. Private by default; optional anonymous publish into a community Home is postponed. Paid-only after one onboarding taste.
+iOS app: type a negative thought, get it reframed in Stoic, Optimistic, Humorous, or Tough Love. Every card lives in your private library; posting one also puts it on the community Home. Compose Save defaults to Post, with Save privately one tap away. Paid-only after one onboarding taste.
 
 What to build next lives in [`BUILD.md`](BUILD.md) — update that file whenever a screen or feature lands.
 
@@ -31,16 +31,16 @@ Requires Node 22+ and pnpm.
 
 ```bash
 cd backend
-cp .env.example .env   # set MISTRAL_API_KEY (default model) and DATABASE_URL
+cp .env.example .env   # set MISTRAL_API_KEY, COOK_SIGNING_KEY, and DATABASE_URL
 pnpm install
 pnpm dev
 ```
 
-API listens on `http://localhost:8787` (bind `0.0.0.0`). A physical device must use the Mac LAN IP, not localhost.
+API listens on `http://localhost:8787` (bind `0.0.0.0`). A physical device must use the Mac LAN IP, not localhost. Until auth exists, anyone on the same network can use the API as the dev user, so run it only on networks you trust.
 
 - `GET /health` → `{ "status": "ok", "db": "ok" }` (503 when Postgres is down)
-- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[], "styles"?: Style[], "model"? }` → `{ "kind": "continue", ... }` or `{ "kind": "ready", "thought", "results", "meta" }`. Never writes a card.
-- `POST /cards` → save a kept cook. `GET /cards` is the Profile library.
+- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[], "styles"?: Style[], "model"? }` → `{ "kind": "continue", ... }` or `{ "kind": "ready", "thought", "results", "meta", "signature" }`. Never writes a card.
+- `POST /cards` → save a kept cook, echoing the `/reframe` signatures; anything the server did not sign is rejected. `GET /cards` is the Profile library.
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm build`.
 
@@ -52,7 +52,7 @@ Native `URLSession` does not use browser CORS. This API does not send CORS heade
 
 The overlay cooks through `ReframeService` / `POST /reframe`. Save uses `CardsService` / `POST /cards`. Profile loads the library from `GET /cards`.
 
-Debug `AppConfig.baseURL` is the Mac LAN IP on port 8787 (devices cannot use localhost). `NSAllowsLocalNetworking` is enabled; do not turn on `NSAllowsArbitraryLoads`.
+`AppConfig.baseURL` comes from the `ANGLES_API_BASE_URL` build setting in `AnglesApp/project.yml`: the Mac LAN IP on port 8787 for Debug (devices cannot use localhost), empty for Release until a production host exists. `NSAllowsLocalNetworking` is enabled; do not turn on `NSAllowsArbitraryLoads`.
 
 Bundle ID placeholder: `app.angles.ios`. Attach your Apple team in Xcode before device runs.
 

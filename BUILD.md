@@ -384,6 +384,8 @@ Account / auth settings wait until auth exists. Appearance already shipped in 2a
 
 ## Shipped log
 
+- 2026-09-23 — Audit fixes, server: `POST /cards` only stores a cook `/reframe` signed (HMAC, `COOK_SIGNING_KEY`) and rejects any safety flag; a hearted card leaves the viewer's library once its author makes it private, and can still be removed from the board; feed, author, and library pages share one index-seekable `createdAt|id` cursor on millisecond timestamps; per-page save lookups.
+- 2026-09-23 — Audit fixes, iOS: pull-to-refresh keeps the page cursor, so a failed refresh can still load more; publishing under a filter refetches the unfiltered page; thin style tabs keep paging; the library pages past 200; a card that went away says so; Make public asks first and public cards show a globe to their author; recook failures and Following-sheet unfollow failures show; the name saves on blur; leaving waits for a save; Log out clears loaded cards; author photos are cached and downsampled; the author page's edge swipe no longer disables the root's pop gate; Release has no API host until one exists.
 - 2026-09-23 — Following sheet search filters initials with the system search field.
 - 2026-09-23 — Profile's people icon, beside Settings, opens who you follow; the row's minus icon unfollows them.
 - 2026-09-23 — Follow badge tap scales up, ticks, and fills from paper to ink as the plus becomes a checkmark.

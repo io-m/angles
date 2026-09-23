@@ -114,8 +114,14 @@ struct ComposeSheetView: View {
                 Text(restartMessage)
             }
             .alert(leaveTitle, isPresented: $showLeaveAlert) {
-                Button(leaveConfirmTitle, role: .destructive, action: confirmLeave)
-                Button(leaveCancelTitle, role: .cancel) {}
+                // A save that already reached the server lands either way, so there is no
+                // honest "leave" while it runs; it finishes within the 6s write timeout.
+                if leaveKind == .busySaving {
+                    Button("OK", role: .cancel) {}
+                } else {
+                    Button(leaveConfirmTitle, role: .destructive, action: confirmLeave)
+                    Button(leaveCancelTitle, role: .cancel) {}
+                }
             } message: {
                 Text(leaveMessage)
             }
@@ -123,7 +129,7 @@ struct ComposeSheetView: View {
 
     private var restartMessage: String {
         if viewModel.isSessionBusy {
-            return "A cook or save is still running and will be cancelled. This wipes the current thought and answers. You can’t undo it."
+            return "A cook is still running and will be cancelled. This wipes the current thought and answers. You can’t undo it."
         }
         return "This wipes the current thought and answers. You can’t undo it."
     }
@@ -133,7 +139,7 @@ struct ComposeSheetView: View {
         case .busyWriting:
             return "This is still writing. Leave anyway?"
         case .busySaving:
-            return "This card is still saving. Leave anyway?"
+            return "Still saving"
         case .discard:
             return "Discard this thought?"
         }
@@ -144,7 +150,7 @@ struct ComposeSheetView: View {
         case .busyWriting:
             return "The answers are not ready yet. Leaving cancels this cook."
         case .busySaving:
-            return "Leave without waiting for save to finish?"
+            return "This takes a few seconds. You can close once the card is saved."
         case .discard:
             return "This thought and its answers will be gone."
         }
@@ -221,6 +227,8 @@ struct ComposeSheetView: View {
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(theme.ink)
+                    .disabled(viewModel.isSaving)
+                    .opacity(viewModel.isSaving ? 0.4 : 1)
                     .accessibilityHint("Wipes this session and starts a new thought")
                 }
 
@@ -479,7 +487,7 @@ struct ComposeSheetView: View {
                     OverlayProposalCard(
                         thought: cook.thought,
                         thoughtOriginal: cook.thoughtOriginal,
-                        results: cook.results,
+                        results: cook.results.map(\.result),
                         recookingStyle: viewModel.recookingStyle,
                         identityStore: identityStore,
                         isPublic: $viewModel.composeIsPublic,

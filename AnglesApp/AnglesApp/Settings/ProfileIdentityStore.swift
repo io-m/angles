@@ -32,6 +32,8 @@ final class ProfileIdentityStore {
     var onSynced: ((String, String?) -> Void)?
 
     private let profileService = ProfileService()
+    /// The last name sent this launch. `nil` means the next commit always reaches the server.
+    private var committedName: String?
 
     init() {
         let defaults = UserDefaults.standard
@@ -67,17 +69,26 @@ final class ProfileIdentityStore {
         UserDefaults.standard.set(true, forKey: Keys.hasCustomName)
     }
 
-    /// Sends the current name. Empty keeps the server initials.
+    /// Sends the current name. Empty keeps the server initials. Safe to call on every blur and
+    /// dismissal: a name the server already has is not sent again.
     func commitName() async {
         let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed != displayName {
             updateName(trimmed)
         }
+        guard hasCustomName, displayName != committedName else {
+            return
+        }
+        let sent = displayName
+        committedName = sent
         nameSyncError = nil
         do {
-            let profile = try await profileService.updateName(displayName)
+            let profile = try await profileService.updateName(sent)
             apply(profile)
         } catch {
+            if committedName == sent {
+                committedName = nil
+            }
             nameSyncError = "Couldn't save your name."
         }
     }
@@ -91,11 +102,13 @@ final class ProfileIdentityStore {
         UserDefaults.standard.set(displayName, forKey: Keys.displayName)
     }
 
-    func uploadPhoto(_ image: UIImage) async {
+    func uploadPhoto(data original: Data) async {
         let previous = photo
         photoSync = .uploading
-        let scaled = Self.downscaled(image)
-        guard let data = scaled.jpegData(compressionQuality: 0.82) else {
+        let prepared = await Task.detached(priority: .userInitiated) {
+            Self.preparedAvatar(from: original)
+        }.value
+        guard let (scaled, data) = prepared else {
             photoSync = .failed("Couldn't read that photo.")
             return
         }
@@ -154,15 +167,16 @@ final class ProfileIdentityStore {
         return UIImage(contentsOfFile: url.path)
     }
 
-    private static func downscaled(_ image: UIImage, maxSide: CGFloat = 512) -> UIImage {
-        let longest = max(image.size.width, image.size.height)
-        guard longest > maxSide else { return image }
-        let scale = maxSide / longest
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: size))
+    /// Pixels, not points: the upload is the same size on every device.
+    private nonisolated static let avatarPixelSize = 512
+
+    private nonisolated static func preparedAvatar(from data: Data) -> (UIImage, Data)? {
+        guard let image = ImageDownsampler.image(from: data, maxPixelSize: avatarPixelSize),
+              let jpeg = image.jpegData(compressionQuality: 0.82)
+        else {
+            return nil
         }
+        return (image, jpeg)
     }
 }
 

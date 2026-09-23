@@ -32,7 +32,9 @@ A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`).
 
 ## Config
 
-`AppConfig.baseURL`: DEBUG `http://localhost:8787`; Release is a placeholder until Railway exists. Physical devices cannot use localhost.
+`AppConfig.baseURL` reads Info.plist `AnglesAPIBaseURL`, which is the `ANGLES_API_BASE_URL` build setting in `project.yml`: Debug is the Mac LAN IP (`http://192.168.0.39:8787`; physical devices cannot use localhost), Release is empty until the Railway host exists, so Release requests fail locally. Never fill it with a host we do not own.
+
+Saves echo the `/reframe` signatures (`ReadyCook.signature`, `SignedReframeResult.signature`); a recook replaces the whole signed result, never just its text.
 
 ## UI
 

@@ -95,12 +95,19 @@ export type ContinueResponse = {
   safety: SafetyFlag;
 };
 
+/** A reframe the server produced. `POST /cards` only accepts results it signed. */
+export type SignedReframeResult = ReframeResult & {
+  signature: string;
+};
+
 export type ReadyResponse = {
   kind: "ready";
   thought: string;
   thoughtOriginal?: string;
-  results: ReframeResult[];
+  results: SignedReframeResult[];
   meta: ReframeMeta;
+  /** Signs `thought`, `thoughtOriginal`, and `meta` (minus `matching`). */
+  signature: string;
 };
 
 export type ReframeResponse = ContinueResponse | ReadyResponse;
@@ -184,7 +191,7 @@ export type CreateCardInput = {
 
 export type CardListQuery = {
   limit: number;
-  before?: Date;
+  before?: FeedCursor;
   category?: Category;
   /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
   style?: Style;

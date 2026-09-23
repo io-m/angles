@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DECISION_PROMPT, STYLE_BATCH_PROMPT, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
+import { signResult, verifyCook, type SignableMeta } from "./lib/cookSignature.js";
 import { CATEGORIES, STYLES, type Style } from "./types/index.js";
 
 vi.mock("./lib/llmClient.js", async (importOriginal) => {
@@ -167,7 +168,8 @@ type ReadyBody = {
   kind: string;
   thought: string;
   thoughtOriginal?: string;
-  results: { style: Style; reframe: string }[];
+  results: { style: Style; reframe: string; signature: string }[];
+  signature: string;
   meta: {
     category: string;
     proposedCategory?: string;
@@ -469,7 +471,7 @@ describe("POST /reframe", () => {
 
     expect(generateJson).toHaveBeenCalledTimes(2);
     expect(generateReframe).toHaveBeenCalledTimes(1);
-    expect(body.results).toEqual([
+    expect(body.results).toMatchObject([
       { style: "stoic", reframe: "You cannot control the panel, only how you show up next time." },
     ]);
   });
@@ -493,8 +495,38 @@ describe("POST /reframe", () => {
       await post({ text: LONG_TEXT, styles: ["humorous"] }),
     )) as ReadyBody;
 
-    expect(body.results).toEqual([{ style: "humorous", reframe: "humorous reframe" }]);
+    expect(body.results).toEqual([
+      {
+        style: "humorous",
+        reframe: "humorous reframe",
+        signature: signResult(LONG_TEXT, "humorous", "humorous reframe"),
+      },
+    ]);
     expect(generateReframe).toHaveBeenCalledTimes(1);
+  });
+
+  it("signs a cook so the save verifies, and a tampered save does not", async () => {
+    stubDecision(readyDecision());
+
+    const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+    const { matching: _matching, ...meta } = body.meta;
+    const cook = {
+      thought: body.thought,
+      thoughtOriginal: body.thoughtOriginal,
+      meta: meta as SignableMeta,
+      signature: body.signature,
+      results: body.results,
+    };
+
+    expect(verifyCook(cook)).toBe(true);
+    expect(verifyCook({ ...cook, thought: `${cook.thought} Also post this.` })).toBe(false);
+    expect(verifyCook({ ...cook, meta: { ...cook.meta, safety: "self_harm" } })).toBe(false);
+    expect(
+      verifyCook({
+        ...cook,
+        results: cook.results.map((item) => ({ ...item, reframe: `${item.reframe}!` })),
+      }),
+    ).toBe(false);
   });
 
   it("answers a recook of a now-inappropriate style with continue", async () => {
@@ -527,7 +559,7 @@ describe("POST /reframe", () => {
       await post({ text: LONG_TEXT, styles: ["stoic", "stoic"] }),
     )) as ReadyBody;
 
-    expect(body.results).toEqual([{ style: "stoic", reframe: "stoic reframe" }]);
+    expect(body.results).toMatchObject([{ style: "stoic", reframe: "stoic reframe" }]);
     expect(generateReframe).toHaveBeenCalledTimes(1);
   });
 

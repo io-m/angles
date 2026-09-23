@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { createCard, deleteCard, getCard, listCards, patchCard } from "../db/cards.js";
 import { authStub } from "../lib/authStub.js";
+import { verifyCook } from "../lib/cookSignature.js";
+import { cardCursorSchema } from "../lib/cursor.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { LLM_MODEL_IDS } from "../lib/llmClient.js";
 import {
@@ -56,6 +58,7 @@ const createCardSchema = z
             .string()
             .transform((value) => value.trim())
             .pipe(z.string().min(1, "reframe must not be empty").max(MAX_REFRAME_LENGTH)),
+          signature: z.string().min(1).max(128),
         }),
       )
       .min(1)
@@ -64,6 +67,7 @@ const createCardSchema = z
         message: "results must not repeat a style",
       }),
     meta: createMetaSchema,
+    signature: z.string().min(1).max(128),
     model: z.enum(LLM_MODEL_IDS),
     spotlightStyle: z.enum(STYLES),
     isPublic: z.boolean().optional(),
@@ -74,10 +78,7 @@ const createCardSchema = z
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional().default(50),
-  before: z
-    .string()
-    .refine((value) => !Number.isNaN(Date.parse(value)), "before must be an ISO-8601 timestamp")
-    .optional(),
+  before: cardCursorSchema().optional(),
   category: z.enum(CATEGORIES).optional(),
   style: z.enum(STYLES).optional(),
   favorite: z
@@ -114,8 +115,14 @@ cardsRoute.post(
     }
   }),
   async (c) => {
-    const body = c.req.valid("json");
-    const card = await createCard(body);
+    const { signature, results, ...rest } = c.req.valid("json");
+    if (rest.meta.safety !== "none" || !verifyCook({ ...rest, signature, results })) {
+      return c.json(errorBody("card does not match a reframe from this server", "VALIDATION_ERROR"), 400);
+    }
+    const card = await createCard({
+      ...rest,
+      results: results.map(({ style, reframe }) => ({ style, reframe })),
+    });
     return c.json(card, 201);
   },
 );
@@ -132,7 +139,7 @@ cardsRoute.get(
     const query = c.req.valid("query");
     const cardList = await listCards({
       limit: query.limit,
-      before: query.before ? new Date(query.before) : undefined,
+      before: query.before,
       category: query.category,
       style: query.style,
       favorite: query.favorite,

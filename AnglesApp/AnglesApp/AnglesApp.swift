@@ -463,6 +463,7 @@ struct AppRoot: View {
             paywallHeroCard = nil
             paywallPhase = .idle
             viewModel.resetCompose()
+            viewModel.resetForSignOut()
             homeRevealPhase = .hidden
             selectedTab = .home
             lastContentTab = .home
@@ -649,8 +650,9 @@ private struct HomeArrivalStatus: View {
 }
 
 /// Every card write is optimistic. When one fails the card rolls back on its own, so this
-/// is the only thing that says the server was never reached.
-private struct WriteErrorBanner: View {
+/// is the only thing that says the server was never reached. Sheets that write show their own
+/// copy, because this one sits under them.
+struct WriteErrorBanner: View {
     let message: String?
     let onDismiss: () -> Void
 

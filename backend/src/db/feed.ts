@@ -1,7 +1,8 @@
-import { and, arrayOverlaps, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
+import { and, arrayOverlaps, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import type { FeedCursor, FeedListQuery, StoredCard, Style } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
+import { olderThanCursor } from "./cursor.js";
 import { storedCardsForViewer, type CardLoaded } from "./mapCard.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
 
@@ -23,13 +24,6 @@ function isFeedSaveTarget(row: CardLoaded, viewerId: string): boolean {
   return row.isPublic && row.userId !== viewerId;
 }
 
-function olderThanCursor(before: FeedCursor) {
-  return or(
-    lt(cards.createdAt, before.createdAt),
-    and(eq(cards.createdAt, before.createdAt), lt(cards.id, before.id)),
-  );
-}
-
 function styleExistsFilter(db: ReturnType<typeof getDb>, style: Style) {
   return inArray(
     cards.id,
@@ -41,7 +35,8 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
-    const filters = [eq(cards.isPublic, true)];
+    // A literal, not a bound parameter, so even a generic plan can prove the partial index applies.
+    const filters = [sql`${cards.isPublic} = true`];
     if (query.categories?.length) {
       filters.push(inArray(cards.category, query.categories));
     }
@@ -52,10 +47,7 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
       filters.push(styleExistsFilter(db, query.style));
     }
     if (query.before) {
-      const cursorFilter = olderThanCursor(query.before);
-      if (cursorFilter) {
-        filters.push(cursorFilter);
-      }
+      filters.push(olderThanCursor(query.before));
     }
 
     const rows = await db.query.cards.findMany({
@@ -89,10 +81,7 @@ export async function listPublicCardsForUser(query: {
     const db = getDb();
     const filters = [eq(cards.userId, query.userId), eq(cards.isPublic, true)];
     if (query.before) {
-      const cursorFilter = olderThanCursor(query.before);
-      if (cursorFilter) {
-        filters.push(cursorFilter);
-      }
+      filters.push(olderThanCursor(query.before));
     }
 
     const rows = await db.query.cards.findMany({
@@ -188,9 +177,23 @@ export async function unsaveFeedAngle(id: string, style: Style): Promise<FeedSav
   });
 }
 
-export async function clearFeedSaves(id: string): Promise<FeedSaveResult> {
-  return withFeedTarget(id, async (tx, _row, viewerId) => {
-    await tx.delete(savedAngles).where(and(eq(savedAngles.userId, viewerId), eq(savedAngles.cardId, id)));
-    return returnViewerCard(tx, id, viewerId);
-  });
+/** Works on any card the viewer saved, so a card that went private can still leave their library. */
+export async function clearFeedSaves(id: string): Promise<{ ok: boolean }> {
+  try {
+    const viewerId = getOwnerUserId();
+    const removed = await getDb()
+      .delete(savedAngles)
+      .where(and(eq(savedAngles.userId, viewerId), eq(savedAngles.cardId, id)))
+      .returning({ cardId: savedAngles.cardId });
+    if (removed.length > 0) {
+      return { ok: true };
+    }
+    const row = await loadFeedCardRow(getDb(), id);
+    return { ok: row !== null && isFeedSaveTarget(row, viewerId) };
+  } catch (error) {
+    if (error instanceof DbError) {
+      throw error;
+    }
+    throw wrapDbError(error, "clearFeedSaves");
+  }
 }

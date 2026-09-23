@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, not, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, not, or, sql } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { normalizeTagSlugs, titleCase } from "../lib/slugs.js";
 import {
@@ -9,6 +9,7 @@ import {
   type StoredCard,
 } from "../types/index.js";
 import { getDb, wrapDbError, DbError } from "./client.js";
+import { olderThanCursor } from "./cursor.js";
 import { storedCardsForViewer, toStoredCard } from "./mapCard.js";
 import { cardReframes, cardTags, cards, categoryProposals, savedAngles, tags } from "./schema.js";
 
@@ -143,8 +144,10 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       .innerJoin(cards, eq(cards.id, cardReframes.cardId))
       .where(and(eq(cardReframes.isFavorite, true), eq(cards.userId, viewerId)));
 
-    // The library is the viewer's own cards plus anything they hearted on Home.
-    const filters = [or(eq(cards.userId, viewerId), inArray(cards.id, savedAngleIds))!];
+    // The library is the viewer's own cards plus anything they hearted on Home that is still public.
+    const filters = [
+      or(eq(cards.userId, viewerId), and(eq(cards.isPublic, true), inArray(cards.id, savedAngleIds)))!,
+    ];
     if (query.category) {
       filters.push(eq(cards.category, query.category));
     }
@@ -162,7 +165,7 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       filters.push(not(or(inArray(cards.id, ownedFavoriteIds), inArray(cards.id, savedAngleIds))!));
     }
     if (query.before) {
-      filters.push(lt(cards.createdAt, query.before));
+      filters.push(olderThanCursor(query.before));
     }
 
     const rows = await db.query.cards.findMany({

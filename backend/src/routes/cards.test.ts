@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEV_USER_ID } from "../lib/authStub.js";
+import { signCook, signResult } from "../lib/cookSignature.js";
 import { STYLES, type CreateCardInput, type StoredCard } from "../types/index.js";
 
 vi.mock("../db/client.js", () => {
@@ -36,20 +37,30 @@ const { createCard, deleteCard, getCard, listCards, patchCard } = await import("
 const app = createApp();
 const CARD_ID = "11111111-1111-4111-8111-111111111111";
 
+const cookThought = "I bombed my interview and I keep replaying every shaky answer.";
+const cookMeta = {
+  category: "work" as const,
+  tags: ["job_interview", "shame"],
+  intensity: 5,
+  timeframe: "past" as const,
+  emotions: ["shame" as const, "fear" as const],
+  safety: "none" as const,
+  inputLanguage: "en",
+  skippedStyles: [] as [],
+};
+
 const cookBody = {
-  thought: "I bombed my interview and I keep replaying every shaky answer.",
-  results: STYLES.map((style) => ({ style, reframe: `A ${style} take.` })),
+  thought: cookThought,
+  results: STYLES.map((style) => ({
+    style,
+    reframe: `A ${style} take.`,
+    signature: signResult(cookThought, style, `A ${style} take.`),
+  })),
   meta: {
-    category: "work" as const,
-    tags: ["job_interview", "shame"],
-    intensity: 5,
-    timeframe: "past" as const,
-    emotions: ["shame", "fear"],
-    safety: "none" as const,
-    inputLanguage: "en",
-    skippedStyles: [] as [],
+    ...cookMeta,
     matching: { category: "work" as const, tags: ["ignored"], intensityBand: "low" as const },
   },
+  signature: signCook({ thought: cookThought, meta: cookMeta }),
   model: "mistral-small-latest" as const,
   spotlightStyle: "stoic" as const,
 };
@@ -71,7 +82,7 @@ function storedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     safety: "none",
     skippedStyles: [],
     matching: { category: "work", tags: ["job_interview", "shame"], intensityBand: "high" },
-    results: cookBody.results.map((item) => ({ ...item, isFavorite: false })),
+    results: cookBody.results.map(({ style, reframe }) => ({ style, reframe, isFavorite: false })),
     model: cookBody.model,
     spotlightStyle: "stoic",
     isPublic: false,
@@ -107,6 +118,62 @@ describe("POST /cards", () => {
     expect(response.status).toBe(201);
     await expect(jsonOf(response)).resolves.toEqual(stored);
     expect(createCard).toHaveBeenCalledTimes(1);
+    const payload = vi.mocked(createCard).mock.calls[0]?.[0] as CreateCardInput;
+    expect(payload).not.toHaveProperty("signature");
+    expect(payload.results[0]).toEqual({ style: "stoic", reframe: "A stoic take." });
+  });
+
+  it("rejects a card without signatures", async () => {
+    const { signature: _signature, ...unsigned } = cookBody;
+    const response = await app.request(
+      jsonRequest("/cards", "POST", {
+        ...unsigned,
+        results: unsigned.results.map(({ style, reframe }) => ({ style, reframe })),
+      }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(createCard).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["thought", { thought: "Something the server never cooked." }],
+    ["meta", { meta: { ...cookBody.meta, category: "money" } }],
+    ["safety", { meta: { ...cookBody.meta, safety: "self_harm" } }],
+    [
+      "reframe",
+      {
+        results: cookBody.results.map((item) =>
+          item.style === "stoic" ? { ...item, reframe: "Something else entirely." } : item,
+        ),
+      },
+    ],
+  ])("rejects a tampered %s", async (_field, override) => {
+    const response = await app.request(jsonRequest("/cards", "POST", { ...cookBody, ...override }));
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(createCard).not.toHaveBeenCalled();
+  });
+
+  it("rejects a signed cook that carries a safety flag", async () => {
+    const flaggedMeta = { ...cookMeta, safety: "self_harm" as const };
+    const response = await app.request(
+      jsonRequest("/cards", "POST", {
+        ...cookBody,
+        meta: flaggedMeta,
+        signature: signCook({ thought: cookThought, meta: flaggedMeta }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(createCard).not.toHaveBeenCalled();
+  });
+
+  it("accepts a subset of signed results", async () => {
+    vi.mocked(createCard).mockResolvedValue(storedCard());
+    const response = await app.request(
+      jsonRequest("/cards", "POST", { ...cookBody, results: cookBody.results.slice(0, 2) }),
+    );
+    expect(response.status).toBe(201);
   });
 
   it("forwards isPublic on create", async () => {
@@ -154,8 +221,8 @@ describe("POST /cards", () => {
       jsonRequest("/cards", "POST", {
         ...cookBody,
         results: [
-          { style: "stoic", reframe: "one" },
-          { style: "stoic", reframe: "two" },
+          { style: "stoic", reframe: "one", signature: signResult(cookThought, "stoic", "one") },
+          { style: "stoic", reframe: "two", signature: signResult(cookThought, "stoic", "two") },
         ],
       }),
     );
@@ -188,14 +255,14 @@ describe("GET /cards", () => {
 
   it("passes list filters", async () => {
     vi.mocked(listCards).mockResolvedValue([]);
-    const before = "2026-09-10T12:00:00.000Z";
+    const createdAt = "2026-09-10T12:00:00.000Z";
     const response = await app.request(
-      `/cards?limit=10&before=${encodeURIComponent(before)}&category=work&style=stoic&favorite=true`,
+      `/cards?limit=10&before=${encodeURIComponent(`${createdAt}|${CARD_ID}`)}&category=work&style=stoic&favorite=true`,
     );
     expect(response.status).toBe(200);
     expect(listCards).toHaveBeenCalledWith({
       limit: 10,
-      before: new Date(before),
+      before: { createdAt: new Date(createdAt), id: CARD_ID },
       category: "work",
       style: "stoic",
       favorite: true,

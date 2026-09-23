@@ -193,8 +193,10 @@ struct RefineTurn: Identifiable, Equatable {
 struct ReadyCook: Equatable {
     var thought: String
     var thoughtOriginal: String?
-    var results: [ReframeResult]
+    var results: [SignedReframeResult]
     var meta: ReframeMeta
+    /// Server signature over `thought`, `thoughtOriginal`, and `meta`; Save sends it back.
+    var signature: String
     var model: LlmModel
 }
 
@@ -402,6 +404,7 @@ private struct AuthorFeed {
     var generation = 0
     var task: Task<Void, Never>?
     var isRefreshing = false
+    var selectedTab: HomeFeedTab = .all
 }
 
 @MainActor
@@ -419,8 +422,20 @@ final class HomeViewModel {
     private(set) var recookingStyle: Style?
     /// Set when a recook comes back as `continue` (that style no longer fits).
     private(set) var recookNotice: String?
-    var profileGridFilter: ProfileGridFilter = .favorites
-    var homeFeedTab: HomeFeedTab = .all
+    var profileGridFilter: ProfileGridFilter = .favorites {
+        didSet {
+            if profileGridFilter != oldValue {
+                ensureProfileTabFilled()
+            }
+        }
+    }
+    var homeFeedTab: HomeFeedTab = .all {
+        didSet {
+            if homeFeedTab != oldValue {
+                ensureCurrentTabFilled()
+            }
+        }
+    }
     private(set) var appliedFilter = HomeFeedFilter()
     var selectedModel: LlmModel {
         didSet {
@@ -428,6 +443,7 @@ final class HomeViewModel {
         }
     }
     private(set) var libraryLoadState: LibraryLoadState
+    private(set) var libraryFooterState: FeedFooterState = .idle
     private(set) var feedCards: [HomeCard] = []
     private(set) var feedLoadState: LibraryLoadState = .loading
     private(set) var feedFooterState: FeedFooterState = .idle
@@ -460,6 +476,10 @@ final class HomeViewModel {
     /// Public cards inserted locally that a replacing feed page must not drop.
     private var feedAnchors: [UUID: HomeCard] = [:]
     private var hasLoadedLibrary = false
+    private var libraryPageTask: Task<Void, Never>?
+    private var libraryBefore: String?
+    private var libraryHasMore = false
+    private var isLibraryRefreshing = false
     private var favoriteTasks: [String: Task<Void, Never>] = [:]
     private var followTasks: [UUID: Task<Void, Never>] = [:]
     private var followGeneration: [UUID: Int] = [:]
@@ -503,6 +523,9 @@ final class HomeViewModel {
     }
 
     static let feedPageSize = 24
+    static let libraryPageSize = 200
+    /// Cards a style tab should show before it stops pulling more pages on its own.
+    private static let tabFillMinimum = 6
 
     var ownedCards: [HomeCard] {
         cards.filter(\.isOwner)
@@ -697,6 +720,7 @@ final class HomeViewModel {
                         thoughtOriginal: cook.thoughtOriginal,
                         results: cook.results,
                         meta: cook.meta,
+                        signature: cook.signature,
                         model: cook.model.rawValue,
                         spotlightStyle: spotlight,
                         isPublic: composeIsPublic
@@ -806,13 +830,17 @@ final class HomeViewModel {
             libraryLoadState = .loading
         }
         do {
-            let stored = try await cardsService.list(limit: 200)
+            let response = try await cardsService.list(limit: Self.libraryPageSize)
             guard !Task.isCancelled else {
                 return
             }
-            cards = merged(cards, with: stored)
+            cards = merged(cards, with: response.cards)
+            libraryBefore = response.page.nextCursor
+            libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
+            libraryFooterState = .idle
             hasLoadedLibrary = true
             libraryLoadState = .loaded
+            ensureProfileTabFilled()
         } catch {
             guard !Task.isCancelled else {
                 return
@@ -835,7 +863,119 @@ final class HomeViewModel {
     func refreshLibrary() async {
         libraryTask?.cancel()
         libraryTask = nil
+        libraryPageTask?.cancel()
+        libraryPageTask = nil
+        if libraryFooterState == .loading {
+            libraryFooterState = .idle
+        }
+        isLibraryRefreshing = true
         await loadLibrary(showsLoading: false)
+        isLibraryRefreshing = false
+    }
+
+    func loadMoreLibrary() {
+        guard hasLoadedLibrary,
+              libraryHasMore,
+              let before = libraryBefore,
+              libraryFooterState == .idle,
+              libraryPageTask == nil,
+              !isLibraryRefreshing
+        else {
+            return
+        }
+
+        libraryFooterState = .loading
+        libraryPageTask = Task { @MainActor in
+            do {
+                let response = try await cardsService.list(limit: Self.libraryPageSize, before: before)
+                guard !Task.isCancelled else {
+                    return
+                }
+                let known = Set(cards.map(\.id))
+                cards.append(contentsOf: response.cards.compactMap(HomeCard.init(stored:)).filter {
+                    !known.contains($0.id)
+                })
+                libraryBefore = response.page.nextCursor ?? libraryBefore
+                libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
+                libraryFooterState = .idle
+                libraryPageTask = nil
+                ensureProfileTabFilled()
+            } catch {
+                guard !Task.isCancelled, !Self.isCancellation(error) else {
+                    return
+                }
+                libraryFooterState = .failed
+                libraryPageTask = nil
+            }
+        }
+    }
+
+    func retryLoadMoreLibrary() {
+        guard libraryFooterState == .failed else {
+            return
+        }
+        libraryFooterState = .idle
+        loadMoreLibrary()
+    }
+
+    private func ensureProfileTabFilled() {
+        guard hasLoadedLibrary,
+              libraryHasMore,
+              profileCards(for: profileGridFilter).count < Self.tabFillMinimum
+        else {
+            return
+        }
+        loadMoreLibrary()
+    }
+
+    /// Log out starts over on this iPhone: nothing the last session loaded stays in memory, and
+    /// the next unlock loads Home and the library from scratch.
+    func resetForSignOut() {
+        feedTask?.cancel()
+        feedTask = nil
+        libraryTask?.cancel()
+        libraryTask = nil
+        libraryPageTask?.cancel()
+        libraryPageTask = nil
+        for task in favoriteTasks.values { task.cancel() }
+        for task in followTasks.values { task.cancel() }
+        for task in publicTasks.values { task.cancel() }
+        for task in deleteTasks.values { task.cancel() }
+        for task in boardTasks.values { task.cancel() }
+        for feed in authorFeeds.values { feed.task?.cancel() }
+        favoriteTasks = [:]
+        followTasks = [:]
+        followGeneration = [:]
+        publicTasks = [:]
+        deleteTasks = [:]
+        boardTasks = [:]
+        authorFeeds = [:]
+
+        feedGeneration &+= 1
+        feedCards = []
+        feedCardIDs = []
+        feedAnchors = [:]
+        feedBefore = nil
+        feedHasMore = true
+        feedFooterState = .idle
+        feedLoadState = .loading
+        hasLoadedFeed = false
+        appliedFilter = HomeFeedFilter()
+        homeFeedTab = .all
+
+        cards = []
+        libraryLoadState = .loading
+        libraryFooterState = .idle
+        libraryBefore = nil
+        libraryHasMore = false
+        hasLoadedLibrary = false
+        profileGridFilter = .favorites
+
+        followedPeople = []
+        followingLoadState = .loading
+        saveLanding = nil
+        dismissWriteError()
+        clearShiningCard()
     }
 
     /// Clears a stale failure before the root decides whether Home is ready to reveal.
@@ -906,23 +1046,27 @@ final class HomeViewModel {
         feedGeneration &+= 1
         let generation = feedGeneration
 
+        // The cursor stays until page one lands, so a failed or cancelled refresh can still page.
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            feedBefore = nil
-            feedHasMore = true
             feedFooterState = .idle
             feedLoadState = feedCards.isEmpty ? .loading : .loaded
         }
 
         await fetchFeedPage(replacing: true, generation: generation)
+        isFeedRefreshing = false
+        if generation == feedGeneration {
+            ensureCurrentTabFilled()
+        }
     }
 
     func loadMoreFeed() {
         guard feedHasMore,
               feedBefore != nil,
               feedFooterState == .idle,
-              feedTask == nil
+              feedTask == nil,
+              !isFeedRefreshing
         else {
             return
         }
@@ -932,12 +1076,25 @@ final class HomeViewModel {
     }
 
     func retryLoadMoreFeed() {
-        guard feedFooterState == .failed, feedBefore != nil, feedTask == nil else {
+        guard feedFooterState == .failed, feedTask == nil, !isFeedRefreshing else {
             return
         }
 
         feedFooterState = .loading
-        startFeedTask(replacing: false)
+        startFeedTask(replacing: feedBefore == nil)
+    }
+
+    /// A style tab only shows the loaded cards that carry its angle, so a thin tab keeps paging
+    /// until it has a screenful or the feed runs out.
+    private func ensureCurrentTabFilled() {
+        guard let style = homeFeedTab.matchingStyle,
+              feedLoadState == .loaded,
+              feedHasMore,
+              feedCards.lazy.filter({ $0.hasStyle(style) }).count < Self.tabFillMinimum
+        else {
+            return
+        }
+        loadMoreFeed()
     }
 
     private func resetFeed(filter: HomeFeedFilter) {
@@ -974,6 +1131,7 @@ final class HomeViewModel {
                 return
             }
             feedTask = nil
+            ensureCurrentTabFilled()
         }
     }
 
@@ -986,12 +1144,13 @@ final class HomeViewModel {
         let before = replacing ? nil : feedBefore
 
         do {
-            let stored = try await cardsService.listFeed(
+            let response = try await cardsService.listFeed(
                 limit: Self.feedPageSize,
                 before: before,
                 categories: filter.categories,
                 emotions: filter.emotions
             )
+            let stored = response.cards
             guard !Task.isCancelled, generation == feedGeneration else {
                 return
             }
@@ -1017,10 +1176,12 @@ final class HomeViewModel {
                     }
                 }
 
-                if let last = stored.last {
-                    feedBefore = "\(last.createdAt)|\(last.id.lowercased())"
+                if let cursor = response.page.nextCursor {
+                    feedBefore = cursor
+                } else if replacing {
+                    feedBefore = nil
                 }
-                feedHasMore = stored.count >= Self.feedPageSize
+                feedHasMore = response.page.hasMore(pageSize: Self.feedPageSize)
                 feedFooterState = .idle
                 feedLoadState = .loaded
                 hasLoadedFeed = true
@@ -1093,8 +1254,12 @@ final class HomeViewModel {
         feedTask = nil
         feedGeneration &+= 1
         appliedFilter = HomeFeedFilter()
+        // The visible cards were the filtered subset; page one of the unfiltered feed replaces
+        // them in place, and `feedAnchors` keeps the card that was just posted.
         feedBefore = nil
         feedHasMore = true
+        feedFooterState = .idle
+        startFeedTask(replacing: true, reportsFailure: true)
     }
 
     private func insertFeedCardAtFront(_ card: HomeCard) {
@@ -1312,11 +1477,35 @@ final class HomeViewModel {
                 guard !Task.isCancelled else {
                     return
                 }
+                if Self.isNotFound(error) {
+                    dropUnavailableCard(id)
+                    reportWriteFailure(error, Self.unavailableCardMessage)
+                    return
+                }
                 replaceCard(snapshot)
                 syncSavedOtherIntoLibrary(snapshot)
                 reportWriteFailure(error, "Couldn't remove that card. Check your connection.")
             }
         }
+    }
+
+    private static let unavailableCardMessage = "That card isn't available anymore."
+
+    private static func isNotFound(_ error: Error) -> Bool {
+        if case APIError.httpStatus(404, _) = error {
+            return true
+        }
+        return false
+    }
+
+    /// Someone else's card that was deleted or made private leaves every list at once.
+    private func dropUnavailableCard(_ id: UUID) {
+        guard card(id: id)?.isOwner != true else {
+            return
+        }
+        cards.removeAll { $0.id == id }
+        removeFromFeed(id)
+        removeFromAuthorFeeds(id)
     }
 
     func toggleFavorite(_ id: UUID, style: Style) {
@@ -1362,6 +1551,11 @@ final class HomeViewModel {
                 applyStored(stored)
             } catch {
                 guard !Task.isCancelled else {
+                    return
+                }
+                if !snapshot.isOwner, Self.isNotFound(error) {
+                    dropUnavailableCard(id)
+                    reportWriteFailure(error, Self.unavailableCardMessage)
                     return
                 }
                 applyLocal(id: id) { card in
@@ -1683,15 +1877,15 @@ final class HomeViewModel {
                 case .continueTurn(let message, _, _):
                     // That style no longer fits this thought; keep what we have.
                     recookNotice = message
-                case .ready(_, _, let incoming, _):
-                    guard let replacement = incoming.first(where: { $0.style == style }) ?? incoming.first,
+                case .ready(_, _, let incoming, _, _):
+                    guard let replacement = incoming.first(where: { $0.style == style }),
                           case .ready(var current) = phase,
                           let index = current.results.firstIndex(where: { $0.style == style })
                     else {
                         return
                     }
 
-                    current.results[index] = ReframeResult(style: style, reframe: replacement.reframe)
+                    current.results[index] = replacement
                     phase = .ready(current)
                     cookHaptic += 1
                 }
@@ -1699,6 +1893,7 @@ final class HomeViewModel {
                 guard !Task.isCancelled, !Self.isCancellation(error) else {
                     return
                 }
+                recookNotice = "Couldn't get a new take. Try again."
             }
         }
     }
@@ -1750,13 +1945,14 @@ final class HomeViewModel {
                         )
                     )
                     phase = .awaitingReply
-                case .ready(let thought, let thoughtOriginal, let results, let meta):
+                case .ready(let thought, let thoughtOriginal, let results, let meta, let signature):
                     phase = .ready(
                         ReadyCook(
                             thought: thought,
                             thoughtOriginal: thoughtOriginal,
                             results: results,
                             meta: meta,
+                            signature: signature,
                             model: model
                         )
                     )
@@ -1786,15 +1982,23 @@ final class HomeViewModel {
             return "\(minutes / 60)h ago"
         }
 
-        let formatter = DateFormatter()
-        formatter.doesRelativeDateFormatting = false
-        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
-            formatter.setLocalizedDateFormatFromTemplate("MMMd")
-        } else {
-            formatter.setLocalizedDateFormatFromTemplate("MMMdyyyy")
-        }
+        let formatter = calendar.isDate(date, equalTo: now, toGranularity: .year)
+            ? Self.monthDayFormatter
+            : Self.monthDayYearFormatter
         return formatter.string(from: date)
     }
+
+    private static let monthDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        return formatter
+    }()
+
+    private static let monthDayYearFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMMdyyyy")
+        return formatter
+    }()
 
     func authorHeader(for authorId: UUID) -> AuthorHeader? {
         guard let feed = authorFeeds[authorId] else {
@@ -1850,13 +2054,12 @@ final class HomeViewModel {
         guard authorFeeds[id] != nil, authorFeeds[id]?.isRefreshing != true else {
             return
         }
+        // Like Home, the cursor survives until page one lands.
         mutateAuthor(id) { feed in
             feed.isRefreshing = true
             feed.task?.cancel()
             feed.task = nil
             feed.generation &+= 1
-            feed.before = nil
-            feed.hasMore = true
             feed.footerState = .idle
             if feed.cards.isEmpty {
                 feed.loadState = .loading
@@ -1865,6 +2068,29 @@ final class HomeViewModel {
         let generation = authorFeeds[id]?.generation ?? 0
         await fetchAuthorPage(id: id, replacing: true, generation: generation)
         mutateAuthor(id) { $0.isRefreshing = false }
+        if authorFeeds[id]?.generation == generation {
+            ensureAuthorTabFilled(id)
+        }
+    }
+
+    func selectAuthorTab(_ id: UUID, _ tab: HomeFeedTab) {
+        guard authorFeeds[id] != nil, authorFeeds[id]?.selectedTab != tab else {
+            return
+        }
+        mutateAuthor(id) { $0.selectedTab = tab }
+        ensureAuthorTabFilled(id)
+    }
+
+    private func ensureAuthorTabFilled(_ id: UUID) {
+        guard let feed = authorFeeds[id],
+              let style = feed.selectedTab.matchingStyle,
+              feed.loadState == .loaded,
+              feed.hasMore,
+              feed.cards.lazy.filter({ $0.hasStyle(style) }).count < Self.tabFillMinimum
+        else {
+            return
+        }
+        loadMoreAuthor(id)
     }
 
     func retryLoadAuthor(_ id: UUID) {
@@ -1892,7 +2118,8 @@ final class HomeViewModel {
               feed.hasMore,
               feed.before != nil,
               feed.footerState == .idle,
-              feed.task == nil
+              feed.task == nil,
+              !feed.isRefreshing
         else {
             return
         }
@@ -1903,13 +2130,13 @@ final class HomeViewModel {
     func retryLoadMoreAuthor(_ id: UUID) {
         guard let feed = authorFeeds[id],
               feed.footerState == .failed,
-              feed.before != nil,
-              feed.task == nil
+              feed.task == nil,
+              !feed.isRefreshing
         else {
             return
         }
         mutateAuthor(id) { $0.footerState = .loading }
-        startAuthorTask(id, replacing: false)
+        startAuthorTask(id, replacing: feed.before == nil)
     }
 
     private func startAuthorTask(_ id: UUID, replacing: Bool) {
@@ -1923,6 +2150,7 @@ final class HomeViewModel {
                 return
             }
             self.mutateAuthor(id) { $0.task = nil }
+            self.ensureAuthorTabFilled(id)
         }
         feed.task = task
         authorFeeds[id] = feed
@@ -1966,10 +2194,12 @@ final class HomeViewModel {
                             feed.cards.append(card)
                         }
                     }
-                    if let last = response.cards.last {
-                        feed.before = "\(last.createdAt)|\(last.id.lowercased())"
+                    if let cursor = response.page.nextCursor {
+                        feed.before = cursor
+                    } else if replacing {
+                        feed.before = nil
                     }
-                    feed.hasMore = response.cards.count >= Self.feedPageSize
+                    feed.hasMore = response.page.hasMore(pageSize: Self.feedPageSize)
                     feed.footerState = .idle
                     feed.loadState = .loaded
                     feed.hasLoaded = true

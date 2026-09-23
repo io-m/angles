@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
 import { intensityBand, type StoredCard, type StoredReframeResult, type Style } from "../types/index.js";
@@ -19,13 +19,21 @@ export type ViewerSaves = {
   angles: Map<string, Map<Style, Date>>;
 };
 
+/** Only the saves on `cardIds`, so the cost follows the page rather than every heart ever made. */
 export async function loadViewerSaves(
+  cardIds: string[],
   viewerId: string = getOwnerUserId(),
   db: Selectable = getDb(),
 ): Promise<ViewerSaves> {
-  const angleRows = await db.select().from(savedAngles).where(eq(savedAngles.userId, viewerId));
-
   const angles = new Map<string, Map<Style, Date>>();
+  if (cardIds.length === 0) {
+    return { angles };
+  }
+  const angleRows = await db
+    .select()
+    .from(savedAngles)
+    .where(and(eq(savedAngles.userId, viewerId), inArray(savedAngles.cardId, cardIds)));
+
   for (const row of angleRows) {
     let byStyle = angles.get(row.cardId);
     if (!byStyle) {
@@ -56,7 +64,11 @@ export async function storedCardsForViewer(
   viewerId: string = getOwnerUserId(),
   db: Selectable = getDb(),
 ): Promise<StoredCard[]> {
-  const saves = await loadViewerSaves(viewerId, db);
+  const saves = await loadViewerSaves(
+    rows.map((row) => row.id),
+    viewerId,
+    db,
+  );
   const followed = await followedAuthorIds(
     viewerId,
     rows.map((row) => row.userId),

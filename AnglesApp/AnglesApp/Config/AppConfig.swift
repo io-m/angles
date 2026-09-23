@@ -1,13 +1,17 @@
 import Foundation
 
 enum AppConfig {
-    static var baseURL: URL {
-        #if DEBUG
-        // Physical devices cannot reach localhost; this is the Mac LAN IP.
-        return URL(string: "http://192.168.0.39:8787")!
-        #else
-        // TODO: replace with the Railway production URL once deployed.
-        return URL(string: "https://api.angles.app")!
-        #endif
-    }
+    /// `ANGLES_API_BASE_URL` in `project.yml`, per configuration. Release stays empty until the
+    /// production host exists, so a Release build fails its requests instead of guessing a host.
+    static let baseURL: URL? = {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "AnglesAPIBaseURL") as? String,
+              !raw.trimmingCharacters(in: .whitespaces).isEmpty,
+              let url = URL(string: raw),
+              url.scheme != nil,
+              url.host != nil
+        else {
+            return nil
+        }
+        return url
+    }()
 }

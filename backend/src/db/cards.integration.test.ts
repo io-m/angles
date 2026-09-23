@@ -396,6 +396,27 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(new Set([...first, ...second].map((card) => card.id))).toEqual(new Set(ids));
   });
 
+  it("pages the library one card at a time with the server's own timestamps", async () => {
+    const created = await Promise.all(
+      ["First.", "Second.", "Third."].map((suffix) =>
+        createCard({ ...baseInput, thought: `${baseInput.thought} ${suffix}` }),
+      ),
+    );
+
+    const seen: string[] = [];
+    let before: { createdAt: Date; id: string } | undefined;
+    for (let page = 0; page < 4; page += 1) {
+      const [card] = await listCards({ limit: 1, before });
+      if (!card) {
+        break;
+      }
+      seen.push(card.id);
+      before = { createdAt: new Date(card.createdAt), id: card.id };
+    }
+    expect(seen).toHaveLength(3);
+    expect(new Set(seen)).toEqual(new Set(created.map((card) => card.id)));
+  });
+
   it("saves a heart without mutating the author's flags", async () => {
     const publicOther = await insertOtherCard({
       thought: "I keep waiting for a reply that is not coming and I feel small.",
@@ -434,6 +455,27 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(cleared.ok).toBe(true);
     const after = await listCards({ limit: 50 });
     expect(after.some((card) => card.id === publicOther)).toBe(false);
+  });
+
+  it("drops a hearted card from the library once its author makes it private", async () => {
+    const hearted = await insertOtherCard({
+      thought: "I keep checking my phone for a message that is not coming.",
+      isPublic: true,
+    });
+    expect((await saveFeedAngle(hearted, "stoic")).ok).toBe(true);
+    expect((await listCards({ limit: 50 })).some((card) => card.id === hearted)).toBe(true);
+
+    await getDb().update(cards).set({ isPublic: false }).where(eq(cards.id, hearted));
+
+    expect((await listCards({ limit: 50 })).some((card) => card.id === hearted)).toBe(false);
+    expect((await listCards({ limit: 50, favorite: true })).some((card) => card.id === hearted)).toBe(
+      false,
+    );
+    expect(await clearFeedSaves(hearted)).toEqual({ ok: true });
+    expect(await clearFeedSaves(hearted)).toEqual({ ok: false });
+
+    await getDb().update(cards).set({ isPublic: true }).where(eq(cards.id, hearted));
+    expect((await listCards({ limit: 50 })).some((card) => card.id === hearted)).toBe(false);
   });
 
   it("follows and unfollows another user without changing feed order", async () => {

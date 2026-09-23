@@ -3,8 +3,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { clearFeedSaves, listFeed, saveFeedAngle, unsaveFeedAngle } from "../db/feed.js";
 import { authStub } from "../lib/authStub.js";
+import { cardCursorSchema } from "../lib/cursor.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
-import { CATEGORIES, EMOTIONS, STYLES, type FeedCursor } from "../types/index.js";
+import { CATEGORIES, EMOTIONS, STYLES } from "../types/index.js";
 
 function enumCsvSchema<const T extends readonly [string, ...string[]]>(values: T) {
   const allowed = new Set<string>(values);
@@ -23,31 +24,10 @@ function enumCsvSchema<const T extends readonly [string, ...string[]]>(values: T
   });
 }
 
-function feedCursorSchema() {
-  return z.string().transform((raw, context): FeedCursor => {
-    const parts = raw.split("|");
-    const createdAt = parts[0] ? new Date(parts[0]) : new Date(Number.NaN);
-    const id = parts[1];
-    if (
-      parts.length !== 2 ||
-      Number.isNaN(createdAt.getTime()) ||
-      !id ||
-      !z.uuid().safeParse(id).success
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "before must be an ISO-8601 timestamp and UUID separated by |",
-      });
-      return z.NEVER;
-    }
-    return { createdAt, id };
-  });
-}
-
 const listQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(500).optional().default(200),
-    before: feedCursorSchema().optional(),
+    before: cardCursorSchema().optional(),
     categories: enumCsvSchema(CATEGORIES).optional(),
     emotions: enumCsvSchema(EMOTIONS).optional(),
     style: z.enum(STYLES).optional(),

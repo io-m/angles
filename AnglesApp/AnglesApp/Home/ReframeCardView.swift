@@ -84,6 +84,7 @@ struct ReframeCardView: View, Equatable {
     @State private var heartScale: CGFloat = 1
     @State private var isFavoriteFlipped = false
     @State private var showDeleteConfirm = false
+    @State private var showPublishConfirm = false
     /// Uncapped height of the tall card, measured off-screen. Drives the reply scroll.
     @State private var tallIdealHeight: CGFloat = 0
 
@@ -181,6 +182,16 @@ struct ReframeCardView: View, Equatable {
             ) {
                 Button("Delete", role: .destructive, action: onDelete)
                 Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog(
+                "Make this card public?",
+                isPresented: $showPublishConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Make public") { onSetPublic(true) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Everyone on Home can see this card.")
             }
     }
 
@@ -387,6 +398,17 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
+    /// Only the author sees it: their own published card, on Home and in the library alike.
+    @ViewBuilder
+    private func publicMark(font: Font) -> some View {
+        if card.isOwner, card.isPublic {
+            Image(systemName: "globe")
+                .font(font)
+                .foregroundStyle(theme.muted)
+                .accessibilityLabel("Public")
+        }
+    }
+
     private var storedHeader: some View {
         HStack(spacing: 10) {
             authorControl(side: ReframeCardMetrics.avatarSize)
@@ -396,6 +418,8 @@ struct ReframeCardView: View, Equatable {
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
                 .layoutPriority(-1)
+
+            publicMark(font: .caption.weight(.semibold))
 
             Spacer(minLength: 4)
 
@@ -414,6 +438,8 @@ struct ReframeCardView: View, Equatable {
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
                 .layoutPriority(-1)
+
+            publicMark(font: .subheadline.weight(.semibold))
 
             Spacer(minLength: 4)
 
@@ -436,6 +462,8 @@ struct ReframeCardView: View, Equatable {
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
                 .layoutPriority(-1)
+
+            publicMark(font: .caption2.weight(.semibold))
 
             Spacer(minLength: 4)
 
@@ -683,7 +711,11 @@ struct ReframeCardView: View, Equatable {
             )
         case .owner:
             Button {
-                onSetPublic(!card.isPublic)
+                if card.isPublic {
+                    onSetPublic(false)
+                } else {
+                    showPublishConfirm = true
+                }
             } label: {
                 Label(
                     card.isPublic ? "Make private" : "Make public",
@@ -1428,11 +1460,7 @@ struct AuthorMark: View {
             if prefersLocalPhoto, let image = identity?.photo {
                 fitted(Image(uiImage: image))
             } else if let url = remoteURL {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        fitted(image)
-                    }
-                }
+                RemoteAvatarImage(url: url, side: side)
             }
         }
         .frame(width: side, height: side)
@@ -1454,8 +1482,8 @@ struct AuthorMark: View {
     }
 
     private var remoteURL: URL? {
-        guard let avatarPath, !avatarPath.isEmpty else { return nil }
-        guard var components = URLComponents(url: AppConfig.baseURL, resolvingAgainstBaseURL: false) else {
+        guard let avatarPath, !avatarPath.isEmpty, let baseURL = AppConfig.baseURL else { return nil }
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             return nil
         }
         let pieces = avatarPath.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
