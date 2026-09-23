@@ -20,8 +20,8 @@ enum ReframeCardMetrics {
     static let tallAvatarSize: CGFloat = 48
     static let tallSectionSpacing: CGFloat = 20
     static let tallThoughtFont: Font = .body.weight(.regular)
-    static let tallAnswerFont: Font = .title2.weight(.semibold)
-    static let tallAnswerLineSpacing: CGFloat = 8
+    static let tallAnswerFont: Font = .title2.weight(.medium)
+    static let tallAnswerLineSpacing: CGFloat = 4
     static let tallAnswerVerticalPadding: CGFloat = 18
     /// Flip-only favorites: answer on front, thought on back — grows with copy.
     static let favoriteStripMinHeight: CGFloat = 168
