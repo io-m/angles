@@ -2,7 +2,7 @@ import { and, arrayOverlaps, asc, desc, eq, inArray, lt, or } from "drizzle-orm"
 import { getOwnerUserId } from "../lib/authStub.js";
 import type { FeedCursor, FeedListQuery, StoredCard, Style } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
-import { loadViewerSaves, toStoredCard, type CardLoaded } from "./mapCard.js";
+import { storedCardsForViewer, type CardLoaded } from "./mapCard.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
@@ -69,8 +69,7 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
       },
     });
 
-    const saves = await loadViewerSaves(viewerId);
-    return rows.map((row) => toStoredCard(row, saves, viewerId));
+    return storedCardsForViewer(rows, viewerId);
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
@@ -107,8 +106,7 @@ export async function listPublicCardsForUser(query: {
       },
     });
 
-    const saves = await loadViewerSaves(viewerId);
-    return rows.map((row) => toStoredCard(row, saves, viewerId));
+    return storedCardsForViewer(rows, viewerId);
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
@@ -153,8 +151,11 @@ async function returnViewerCard(
   if (!row) {
     return { ok: false, reason: "not_found" };
   }
-  const saves = await loadViewerSaves(viewerId, db);
-  return { ok: true, card: toStoredCard(row, saves, viewerId) };
+  const [card] = await storedCardsForViewer([row], viewerId, db);
+  if (!card) {
+    return { ok: false, reason: "not_found" };
+  }
+  return { ok: true, card };
 }
 
 export async function saveFeedAngle(id: string, style: Style): Promise<FeedSaveResult> {

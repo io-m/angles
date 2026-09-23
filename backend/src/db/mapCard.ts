@@ -3,6 +3,7 @@ import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
 import { intensityBand, type StoredCard, type StoredReframeResult, type Style } from "../types/index.js";
 import { getDb } from "./client.js";
+import { followedAuthorIds } from "./follows.js";
 import { savedAngles, type CardReframeRow, type CardRow, type TagRow } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
@@ -40,8 +41,9 @@ export async function loadViewerSaves(
 export function authorOf(
   userId: string,
   user: { initials: string; avatarKey: string | null },
+  following: boolean,
 ): StoredCard["author"] {
-  const author: StoredCard["author"] = { id: userId, initials: user.initials };
+  const author: StoredCard["author"] = { id: userId, initials: user.initials, following };
   const avatarUrl = avatarUrlFor(userId, user.avatarKey);
   if (avatarUrl) {
     author.avatarUrl = avatarUrl;
@@ -49,7 +51,26 @@ export function authorOf(
   return author;
 }
 
-export function toStoredCard(row: CardLoaded, saves: ViewerSaves, viewerId: string = getOwnerUserId()): StoredCard {
+export async function storedCardsForViewer(
+  rows: CardLoaded[],
+  viewerId: string = getOwnerUserId(),
+  db: Selectable = getDb(),
+): Promise<StoredCard[]> {
+  const saves = await loadViewerSaves(viewerId, db);
+  const followed = await followedAuthorIds(
+    viewerId,
+    rows.map((row) => row.userId),
+    db,
+  );
+  return rows.map((row) => toStoredCard(row, saves, viewerId, followed));
+}
+
+export function toStoredCard(
+  row: CardLoaded,
+  saves: ViewerSaves,
+  viewerId: string = getOwnerUserId(),
+  followedIds: ReadonlySet<string> = new Set(),
+): StoredCard {
   const isOwner = row.userId === viewerId;
   const savedStyles = saves.angles.get(row.id);
   const tagList = row.cardTags.map((join) => ({
@@ -106,7 +127,7 @@ export function toStoredCard(row: CardLoaded, saves: ViewerSaves, viewerId: stri
     isPublic: row.isPublic,
     createdAt: row.createdAt.toISOString(),
     isOwner,
-    author: authorOf(row.userId, row.user),
+    author: authorOf(row.userId, row.user, !isOwner && followedIds.has(row.userId)),
   };
 
   if (row.thoughtOriginal) {

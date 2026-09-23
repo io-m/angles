@@ -73,6 +73,8 @@ Loading and error are **states on Results**, not their own screens.
 | 9q | Home style tabs | polish | done | `HomeView.swift`; `HomeViewModel.swift`; `StyleTabPager.swift`; `ProfileView.swift`; `HeaderChrome.swift`; `CardsService.swift`; `feed.ts`; `db/feed.ts` | All-default tabs aligned with trailing filter; no Home Settings; one feed; tab-bar footer fade. |
 | 9r | Native Home pull-to-refresh | polish | done | `HomeFeedPullRefresh.swift`; `HomeView.swift`; `HomeViewModel.swift` | SwiftUI's native refresh interaction starts below the fixed tabs while the shared feed refreshes in place. |
 | 9s | Public author profile | screen | done | `AuthorProfileView.swift`; `ReframeCardView.swift`; `HomeViewModel.swift`; `users.ts`; `feed.ts`; `ReframeModels.swift` | Avatar opens that author's public posts full screen; your own avatar switches to Profile. |
+| 9t | Following | feature | done | `follows.ts`; `schema.ts`; `0006_worthless_liz_osborn.sql`; `users.ts`; `mapCard.ts`; `feed.ts`; `ReframeCardView.swift`; `HomeViewModel.swift`; `AuthorProfileView.swift` | One-way follow badge on other people's avatars; their public posts stay in the same Home mix. |
+| 9u | Following list | feature | done | `follows.ts`; `profile.ts`; `FollowingSheet.swift`; `ProfileView.swift`; `HomeViewModel.swift`; `ProfileService.swift` | A people icon beside Settings opens the people you follow; a row opens their posts, and the minus icon unfollows. |
 
 ### 1. Compose (home)
 
@@ -226,6 +228,22 @@ Not a new screen. Corrective polish on 9q.
 - **Indicator placement.** The vertical scroll viewport begins below the fixed Home chrome instead of behind the safe area. Its system spinner therefore emerges directly below the style tabs without UIKit positioning overrides.
 - **Shared refresh.** The native async action awaits `HomeViewModel.refreshFeed()`. Existing cards stay visible and all tabs continue filtering the same in-memory feed.
 
+### 9u. Following list
+
+Not a new screen. The Profile bar has a people icon in the same round container as Settings, sitting just before the gear. It opens a large sheet, the same chrome as Settings.
+
+- **List.** `GET /profile/following` is the people you follow, newest follow first. Each row is a 40pt photo or initials and those initials. There is no display name and no count. Empty copy says you aren't following anyone yet. The system search field under the title filters those initials; no matches uses the system search empty state.
+- **Open.** A tap on the person closes the sheet and pushes their public posts.
+- **Unfollow.** The trailing person-minus icon unfollows them and drops the row. If the write fails, the row comes back with the existing write banner.
+
+### 9t. Following
+
+Not a new screen. A one-way follow on someone else's avatar. Home stays the public newest-first mix; a later algorithm can read the graph. No Following tab, counts, or messages. The people you follow are a sheet on Profile (9u).
+
+- **Badge.** A bordered plus on another person's avatar, bottom-trailing. Tap follows; it scales up, ticks, and fills from paper to ink as the plus becomes a checkmark. Tap again unfollows. The rest of the avatar still opens their posts. Your own avatars stay plain, including Profile, compose, and the ready card.
+- **Graph.** `follows` is `(follower_id, followee_id)` with cascade deletes and a check against following yourself. `PUT /users/:id/follow` and `DELETE /users/:id/follow` are idempotent. Missing users are 404. `author.following` is on every card and on `GET /users/:id/cards`. Private posts stay off Home.
+- **Writes.** The badge flips immediately on every card and the author header for that person, then rolls back with the existing write-failure banner if the request fails.
+
 ### 9s. Public author profile
 
 Tapping someone else's card avatar pushes this page over Home or Profile, covering the tab bar. Your own avatar switches to the Profile tab. The compose avatar does not navigate. The private Profile tab stays the library.
@@ -366,6 +384,10 @@ Account / auth settings wait until auth exists. Appearance already shipped in 2a
 
 ## Shipped log
 
+- 2026-09-23 — Following sheet search filters initials with the system search field.
+- 2026-09-23 — Profile's people icon, beside Settings, opens who you follow; the row's minus icon unfollows them.
+- 2026-09-23 — Follow badge tap scales up, ticks, and fills from paper to ink as the plus becomes a checkmark.
+- 2026-09-23 — Following: a bordered badge on other people's avatars follows them; their public posts stay in the same Home mix.
 - 2026-09-23 — Public author profile: a card avatar opens that person's published posts; the private Profile tab stays the library.
 - 2026-09-23 — Profile photos upload to the private Railway bucket and every card shows that photo or the author's initials.
 - 2026-09-23 — Chat glow follows the selected model color; accent picker is out of Settings; Settings edits a local name/photo and the subscription sheet shows the live plan with Restore and Apple change/cancel.

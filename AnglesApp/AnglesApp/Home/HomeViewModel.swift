@@ -26,6 +26,8 @@ struct HomeCard: Identifiable, Equatable {
     var authorInitials: String
     /// `/avatars/{id}?v=` when this author has a photo. Nil means initials.
     var authorAvatarPath: String?
+    /// Viewer follows this author. Always false on your own cards.
+    var authorFollowing: Bool
     /// Model that wrote the answer. Unknown ids stay nil so the card does not invent a logo.
     var model: LlmModel?
     /// In memory only until History (SwiftData) lands. Shape exists now for matching later.
@@ -43,6 +45,7 @@ struct HomeCard: Identifiable, Equatable {
         authorId: UUID? = nil,
         authorInitials: String = UserInitials.letters,
         authorAvatarPath: String? = nil,
+        authorFollowing: Bool = false,
         model: LlmModel? = nil,
         meta: ReframeMeta? = nil
     ) {
@@ -57,6 +60,7 @@ struct HomeCard: Identifiable, Equatable {
         self.authorId = authorId
         self.authorInitials = authorInitials
         self.authorAvatarPath = authorAvatarPath
+        self.authorFollowing = authorFollowing
         self.model = model
         self.meta = meta
     }
@@ -89,6 +93,7 @@ struct HomeCard: Identifiable, Equatable {
             authorId: UUID(uuidString: stored.author.id),
             authorInitials: stored.author.initials,
             authorAvatarPath: stored.author.avatarUrl,
+            authorFollowing: stored.isOwner ? false : stored.author.following,
             model: LlmModel(rawValue: stored.model),
             meta: stored.reframeMeta
         )
@@ -142,6 +147,7 @@ struct HomeCard: Identifiable, Equatable {
         }
         authorInitials = stored.author.initials
         authorAvatarPath = stored.author.avatarUrl
+        authorFollowing = stored.isOwner ? false : stored.author.following
         model = LlmModel(rawValue: stored.model)
         for index in slides.indices {
             let style = slides[index].result.style
@@ -378,12 +384,14 @@ struct AuthorHeader: Equatable {
     var initials: String
     var avatarPath: String?
     var isSelf: Bool
+    var following: Bool
 }
 
 private struct AuthorFeed {
     var initials: String
     var avatarPath: String?
     var isSelf: Bool
+    var following: Bool = false
     var cards: [HomeCard] = []
     var cardIDs: Set<UUID> = []
     var loadState: LibraryLoadState = .loading
@@ -435,9 +443,12 @@ final class HomeViewModel {
     /// A heart, privacy flag, or delete that did not reach the server. The rollback is
     /// invisible on its own, so the root banner reads this.
     private(set) var writeError: String?
+    private(set) var followedPeople: [FollowedPerson] = []
+    private(set) var followingLoadState: LibraryLoadState = .loading
 
     private let reframeService: ReframeService
     private let cardsService: CardsService
+    private let profileService: ProfileService
     private var refineTask: Task<Void, Never>?
     private var saveTask: Task<HomeCard?, Never>?
     private var libraryTask: Task<Void, Never>?
@@ -450,6 +461,8 @@ final class HomeViewModel {
     private var feedAnchors: [UUID: HomeCard] = [:]
     private var hasLoadedLibrary = false
     private var favoriteTasks: [String: Task<Void, Never>] = [:]
+    private var followTasks: [UUID: Task<Void, Never>] = [:]
+    private var followGeneration: [UUID: Int] = [:]
     private var publicTasks: [UUID: Task<Void, Never>] = [:]
     private var deleteTasks: [UUID: Task<Void, Never>] = [:]
     private var boardTasks: [UUID: Task<Void, Never>] = [:]
@@ -469,11 +482,13 @@ final class HomeViewModel {
         cards: [HomeCard] = [],
         reframeService: ReframeService = ReframeService(),
         cardsService: CardsService = CardsService(),
+        profileService: ProfileService = ProfileService(),
         libraryLoadState: LibraryLoadState = .loading
     ) {
         self.cards = cards
         self.reframeService = reframeService
         self.cardsService = cardsService
+        self.profileService = profileService
         self.libraryLoadState = libraryLoadState
         if let raw = UserDefaults.standard.string(forKey: Self.modelDefaultsKey),
            let model = LlmModel(rawValue: raw) {
@@ -1038,7 +1053,13 @@ final class HomeViewModel {
                 continue
             }
             if var existing = pool[id] {
+                let authorId = existing.authorId
+                let keepFollow = authorId.map { followTasks[$0] != nil } ?? false
+                let previousFollow = existing.authorFollowing
                 existing.apply(item)
+                if keepFollow, !existing.isOwner {
+                    existing.authorFollowing = previousFollow
+                }
                 next.append(existing)
             } else if let created = HomeCard(stored: item) {
                 next.append(created)
@@ -1354,6 +1375,80 @@ final class HomeViewModel {
                     syncSavedOtherIntoLibrary(current)
                 }
                 reportWriteFailure(error, "Couldn't save that. Check your connection.")
+            }
+        }
+    }
+
+    func loadFollowing() async {
+        if followedPeople.isEmpty {
+            followingLoadState = .loading
+        }
+        do {
+            let response = try await profileService.following()
+            followedPeople = response.users.compactMap(FollowedPerson.init)
+            followingLoadState = .loaded
+        } catch {
+            guard !Self.isCancellation(error) else {
+                return
+            }
+            if followedPeople.isEmpty {
+                followingLoadState = .failed("Couldn't load who you follow.")
+            }
+        }
+    }
+
+    func unfollow(_ person: FollowedPerson) {
+        guard !isOwnAuthor(person.id) else {
+            return
+        }
+        let index = followedPeople.firstIndex { $0.id == person.id } ?? 0
+        followedPeople.removeAll { $0.id == person.id }
+        commitFollow(person.id, following: false) {
+            guard !self.followedPeople.contains(where: { $0.id == person.id }) else {
+                return
+            }
+            self.followedPeople.insert(person, at: min(index, self.followedPeople.count))
+        }
+    }
+
+    func toggleFollow(_ authorId: UUID) {
+        guard !isOwnAuthor(authorId) else {
+            return
+        }
+        commitFollow(authorId, following: !isFollowing(authorId))
+    }
+
+    private func commitFollow(
+        _ authorId: UUID,
+        following next: Bool,
+        onRollback: (() -> Void)? = nil
+    ) {
+        setFollowing(authorId, following: next)
+        let generation = (followGeneration[authorId] ?? 0) + 1
+        followGeneration[authorId] = generation
+        followTasks[authorId]?.cancel()
+        followTasks[authorId] = Task { @MainActor in
+            defer {
+                if self.followGeneration[authorId] == generation {
+                    self.followTasks[authorId] = nil
+                }
+            }
+            do {
+                let state =
+                    next
+                    ? try await cardsService.follow(id: authorId.uuidString.lowercased())
+                    : try await cardsService.unfollow(id: authorId.uuidString.lowercased())
+                guard !Task.isCancelled, self.followGeneration[authorId] == generation else {
+                    return
+                }
+                setFollowing(authorId, following: state.following)
+            } catch {
+                guard !Task.isCancelled, self.followGeneration[authorId] == generation else {
+                    return
+                }
+                setFollowing(authorId, following: !next)
+                onRollback?()
+                reportWriteFailure(error, "Couldn't update that follow. Check your connection.")
             }
         }
     }
@@ -1705,7 +1800,12 @@ final class HomeViewModel {
         guard let feed = authorFeeds[authorId] else {
             return nil
         }
-        return AuthorHeader(initials: feed.initials, avatarPath: feed.avatarPath, isSelf: feed.isSelf)
+        return AuthorHeader(
+            initials: feed.initials,
+            avatarPath: feed.avatarPath,
+            isSelf: feed.isSelf,
+            following: feed.isSelf ? false : feed.following
+        )
     }
 
     func authorCards(for authorId: UUID, tab: HomeFeedTab) -> [HomeCard] {
@@ -1731,7 +1831,8 @@ final class HomeViewModel {
             authorFeeds[route.id] = AuthorFeed(
                 initials: route.initials,
                 avatarPath: route.avatarPath,
-                isSelf: route.isSelf
+                isSelf: route.isSelf,
+                following: route.isSelf ? false : isFollowing(route.id)
             )
         }
         guard authorFeeds[route.id]?.hasLoaded != true else {
@@ -1843,6 +1944,8 @@ final class HomeViewModel {
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 mutateAuthor(id) { feed in
+                    let preserveFollow = self.followTasks[id] != nil
+                    let preservedFollow = feed.following
                     feed.initials = response.user.initials
                     feed.avatarPath = response.user.avatarUrl
                     if response.cards.contains(where: \.isOwner) {
@@ -1870,6 +1973,16 @@ final class HomeViewModel {
                     feed.footerState = .idle
                     feed.loadState = .loaded
                     feed.hasLoaded = true
+                    if feed.isSelf {
+                        feed.following = false
+                    } else if preserveFollow {
+                        feed.following = preservedFollow
+                        for index in feed.cards.indices where feed.cards[index].authorId == id {
+                            feed.cards[index].authorFollowing = preservedFollow
+                        }
+                    } else {
+                        feed.following = response.user.following
+                    }
                 }
             }
         } catch {
@@ -1886,6 +1999,59 @@ final class HomeViewModel {
                     feed.footerState = .idle
                 } else {
                     feed.footerState = .failed
+                }
+            }
+        }
+    }
+
+    private func isOwnAuthor(_ authorId: UUID) -> Bool {
+        if authorFeeds[authorId]?.isSelf == true {
+            return true
+        }
+        if feedCards.contains(where: { $0.authorId == authorId && $0.isOwner }) {
+            return true
+        }
+        if cards.contains(where: { $0.authorId == authorId && $0.isOwner }) {
+            return true
+        }
+        return authorFeeds.values.contains { feed in
+            feed.cards.contains { $0.authorId == authorId && $0.isOwner }
+        }
+    }
+
+    private func isFollowing(_ authorId: UUID) -> Bool {
+        if let feed = authorFeeds[authorId], !feed.isSelf {
+            return feed.following
+        }
+        if let card = feedCards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
+            return card.authorFollowing
+        }
+        if let card = cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
+            return card.authorFollowing
+        }
+        for feed in authorFeeds.values {
+            if let card = feed.cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
+                return card.authorFollowing
+            }
+        }
+        return false
+    }
+
+    private func setFollowing(_ authorId: UUID, following: Bool) {
+        for index in feedCards.indices where feedCards[index].authorId == authorId && !feedCards[index].isOwner {
+            feedCards[index].authorFollowing = following
+        }
+        for index in cards.indices where cards[index].authorId == authorId && !cards[index].isOwner {
+            cards[index].authorFollowing = following
+        }
+        for id in Array(authorFeeds.keys) {
+            mutateAuthor(id) { feed in
+                if id == authorId, !feed.isSelf {
+                    feed.following = following
+                }
+                for index in feed.cards.indices
+                where feed.cards[index].authorId == authorId && !feed.cards[index].isOwner {
+                    feed.cards[index].authorFollowing = following
                 }
             }
         }

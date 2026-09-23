@@ -36,8 +36,16 @@ vi.mock("../db/feed.js", () => ({
   clearFeedSaves: vi.fn(),
 }));
 
+vi.mock("../db/follows.js", () => ({
+  followUser: vi.fn(),
+  unfollowUser: vi.fn(),
+  followedAuthorIds: vi.fn(async () => new Set<string>()),
+  listFollowing: vi.fn(),
+}));
+
 const { createApp } = await import("../app.js");
 const { listPublicCardsForUser } = await import("../db/feed.js");
+const { followUser, followedAuthorIds, unfollowUser } = await import("../db/follows.js");
 const { getUserById } = await import("../db/users.js");
 
 const app = createApp();
@@ -45,7 +53,7 @@ const AUTHOR_ID = "00000000-0000-4000-8000-000000000099";
 const CARD_ID = "22222222-2222-4222-8222-222222222222";
 
 function author(overrides: Partial<StoredCardAuthor> = {}): StoredCardAuthor {
-  return { id: AUTHOR_ID, initials: "AL", ...overrides };
+  return { id: AUTHOR_ID, initials: "AL", following: false, ...overrides };
 }
 
 function userRow(overrides: { id?: string; initials?: string; avatarKey?: string | null } = {}) {
@@ -90,8 +98,10 @@ describe("GET /users/:id/cards", () => {
   beforeEach(() => {
     vi.mocked(getUserById).mockReset();
     vi.mocked(listPublicCardsForUser).mockReset();
+    vi.mocked(followedAuthorIds).mockReset();
     vi.mocked(getUserById).mockResolvedValue(userRow());
     vi.mocked(listPublicCardsForUser).mockResolvedValue([]);
+    vi.mocked(followedAuthorIds).mockResolvedValue(new Set());
   });
 
   it("returns that author's public cards and initials", async () => {
@@ -101,7 +111,7 @@ describe("GET /users/:id/cards", () => {
     const response = await app.request(`/users/${AUTHOR_ID}/cards`);
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual({
-      user: { id: AUTHOR_ID, initials: "AL" },
+      user: { id: AUTHOR_ID, initials: "AL", following: false },
       cards: [card],
     });
     expect(listPublicCardsForUser).toHaveBeenCalledWith({
@@ -109,16 +119,18 @@ describe("GET /users/:id/cards", () => {
       limit: 24,
       before: undefined,
     });
+    expect(followedAuthorIds).not.toHaveBeenCalled();
   });
 
   it("returns an empty list when the author has no public cards", async () => {
     const response = await app.request(`/users/${AUTHOR_ID}/cards`);
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual({
-      user: { id: AUTHOR_ID, initials: "AL" },
+      user: { id: AUTHOR_ID, initials: "AL", following: false },
       cards: [],
     });
     expect(listPublicCardsForUser).toHaveBeenCalledOnce();
+    expect(followedAuthorIds).toHaveBeenCalledWith(DEV_USER_ID, [AUTHOR_ID]);
   });
 
   it("builds the avatar path from the photo key and does not add a display name", async () => {
@@ -133,6 +145,7 @@ describe("GET /users/:id/cards", () => {
         id: AUTHOR_ID,
         initials: "AL",
         avatarUrl: `/avatars/${AUTHOR_ID}?v=1700000000000`,
+        following: false,
       },
       cards: [],
     });
@@ -142,7 +155,7 @@ describe("GET /users/:id/cards", () => {
     const ownerCard = publicCard({
       id: "33333333-3333-4333-8333-333333333333",
       isOwner: true,
-      author: { id: DEV_USER_ID, initials: "JM" },
+      author: { id: DEV_USER_ID, initials: "JM", following: false },
       results: STYLES.map((style) => ({
         style,
         reframe: `A ${style} take.`,
@@ -165,7 +178,7 @@ describe("GET /users/:id/cards", () => {
     const response = await app.request(`/users/${DEV_USER_ID}/cards?limit=24`);
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual({
-      user: { id: DEV_USER_ID, initials: "JM" },
+      user: { id: DEV_USER_ID, initials: "JM", following: false },
       cards: [ownerCard, viewerCard],
     });
     expect(listPublicCardsForUser).toHaveBeenCalledWith({
@@ -206,5 +219,92 @@ describe("GET /users/:id/cards", () => {
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
     expect(getUserById).not.toHaveBeenCalled();
     expect(listPublicCardsForUser).not.toHaveBeenCalled();
+  });
+
+  it("marks a followed author when their public list is empty", async () => {
+    vi.mocked(followedAuthorIds).mockResolvedValue(new Set([AUTHOR_ID]));
+    const response = await app.request(`/users/${AUTHOR_ID}/cards`);
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toEqual({
+      user: { id: AUTHOR_ID, initials: "AL", following: true },
+      cards: [],
+    });
+  });
+
+  it("uses following already on the loaded cards", async () => {
+    const card = publicCard({ author: author({ following: true }) });
+    vi.mocked(listPublicCardsForUser).mockResolvedValue([card]);
+    const response = await app.request(`/users/${AUTHOR_ID}/cards`);
+    expect(response.status).toBe(200);
+    const body = (await jsonOf(response)) as { user: StoredCardAuthor };
+    expect(body.user.following).toBe(true);
+    expect(followedAuthorIds).not.toHaveBeenCalled();
+  });
+});
+
+describe("PUT /users/:id/follow", () => {
+  beforeEach(() => {
+    vi.mocked(followUser).mockReset();
+    vi.mocked(getUserById).mockReset();
+  });
+
+  it("follows another user", async () => {
+    vi.mocked(followUser).mockResolvedValue("ok");
+    const response = await app.request(`/users/${AUTHOR_ID}/follow`, { method: "PUT" });
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toEqual({ following: true });
+    expect(followUser).toHaveBeenCalledWith(AUTHOR_ID);
+  });
+
+  it("rejects a follow of the viewer", async () => {
+    const response = await app.request(`/users/${DEV_USER_ID}/follow`, { method: "PUT" });
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toEqual({
+      error: "You cannot follow yourself",
+      code: "VALIDATION_ERROR",
+    });
+    expect(followUser).not.toHaveBeenCalled();
+  });
+
+  it("404s an unknown user", async () => {
+    vi.mocked(followUser).mockResolvedValue("not_found");
+    const response = await app.request(`/users/${AUTHOR_ID}/follow`, { method: "PUT" });
+    expect(response.status).toBe(404);
+    await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });
+  });
+
+  it("rejects an id that is not a uuid", async () => {
+    const response = await app.request("/users/not-a-uuid/follow", { method: "PUT" });
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(followUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /users/:id/follow", () => {
+  beforeEach(() => {
+    vi.mocked(unfollowUser).mockReset();
+  });
+
+  it("unfollows another user", async () => {
+    vi.mocked(unfollowUser).mockResolvedValue("ok");
+    const response = await app.request(`/users/${AUTHOR_ID}/follow`, { method: "DELETE" });
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toEqual({ following: false });
+    expect(unfollowUser).toHaveBeenCalledWith(AUTHOR_ID);
+  });
+
+  it("rejects an unfollow of the viewer", async () => {
+    const response = await app.request(`/users/${DEV_USER_ID}/follow`, { method: "DELETE" });
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(unfollowUser).not.toHaveBeenCalled();
+  });
+
+  it("404s an unknown user", async () => {
+    vi.mocked(unfollowUser).mockResolvedValue("not_found");
+    const response = await app.request(`/users/${AUTHOR_ID}/follow`, { method: "DELETE" });
+    expect(response.status).toBe(404);
+    await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });
   });
 });

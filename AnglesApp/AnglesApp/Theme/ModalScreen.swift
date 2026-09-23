@@ -3,7 +3,21 @@ import SwiftUI
 /// Sheet chrome: large title that collapses to a centered inline title, gradient top instead of a solid bar.
 struct ModalScreen<Content: View>: View {
     let title: String
+    var searchText: Binding<String>?
+    var searchPrompt: String
     @ViewBuilder var content: Content
+
+    init(
+        title: String,
+        searchText: Binding<String>? = nil,
+        searchPrompt: String = "Search",
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.searchText = searchText
+        self.searchPrompt = searchPrompt
+        self.content = content()
+    }
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -21,6 +35,7 @@ struct ModalScreen<Content: View>: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(theme.isDark ? .dark : .light, for: .navigationBar)
             .background(theme.grey.ignoresSafeArea())
+            .modifier(NavigationSearch(text: searchText, prompt: searchPrompt))
         }
         .tint(theme.ink)
         .background(theme.grey.ignoresSafeArea())
@@ -37,6 +52,25 @@ struct ModalScreen<Content: View>: View {
             .frame(height: 56)
             .ignoresSafeArea(edges: .top)
             .allowsHitTesting(false)
+        }
+    }
+}
+
+/// System search field in the navigation drawer. Omitted when the screen has nothing to search.
+private struct NavigationSearch: ViewModifier {
+    var text: Binding<String>?
+    var prompt: String
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let text {
+            content.searchable(
+                text: text,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: prompt
+            )
+        } else {
+            content
         }
     }
 }

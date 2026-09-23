@@ -48,6 +48,7 @@ struct ProfileView: View {
     var onLogOut: (() -> Void)? = nil
     var canLoadFullAppContent = false
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
+    var onOpenFollowed: (FollowedPerson) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -56,6 +57,7 @@ struct ProfileView: View {
     @State private var headerState = ProfileHeaderState()
     @State private var pagerState = StyleTabPagerState<ProfileGridFilter>(initialTab: .favorites)
     @State private var showSettings = false
+    @State private var showFollowing = false
     @State private var committedTab: ProfileGridFilter = .favorites
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -90,6 +92,7 @@ struct ProfileView: View {
                 settledSelection: committedTab,
                 showSettings: $showSettings,
                 identityStore: identityStore,
+                onOpenFollowing: { showFollowing = true },
                 onSelectTab: selectTab
             )
             .ignoresSafeArea(edges: .top)
@@ -116,6 +119,25 @@ struct ProfileView: View {
                     showSettings = false
                 }
             )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.grey)
+            .modifier(UserAppearance(store: themeStore))
+        }
+        .sheet(isPresented: $showFollowing) {
+            FollowingSheet(
+                people: viewModel.followedPeople,
+                loadState: viewModel.followingLoadState,
+                onRetry: { Task { await viewModel.loadFollowing() } },
+                onUnfollow: { person in
+                    viewModel.unfollow(person)
+                },
+                onOpen: { person in
+                    showFollowing = false
+                    onOpenFollowed(person)
+                }
+            )
+            .task { await viewModel.loadFollowing() }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.grey)
@@ -149,7 +171,8 @@ struct ProfileView: View {
                                 onToggleFavorite: toggleFavorite,
                                 onSetPublic: setPublic,
                                 onRemoveFromBoard: removeFromBoard,
-                                onOpenAuthor: onOpenAuthor
+                                onOpenAuthor: onOpenAuthor,
+                                onToggleFollow: toggleFollow
                             )
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
@@ -261,6 +284,13 @@ struct ProfileView: View {
         }
     }
 
+    private func toggleFollow(_ card: HomeCard) {
+        guard let authorId = card.authorId, !card.isOwner else {
+            return
+        }
+        viewModel.toggleFollow(authorId)
+    }
+
     private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
         viewModel.setPublic(card.id, isPublic: isPublic)
     }
@@ -280,6 +310,7 @@ private struct ProfileChrome: View {
     let settledSelection: ProfileGridFilter
     @Binding var showSettings: Bool
     var identityStore: ProfileIdentityStore? = nil
+    var onOpenFollowing: () -> Void = {}
     let onSelectTab: (ProfileGridFilter) -> Void
 
     var body: some View {
@@ -292,7 +323,8 @@ private struct ProfileChrome: View {
                 safeTop: safeTop,
                 collapseDistance: collapseDistance,
                 showSettings: $showSettings,
-                identityStore: identityStore
+                identityStore: identityStore,
+                onOpenFollowing: onOpenFollowing
             )
 
             ProfileIdentityHeader(title: title, identityStore: identityStore)
@@ -370,6 +402,7 @@ private struct ProfileTopBar: View {
     let collapseDistance: CGFloat
     @Binding var showSettings: Bool
     var identityStore: ProfileIdentityStore? = nil
+    var onOpenFollowing: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -393,6 +426,7 @@ private struct ProfileTopBar: View {
                     .font(.headline.weight(.bold))
                     .foregroundStyle(theme.ink)
                     .lineLimit(1)
+                    .layoutPriority(-1)
             }
             .opacity(progress)
             .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
@@ -401,6 +435,17 @@ private struct ProfileTopBar: View {
             .accessibilityHidden(progress <= 0.4)
 
             Spacer(minLength: 8)
+
+            Button(action: onOpenFollowing) {
+                CircleIcon(
+                    systemName: "person.2",
+                    fill: theme.surface,
+                    symbol: theme.ink,
+                    hairline: theme.cardHairline
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Following")
 
             Button {
                 showSettings = true
@@ -437,6 +482,7 @@ private struct ProfileTabPage: View {
     var onSetPublic: (HomeCard, Bool) -> Void
     var onRemoveFromBoard: (HomeCard) -> Void
     var onOpenAuthor: (HomeCard) -> Void
+    var onToggleFollow: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -533,7 +579,8 @@ private struct ProfileTabPage: View {
                     onToggleFavorite: onToggleFavorite,
                     onSetPublic: onSetPublic,
                     onRemoveFromBoard: onRemoveFromBoard,
-                    onOpenAuthor: onOpenAuthor
+                    onOpenAuthor: onOpenAuthor,
+                    onToggleFollow: onToggleFollow
                 )
                 .equatable()
                 .padding(.horizontal, HeaderCollapse.horizontalPadding)
@@ -550,7 +597,8 @@ private struct ProfileTabPage: View {
                     onSetPublic: onSetPublic,
                     onRemoveFromBoard: onRemoveFromBoard,
                     shiningCardID: shiningCardID,
-                    onOpenAuthor: onOpenAuthor
+                    onOpenAuthor: onOpenAuthor,
+                    onToggleFollow: onToggleFollow
                 )
                 .equatable()
                 .padding(.horizontal, HeaderCollapse.horizontalPadding)

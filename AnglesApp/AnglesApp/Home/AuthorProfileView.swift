@@ -36,7 +36,8 @@ struct AuthorProfileView: View {
             ?? AuthorHeader(
                 initials: route.initials,
                 avatarPath: route.avatarPath,
-                isSelf: route.isSelf
+                isSelf: route.isSelf,
+                following: false
             )
     }
 
@@ -97,17 +98,26 @@ struct AuthorProfileView: View {
                     onSelect: selectTab
                 )
 
-                AuthorMark(
-                    initials: header.initials,
-                    avatarPath: header.avatarPath,
-                    prefersLocalPhoto: header.isSelf,
-                    side: CircleIcon.Size.normal.side,
-                    fill: theme.ink,
-                    symbol: theme.paper
-                )
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Posts by \(header.initials)")
-                .accessibilityAddTraits(.isHeader)
+                ZStack(alignment: .bottomTrailing) {
+                    AuthorMark(
+                        initials: header.initials,
+                        avatarPath: header.avatarPath,
+                        prefersLocalPhoto: header.isSelf,
+                        side: CircleIcon.Size.normal.side,
+                        fill: theme.ink,
+                        symbol: theme.paper
+                    )
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Posts by \(header.initials)")
+                    .accessibilityAddTraits(.isHeader)
+
+                    if !header.isSelf {
+                        FollowBadge(following: header.following) {
+                            viewModel.toggleFollow(route.id)
+                        }
+                        .offset(FollowBadge.overhang)
+                    }
+                }
             }
             .padding(.horizontal, HeaderCollapse.horizontalPadding)
             .frame(height: HeaderCollapse.headerHeight)
@@ -145,7 +155,8 @@ struct AuthorProfileView: View {
                                 onToggleFavorite: toggleFavorite,
                                 onSetPublic: setPublic,
                                 onRemoveFromBoard: removeFromBoard,
-                                onOpenAuthor: onOpenAuthor
+                                onOpenAuthor: onOpenAuthor,
+                                onToggleFollow: toggleFollow
                             )
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
@@ -216,6 +227,13 @@ struct AuthorProfileView: View {
         viewModel.toggleFavorite(card.id, style: style)
     }
 
+    private func toggleFollow(_ card: HomeCard) {
+        guard let authorId = card.authorId, !card.isOwner else {
+            return
+        }
+        viewModel.toggleFollow(authorId)
+    }
+
     private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
         if card.isOwner {
             viewModel.setPublic(card.id, isPublic: isPublic)
@@ -246,6 +264,7 @@ private struct AuthorTabPage: View {
     let onSetPublic: (HomeCard, Bool) -> Void
     let onRemoveFromBoard: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
+    let onToggleFollow: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -324,6 +343,7 @@ private struct AuthorTabPage: View {
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
                         onOpenAuthor: onOpenAuthor,
+                        onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6
                     )

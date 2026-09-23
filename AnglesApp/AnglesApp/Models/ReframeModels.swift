@@ -336,17 +336,20 @@ struct StoredCardAuthor: Codable, Equatable, Sendable {
     let id: String
     let initials: String
     let avatarUrl: String?
+    let following: Bool
 
-    init(id: String = "", initials: String, avatarUrl: String? = nil) {
+    init(id: String = "", initials: String, avatarUrl: String? = nil, following: Bool = false) {
         self.id = id
         self.initials = initials
         self.avatarUrl = avatarUrl
+        self.following = following
     }
 
     private enum CodingKeys: String, CodingKey {
         case id
         case initials
         case avatarUrl
+        case following
     }
 
     init(from decoder: Decoder) throws {
@@ -354,6 +357,7 @@ struct StoredCardAuthor: Codable, Equatable, Sendable {
         id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
         initials = try container.decodeIfPresent(String.self, forKey: .initials) ?? ""
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        following = try container.decodeIfPresent(Bool.self, forKey: .following) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -361,6 +365,34 @@ struct StoredCardAuthor: Codable, Equatable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(initials, forKey: .initials)
         try container.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
+        try container.encode(following, forKey: .following)
+    }
+}
+
+struct FollowStateResponse: Decodable, Equatable, Sendable {
+    let following: Bool
+}
+
+struct FollowingListResponse: Decodable, Equatable, Sendable {
+    let users: [StoredCardAuthor]
+}
+
+struct FollowedPerson: Identifiable, Equatable, Hashable, Sendable {
+    let id: UUID
+    let initials: String
+    let avatarPath: String?
+
+    init(id: UUID, initials: String, avatarPath: String?) {
+        self.id = id
+        self.initials = initials
+        self.avatarPath = avatarPath
+    }
+
+    init?(author: StoredCardAuthor) {
+        guard let id = UUID(uuidString: author.id) else {
+            return nil
+        }
+        self.init(id: id, initials: author.initials, avatarPath: author.avatarUrl)
     }
 }
 

@@ -109,7 +109,8 @@ struct HomeView: View {
                                 onToggleFavorite: toggleFavorite,
                                 onSetPublic: setPublic,
                                 onRemoveFromBoard: removeFromBoard,
-                                onOpenAuthor: onOpenAuthor
+                                onOpenAuthor: onOpenAuthor,
+                                onToggleFollow: toggleFollow
                             )
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
@@ -220,6 +221,13 @@ struct HomeView: View {
         viewModel.toggleFavorite(card.id, style: style)
     }
 
+    private func toggleFollow(_ card: HomeCard) {
+        guard let authorId = card.authorId, !card.isOwner else {
+            return
+        }
+        viewModel.toggleFollow(authorId)
+    }
+
     private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
         if card.isOwner {
             viewModel.setPublic(card.id, isPublic: isPublic)
@@ -306,6 +314,7 @@ private struct HomeFeedTabPage: View {
     let onSetPublic: (HomeCard, Bool) -> Void
     let onRemoveFromBoard: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
+    let onToggleFollow: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -430,6 +439,7 @@ private struct HomeFeedTabPage: View {
                         onRemoveFromBoard: onRemoveFromBoard,
                         shiningCardID: shiningCardID,
                         onOpenAuthor: onOpenAuthor,
+                        onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6
                     )

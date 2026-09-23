@@ -51,6 +51,7 @@ if (testUrl) {
 const { closePool, getDb, getSql } = await import("./client.js");
 const { createCard, deleteCard, getCard, listCards, patchCard } = await import("./cards.js");
 const { clearFeedSaves, listFeed, saveFeedAngle } = await import("./feed.js");
+const { followUser, unfollowUser } = await import("./follows.js");
 const { cardReframes, cards, tags, users } = await import("./schema.js");
 
 const baseInput: CreateCardInput = {
@@ -79,7 +80,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
   beforeEach(async () => {
     await getSql()`
-      TRUNCATE saved_angles, card_reframes, card_tags, cards, tags, category_proposals RESTART IDENTITY CASCADE
+      TRUNCATE follows, saved_angles, card_reframes, card_tags, cards, tags, category_proposals RESTART IDENTITY CASCADE
     `;
   });
 
@@ -100,7 +101,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(stored.thoughtOriginal).toBeUndefined();
     expect(stored.isPublic).toBe(false);
     expect(stored.isOwner).toBe(true);
-    expect(stored.author).toEqual({ id: DEV_USER_ID, initials: "JM" });
+    expect(stored.author).toEqual({ id: DEV_USER_ID, initials: "JM", following: false });
     expect(stored.results.every((item) => item.isFavorite === false)).toBe(true);
 
     const listed = await listCards({ limit: 50 });
@@ -321,8 +322,8 @@ describe.skipIf(!testUrl)("cards integration", () => {
     const feed = await listFeed({ limit: 50 });
     expect(feed.map((card) => card.id)).toEqual([publicOther, minePublic.id]);
     expect(feed.map((card) => card.isOwner)).toEqual([false, true]);
-    expect(feed[0]?.author).toEqual({ id: OTHER_USER_ID, initials: "AL" });
-    expect(feed[1]?.author).toEqual({ id: DEV_USER_ID, initials: "JM" });
+    expect(feed[0]?.author).toEqual({ id: OTHER_USER_ID, initials: "AL", following: false });
+    expect(feed[1]?.author).toEqual({ id: DEV_USER_ID, initials: "JM", following: false });
     expect(feed.every((card) => card.isPublic)).toBe(true);
     expect(feed.map((card) => card.id)).not.toContain(minePrivate.id);
     expect(feed.map((card) => card.id)).not.toContain(privateOther);
@@ -433,5 +434,26 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(cleared.ok).toBe(true);
     const after = await listCards({ limit: 50 });
     expect(after.some((card) => card.id === publicOther)).toBe(false);
+  });
+
+  it("follows and unfollows another user without changing feed order", async () => {
+    expect(await followUser(DEV_USER_ID)).toBe("self");
+    expect(await followUser("00000000-0000-4000-8000-000000000077")).toBe("not_found");
+
+    const cardId = await insertOtherCard({
+      thought: "I keep waiting for a reply that is not coming and I feel small.",
+      isPublic: true,
+    });
+    expect(await followUser(OTHER_USER_ID)).toBe("ok");
+    expect(await followUser(OTHER_USER_ID)).toBe("ok");
+
+    const followed = await listFeed({ limit: 50 });
+    expect(followed.find((card) => card.id === cardId)?.author.following).toBe(true);
+
+    expect(await unfollowUser(OTHER_USER_ID)).toBe("ok");
+    expect(await unfollowUser(OTHER_USER_ID)).toBe("ok");
+    const cleared = await listFeed({ limit: 50 });
+    expect(cleared.map((card) => card.id)).toEqual(followed.map((card) => card.id));
+    expect(cleared.find((card) => card.id === cardId)?.author.following).toBe(false);
   });
 });

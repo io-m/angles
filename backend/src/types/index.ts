@@ -119,6 +119,15 @@ export type StoredCardAuthor = {
   id: string;
   initials: string;
   avatarUrl?: string;
+  following: boolean;
+};
+
+export type FollowStateResponse = {
+  following: boolean;
+};
+
+export type FollowingListResponse = {
+  users: StoredCardAuthor[];
 };
 
 export type AuthorCardsResponse = {

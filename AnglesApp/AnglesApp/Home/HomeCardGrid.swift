@@ -13,6 +13,7 @@ struct HomeCardGrid: View, Equatable {
     var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
     var onOpenAuthor: ((HomeCard) -> Void)? = nil
+    var onToggleFollow: (HomeCard) -> Void = { _ in }
     /// Fires before the end is visible, so a server-paged grid can append off screen.
     var onReachEnd: (() -> Void)? = nil
     var loadMorePrefetchDistance = 0
@@ -37,7 +38,8 @@ struct HomeCardGrid: View, Equatable {
                     onToggleFavorite: { style in onToggleFavorite(card, style) },
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
                     onRemoveFromBoard: { onRemoveFromBoard(card) },
-                    onOpenAuthor: openAuthorAction(for: card)
+                    onOpenAuthor: openAuthorAction(for: card),
+                    onToggleFollow: followAction(for: card)
                 )
                 .equatable()
                 .onAppear {
@@ -65,6 +67,13 @@ struct HomeCardGrid: View, Equatable {
             return nil
         }
         return { onOpenAuthor(card) }
+    }
+
+    private func followAction(for card: HomeCard) -> (() -> Void)? {
+        guard !card.isOwner, card.authorId != nil else {
+            return nil
+        }
+        return { onToggleFollow(card) }
     }
 
     /// `ForEach` keys on `card.id` alone. An explicit identity that folded in favorite state
@@ -96,6 +105,7 @@ struct TallHomeCardGrid: View, Equatable {
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
     var shiningCardID: UUID? = nil
     var onOpenAuthor: ((HomeCard) -> Void)? = nil
+    var onToggleFollow: (HomeCard) -> Void = { _ in }
     /// Fires before the end is visible, so a server-paged grid can append off screen.
     var onReachEnd: (() -> Void)? = nil
     var loadMorePrefetchDistance = 0
@@ -124,7 +134,8 @@ struct TallHomeCardGrid: View, Equatable {
                     onToggleFavorite: { style in onToggleFavorite(card, style) },
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
                     onRemoveFromBoard: { onRemoveFromBoard(card) },
-                    onOpenAuthor: openAuthorAction(for: card)
+                    onOpenAuthor: openAuthorAction(for: card),
+                    onToggleFollow: followAction(for: card)
                 )
                 .equatable()
                 .overlay {
@@ -162,6 +173,13 @@ struct TallHomeCardGrid: View, Equatable {
             return nil
         }
         return { onOpenAuthor(card) }
+    }
+
+    private func followAction(for card: HomeCard) -> (() -> Void)? {
+        guard !card.isOwner, card.authorId != nil else {
+            return nil
+        }
+        return { onToggleFollow(card) }
     }
 }
 

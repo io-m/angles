@@ -27,6 +27,13 @@ vi.mock("../db/users.js", () => ({
   updateOwnerInitials: vi.fn(),
 }));
 
+vi.mock("../db/follows.js", () => ({
+  followUser: vi.fn(),
+  unfollowUser: vi.fn(),
+  followedAuthorIds: vi.fn(),
+  listFollowing: vi.fn(),
+}));
+
 vi.mock("../lib/objectStorage.js", () => {
   class StorageUnavailableError extends Error {
     constructor() {
@@ -43,6 +50,7 @@ vi.mock("../lib/objectStorage.js", () => {
 });
 
 const { createApp } = await import("../app.js");
+const { listFollowing } = await import("../db/follows.js");
 const { getUserById, setOwnerAvatar, updateOwnerInitials } = await import("../db/users.js");
 const { deleteAvatar, getAvatar, putAvatar, StorageUnavailableError } = await import("../lib/objectStorage.js");
 
@@ -155,6 +163,17 @@ describe("profile avatar", () => {
     expect(response.headers.get("content-type")).toBe("image/jpeg");
     expect(response.headers.get("cache-control")).toBe("public, max-age=86400");
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(jpeg);
+  });
+
+  it("returns the people the viewer follows", async () => {
+    vi.mocked(listFollowing).mockResolvedValue([
+      { id: "00000000-0000-4000-8000-000000000099", initials: "AL", following: true },
+    ]);
+    const response = await app.request("/profile/following");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      users: [{ id: "00000000-0000-4000-8000-000000000099", initials: "AL", following: true }],
+    });
   });
 
   it("returns not found when a user has no photo", async () => {

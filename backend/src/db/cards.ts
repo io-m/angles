@@ -9,7 +9,7 @@ import {
   type StoredCard,
 } from "../types/index.js";
 import { getDb, wrapDbError, DbError } from "./client.js";
-import { loadViewerSaves, toStoredCard } from "./mapCard.js";
+import { storedCardsForViewer, toStoredCard } from "./mapCard.js";
 import { cardReframes, cardTags, cards, categoryProposals, savedAngles, tags } from "./schema.js";
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
@@ -176,8 +176,7 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       },
     });
 
-    const saves = await loadViewerSaves(viewerId);
-    return rows.map((row) => toStoredCard(row, saves, viewerId));
+    return storedCardsForViewer(rows, viewerId);
   } catch (error) {
     if (error instanceof DbError) {
       throw error;

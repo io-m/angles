@@ -65,6 +65,7 @@ struct ReframeCardView: View, Equatable {
     var onSetPublic: (Bool) -> Void = { _ in }
     var onRemoveFromBoard: () -> Void = {}
     var onOpenAuthor: (() -> Void)? = nil
+    var onToggleFollow: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -367,15 +368,22 @@ struct ReframeCardView: View, Equatable {
 
     @ViewBuilder
     private func authorControl(side: CGFloat) -> some View {
-        if let onOpenAuthor, card.authorId != nil {
-            Button(action: onOpenAuthor) {
+        ZStack(alignment: .bottomTrailing) {
+            if let onOpenAuthor, card.authorId != nil {
+                Button(action: onOpenAuthor) {
+                    authorMark(side: side)
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Posts by \(card.authorInitials)")
+            } else {
                 authorMark(side: side)
             }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Posts by \(card.authorInitials)")
-        } else {
-            authorMark(side: side)
+
+            if !card.isOwner, card.authorId != nil, let onToggleFollow {
+                FollowBadge(following: card.authorFollowing, action: onToggleFollow)
+                    .offset(FollowBadge.overhang)
+            }
         }
     }
 
@@ -1349,6 +1357,57 @@ private struct RisingHeart: View {
                     launched = true
                 }
             }
+    }
+}
+
+struct FollowBadge: View {
+    /// How far the badge hangs off the avatar's bottom-trailing edge.
+    static let overhang = CGSize(width: 10, height: 10)
+
+    var following: Bool
+    var action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var pressedScale: CGFloat = 1
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            if !reduceMotion {
+                pressedScale = 1.38
+                Task { @MainActor in
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.62)) {
+                        pressedScale = 1
+                    }
+                }
+            }
+            action()
+        } label: {
+            Image(systemName: following ? "checkmark" : "plus")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(following ? theme.paper : theme.ink)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 22, height: 22)
+                .background {
+                    Circle().fill(following ? theme.ink : theme.paper)
+                }
+                .overlay {
+                    Circle().strokeBorder(
+                        following ? theme.ink : theme.ink.opacity(theme.isDark ? 0.35 : 0.22),
+                        lineWidth: 1
+                    )
+                }
+                .scaleEffect(pressedScale)
+                .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.74), value: following)
+                .padding(4)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(following ? "Unfollow" : "Follow")
     }
 }
 

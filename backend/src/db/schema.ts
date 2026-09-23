@@ -133,6 +133,24 @@ export const savedAngles = pgTable(
   ],
 );
 
+export const follows = pgTable(
+  "follows",
+  {
+    followerId: uuid("follower_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    followeeId: uuid("followee_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.followerId, table.followeeId] }),
+    index("follows_followee_idx").on(table.followeeId),
+    check("follows_not_self", sql`${table.followerId} <> ${table.followeeId}`),
+  ],
+);
+
 export const categoryProposals = pgTable("category_proposals", {
   slug: text("slug").primaryKey(),
   label: text("label").notNull(),
@@ -146,6 +164,8 @@ export const categoryProposals = pgTable("category_proposals", {
 export const usersRelations = relations(users, ({ many }) => ({
   cards: many(cards),
   savedAngles: many(savedAngles),
+  following: many(follows, { relationName: "following" }),
+  followers: many(follows, { relationName: "followers" }),
 }));
 
 export const cardsRelations = relations(cards, ({ many, one }) => ({
@@ -158,6 +178,19 @@ export const cardsRelations = relations(cards, ({ many, one }) => ({
 export const savedAnglesRelations = relations(savedAngles, ({ one }) => ({
   user: one(users, { fields: [savedAngles.userId], references: [users.id] }),
   card: one(cards, { fields: [savedAngles.cardId], references: [cards.id] }),
+}));
+
+export const followsRelations = relations(follows, ({ one }) => ({
+  follower: one(users, {
+    fields: [follows.followerId],
+    references: [users.id],
+    relationName: "following",
+  }),
+  followee: one(users, {
+    fields: [follows.followeeId],
+    references: [users.id],
+    relationName: "followers",
+  }),
 }));
 
 export const cardReframesRelations = relations(cardReframes, ({ one }) => ({

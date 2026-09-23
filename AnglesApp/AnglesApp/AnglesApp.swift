@@ -79,7 +79,8 @@ struct AppRoot: View {
                         onInspire: presentCompose,
                         onLogOut: logOut,
                         canLoadFullAppContent: canLoadProfileContent,
-                        onOpenAuthor: openAuthor
+                        onOpenAuthor: openAuthor,
+                        onOpenFollowed: openFollowed
                     )
                     .tabItem { Label("Profile", systemImage: "person") }
                     .tag(RootTab.profile)
@@ -469,6 +470,18 @@ struct AppRoot: View {
             isOnboardingTasteSession = true
             isComposePresented = true
         }
+    }
+
+    private func openFollowed(_ person: FollowedPerson) {
+        guard authorRoute?.id != person.id else {
+            return
+        }
+        authorRoute = AuthorRoute(
+            id: person.id,
+            initials: person.initials,
+            avatarPath: person.avatarPath,
+            isSelf: false
+        )
     }
 
     private func openAuthor(_ card: HomeCard) {

@@ -82,6 +82,14 @@ struct CardsService: Sendable {
         )
     }
 
+    func follow(id: String) async throws -> FollowStateResponse {
+        try await client.put(path: "users/\(id)/follow", timeout: Self.writeTimeout)
+    }
+
+    func unfollow(id: String) async throws -> FollowStateResponse {
+        try await client.deleteJSON(path: "users/\(id)/follow", timeout: Self.writeTimeout)
+    }
+
     func listAuthorCards(id: String, limit: Int, before: String? = nil) async throws -> AuthorCardsResponse {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {

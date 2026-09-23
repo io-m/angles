@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { listFollowing } from "../db/follows.js";
 import { getUserById, setOwnerAvatar, updateOwnerInitials } from "../db/users.js";
 import { getOwnerUserId, authStub } from "../lib/authStub.js";
 import { avatarObjectKey, avatarUrlFor, initialsFromDisplayName } from "../lib/avatarUrl.js";
@@ -12,7 +13,7 @@ import {
   putAvatar,
   StorageUnavailableError,
 } from "../lib/objectStorage.js";
-import type { ProfileBody } from "../types/index.js";
+import type { FollowingListResponse, ProfileBody } from "../types/index.js";
 
 const MAX_AVATAR_BYTES = Math.floor(1.5 * 1024 * 1024);
 
@@ -41,6 +42,11 @@ function storageFailure(error: unknown): { error: string; code: "STORAGE_UNAVAIL
 }
 
 export const profileRoute = new Hono();
+
+profileRoute.get("/following", authStub, async (c) => {
+  const body: FollowingListResponse = { users: await listFollowing() };
+  return c.json(body);
+});
 
 profileRoute.patch(
   "/",
