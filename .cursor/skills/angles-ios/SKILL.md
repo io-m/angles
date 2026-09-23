@@ -7,7 +7,9 @@ description: Extend or change the Angles iOS app networking, models, and XcodeGe
 
 ## Project
 
-Source of truth is `AnglesApp/project.yml`. After adding or moving Swift files:
+Source of truth is `AnglesApp/project.yml`. App icon (Icon Composer): `AnglesApp/Angles.icon` (`ASSETCATALOG_COMPILER_APPICON_NAME: Angles`). `~/Documents/Angles.icon` symlinks to that folder so edits from either path ship in the next build.
+
+After adding or moving Swift files:
 
 ```bash
 cd AnglesApp && xcodegen generate
