@@ -22,6 +22,8 @@ struct HomeCard: Identifiable, Equatable {
     var isPublic: Bool
     var isOwner: Bool
     var authorInitials: String
+    /// Model that wrote the answer. Unknown ids stay nil so the card does not invent a logo.
+    var model: LlmModel?
     /// In memory only until History (SwiftData) lands. Shape exists now for matching later.
     var meta: ReframeMeta?
 
@@ -35,6 +37,7 @@ struct HomeCard: Identifiable, Equatable {
         isPublic: Bool = false,
         isOwner: Bool = true,
         authorInitials: String = UserInitials.letters,
+        model: LlmModel? = nil,
         meta: ReframeMeta? = nil
     ) {
         self.id = id
@@ -46,6 +49,7 @@ struct HomeCard: Identifiable, Equatable {
         self.isPublic = isPublic
         self.isOwner = isOwner
         self.authorInitials = authorInitials
+        self.model = model
         self.meta = meta
     }
 
@@ -75,6 +79,7 @@ struct HomeCard: Identifiable, Equatable {
             isPublic: stored.isPublic,
             isOwner: stored.isOwner,
             authorInitials: stored.author.initials,
+            model: LlmModel(rawValue: stored.model),
             meta: stored.reframeMeta
         )
     }
@@ -122,6 +127,7 @@ struct HomeCard: Identifiable, Equatable {
     mutating func apply(_ stored: StoredCard) {
         isPublic = stored.isPublic
         thoughtOriginal = stored.thoughtOriginal
+        model = LlmModel(rawValue: stored.model)
         for index in slides.indices {
             let style = slides[index].result.style
             guard let match = stored.results.first(where: { $0.style == style }) else {

@@ -9,19 +9,19 @@ import {
 } from "../types/index.js";
 
 export const THOUGHT_MIN_WORDS = 8;
-export const THOUGHT_MAX_WORDS = 22;
+export const THOUGHT_MAX_WORDS = 30;
 export const THOUGHT_MIN_CHARS = 40;
-export const THOUGHT_MAX_CHARS = 140;
+export const THOUGHT_MAX_CHARS = 200;
 /** Past this the decision is rejected and repaired rather than trimmed. */
-export const THOUGHT_HARD_MAX_WORDS = 32;
-export const THOUGHT_HARD_MAX_CHARS = 180;
+export const THOUGHT_HARD_MAX_WORDS = 40;
+export const THOUGHT_HARD_MAX_CHARS = 240;
 
 export const REFRAME_MIN_WORDS = 12;
-export const REFRAME_MAX_WORDS = 32;
+export const REFRAME_MAX_WORDS = 45;
 export const REFRAME_MIN_CHARS = 80;
-export const REFRAME_MAX_CHARS = 190;
+export const REFRAME_MAX_CHARS = 280;
 /** Past this the style call is retried once, then trimmed at a sentence boundary. */
-export const REFRAME_HARD_MAX_CHARS = 250;
+export const REFRAME_HARD_MAX_CHARS = 340;
 
 const list = (values: readonly string[]): string => values.join(" | ");
 

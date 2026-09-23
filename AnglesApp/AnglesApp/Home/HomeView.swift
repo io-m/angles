@@ -268,6 +268,13 @@ private struct HomeFeedTabPage: View {
 
     var body: some View {
         GeometryReader { proxy in
+            // Cards hug their text. The cap is the space under the header, minus the
+            // same 16-point gap the list uses, minus a peek of the next card.
+            let viewportBelowChrome = max(0, proxy.size.height - chromeHeight)
+            let tallCardMaxHeight = max(
+                0,
+                viewportBelowChrome - HeaderCollapse.horizontalPadding - 72
+            )
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     VStack(spacing: 0) {
@@ -275,7 +282,7 @@ private struct HomeFeedTabPage: View {
                             .frame(height: 0)
                             .id("home-tab-top")
 
-                        tabContent
+                        tabContent(cardMaxHeight: tallCardMaxHeight)
                             .padding(.bottom, 20)
                     }
                     .frame(
@@ -307,7 +314,7 @@ private struct HomeFeedTabPage: View {
     }
 
     @ViewBuilder
-    private var tabContent: some View {
+    private func tabContent(cardMaxHeight: CGFloat) -> some View {
         switch loadState {
         case .loading:
             ProgressView()
@@ -334,10 +341,10 @@ private struct HomeFeedTabPage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 VStack(spacing: 0) {
-                    HomeCardGrid(
+                    TallHomeCardGrid(
                         cards: cards,
+                        cardMaxHeight: cardMaxHeight,
                         rowSpacing: HeaderCollapse.horizontalPadding,
-                        presentation: .library,
                         openingStyle: tab.matchingStyle,
                         menuRole: { card in card.isOwner ? .owner : .feed },
                         onDelete: onDelete,
@@ -349,7 +356,7 @@ private struct HomeFeedTabPage: View {
                     )
                     .equatable()
                     .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                    .padding(.top, 10)
+                    .padding(.top, HeaderCollapse.horizontalPadding)
 
                     feedFooter
                 }

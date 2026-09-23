@@ -47,8 +47,9 @@ async function main(): Promise<void> {
   }
   const tagRows = allSlugs.length > 0 ? await db.select().from(tags) : [];
   const tagBySlug = new Map(tagRows.map((row) => [row.slug, row.id]));
+  const seedModels = ["mistral-small-latest", "gemini-3.8-flash", "deepseek-flash"] as const;
 
-  for (const post of fixture.posts) {
+  for (const [index, post] of fixture.posts.entries()) {
     await db.insert(cards).values({
       id: post.id,
       userId: post.userId,
@@ -62,7 +63,7 @@ async function main(): Promise<void> {
       safety: "none",
       emotions: post.emotions as Emotion[],
       skippedStyles: [],
-      model: "mistral-small-latest",
+      model: seedModels[index % seedModels.length]!,
       spotlightStyle: post.spotlightStyle as Style,
       isPublic: true,
       createdAt: new Date(post.createdAt),

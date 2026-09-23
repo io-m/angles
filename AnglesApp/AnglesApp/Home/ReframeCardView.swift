@@ -2,6 +2,7 @@ import SwiftUI
 
 enum ReframeCardPresentation: String, Equatable {
     case library
+    case tallLibrary
     case favoriteAngles
 }
 
@@ -13,6 +14,15 @@ enum ReframeCardMenuRole: Equatable {
 
 enum ReframeCardMetrics {
     static let storedMinimumHeight: CGFloat = 284
+    /// Experiment (tall Home cards): one dominant card per viewport.
+    static let tallChromeInset: CGFloat = 20
+    static let tallRhythm: CGFloat = 16
+    static let tallAvatarSize: CGFloat = 48
+    static let tallSectionSpacing: CGFloat = 20
+    static let tallThoughtFont: Font = .body.weight(.regular)
+    static let tallAnswerFont: Font = .title2.weight(.semibold)
+    static let tallAnswerLineSpacing: CGFloat = 8
+    static let tallAnswerVerticalPadding: CGFloat = 18
     /// Flip-only favorites: answer on front, thought on back — grows with copy.
     static let favoriteStripMinHeight: CGFloat = 168
     /// Horizontal strip caps height; copy scrolls inside instead of clipping.
@@ -47,6 +57,9 @@ struct ReframeCardView: View, Equatable {
     var openingStyle: Style? = nil
     /// Profile favorite carousel: cap height and scroll long copy instead of clipping.
     var limitsFavoriteCopyHeight: Bool = false
+    /// Experiment tall cards: viewport cap. The card hugs its text and only
+    /// grows up to this height; the reply scrolls if a cook would pass it.
+    var tallCardMaxHeight: CGFloat? = nil
     var onDelete: () -> Void = {}
     var onToggleFavorite: (Style) -> Void = { _ in }
     var onSetPublic: (Bool) -> Void = { _ in }
@@ -65,8 +78,12 @@ struct ReframeCardView: View, Equatable {
     @State private var selectedStyle: Style?
     @State private var favoriteHaptic = 0
     @State private var favoriteFlipHaptic = 0
+    @State private var heartBurst = 0
+    @State private var heartScale: CGFloat = 1
     @State private var isFavoriteFlipped = false
     @State private var showDeleteConfirm = false
+    /// Uncapped height of the tall card, measured off-screen. Drives the reply scroll.
+    @State private var tallIdealHeight: CGFloat = 0
 
     static func == (lhs: ReframeCardView, rhs: ReframeCardView) -> Bool {
         lhs.card == rhs.card
@@ -74,6 +91,7 @@ struct ReframeCardView: View, Equatable {
             && lhs.menuRole == rhs.menuRole
             && lhs.openingStyle == rhs.openingStyle
             && lhs.limitsFavoriteCopyHeight == rhs.limitsFavoriteCopyHeight
+            && lhs.tallCardMaxHeight == rhs.tallCardMaxHeight
     }
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -83,7 +101,7 @@ struct ReframeCardView: View, Equatable {
 
     private var visibleSlides: [HomeCardSlide] {
         switch presentation {
-        case .library:
+        case .library, .tallLibrary:
             return card.slides
         case .favoriteAngles:
             return card.slides.filter(\.isFavorite)
@@ -181,6 +199,8 @@ struct ReframeCardView: View, Equatable {
         switch presentation {
         case .library:
             stackedCardBody
+        case .tallLibrary:
+            tallStackedCardBody
         case .favoriteAngles:
             favoriteFlipCard
         }
@@ -204,6 +224,61 @@ struct ReframeCardView: View, Equatable {
         }
         .clipShape(cardShape)
         .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
+    }
+
+    /// One column. It hugs the text. The reply scrolls only when that column
+    /// measures taller than the live viewport cap.
+    private var tallStackedCardBody: some View {
+        tallColumn(scrollsAnswer: tallReplyScrolls)
+            .fixedSize(horizontal: false, vertical: !tallReplyScrolls)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .frame(height: tallReplyScrolls ? tallCardMaxHeight : nil, alignment: .top)
+            .background {
+                activeAppearance.washFill(over: theme.surface)
+            }
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: TallIdealHeightKey.self, value: proxy.size.height)
+                }
+            }
+            .clipShape(cardShape)
+            .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
+            .onPreferenceChange(TallIdealHeightKey.self) { newValue in
+                guard !tallReplyScrolls, newValue > 1, abs(newValue - tallIdealHeight) > 1 else { return }
+                tallIdealHeight = newValue
+            }
+            .onChange(of: activeSlide?.result.reframe) { _, _ in
+                tallIdealHeight = 0
+            }
+    }
+
+    private var tallReplyScrolls: Bool {
+        guard let cap = tallCardMaxHeight, cap > 1, tallIdealHeight > 1 else { return false }
+        return tallIdealHeight > cap + 1
+    }
+
+    private func tallColumn(scrollsAnswer: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            tallStoredHeader
+
+            ReframeCopyStack(
+                thought: displayedThought,
+                answer: activeSlide?.result.reframe,
+                answerColor: activeAppearance.responseInk,
+                thoughtFont: ReframeCardMetrics.tallThoughtFont,
+                answerFont: ReframeCardMetrics.tallAnswerFont,
+                answerLineSpacing: ReframeCardMetrics.tallAnswerLineSpacing,
+                chromeInset: ReframeCardMetrics.tallRhythm,
+                sectionSpacing: ReframeCardMetrics.tallSectionSpacing,
+                answerVerticalPadding: ReframeCardMetrics.tallAnswerVerticalPadding,
+                model: card.model,
+                modelFill: activeAppearance.ink,
+                scrollsAnswer: scrollsAnswer
+            )
+            .frame(maxHeight: scrollsAnswer ? .infinity : nil, alignment: .top)
+
+            tallStoredFooter
+        }
     }
 
     private var favoriteFlipCard: some View {
@@ -301,6 +376,33 @@ struct ReframeCardView: View, Equatable {
         .padding(.top, ReframeCardMetrics.chromeInset)
     }
 
+    private var tallStoredHeader: some View {
+        HStack(spacing: 12) {
+            InitialsAvatar(
+                letters: card.authorInitials,
+                side: ReframeCardMetrics.tallAvatarSize,
+                fill: theme.ink,
+                symbol: theme.paper
+            )
+
+            Text(HomeViewModel.dateLabel(for: card.createdAt))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(theme.muted)
+                .lineLimit(1)
+                .layoutPriority(-1)
+
+            Spacer(minLength: 4)
+
+            headerTrailingCluster(
+                menuGlyphSize: 17,
+                badgeIconSize: 16,
+                badgeFont: .subheadline.weight(.medium)
+            )
+        }
+        .padding(.horizontal, ReframeCardMetrics.tallRhythm)
+        .padding(.top, ReframeCardMetrics.tallRhythm)
+    }
+
     private var favoriteHeader: some View {
         HStack(spacing: 8) {
             InitialsAvatar(
@@ -325,22 +427,36 @@ struct ReframeCardView: View, Equatable {
     }
 
     @ViewBuilder
-    private func headerTrailingCluster(menuGlyphSize: CGFloat) -> some View {
+    private func headerTrailingCluster(
+        menuGlyphSize: CGFloat,
+        badgeIconSize: CGFloat = 12,
+        badgeFont: Font = .caption.weight(.medium)
+    ) -> some View {
         if showsMenu {
-            cardActionsTrigger(menuGlyphSize: menuGlyphSize)
+            cardActionsTrigger(
+                menuGlyphSize: menuGlyphSize,
+                badgeIconSize: badgeIconSize,
+                badgeFont: badgeFont
+            )
         } else if let lifeArea = card.lifeAreaPresentation {
             LifeAreaBadge(
                 category: lifeArea.category,
                 label: lifeAreaLabel(lifeArea),
                 maxWidth: limitsFavoriteCopyHeight
                     ? ReframeCardMetrics.lifeAreaBadgeStripMaxWidth
-                    : ReframeCardMetrics.lifeAreaBadgeMaxWidth
+                    : ReframeCardMetrics.lifeAreaBadgeMaxWidth,
+                iconSize: badgeIconSize,
+                labelFont: badgeFont
             )
         }
     }
 
     /// Category + ⋯ stay visually tight; tap anywhere on the cluster for the same menu as long-press.
-    private func cardActionsTrigger(menuGlyphSize: CGFloat) -> some View {
+    private func cardActionsTrigger(
+        menuGlyphSize: CGFloat,
+        badgeIconSize: CGFloat = 12,
+        badgeFont: Font = .caption.weight(.medium)
+    ) -> some View {
         Menu {
             cardMenuItems
         } label: {
@@ -351,7 +467,9 @@ struct ReframeCardView: View, Equatable {
                         label: lifeAreaLabel(lifeArea),
                         maxWidth: limitsFavoriteCopyHeight
                             ? ReframeCardMetrics.lifeAreaBadgeStripMaxWidth
-                            : ReframeCardMetrics.lifeAreaBadgeMaxWidth
+                            : ReframeCardMetrics.lifeAreaBadgeMaxWidth,
+                        iconSize: badgeIconSize,
+                        labelFont: badgeFont
                     )
                     .accessibilityHidden(true)
                 }
@@ -388,6 +506,21 @@ struct ReframeCardView: View, Equatable {
         .padding(.horizontal, ReframeCardMetrics.chromeInset)
         .padding(.top, 12)
         .padding(.bottom, ReframeCardMetrics.chromeInset)
+    }
+
+    private var tallStoredFooter: some View {
+        HStack(spacing: 12) {
+            styleSelector(activeAppearance)
+
+            Spacer(minLength: 8)
+
+            if let style = activeStyle {
+                tallFavoriteButton(for: style, tint: activeAppearance.ink)
+            }
+        }
+        .padding(.horizontal, ReframeCardMetrics.tallRhythm)
+        .padding(.top, ReframeCardMetrics.tallSectionSpacing)
+        .padding(.bottom, ReframeCardMetrics.tallRhythm)
     }
 
     private var favoriteFooter: some View {
@@ -448,6 +581,41 @@ struct ReframeCardView: View, Equatable {
                 .padding(slop)
                 .contentShape(Rectangle())
                 .padding(-slop)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            isFavorite ? "Remove from favorite angles" : "Add to favorite angles"
+        )
+        .accessibilityAddTraits(isFavorite ? .isSelected : [])
+    }
+
+    /// Tall Home heart: style-tinted circle, a scale-up, and a burst of hearts that rise and fade.
+    private func tallFavoriteButton(for style: Style, tint: Color) -> some View {
+        let isFavorite = card.isStyleFavorited(style)
+        return Button {
+            let liking = !isFavorite
+            favoriteHaptic += 1
+            if liking, !reduceMotion {
+                heartBurst += 1
+                heartScale = 1.28
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.55)) {
+                    heartScale = 1
+                }
+            }
+            withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.58)) {
+                onToggleFavorite(style)
+            }
+        } label: {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isFavorite ? tint : theme.muted)
+                .contentTransition(.symbolEffect(.replace))
+                .scaleEffect(heartScale)
+                .frame(width: ReframeCardMetrics.chipSize, height: ReframeCardMetrics.chipSize)
+                .background(tint.opacity(0.08), in: Circle())
+                .overlay {
+                    RisingHeartBurst(trigger: heartBurst, tint: tint)
+                }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
@@ -550,7 +718,7 @@ struct ReframeCardView: View, Equatable {
             if let preferred = card.latestFavoriteStyle, visibleStyles.contains(preferred) {
                 return preferred
             }
-        case .library:
+        case .library, .tallLibrary:
             if let openingStyle, visibleStyles.contains(openingStyle) {
                 return openingStyle
             }
@@ -798,6 +966,16 @@ private struct ReframeCopyStack: View {
     let thought: String
     let answer: String?
     var answerColor: Color?
+    var thoughtFont: Font = ReframeCardMetrics.thoughtFont
+    var answerFont: Font = ReframeCardMetrics.answerFont
+    var answerLineSpacing: CGFloat = ReframeCardMetrics.answerLineSpacing
+    var chromeInset: CGFloat = ReframeCardMetrics.chromeInset
+    var sectionSpacing: CGFloat = ReframeCardMetrics.sectionSpacing
+    var answerVerticalPadding: CGFloat = 14
+    var model: LlmModel? = nil
+    var modelFill: Color? = nil
+    /// When the card is at the viewport cap, only the reply scrolls.
+    var scrollsAnswer: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -810,33 +988,88 @@ private struct ReframeCopyStack: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(thought)
-                .font(ReframeCardMetrics.thoughtFont)
+                .font(thoughtFont)
                 .foregroundStyle(theme.muted)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, ReframeCardMetrics.chromeInset)
-                .padding(.top, ReframeCardMetrics.sectionSpacing)
-                .padding(.bottom, ReframeCardMetrics.sectionSpacing)
+                .padding(.horizontal, chromeInset)
+                .padding(.top, sectionSpacing)
+                .padding(.bottom, sectionSpacing)
 
             Rectangle()
                 .fill(theme.cardHairline)
                 .frame(height: 1)
-                .padding(.horizontal, ReframeCardMetrics.chromeInset)
+                .padding(.horizontal, chromeInset)
 
             if let answer {
-                Text(answer)
-                    .font(ReframeCardMetrics.answerFont)
-                    .foregroundStyle(resolvedAnswerColor)
-                    .lineSpacing(ReframeCardMetrics.answerLineSpacing)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, ReframeCardMetrics.chromeInset)
-                    .padding(.vertical, 14)
+                answerRow(answer)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: scrollsAnswer ? .infinity : nil,
+            alignment: .topLeading
+        )
+    }
+
+    /// Tall cards pass a model: icon and name share one row. The reply stays full width under it.
+    @ViewBuilder
+    private func answerRow(_ answer: String) -> some View {
+        VStack(alignment: .leading, spacing: model == nil ? 0 : ReframeCardMetrics.tallRhythm) {
+            if let model {
+                HStack(spacing: 10) {
+                    ModelLogo(model: model, side: 18)
+                        .frame(width: ReframeCardMetrics.chipSize, height: ReframeCardMetrics.chipSize)
+                        .background((modelFill ?? theme.ink).opacity(0.08), in: Circle())
+
+                    Text(model.displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Written by \(model.displayName)")
+            }
+
+            Text(answer)
+                .font(answerFont)
+                .foregroundStyle(resolvedAnswerColor)
+                .lineSpacing(answerLineSpacing)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .modifier(TallAnswerScroll(enabled: scrollsAnswer))
+        }
+        .padding(.horizontal, chromeInset)
+        .padding(.top, model == nil ? answerVerticalPadding : ReframeCardMetrics.tallRhythm)
+        .padding(.bottom, model == nil ? answerVerticalPadding : 0)
+        .frame(maxHeight: scrollsAnswer ? .infinity : nil, alignment: .top)
+    }
+}
+
+/// Reads the tall card’s laid-out height while it is still hugging its text.
+private struct TallIdealHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct TallAnswerScroll: ViewModifier {
+    var enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            ScrollView {
+                content
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxHeight: .infinity, alignment: .top)
+        } else {
+            content
+        }
     }
 }
 
@@ -960,6 +1193,8 @@ private struct LifeAreaBadge: View {
     let category: ThoughtCategory
     let label: String
     var maxWidth: CGFloat = ReframeCardMetrics.lifeAreaBadgeMaxWidth
+    var iconSize: CGFloat = 12
+    var labelFont: Font = .caption.weight(.medium)
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -968,11 +1203,11 @@ private struct LifeAreaBadge: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: category.systemImage)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: iconSize, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
 
             Text(label)
-                .font(.caption.weight(.medium))
+                .font(labelFont)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
@@ -1055,5 +1290,50 @@ private struct FlipStack<Front: View, Back: View>: View, Animatable {
             perspective: 0.55
         )
         .compositingGroup()
+    }
+}
+
+/// Small hearts that launch upward from the tall-card heart and fade out.
+private struct RisingHeartBurst: View {
+    let trigger: Int
+    let tint: Color
+
+    var body: some View {
+        ZStack {
+            if trigger > 0 {
+                ForEach(0..<6, id: \.self) { index in
+                    RisingHeart(index: index, tint: tint)
+                }
+                .id(trigger)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct RisingHeart: View {
+    let index: Int
+    let tint: Color
+
+    @State private var launched = false
+
+    private var drift: CGFloat {
+        let drifts: [CGFloat] = [-22, -12, -4, 8, 16, 24]
+        return drifts[index % drifts.count]
+    }
+
+    var body: some View {
+        Image(systemName: "heart.fill")
+            .font(.system(size: index.isMultiple(of: 2) ? 11 : 14, weight: .semibold))
+            .foregroundStyle(tint)
+            .offset(x: launched ? drift : drift * 0.15, y: launched ? -160 - CGFloat(index * 12) : 6)
+            .scaleEffect(launched ? 0.3 : 0.9)
+            .opacity(launched ? 0 : 0.95)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.15).delay(Double(index) * 0.04)) {
+                    launched = true
+                }
+            }
     }
 }
