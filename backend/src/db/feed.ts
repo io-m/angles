@@ -1,4 +1,4 @@
-import { and, arrayOverlaps, asc, desc, eq, inArray, lt, ne, or } from "drizzle-orm";
+import { and, arrayOverlaps, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import type { FeedListQuery, StoredCard, Style } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
@@ -34,7 +34,7 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
-    const filters = [eq(cards.isPublic, true), ne(cards.userId, viewerId)];
+    const filters = [eq(cards.isPublic, true)];
     if (query.categories?.length) {
       filters.push(inArray(cards.category, query.categories));
     }

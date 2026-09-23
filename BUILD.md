@@ -23,7 +23,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Core loop
 
-Tab shell: **Home | Sparkle | Profile**. Sparkle opens the compose overlay. Profile is the private library. Home is the community feed of other people’s public cards.
+Tab shell: **Home | Sparkle | Profile**. Sparkle opens the compose overlay. Profile is the private library. Home is every public card, including the viewer’s own. Private cards stay off Home.
 
 Loading and error are **states on Results**, not their own screens.
 
@@ -144,7 +144,7 @@ Pins are gone, app and schema. A card is saved by hearting an angle, and the tho
 
 ### 5d. Owner card menu
 
-Long press on the owner's library cards. Menu: Delete (confirm), Make public / Make private (`isPublic`; omit on `POST /cards` still stores private). Compose Save defaults public with a toggle. Language when a cleaned original exists (client toggle, no new translate). It lived on a top-trailing ⋯ button until 9c gave that slot to the heart. Public posts appear on other people’s Home, never the author’s.
+Long press on the owner's library cards. Menu: Delete (confirm), Make public / Make private (`isPublic`; omit on `POST /cards` still stores private). Compose Save defaults public with a toggle. Language when a cleaned original exists (client toggle, no new translate). It lived on a top-trailing ⋯ button until 9c gave that slot to the heart. Public posts appear on Home, including the author’s.
 
 ### 5e. Thought type + card height
 
@@ -156,7 +156,7 @@ Strips have page-dots for which **card** is in view; cards in those strips have 
 
 ### 9. Public opt-in / community Home
 
-Home is other people’s public cards (never the viewer’s). Style filter matches Profile (keeps cards that have that angle; All mixes covers). Sections: Recent, one strip per life-domain `category`, one strip per `emotion`. Pin/heart on someone else’s post writes viewer-scoped saves, not the author’s flags. Profile Pinned / Favorite angles union owned flags with those saves. Making a post public is so other people see it on their Home later.
+Home is every public card, including the viewer’s own, newest first. Private cards stay off Home. Style filter matches Profile (keeps cards that have that angle; All mixes covers). Sections: Recent, one strip per life-domain `category`, one strip per `emotion`. Pin/heart on someone else’s post writes viewer-scoped saves, not the author’s flags. Profile Pinned / Favorite angles union owned flags with those saves. Making a post public puts it on Home for everyone, including the author.
 
 ### 9b. Home perf, header, card gestures
 
@@ -355,6 +355,8 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-23 — The save cover slides off the new card with a premium traveling border spark and deepened ambient shadow (currently previewed on Home open and tab return); compose lines stay at the top.
+- 2026-09-23 — A public post now appears on the author’s Home, and Save lands on that card.
 - 2026-09-23 — Profile style tabs now use the Home tall card.
 - 2026-09-15 — Native Home pull-to-refresh: SwiftUI's system refresh interaction starts below the fixed style tabs and refreshes the shared feed without blanking cards.
 - 2026-09-15 — Profile dropped the shared maximum-height envelope; independent lazy tab lists remove Stoic’s paging hitch and shorter-tab trailing space, with a fixed compact header.

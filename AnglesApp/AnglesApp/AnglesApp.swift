@@ -38,6 +38,8 @@ struct AppRoot: View {
     @State private var paywallShowsCelebration = false
     @State private var paywallHeroCard: HomeCard?
     @State private var homeRevealPhase: HomeRevealPhase = .hidden
+    @State private var saveCoverLabel: String?
+    @State private var saveCoverPresented = false
     @AppStorage("hasCompletedOnboardingTaste") private var hasCompletedTaste = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -56,6 +58,7 @@ struct AppRoot: View {
                         safeAreaInsets: homeSafeAreaInsets,
                         viewModel: viewModel,
                         storeKitManager: storeKitManager,
+                        isActiveTab: selectedTab == .home,
                         onLogOut: logOut
                     )
                 }
@@ -107,15 +110,34 @@ struct AppRoot: View {
                 storeKitManager: storeKitManager,
                 onClose: handleComposeClose,
                 onShowMembership: presentMembershipPaywall,
-                onSave: handleSavedCard
+                onSave: handleSavedCard,
+                onPresentSaveCover: presentSaveCover,
+                onDismissSaveCover: dismissSaveCover
             )
             .opacity(isComposePresented ? 1 : 0)
             .animation(
-                ComposeMotion.contentFade(reduceMotion, presented: isComposePresented),
+                saveCoverPresented
+                    ? nil
+                    : ComposeMotion.contentFade(reduceMotion, presented: isComposePresented),
                 value: isComposePresented
             )
             .allowsHitTesting(isComposePresented)
             .accessibilityHidden(!isComposePresented)
+
+            if let saveCoverLabel {
+                GeometryReader { proxy in
+                    SaveCelebrationCover(
+                        label: saveCoverLabel,
+                        playsAnimation: !reduceMotion
+                    )
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .offset(y: saveCoverPresented ? 0 : -proxy.size.height)
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(saveCoverPresented)
+                .accessibilityHidden(!saveCoverPresented)
+                .zIndex(18)
+            }
 
             WriteErrorBanner(message: viewModel.writeError) {
                 viewModel.dismissWriteError()
@@ -482,10 +504,41 @@ struct AppRoot: View {
         }
     }
 
+    private func presentSaveCover(_ label: String) {
+        withoutAnimations {
+            saveCoverLabel = label
+            saveCoverPresented = true
+        }
+    }
+
+    private func dismissSaveCover(_ cardID: UUID) {
+        withoutAnimations {
+            isOnboardingTasteSession = false
+            isComposePresented = false
+        }
+        let slide = reduceMotion ? 0.2 : 0.48
+        withAnimation(.easeInOut(duration: slide)) {
+            saveCoverPresented = false
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(Int(slide * 1000) + 40))
+            guard !saveCoverPresented else {
+                return
+            }
+            saveCoverLabel = nil
+            viewModel.highlightSavedCard(cardID)
+        }
+    }
+
     private func handleSavedCard(_ card: HomeCard) {
         guard isOnboardingTasteSession else {
-            lastContentTab = .profile
-            selectedTab = .profile
+            if card.isPublic {
+                lastContentTab = .home
+                selectedTab = .home
+            } else {
+                lastContentTab = .profile
+                selectedTab = .profile
+            }
             return
         }
 

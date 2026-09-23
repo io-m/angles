@@ -339,6 +339,24 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
 
         return CardStyleAppearance(style: style).ink
     }
+
+    init(spotlight style: Style) {
+        switch style {
+        case .stoic:
+            self = .stoic
+        case .optimistic:
+            self = .optimistic
+        case .humorous:
+            self = .humorous
+        case .toughLove:
+            self = .toughLove
+        }
+    }
+}
+
+enum SaveLanding: Equatable {
+    case home
+    case profile(ProfileGridFilter)
 }
 
 @MainActor
@@ -372,6 +390,11 @@ final class HomeViewModel {
     private(set) var feedHasMore = true
     private(set) var isSaving = false
     private(set) var saveError: String?
+    /// Set when a non-taste save should already be on screen under the compose overlay.
+    private(set) var saveLanding: SaveLanding?
+    private(set) var saveLandingToken = 0
+    /// The card whose border shines once after the save cover slides away.
+    private(set) var shiningCardID: UUID?
     /// A heart, privacy flag, or delete that did not reach the server. The rollback is
     /// invisible on its own, so the root banner reads this.
     private(set) var writeError: String?
@@ -386,12 +409,15 @@ final class HomeViewModel {
     private var feedGeneration = 0
     private var feedBefore: String?
     private var feedCardIDs: Set<UUID> = []
+    /// Public cards inserted locally that a replacing feed page must not drop.
+    private var feedAnchors: [UUID: HomeCard] = [:]
     private var hasLoadedLibrary = false
     private var favoriteTasks: [String: Task<Void, Never>] = [:]
     private var publicTasks: [UUID: Task<Void, Never>] = [:]
     private var deleteTasks: [UUID: Task<Void, Never>] = [:]
     private var boardTasks: [UUID: Task<Void, Never>] = [:]
     private var writeErrorTask: Task<Void, Never>?
+    private var shineTask: Task<Void, Never>?
 
     private static let modelDefaultsKey = "angles.llmModel"
     private static let writeErrorDuration: Duration = .seconds(3)
@@ -627,6 +653,52 @@ final class HomeViewModel {
         return savedCard
     }
 
+    /// Puts a finished non-taste save on Home or Profile before the cover slides away.
+    /// Taste never calls this.
+    func landSavedCard(_ card: HomeCard, animated: Bool) {
+        if card.isPublic {
+            if !matchesFeedFilter(card, appliedFilter) {
+                clearFilterWithoutBlanking()
+            }
+            let animation: Animation? = animated ? .easeOut(duration: 0.32) : nil
+            var transaction = Transaction(animation: animation)
+            if animation == nil {
+                transaction.disablesAnimations = true
+            }
+            withTransaction(transaction) {
+                insertFeedCardAtFront(card)
+            }
+            homeFeedTab = .all
+            saveLanding = .home
+        } else {
+            let filter = ProfileGridFilter(spotlight: card.spotlightStyle)
+            profileGridFilter = filter
+            saveLanding = .profile(filter)
+        }
+        saveLandingToken &+= 1
+    }
+
+    /// Clears any active highlight so setting it again restarts the animation.
+    func clearShiningCard() {
+        shineTask?.cancel()
+        shineTask = nil
+        shiningCardID = nil
+    }
+
+    /// A short colored glow on the card the save just revealed.
+    func highlightSavedCard(_ id: UUID) {
+        shiningCardID = id
+        shineTask?.cancel()
+        shineTask = Task { @MainActor in
+            defer { shineTask = nil }
+            try? await Task.sleep(for: .milliseconds(2500))
+            guard !Task.isCancelled, shiningCardID == id else {
+                return
+            }
+            shiningCardID = nil
+        }
+    }
+
     /// Returning to Profile must not re-run a cold library load.
     func loadLibraryIfNeeded() async {
         guard !hasLoadedLibrary else {
@@ -851,14 +923,17 @@ final class HomeViewModel {
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 if replacing {
-                    feedCards = merged([], with: stored)
+                    let page = mergingFeedAnchors(into: merged([], with: stored), filter: filter)
+                    feedCards = page
                     feedCardIDs = Set(feedCards.map(\.id))
                 } else {
                     feedCards.reserveCapacity(feedCards.count + stored.count)
                     for item in stored {
-                        guard let card = HomeCard(stored: item),
-                              feedCardIDs.insert(card.id).inserted
-                        else {
+                        guard let card = HomeCard(stored: item) else {
+                            continue
+                        }
+                        feedAnchors[card.id] = nil
+                        guard feedCardIDs.insert(card.id).inserted else {
                             continue
                         }
                         feedCards.append(card)
@@ -911,13 +986,132 @@ final class HomeViewModel {
         return next
     }
 
+    private func matchesFeedFilter(_ card: HomeCard, _ filter: HomeFeedFilter) -> Bool {
+        if !filter.categories.isEmpty {
+            guard let category = card.meta?.category, filter.categories.contains(category) else {
+                return false
+            }
+        }
+        if !filter.emotions.isEmpty {
+            let emotions = Set(card.meta?.emotions ?? [])
+            guard !emotions.isDisjoint(with: filter.emotions) else {
+                return false
+            }
+        }
+        return true
+    }
 
-    func deleteCard(_ id: UUID) {
-        guard let index = cards.firstIndex(where: { $0.id == id }), cards[index].isOwner else {
+    private func clearFilterWithoutBlanking() {
+        guard appliedFilter.appliedCount > 0 else {
             return
         }
 
-        let removed = cards.remove(at: index)
+        feedTask?.cancel()
+        feedTask = nil
+        feedGeneration &+= 1
+        appliedFilter = HomeFeedFilter()
+        feedBefore = nil
+        feedHasMore = true
+    }
+
+    private func insertFeedCardAtFront(_ card: HomeCard) {
+        if let index = feedCards.firstIndex(where: { $0.id == card.id }) {
+            feedCards.remove(at: index)
+        }
+        feedCards.insert(card, at: 0)
+        feedCardIDs.insert(card.id)
+        feedAnchors[card.id] = card
+        if feedLoadState != .loaded {
+            feedLoadState = .loaded
+        }
+    }
+
+    /// Newest-first position inside the cards already on screen.
+    private func insertPublicCardIntoLoadedFeed(_ card: HomeCard) {
+        guard card.isPublic, hasLoadedFeed, matchesFeedFilter(card, appliedFilter) else {
+            return
+        }
+        if let index = feedCards.firstIndex(where: { $0.id == card.id }) {
+            feedCards[index].isPublic = true
+            return
+        }
+        if feedHasMore, let last = feedCards.last, !feedSortIsBefore(card, last) {
+            return
+        }
+        let index = feedCards.firstIndex { feedSortIsBefore(card, $0) } ?? feedCards.endIndex
+        feedCards.insert(card, at: index)
+        feedCardIDs.insert(card.id)
+        feedAnchors[card.id] = card
+    }
+
+    private func removeFromFeed(_ id: UUID) {
+        feedAnchors[id] = nil
+        feedCardIDs.remove(id)
+        feedCards.removeAll { $0.id == id }
+    }
+
+    private func mergingFeedAnchors(into page: [HomeCard], filter: HomeFeedFilter) -> [HomeCard] {
+        var next = page
+        let returned = Set(next.map(\.id))
+        for id in returned where feedAnchors[id] != nil {
+            feedAnchors[id] = nil
+        }
+
+        let missing = feedAnchors.values
+            .filter { $0.isPublic && matchesFeedFilter($0, filter) && !returned.contains($0.id) }
+            .sorted { feedSortIsBefore($0, $1) }
+        let pageIsFull = page.count >= Self.feedPageSize
+        for anchor in missing {
+            if pageIsFull, let last = next.last, !feedSortIsBefore(anchor, last) {
+                continue
+            }
+            let index = next.firstIndex { feedSortIsBefore(anchor, $0) } ?? next.endIndex
+            next.insert(anchor, at: index)
+        }
+        return next
+    }
+
+    /// True when `card` belongs above `other` in the newest-first feed.
+    private func feedSortIsBefore(_ card: HomeCard, _ other: HomeCard) -> Bool {
+        if card.createdAt != other.createdAt {
+            return card.createdAt > other.createdAt
+        }
+        return card.id.uuidString.lowercased() > other.id.uuidString.lowercased()
+    }
+
+    private func ownerCard(id: UUID) -> HomeCard? {
+        if let match = cards.first(where: { $0.id == id }), match.isOwner {
+            return match
+        }
+        if let match = feedCards.first(where: { $0.id == id }), match.isOwner {
+            return match
+        }
+        return nil
+    }
+
+    private func ensureOwnerInLibrary(_ card: HomeCard) {
+        guard card.isOwner else {
+            return
+        }
+        if let index = cards.firstIndex(where: { $0.id == card.id }) {
+            cards[index] = card
+        } else {
+            cards.insert(card, at: 0)
+        }
+    }
+
+    func deleteCard(_ id: UUID) {
+        guard let snapshot = ownerCard(id: id) else {
+            return
+        }
+
+        let libraryIndex = cards.firstIndex(where: { $0.id == id })
+        let feedIndex = feedCards.firstIndex(where: { $0.id == id })
+        if libraryIndex != nil {
+            cards.removeAll { $0.id == id }
+        }
+        removeFromFeed(id)
+
         deleteTasks[id]?.cancel()
         deleteTasks[id] = Task { @MainActor in
             defer { deleteTasks[id] = nil }
@@ -927,8 +1121,13 @@ final class HomeViewModel {
                 guard !Task.isCancelled else {
                     return
                 }
-                let insertAt = min(index, cards.count)
-                cards.insert(removed, at: insertAt)
+                if let libraryIndex, !cards.contains(where: { $0.id == id }) {
+                    cards.insert(snapshot, at: min(libraryIndex, cards.count))
+                }
+                if let feedIndex, !feedCards.contains(where: { $0.id == id }) {
+                    feedCards.insert(snapshot, at: min(feedIndex, feedCards.count))
+                    feedCardIDs.insert(id)
+                }
                 reportWriteFailure(error, "Couldn't delete that card. Check your connection.")
             }
         }
@@ -1038,12 +1237,25 @@ final class HomeViewModel {
     }
 
     func setPublic(_ id: UUID, isPublic: Bool) {
-        guard let index = cards.firstIndex(where: { $0.id == id }), cards[index].isOwner else {
+        guard var snapshot = ownerCard(id: id) else {
+            return
+        }
+        let previousPublic = snapshot.isPublic
+        guard previousPublic != isPublic else {
             return
         }
 
-        let previous = cards[index].isPublic
-        cards[index].isPublic = isPublic
+        ensureOwnerInLibrary(snapshot)
+        let previousFeedIndex = feedCards.firstIndex(where: { $0.id == id })
+        applyLocal(id: id) { card in
+            card.isPublic = isPublic
+        }
+        if isPublic {
+            snapshot.isPublic = true
+            insertPublicCardIntoLoadedFeed(snapshot)
+        } else {
+            removeFromFeed(id)
+        }
 
         publicTasks[id]?.cancel()
         publicTasks[id] = Task { @MainActor in
@@ -1059,12 +1271,30 @@ final class HomeViewModel {
                 if let current = cards.firstIndex(where: { $0.id == id }) {
                     cards[current].apply(stored)
                 }
+                if let current = feedCards.firstIndex(where: { $0.id == id }) {
+                    feedCards[current].apply(stored)
+                }
+                if stored.isPublic, let card = ownerCard(id: id) {
+                    insertPublicCardIntoLoadedFeed(card)
+                } else {
+                    removeFromFeed(id)
+                }
             } catch {
                 guard !Task.isCancelled else {
                     return
                 }
-                if let current = cards.firstIndex(where: { $0.id == id }) {
-                    cards[current].isPublic = previous
+                applyLocal(id: id) { card in
+                    card.isPublic = previousPublic
+                }
+                if let previousFeedIndex {
+                    if feedCards.firstIndex(where: { $0.id == id }) == nil {
+                        var restored = snapshot
+                        restored.isPublic = previousPublic
+                        feedCards.insert(restored, at: min(previousFeedIndex, feedCards.count))
+                        feedCardIDs.insert(id)
+                    }
+                } else {
+                    removeFromFeed(id)
                 }
                 reportWriteFailure(error, "Couldn't change who can see this. Check your connection.")
             }

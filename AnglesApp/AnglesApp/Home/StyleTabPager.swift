@@ -43,6 +43,7 @@ final class StyleTabPagerState<T: StyleTabRepresentable> {
     private(set) var snapshot = StyleTabPagerSnapshot()
     private(set) var requestedTab: T
     private(set) var requestSerial = 0
+    private(set) var requestAnimated = true
 
     private let tabs: [T]
 
@@ -86,7 +87,8 @@ final class StyleTabPagerState<T: StyleTabRepresentable> {
         }
     }
 
-    func requestPage(_ tab: T) {
+    func requestPage(_ tab: T, animated: Bool = true) {
+        requestAnimated = animated
         requestedTab = tab
         requestSerial &+= 1
     }

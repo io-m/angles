@@ -128,6 +128,13 @@ struct ProfileView: View {
                                 loadState: viewModel.libraryLoadState,
                                 ownedIsEmpty: viewModel.ownedCards.isEmpty,
                                 chromeHeight: fixedChromeHeight,
+                                scrollToTopToken: {
+                                    guard case .profile(let filter) = viewModel.saveLanding, filter == tab else {
+                                        return 0
+                                    }
+                                    return viewModel.saveLandingToken
+                                }(),
+                                shiningCardID: viewModel.shiningCardID,
                                 onInspire: onInspire,
                                 onRetry: viewModel.retryLoadLibrary,
                                 onRefresh: { await viewModel.refreshLibrary() },
@@ -157,11 +164,25 @@ struct ProfileView: View {
                     )
                 )
                 .onChange(of: pagerState.requestSerial) { _, _ in
-                    withAnimation(tabAnimation) {
+                    let animation: Animation? = pagerState.requestAnimated ? tabAnimation : nil
+                    var transaction = Transaction(animation: animation)
+                    if animation == nil {
+                        transaction.disablesAnimations = true
+                    }
+                    withTransaction(transaction) {
                         scrollProxy.scrollTo(
                             pagerState.requestedTab,
                             anchor: .leading
                         )
+                    }
+                }
+                .onChange(of: viewModel.saveLandingToken) { _, token in
+                    guard token > 0, case .profile = viewModel.saveLanding else {
+                        return
+                    }
+                    settleProfileLanding()
+                    Task { @MainActor in
+                        settleProfileLanding()
                     }
                 }
             }
@@ -171,6 +192,21 @@ struct ProfileView: View {
 
     private var tabAnimation: Animation? {
         reduceMotion ? nil : StyleTabMetrics.chipSpring
+    }
+
+    private func settleProfileLanding() {
+        guard case .profile(let filter) = viewModel.saveLanding else {
+            return
+        }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            committedTab = filter
+            if viewModel.profileGridFilter != filter {
+                viewModel.profileGridFilter = filter
+            }
+        }
+        pagerState.requestPage(filter, animated: false)
     }
 
     private func selectTab(_ filter: ProfileGridFilter) {
@@ -377,6 +413,8 @@ private struct ProfileTabPage: View {
     let loadState: LibraryLoadState
     let ownedIsEmpty: Bool
     let chromeHeight: CGFloat
+    var scrollToTopToken = 0
+    var shiningCardID: UUID? = nil
     var onInspire: () -> Void
     var onRetry: () -> Void
     var onRefresh: () async -> Void
@@ -406,25 +444,48 @@ private struct ProfileTabPage: View {
                 0,
                 viewportBelowChrome - HeaderCollapse.horizontalPadding - 72
             )
-            ScrollView {
-                VStack(spacing: 0) {
-                    Color.clear
-                        .frame(height: chromeHeight)
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Color.clear
+                            .frame(height: 0)
+                            .id("profile-tab-top")
 
-                    tabContent(tallCardMaxHeight: tallCardMaxHeight)
-                        .padding(.bottom, 20)
+                        Color.clear
+                            .frame(height: chromeHeight)
+
+                        tabContent(tallCardMaxHeight: tallCardMaxHeight)
+                            .padding(.bottom, 20)
+                    }
+                    .frame(
+                        minHeight: proxy.size.height,
+                        alignment: .top
+                    )
                 }
-                .frame(
-                    minHeight: proxy.size.height,
-                    alignment: .top
-                )
-            }
-            .scrollIndicators(.hidden)
-            .refreshable {
-                await onRefresh()
+                .scrollIndicators(.hidden)
+                .refreshable {
+                    await onRefresh()
+                }
+                .onChange(of: scrollToTopToken) { _, token in
+                    guard token > 0 else {
+                        return
+                    }
+                    scrollListToTop(scrollProxy)
+                    Task { @MainActor in
+                        scrollListToTop(scrollProxy)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func scrollListToTop(_ proxy: ScrollViewProxy) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            proxy.scrollTo("profile-tab-top", anchor: .top)
+        }
     }
 
     @ViewBuilder
@@ -471,7 +532,8 @@ private struct ProfileTabPage: View {
                     onDelete: onDelete,
                     onToggleFavorite: onToggleFavorite,
                     onSetPublic: onSetPublic,
-                    onRemoveFromBoard: onRemoveFromBoard
+                    onRemoveFromBoard: onRemoveFromBoard,
+                    shiningCardID: shiningCardID
                 )
                 .equatable()
                 .padding(.horizontal, HeaderCollapse.horizontalPadding)

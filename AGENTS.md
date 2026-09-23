@@ -1,6 +1,6 @@
 # Angles — agent notes
 
-Paid-only private reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then returns 1–3 sentences in all 4 styles. Cards are private by default; individual cards can be published to the public-others Home feed. Onboarding: one free taste (all 4 styles), then a hard paywall.
+Paid-only private reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then returns 1–3 sentences in all 4 styles. Cards are private by default; publishing a card puts it on Home for everyone, including the author. Onboarding: one free taste (all 4 styles), then a hard paywall.
 
 ## Stack (this repo)
 

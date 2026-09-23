@@ -1,3 +1,4 @@
+import Lottie
 import SwiftUI
 
 struct ComposeFrost: View {
@@ -45,6 +46,8 @@ struct ComposeSheetView: View {
     var onClose: () -> Void = {}
     var onShowMembership: () -> Void = {}
     var onSave: (HomeCard) -> Void = { _ in }
+    var onPresentSaveCover: (String) -> Void = { _ in }
+    var onDismissSaveCover: (UUID) -> Void = { _ in }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -52,12 +55,12 @@ struct ComposeSheetView: View {
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     @FocusState private var composerFocused: Bool
-    @State private var scrollToken = 0
     @State private var headerStrip: CGFloat = 119
     @State private var showRestartAlert = false
     @State private var showLeaveAlert = false
     @State private var leaveKind: LeaveKind = .discard
     @State private var showModelPicker = false
+    @State private var isCelebratingSave = false
 
     private var isComposing: Bool {
         viewModel.phase == .composing
@@ -68,7 +71,15 @@ struct ComposeSheetView: View {
     }
 
     private let edgePad: CGFloat = 20
-    private let insertAnimation = Animation.easeOut(duration: 0.32)
+    private let insertAnimation = Animation.easeInOut(duration: 0.38)
+
+    private var threadCue: ThreadCue {
+        ThreadCue(
+            phase: viewModel.phase,
+            turnCount: viewModel.turns.count,
+            hasStatement: hasStatement
+        )
+    }
 
     var body: some View {
         sessionLayout
@@ -80,6 +91,7 @@ struct ComposeSheetView: View {
             }
             .onChange(of: isActive) { _, active in
                 if active {
+                    isCelebratingSave = false
                     composerFocused = viewModel.phase == .composing
                     if isOnboardingTaste {
                         storeKitManager?.clearError()
@@ -90,13 +102,9 @@ struct ComposeSheetView: View {
                 }
             }
             .onChange(of: viewModel.phase) { _, newPhase in
-                scrollToken += 1
                 if isActive, newPhase == .composing || newPhase == .awaitingReply {
                     composerFocused = true
                 }
-            }
-            .onChange(of: viewModel.turns) { _, _ in
-                scrollToken += 1
             }
             .alert("Start again?", isPresented: $showRestartAlert) {
                 Button("Start again", role: .destructive, action: restartSession)
@@ -424,46 +432,34 @@ struct ComposeSheetView: View {
     }
 
     private var thread: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    if hasStatement {
-                        userRow(viewModel.statement)
-                            .transition(insertTransition(isAI: false))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if hasStatement {
+                    userRow(viewModel.statement)
+                        .transition(rowTransition)
 
-                        ForEach(viewModel.turns) { turn in
-                            turnBlock(turn)
-                                .transition(insertTransition(isAI: true))
+                    ForEach(viewModel.turns) { turn in
+                        turnBlock(turn)
+                            .transition(rowTransition)
 
-                            if let reply = turn.reply {
-                                userRow(reply)
-                                    .transition(insertTransition(isAI: false))
-                            }
+                        if let reply = turn.reply {
+                            userRow(reply)
+                                .transition(rowTransition)
                         }
-
-                        refineTail
                     }
 
-                    Color.clear
-                        .frame(height: 1)
-                        .id("compose-end")
-                }
-                .padding(.horizontal, edgePad)
-                .padding(.top, 4)
-                .padding(.bottom, 12)
-                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.phase)
-                .animation(reduceMotion ? nil : insertAnimation, value: viewModel.turns)
-            }
-            .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.never)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: handleCanvasTap)
-            .onChange(of: scrollToken) { _, _ in
-                withAnimation(.easeOut(duration: 0.24)) {
-                    proxy.scrollTo("compose-end", anchor: .bottom)
+                    refineTail
                 }
             }
+            .padding(.horizontal, edgePad)
+            .padding(.top, 4)
+            .padding(.bottom, 12)
+            .animation(reduceMotion ? nil : insertAnimation, value: threadCue)
         }
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.never)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: handleCanvasTap)
     }
 
     @ViewBuilder
@@ -473,7 +469,7 @@ struct ComposeSheetView: View {
             EmptyView()
         case .cooking:
             cookingRow
-                .transition(insertTransition(isAI: true))
+                .transition(rowTransition)
         case .ready(let cook):
             HStack(alignment: .bottom, spacing: 10) {
                 aiAvatar
@@ -501,10 +497,10 @@ struct ComposeSheetView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .transition(insertTransition(isAI: true))
+            .transition(rowTransition)
         case .error(let message):
             errorRow(message)
-                .transition(insertTransition(isAI: true))
+                .transition(rowTransition)
         }
     }
 
@@ -561,9 +557,8 @@ struct ComposeSheetView: View {
         .buttonStyle(.plain)
     }
 
-    private func insertTransition(isAI: Bool) -> AnyTransition {
-        let x: CGFloat = isAI ? -18 : 18
-        return .opacity.combined(with: .offset(x: x, y: 5))
+    private var rowTransition: AnyTransition {
+        .opacity.combined(with: .offset(y: 8))
     }
 
     private func userRow(_ text: String) -> some View {
@@ -715,18 +710,34 @@ struct ComposeSheetView: View {
             )
         }
         .buttonStyle(.plain)
-        .disabled(viewModel.isSaving)
-        .opacity(viewModel.isSaving ? 0.55 : 1)
+        .disabled(saveButtonIsBusy)
+        .opacity(saveButtonIsBusy ? 0.55 : 1)
         .padding(.horizontal, 18)
         .padding(.top, 8)
         .padding(.bottom, 8)
         .background { composerGlow }
         .accessibilityLabel(saveButtonTitle)
-        .accessibilityHint("Adds all four answers to Profile and closes")
+        .modifier(AccessibilityHintIfPresent(hint: saveButtonHint))
+    }
+
+    private var saveButtonIsBusy: Bool {
+        viewModel.isSaving || isCelebratingSave
     }
 
     private var saveButtonTitle: String {
-        viewModel.composeIsPublic ? "Save to public library" : "Save to private library"
+        if isOnboardingTaste {
+            return "Save to private library"
+        }
+        return viewModel.composeIsPublic ? "Post" : "Save privately"
+    }
+
+    private var saveButtonHint: String {
+        if isOnboardingTaste {
+            return ""
+        }
+        return viewModel.composeIsPublic
+            ? "Posts this card on Home"
+            : "Saves this card on Profile"
     }
 
     private var composer: some View {
@@ -919,17 +930,27 @@ struct ComposeSheetView: View {
     }
 
     private func publishAndLeave() {
-        guard viewModel.canPublish, !viewModel.isSaving else {
+        guard viewModel.canPublish, !viewModel.isSaving, !isCelebratingSave else {
             return
         }
 
         Task {
-            if let savedCard = await viewModel.saveCook() {
-                onSave(savedCard)
-                if !isOnboardingTaste {
-                    onClose()
-                }
+            guard let savedCard = await viewModel.saveCook() else {
+                return
             }
+            if isOnboardingTaste {
+                onSave(savedCard)
+                return
+            }
+
+            isCelebratingSave = true
+            let label = savedCard.isPublic ? "Posted" : "Saved privately"
+            onPresentSaveCover(label)
+            viewModel.landSavedCard(savedCard, animated: false)
+            onSave(savedCard)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            try? await Task.sleep(for: .milliseconds(reduceMotion ? 400 : 1000))
+            onDismissSaveCover(savedCard.id)
         }
     }
 
@@ -955,15 +976,11 @@ struct ComposeSheetView: View {
         }
 
         composerFocused = false
-        withAnimation(insertAnimation) {
-            viewModel.sendComposer()
-        }
+        viewModel.sendComposer()
     }
 
     private func retryRefine() {
-        withAnimation(insertAnimation) {
-            viewModel.retryRefine()
-        }
+        viewModel.retryRefine()
     }
 }
 
@@ -972,8 +989,6 @@ private struct CookingLine: View {
     var muted: Color
     var reduceMotion: Bool
 
-    @State private var dotCount = 1
-    @State private var sparkleOn = true
     @State private var lineIndex = 0
 
     private static let lines = [
@@ -992,40 +1007,29 @@ private struct CookingLine: View {
             Image(systemName: "sparkle")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(muted)
-                .opacity(reduceMotion ? 1 : (sparkleOn ? 1 : 0.32))
-                .scaleEffect(reduceMotion ? 1 : (sparkleOn ? 1.08 : 0.88))
+                .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                .frame(width: 20, height: 20)
                 .accessibilityHidden(true)
 
-            HStack(spacing: 0) {
-                Text(stem)
-                Text(reduceMotion ? "." : String(repeating: ".", count: dotCount))
-                    .frame(width: 18, alignment: .leading)
+            ZStack(alignment: .leading) {
+                ForEach(Array(Self.lines.enumerated()), id: \.offset) { index, line in
+                    Text(line)
+                        .opacity(index == visibleLineIndex ? 1 : 0)
+                }
             }
             .font(.system(size: 16, weight: .medium))
             .foregroundStyle(ink)
-        }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.36), value: sparkleOn)
-        .task {
-            guard !reduceMotion else { return }
-            await pulseDots()
         }
         .task {
             guard !reduceMotion else { return }
             await cycleLines()
         }
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(stem)
     }
 
-    private func pulseDots() async {
-        while !Task.isCancelled {
-            do {
-                try await Task.sleep(for: .milliseconds(360))
-            } catch {
-                break
-            }
-            dotCount = dotCount == 3 ? 1 : dotCount + 1
-            sparkleOn.toggle()
-        }
+    private var visibleLineIndex: Int {
+        reduceMotion ? Self.lines.firstIndex(of: "Writing four angles") ?? 0 : lineIndex
     }
 
     private func cycleLines() async {
@@ -1035,9 +1039,56 @@ private struct CookingLine: View {
             } catch {
                 break
             }
-            lineIndex += 1
+            withAnimation(.easeInOut(duration: 0.45)) {
+                lineIndex += 1
+            }
         }
     }
+}
+
+private struct AccessibilityHintIfPresent: ViewModifier {
+    let hint: String
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if hint.isEmpty {
+            content
+        } else {
+            content.accessibilityHint(hint)
+        }
+    }
+}
+
+struct SaveCelebrationCover: View {
+    let label: String
+    var playsAnimation: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        ZStack {
+            theme.paper
+
+            if playsAnimation {
+                LottieView(animation: .named("celebration-checkmark"))
+                    .playing()
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 220, height: 220)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+    }
+}
+
+private struct ThreadCue: Equatable {
+    var phase: RefinePhase
+    var turnCount: Int
+    var hasStatement: Bool
 }
 
 #Preview {

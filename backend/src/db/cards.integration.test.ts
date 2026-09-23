@@ -287,23 +287,45 @@ describe.skipIf(!testUrl)("cards integration", () => {
     return cardId;
   }
 
-  it("excludes the viewer's cards and private cards from the feed", async () => {
-    const mine = await createCard(baseInput);
-    await patchCard(mine.id, { isPublic: true });
-    const publicOther = await insertOtherCard({
-      thought: "I keep waiting for a reply that is not coming and I feel small.",
+  it("includes the viewer's public card and excludes private cards", async () => {
+    const minePublic = await createCard({
+      ...baseInput,
+      thought: "I posted this and I want it on my own Home.",
       isPublic: true,
     });
-    await insertOtherCard({
+    const minePrivate = await createCard({
+      ...baseInput,
       thought: "I keep this one private because it is still too raw to share.",
       isPublic: false,
     });
+    await getDb()
+      .update(cards)
+      .set({ createdAt: new Date("2026-09-11T12:00:00.000Z") })
+      .where(eq(cards.id, minePublic.id));
+    await getDb()
+      .update(cards)
+      .set({ createdAt: new Date("2026-09-14T12:00:00.000Z") })
+      .where(eq(cards.id, minePrivate.id));
+
+    const publicOther = await insertOtherCard({
+      thought: "I keep waiting for a reply that is not coming and I feel small.",
+      isPublic: true,
+      createdAt: new Date("2026-09-13T12:00:00.000Z"),
+    });
+    const privateOther = await insertOtherCard({
+      thought: "Someone else's private note stays off the feed.",
+      isPublic: false,
+      createdAt: new Date("2026-09-12T12:00:00.000Z"),
+    });
 
     const feed = await listFeed({ limit: 50 });
-    expect(feed.map((card) => card.id)).toEqual([publicOther]);
-    expect(feed[0]?.isOwner).toBe(false);
+    expect(feed.map((card) => card.id)).toEqual([publicOther, minePublic.id]);
+    expect(feed.map((card) => card.isOwner)).toEqual([false, true]);
     expect(feed[0]?.author).toEqual({ initials: "AL" });
-    expect(feed[0]?.isPublic).toBe(true);
+    expect(feed[1]?.author).toEqual({ initials: "JM" });
+    expect(feed.every((card) => card.isPublic)).toBe(true);
+    expect(feed.map((card) => card.id)).not.toContain(minePrivate.id);
+    expect(feed.map((card) => card.id)).not.toContain(privateOther);
     expect(feed[0]?.results.every((item) => item.isFavorite === false)).toBe(true);
   });
 

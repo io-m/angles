@@ -14,6 +14,7 @@ struct HomeView: View {
     let storeKitManager: StoreKitManager
     var glimpseCard: HomeCard? = nil
     var isGlimpseActive = false
+    var isActiveTab: Bool = true
     var onLogOut: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
@@ -72,6 +73,42 @@ struct HomeView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.grey)
         }
+        .onAppear {
+            // PREVIEW: remove when the highlight is approved
+            triggerPreviewHighlightIfNeeded()
+        }
+        .onChange(of: isActiveTab) { _, isActive in
+            // PREVIEW: remove when the highlight is approved
+            if isActive {
+                triggerPreviewHighlightIfNeeded()
+            }
+        }
+        .onChange(of: viewModel.feedLoadState) { _, state in
+            // PREVIEW: remove when the highlight is approved
+            if state == .loaded {
+                triggerPreviewHighlightIfNeeded()
+            }
+        }
+        .onChange(of: viewModel.feedCards.first?.id) { _, newFirstID in
+            // PREVIEW: remove when the highlight is approved
+            if newFirstID != nil {
+                triggerPreviewHighlightIfNeeded()
+            }
+        }
+    }
+
+    // PREVIEW: remove when the highlight is approved
+    private func triggerPreviewHighlightIfNeeded() {
+        guard let firstCardID = viewModel.feedCards.first?.id else {
+            return
+        }
+        viewModel.clearShiningCard()
+        Task { @MainActor in
+            guard viewModel.feedCards.first?.id == firstCardID else {
+                return
+            }
+            viewModel.highlightSavedCard(firstCardID)
+        }
     }
 
     private var pager: some View {
@@ -88,6 +125,10 @@ struct HomeView: View {
                                 emptyCopy: viewModel.feedEmptyCopy(for: tab),
                                 chromeHeight: fixedChromeHeight,
                                 glimpseCard: tab == .all ? glimpseCard : nil,
+                                scrollToTopToken: tab == .all && viewModel.saveLanding == .home
+                                    ? viewModel.saveLandingToken
+                                    : 0,
+                                shiningCardID: viewModel.shiningCardID,
                                 isScrollDisabled: isGlimpseActive,
                                 allowsPullToRefresh: canLoadFullAppContent
                                     && !isGlimpseActive
@@ -123,11 +164,25 @@ struct HomeView: View {
                     )
                 )
                 .onChange(of: pagerState.requestSerial) { _, _ in
-                    withAnimation(tabAnimation) {
+                    let animation: Animation? = pagerState.requestAnimated ? tabAnimation : nil
+                    var transaction = Transaction(animation: animation)
+                    if animation == nil {
+                        transaction.disablesAnimations = true
+                    }
+                    withTransaction(transaction) {
                         scrollProxy.scrollTo(
                             pagerState.requestedTab,
                             anchor: .leading
                         )
+                    }
+                }
+                .onChange(of: viewModel.saveLandingToken) { _, token in
+                    guard token > 0, viewModel.saveLanding == .home else {
+                        return
+                    }
+                    settleHomeLanding()
+                    Task { @MainActor in
+                        settleHomeLanding()
                     }
                 }
             }
@@ -145,6 +200,21 @@ struct HomeView: View {
             return base
         }
         return [glimpseCard] + base.filter { $0.id != glimpseCard.id }
+    }
+
+    private func settleHomeLanding() {
+        guard viewModel.saveLanding == .home else {
+            return
+        }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            committedTab = .all
+            if viewModel.homeFeedTab != .all {
+                viewModel.homeFeedTab = .all
+            }
+        }
+        pagerState.requestPage(.all, animated: false)
     }
 
     private func selectTab(_ tab: HomeFeedTab) {
@@ -251,6 +321,8 @@ private struct HomeFeedTabPage: View {
     let emptyCopy: String
     let chromeHeight: CGFloat
     let glimpseCard: HomeCard?
+    let scrollToTopToken: Int
+    var shiningCardID: UUID? = nil
     let isScrollDisabled: Bool
     let allowsPullToRefresh: Bool
     let onRetry: () -> Void
@@ -308,9 +380,26 @@ private struct HomeFeedTabPage: View {
                         scrollProxy.scrollTo("home-tab-top", anchor: .top)
                     }
                 }
+                .onChange(of: scrollToTopToken) { _, token in
+                    guard tab == .all, token > 0 else {
+                        return
+                    }
+                    scrollFeedToTop(scrollProxy)
+                    Task { @MainActor in
+                        scrollFeedToTop(scrollProxy)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func scrollFeedToTop(_ proxy: ScrollViewProxy) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            proxy.scrollTo("home-tab-top", anchor: .top)
+        }
     }
 
     @ViewBuilder
@@ -351,6 +440,7 @@ private struct HomeFeedTabPage: View {
                         onToggleFavorite: onToggleFavorite,
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
+                        shiningCardID: shiningCardID,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6
                     )
