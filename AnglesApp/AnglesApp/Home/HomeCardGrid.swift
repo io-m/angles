@@ -147,14 +147,14 @@ struct TallHomeCardGrid: View, Equatable {
     }
 }
 
-/// A premium traveling border spark with a deepened ambient shadow that fades out while moving.
+/// A premium, Google-style smooth traveling border spark with a deepened ambient shadow.
 private struct CardArrivalGlow: View {
     let tint: Color
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var level: CGFloat = 0
-    @State private var angle: Double = -90 // Start at top
+    @State private var rotation: Double = -90 // Start at top
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -169,34 +169,43 @@ private struct CardArrivalGlow: View {
                 shape
                     .fill(Color.clear)
                     .shadow(
-                        color: tint.opacity((colorScheme == .dark ? 0.15 : 0.2) * level),
+                        color: tint.opacity((colorScheme == .dark ? 0.4 : 0.2) * level),
                         radius: 24,
                         x: 0,
                         y: 8
                     )
                     .shadow(
-                        color: Color.black.opacity((colorScheme == .dark ? 0.2 : 0.1) * level),
+                        color: Color.black.opacity((colorScheme == .dark ? 0.3 : 0.1) * level),
                         radius: 16,
                         x: 0,
                         y: 6
                     )
 
-                // 2. Long, varying-intensity traveling spark (Google-style)
-                shape
-                    .strokeBorder(
-                        AngularGradient(
-                            stops: [
-                                .init(color: .clear, location: 0.0),
-                                .init(color: .clear, location: 0.25), // 75% length tail
-                                .init(color: tint.opacity(colorScheme == .dark ? 0.1 : 0.3), location: 0.60),
-                                .init(color: tint.opacity(colorScheme == .dark ? 0.4 : 0.8), location: 0.95),
-                                .init(color: colorScheme == .dark ? tint.opacity(0.8) : .white, location: 1.0)
-                            ],
-                            center: .center,
-                            angle: .degrees(angle)
-                        ),
-                        lineWidth: 1.5
-                    )
+                // 2. Smooth, jitter-free traveling spark using a rotating masked layer
+                Color.clear
+                    .overlay {
+                        Rectangle()
+                            .fill(
+                                AngularGradient(
+                                    stops: [
+                                        .init(color: .clear, location: 0.0),
+                                        .init(color: .clear, location: 0.50), // Long clear area
+                                        .init(color: tint.opacity(colorScheme == .dark ? 0.15 : 0.3), location: 0.75), // Soft tail start
+                                        .init(color: tint.opacity(colorScheme == .dark ? 0.5 : 0.8), location: 0.95), // Strong body
+                                        .init(color: colorScheme == .dark ? tint.opacity(0.9) : .white, location: 0.99), // Bright head
+                                        .init(color: .clear, location: 1.0) // Sharp cutoff
+                                    ],
+                                    center: .center,
+                                    angle: .degrees(0) // Static gradient, we rotate the view instead
+                                )
+                            )
+                            .frame(width: 1200, height: 1200) // Much larger to ensure it covers the card during rotation
+                            .rotationEffect(.degrees(rotation))
+                    }
+                    .mask {
+                        // The mask takes the size of Color.clear (the card's size), not the 1200x1200 overlay
+                        shape.stroke(lineWidth: 2.0)
+                    }
                     .blendMode(.plusLighter)
                     .opacity(level)
             }
@@ -207,20 +216,20 @@ private struct CardArrivalGlow: View {
                 withAnimation(.easeOut(duration: 0.4)) {
                     level = 1
                 }
-                // Travel smoothly with linear easing so it doesn't jitter
-                // Travels 1.25 laps over 2.5 seconds so it never stops while visible
-                withAnimation(.linear(duration: 2.5)) {
-                    angle = 360
+                // Hardware-accelerated rotation for perfect smoothness
+                // Travels 1 lap (360 degrees) over 2.0 seconds
+                withAnimation(.linear(duration: 2.0)) {
+                    rotation = 360
                 }
             }
             .task {
-                // Wait for 1.5 seconds before starting the fade out
-                try? await Task.sleep(for: .milliseconds(1500))
+                // Wait for 1.2 seconds before starting the fade out
+                try? await Task.sleep(for: .milliseconds(1200))
                 guard !Task.isCancelled else {
                     return
                 }
-                // Smooth fade out over 0.8s while it is STILL moving
-                withAnimation(.easeOut(duration: 0.8)) {
+                // Smooth fade out over 0.6s while it is STILL moving
+                withAnimation(.easeOut(duration: 0.6)) {
                     level = 0
                 }
             }

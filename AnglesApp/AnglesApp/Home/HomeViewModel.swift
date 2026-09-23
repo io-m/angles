@@ -691,7 +691,7 @@ final class HomeViewModel {
         shineTask?.cancel()
         shineTask = Task { @MainActor in
             defer { shineTask = nil }
-            try? await Task.sleep(for: .milliseconds(2500))
+            try? await Task.sleep(for: .milliseconds(2000))
             guard !Task.isCancelled, shiningCardID == id else {
                 return
             }

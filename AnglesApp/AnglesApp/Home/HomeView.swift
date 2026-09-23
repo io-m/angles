@@ -73,42 +73,6 @@ struct HomeView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.grey)
         }
-        .onAppear {
-            // PREVIEW: remove when the highlight is approved
-            triggerPreviewHighlightIfNeeded()
-        }
-        .onChange(of: isActiveTab) { _, isActive in
-            // PREVIEW: remove when the highlight is approved
-            if isActive {
-                triggerPreviewHighlightIfNeeded()
-            }
-        }
-        .onChange(of: viewModel.feedLoadState) { _, state in
-            // PREVIEW: remove when the highlight is approved
-            if state == .loaded {
-                triggerPreviewHighlightIfNeeded()
-            }
-        }
-        .onChange(of: viewModel.feedCards.first?.id) { _, newFirstID in
-            // PREVIEW: remove when the highlight is approved
-            if newFirstID != nil {
-                triggerPreviewHighlightIfNeeded()
-            }
-        }
-    }
-
-    // PREVIEW: remove when the highlight is approved
-    private func triggerPreviewHighlightIfNeeded() {
-        guard let firstCardID = viewModel.feedCards.first?.id else {
-            return
-        }
-        viewModel.clearShiningCard()
-        Task { @MainActor in
-            guard viewModel.feedCards.first?.id == firstCardID else {
-                return
-            }
-            viewModel.highlightSavedCard(firstCardID)
-        }
     }
 
     private var pager: some View {
