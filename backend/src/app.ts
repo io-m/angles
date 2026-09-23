@@ -9,6 +9,7 @@ import { feedRoute } from "./routes/feed.js";
 import { healthRoute } from "./routes/health.js";
 import { avatarsRoute, profileRoute } from "./routes/profile.js";
 import { reframeRoute } from "./routes/reframe.js";
+import { usersRoute } from "./routes/users.js";
 
 const MAX_BODY_BYTES = 8 * 1024;
 
@@ -34,6 +35,7 @@ export function createApp(): Hono {
   app.route("/cards", cardsRoute);
   app.route("/feed", feedRoute);
   app.route("/profile", profileRoute);
+  app.route("/users", usersRoute);
   app.route("/avatars", avatarsRoute);
 
   app.notFound((c) => c.json(errorBody("Not found", "NOT_FOUND"), 404));

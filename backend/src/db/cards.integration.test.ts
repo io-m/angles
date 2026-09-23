@@ -100,7 +100,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(stored.thoughtOriginal).toBeUndefined();
     expect(stored.isPublic).toBe(false);
     expect(stored.isOwner).toBe(true);
-    expect(stored.author).toEqual({ initials: "JM" });
+    expect(stored.author).toEqual({ id: DEV_USER_ID, initials: "JM" });
     expect(stored.results.every((item) => item.isFavorite === false)).toBe(true);
 
     const listed = await listCards({ limit: 50 });
@@ -321,8 +321,8 @@ describe.skipIf(!testUrl)("cards integration", () => {
     const feed = await listFeed({ limit: 50 });
     expect(feed.map((card) => card.id)).toEqual([publicOther, minePublic.id]);
     expect(feed.map((card) => card.isOwner)).toEqual([false, true]);
-    expect(feed[0]?.author).toEqual({ initials: "AL" });
-    expect(feed[1]?.author).toEqual({ initials: "JM" });
+    expect(feed[0]?.author).toEqual({ id: OTHER_USER_ID, initials: "AL" });
+    expect(feed[1]?.author).toEqual({ id: DEV_USER_ID, initials: "JM" });
     expect(feed.every((card) => card.isPublic)).toBe(true);
     expect(feed.map((card) => card.id)).not.toContain(minePrivate.id);
     expect(feed.map((card) => card.id)).not.toContain(privateOther);

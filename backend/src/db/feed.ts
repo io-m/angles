@@ -1,6 +1,6 @@
 import { and, arrayOverlaps, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
-import type { FeedListQuery, StoredCard, Style } from "../types/index.js";
+import type { FeedCursor, FeedListQuery, StoredCard, Style } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
 import { loadViewerSaves, toStoredCard, type CardLoaded } from "./mapCard.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
@@ -21,6 +21,13 @@ async function loadFeedCardRow(db: Queryable, id: string): Promise<CardLoaded | 
 
 function isFeedSaveTarget(row: CardLoaded, viewerId: string): boolean {
   return row.isPublic && row.userId !== viewerId;
+}
+
+function olderThanCursor(before: FeedCursor) {
+  return or(
+    lt(cards.createdAt, before.createdAt),
+    and(eq(cards.createdAt, before.createdAt), lt(cards.id, before.id)),
+  );
 }
 
 function styleExistsFilter(db: ReturnType<typeof getDb>, style: Style) {
@@ -45,10 +52,7 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
       filters.push(styleExistsFilter(db, query.style));
     }
     if (query.before) {
-      const cursorFilter = or(
-        lt(cards.createdAt, query.before.createdAt),
-        and(eq(cards.createdAt, query.before.createdAt), lt(cards.id, query.before.id)),
-      );
+      const cursorFilter = olderThanCursor(query.before);
       if (cursorFilter) {
         filters.push(cursorFilter);
       }
@@ -72,6 +76,44 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
       throw error;
     }
     throw wrapDbError(error, "listFeed");
+  }
+}
+
+/** One author's published cards. Private cards stay out, including their own. */
+export async function listPublicCardsForUser(query: {
+  userId: string;
+  limit: number;
+  before?: FeedCursor;
+}): Promise<StoredCard[]> {
+  try {
+    const viewerId = getOwnerUserId();
+    const db = getDb();
+    const filters = [eq(cards.userId, query.userId), eq(cards.isPublic, true)];
+    if (query.before) {
+      const cursorFilter = olderThanCursor(query.before);
+      if (cursorFilter) {
+        filters.push(cursorFilter);
+      }
+    }
+
+    const rows = await db.query.cards.findMany({
+      where: and(...filters),
+      orderBy: [desc(cards.createdAt), desc(cards.id)],
+      limit: query.limit,
+      with: {
+        user: true,
+        reframes: { orderBy: [asc(cardReframes.position)] },
+        cardTags: { with: { tag: true } },
+      },
+    });
+
+    const saves = await loadViewerSaves(viewerId);
+    return rows.map((row) => toStoredCard(row, saves, viewerId));
+  } catch (error) {
+    if (error instanceof DbError) {
+      throw error;
+    }
+    throw wrapDbError(error, "listPublicCardsForUser");
   }
 }
 

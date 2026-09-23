@@ -12,6 +12,7 @@ struct HomeCardGrid: View, Equatable {
     var onToggleFavorite: (HomeCard, Style) -> Void = { _, _ in }
     var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
+    var onOpenAuthor: ((HomeCard) -> Void)? = nil
     /// Fires before the end is visible, so a server-paged grid can append off screen.
     var onReachEnd: (() -> Void)? = nil
     var loadMorePrefetchDistance = 0
@@ -35,7 +36,8 @@ struct HomeCardGrid: View, Equatable {
                     onDelete: { onDelete(card) },
                     onToggleFavorite: { style in onToggleFavorite(card, style) },
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
-                    onRemoveFromBoard: { onRemoveFromBoard(card) }
+                    onRemoveFromBoard: { onRemoveFromBoard(card) },
+                    onOpenAuthor: openAuthorAction(for: card)
                 )
                 .equatable()
                 .onAppear {
@@ -56,6 +58,13 @@ struct HomeCardGrid: View, Equatable {
         let adaptiveDistance = min(configuredDistance, max(1, cards.count / 4))
         let distance = min(adaptiveDistance, cards.count - 1)
         return cards[cards.count - 1 - distance].id
+    }
+
+    private func openAuthorAction(for card: HomeCard) -> (() -> Void)? {
+        guard card.authorId != nil, let onOpenAuthor else {
+            return nil
+        }
+        return { onOpenAuthor(card) }
     }
 
     /// `ForEach` keys on `card.id` alone. An explicit identity that folded in favorite state
@@ -86,6 +95,7 @@ struct TallHomeCardGrid: View, Equatable {
     var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
     var shiningCardID: UUID? = nil
+    var onOpenAuthor: ((HomeCard) -> Void)? = nil
     /// Fires before the end is visible, so a server-paged grid can append off screen.
     var onReachEnd: (() -> Void)? = nil
     var loadMorePrefetchDistance = 0
@@ -113,7 +123,8 @@ struct TallHomeCardGrid: View, Equatable {
                     onDelete: { onDelete(card) },
                     onToggleFavorite: { style in onToggleFavorite(card, style) },
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
-                    onRemoveFromBoard: { onRemoveFromBoard(card) }
+                    onRemoveFromBoard: { onRemoveFromBoard(card) },
+                    onOpenAuthor: openAuthorAction(for: card)
                 )
                 .equatable()
                 .overlay {
@@ -144,6 +155,13 @@ struct TallHomeCardGrid: View, Equatable {
         let adaptiveDistance = min(configuredDistance, max(1, cards.count / 4))
         let distance = min(adaptiveDistance, cards.count - 1)
         return cards[cards.count - 1 - distance].id
+    }
+
+    private func openAuthorAction(for card: HomeCard) -> (() -> Void)? {
+        guard card.authorId != nil, let onOpenAuthor else {
+            return nil
+        }
+        return { onOpenAuthor(card) }
     }
 }
 

@@ -21,6 +21,8 @@ struct HomeCard: Identifiable, Equatable {
     var thoughtOriginal: String?
     var isPublic: Bool
     var isOwner: Bool
+    /// Stable author id. Nil when the payload has no UUID, so the avatar does not navigate.
+    var authorId: UUID?
     var authorInitials: String
     /// `/avatars/{id}?v=` when this author has a photo. Nil means initials.
     var authorAvatarPath: String?
@@ -38,6 +40,7 @@ struct HomeCard: Identifiable, Equatable {
         thoughtOriginal: String? = nil,
         isPublic: Bool = false,
         isOwner: Bool = true,
+        authorId: UUID? = nil,
         authorInitials: String = UserInitials.letters,
         authorAvatarPath: String? = nil,
         model: LlmModel? = nil,
@@ -51,6 +54,7 @@ struct HomeCard: Identifiable, Equatable {
         self.thoughtOriginal = thoughtOriginal
         self.isPublic = isPublic
         self.isOwner = isOwner
+        self.authorId = authorId
         self.authorInitials = authorInitials
         self.authorAvatarPath = authorAvatarPath
         self.model = model
@@ -82,6 +86,7 @@ struct HomeCard: Identifiable, Equatable {
             thoughtOriginal: stored.thoughtOriginal,
             isPublic: stored.isPublic,
             isOwner: stored.isOwner,
+            authorId: UUID(uuidString: stored.author.id),
             authorInitials: stored.author.initials,
             authorAvatarPath: stored.author.avatarUrl,
             model: LlmModel(rawValue: stored.model),
@@ -132,6 +137,9 @@ struct HomeCard: Identifiable, Equatable {
     mutating func apply(_ stored: StoredCard) {
         isPublic = stored.isPublic
         thoughtOriginal = stored.thoughtOriginal
+        if let authorId = UUID(uuidString: stored.author.id) {
+            self.authorId = authorId
+        }
         authorInitials = stored.author.initials
         authorAvatarPath = stored.author.avatarUrl
         model = LlmModel(rawValue: stored.model)
@@ -366,6 +374,28 @@ enum SaveLanding: Equatable {
     case profile(ProfileGridFilter)
 }
 
+struct AuthorHeader: Equatable {
+    var initials: String
+    var avatarPath: String?
+    var isSelf: Bool
+}
+
+private struct AuthorFeed {
+    var initials: String
+    var avatarPath: String?
+    var isSelf: Bool
+    var cards: [HomeCard] = []
+    var cardIDs: Set<UUID> = []
+    var loadState: LibraryLoadState = .loading
+    var footerState: FeedFooterState = .idle
+    var before: String?
+    var hasMore = true
+    var hasLoaded = false
+    var generation = 0
+    var task: Task<Void, Never>?
+    var isRefreshing = false
+}
+
 @MainActor
 @Observable
 final class HomeViewModel {
@@ -423,6 +453,7 @@ final class HomeViewModel {
     private var publicTasks: [UUID: Task<Void, Never>] = [:]
     private var deleteTasks: [UUID: Task<Void, Never>] = [:]
     private var boardTasks: [UUID: Task<Void, Never>] = [:]
+    private var authorFeeds: [UUID: AuthorFeed] = [:]
     private var writeErrorTask: Task<Void, Never>?
     private var shineTask: Task<Void, Never>?
 
@@ -470,6 +501,18 @@ final class HomeViewModel {
         for index in feedCards.indices where feedCards[index].isOwner {
             feedCards[index].authorInitials = initials
             feedCards[index].authorAvatarPath = avatarPath
+        }
+        for authorId in Array(authorFeeds.keys) {
+            mutateAuthor(authorId) { feed in
+                if feed.isSelf {
+                    feed.initials = initials
+                    feed.avatarPath = avatarPath
+                }
+                for index in feed.cards.indices where feed.cards[index].isOwner {
+                    feed.cards[index].authorInitials = initials
+                    feed.cards[index].authorAvatarPath = avatarPath
+                }
+            }
         }
     }
 
@@ -685,6 +728,7 @@ final class HomeViewModel {
             }
             withTransaction(transaction) {
                 insertFeedCardAtFront(card)
+                insertPublicCardIntoLoadedAuthorFeed(card)
             }
             homeFeedTab = .all
             saveLanding = .home
@@ -1062,6 +1106,58 @@ final class HomeViewModel {
         feedAnchors[card.id] = card
     }
 
+    /// Keeps a loaded author page in step with a public card that just appeared.
+    private func insertPublicCardIntoLoadedAuthorFeed(_ card: HomeCard) {
+        guard card.isPublic, let authorId = card.authorId, var feed = authorFeeds[authorId], feed.hasLoaded else {
+            return
+        }
+        if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
+            feed.cards[index].isPublic = true
+            authorFeeds[authorId] = feed
+            return
+        }
+        if feed.hasMore, let last = feed.cards.last, !feedSortIsBefore(card, last) {
+            return
+        }
+        let index = feed.cards.firstIndex { feedSortIsBefore(card, $0) } ?? feed.cards.endIndex
+        feed.cards.insert(card, at: index)
+        feed.cardIDs.insert(card.id)
+        authorFeeds[authorId] = feed
+    }
+
+    private func removeFromAuthorFeeds(_ id: UUID) {
+        for authorId in Array(authorFeeds.keys) {
+            mutateAuthor(authorId) { feed in
+                guard feed.cardIDs.remove(id) != nil || feed.cards.contains(where: { $0.id == id }) else {
+                    return
+                }
+                feed.cards.removeAll { $0.id == id }
+            }
+        }
+    }
+
+    private func authorCardIndexes(_ id: UUID) -> [UUID: Int] {
+        var indexes: [UUID: Int] = [:]
+        for (authorId, feed) in authorFeeds {
+            if let index = feed.cards.firstIndex(where: { $0.id == id }) {
+                indexes[authorId] = index
+            }
+        }
+        return indexes
+    }
+
+    private func restoreAuthorCards(_ card: HomeCard, at indexes: [UUID: Int]) {
+        for (authorId, index) in indexes {
+            mutateAuthor(authorId) { feed in
+                guard !feed.cards.contains(where: { $0.id == card.id }) else {
+                    return
+                }
+                feed.cards.insert(card, at: min(index, feed.cards.count))
+                feed.cardIDs.insert(card.id)
+            }
+        }
+    }
+
     private func removeFromFeed(_ id: UUID) {
         feedAnchors[id] = nil
         feedCardIDs.remove(id)
@@ -1104,6 +1200,11 @@ final class HomeViewModel {
         if let match = feedCards.first(where: { $0.id == id }), match.isOwner {
             return match
         }
+        for feed in authorFeeds.values {
+            if let match = feed.cards.first(where: { $0.id == id }), match.isOwner {
+                return match
+            }
+        }
         return nil
     }
 
@@ -1125,10 +1226,12 @@ final class HomeViewModel {
 
         let libraryIndex = cards.firstIndex(where: { $0.id == id })
         let feedIndex = feedCards.firstIndex(where: { $0.id == id })
+        let previousAuthorIndexes = authorCardIndexes(id)
         if libraryIndex != nil {
             cards.removeAll { $0.id == id }
         }
         removeFromFeed(id)
+        removeFromAuthorFeeds(id)
 
         deleteTasks[id]?.cancel()
         deleteTasks[id] = Task { @MainActor in
@@ -1146,6 +1249,7 @@ final class HomeViewModel {
                     feedCards.insert(snapshot, at: min(feedIndex, feedCards.count))
                     feedCardIDs.insert(id)
                 }
+                restoreAuthorCards(snapshot, at: previousAuthorIndexes)
                 reportWriteFailure(error, "Couldn't delete that card. Check your connection.")
             }
         }
@@ -1265,14 +1369,17 @@ final class HomeViewModel {
 
         ensureOwnerInLibrary(snapshot)
         let previousFeedIndex = feedCards.firstIndex(where: { $0.id == id })
+        let previousAuthorIndexes = authorCardIndexes(id)
         applyLocal(id: id) { card in
             card.isPublic = isPublic
         }
         if isPublic {
             snapshot.isPublic = true
             insertPublicCardIntoLoadedFeed(snapshot)
+            insertPublicCardIntoLoadedAuthorFeed(snapshot)
         } else {
             removeFromFeed(id)
+            removeFromAuthorFeeds(id)
         }
 
         publicTasks[id]?.cancel()
@@ -1292,10 +1399,21 @@ final class HomeViewModel {
                 if let current = feedCards.firstIndex(where: { $0.id == id }) {
                     feedCards[current].apply(stored)
                 }
+                if let cardId = UUID(uuidString: stored.id) {
+                    for authorId in Array(authorFeeds.keys) {
+                        mutateAuthor(authorId) { feed in
+                            if let index = feed.cards.firstIndex(where: { $0.id == cardId }) {
+                                feed.cards[index].apply(stored)
+                            }
+                        }
+                    }
+                }
                 if stored.isPublic, let card = ownerCard(id: id) {
                     insertPublicCardIntoLoadedFeed(card)
+                    insertPublicCardIntoLoadedAuthorFeed(card)
                 } else {
                     removeFromFeed(id)
+                    removeFromAuthorFeeds(id)
                 }
             } catch {
                 guard !Task.isCancelled else {
@@ -1313,6 +1431,13 @@ final class HomeViewModel {
                     }
                 } else {
                     removeFromFeed(id)
+                }
+                if previousPublic {
+                    var restored = snapshot
+                    restored.isPublic = previousPublic
+                    restoreAuthorCards(restored, at: previousAuthorIndexes)
+                } else {
+                    removeFromAuthorFeeds(id)
                 }
                 reportWriteFailure(error, "Couldn't change who can see this. Check your connection.")
             }
@@ -1355,6 +1480,11 @@ final class HomeViewModel {
         if let match = cards.first(where: { $0.id == id }) {
             return match
         }
+        for feed in authorFeeds.values {
+            if let match = feed.cards.first(where: { $0.id == id }) {
+                return match
+            }
+        }
         return nil
     }
 
@@ -1364,6 +1494,13 @@ final class HomeViewModel {
         }
         if let index = cards.firstIndex(where: { $0.id == id }) {
             body(&cards[index])
+        }
+        for authorId in Array(authorFeeds.keys) {
+            mutateAuthor(authorId) { feed in
+                if let index = feed.cards.firstIndex(where: { $0.id == id }) {
+                    body(&feed.cards[index])
+                }
+            }
         }
     }
 
@@ -1387,6 +1524,13 @@ final class HomeViewModel {
         }
         if let index = cards.firstIndex(where: { $0.id == card.id }) {
             cards[index] = card
+        }
+        for authorId in Array(authorFeeds.keys) {
+            mutateAuthor(authorId) { feed in
+                if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
+                    feed.cards[index] = card
+                }
+            }
         }
     }
 
@@ -1555,6 +1699,204 @@ final class HomeViewModel {
             formatter.setLocalizedDateFormatFromTemplate("MMMdyyyy")
         }
         return formatter.string(from: date)
+    }
+
+    func authorHeader(for authorId: UUID) -> AuthorHeader? {
+        guard let feed = authorFeeds[authorId] else {
+            return nil
+        }
+        return AuthorHeader(initials: feed.initials, avatarPath: feed.avatarPath, isSelf: feed.isSelf)
+    }
+
+    func authorCards(for authorId: UUID, tab: HomeFeedTab) -> [HomeCard] {
+        guard let feed = authorFeeds[authorId] else {
+            return []
+        }
+        guard let style = tab.matchingStyle else {
+            return feed.cards
+        }
+        return feed.cards.filter { $0.hasStyle(style) }
+    }
+
+    func authorLoadState(for authorId: UUID) -> LibraryLoadState {
+        authorFeeds[authorId]?.loadState ?? .loading
+    }
+
+    func authorFooterState(for authorId: UUID) -> FeedFooterState {
+        authorFeeds[authorId]?.footerState ?? .idle
+    }
+
+    func loadAuthorIfNeeded(_ route: AuthorRoute) async {
+        if authorFeeds[route.id] == nil {
+            authorFeeds[route.id] = AuthorFeed(
+                initials: route.initials,
+                avatarPath: route.avatarPath,
+                isSelf: route.isSelf
+            )
+        }
+        guard authorFeeds[route.id]?.hasLoaded != true else {
+            return
+        }
+        if let task = authorFeeds[route.id]?.task {
+            await task.value
+            return
+        }
+        startAuthorTask(route.id, replacing: true)
+        await authorFeeds[route.id]?.task?.value
+    }
+
+    func refreshAuthor(_ id: UUID) async {
+        guard authorFeeds[id] != nil, authorFeeds[id]?.isRefreshing != true else {
+            return
+        }
+        mutateAuthor(id) { feed in
+            feed.isRefreshing = true
+            feed.task?.cancel()
+            feed.task = nil
+            feed.generation &+= 1
+            feed.before = nil
+            feed.hasMore = true
+            feed.footerState = .idle
+            if feed.cards.isEmpty {
+                feed.loadState = .loading
+            }
+        }
+        let generation = authorFeeds[id]?.generation ?? 0
+        await fetchAuthorPage(id: id, replacing: true, generation: generation)
+        mutateAuthor(id) { $0.isRefreshing = false }
+    }
+
+    func retryLoadAuthor(_ id: UUID) {
+        guard authorFeeds[id] != nil else {
+            return
+        }
+        mutateAuthor(id) { feed in
+            feed.task?.cancel()
+            feed.task = nil
+            feed.generation &+= 1
+            feed.before = nil
+            feed.hasMore = true
+            feed.footerState = .idle
+            feed.hasLoaded = false
+            if feed.cards.isEmpty {
+                feed.loadState = .loading
+            }
+        }
+        startAuthorTask(id, replacing: true)
+    }
+
+    func loadMoreAuthor(_ id: UUID) {
+        guard let feed = authorFeeds[id],
+              feed.hasLoaded,
+              feed.hasMore,
+              feed.before != nil,
+              feed.footerState == .idle,
+              feed.task == nil
+        else {
+            return
+        }
+        mutateAuthor(id) { $0.footerState = .loading }
+        startAuthorTask(id, replacing: false)
+    }
+
+    func retryLoadMoreAuthor(_ id: UUID) {
+        guard let feed = authorFeeds[id],
+              feed.footerState == .failed,
+              feed.before != nil,
+              feed.task == nil
+        else {
+            return
+        }
+        mutateAuthor(id) { $0.footerState = .loading }
+        startAuthorTask(id, replacing: false)
+    }
+
+    private func startAuthorTask(_ id: UUID, replacing: Bool) {
+        guard var feed = authorFeeds[id], feed.task == nil else {
+            return
+        }
+        let generation = feed.generation
+        let task = Task { @MainActor in
+            await self.fetchAuthorPage(id: id, replacing: replacing, generation: generation)
+            guard self.authorFeeds[id]?.generation == generation else {
+                return
+            }
+            self.mutateAuthor(id) { $0.task = nil }
+        }
+        feed.task = task
+        authorFeeds[id] = feed
+    }
+
+    private func fetchAuthorPage(id: UUID, replacing: Bool, generation: Int) async {
+        let before = replacing ? nil : authorFeeds[id]?.before
+        do {
+            let response = try await cardsService.listAuthorCards(
+                id: id.uuidString.lowercased(),
+                limit: Self.feedPageSize,
+                before: before
+            )
+            guard !Task.isCancelled, authorFeeds[id]?.generation == generation else {
+                return
+            }
+
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                mutateAuthor(id) { feed in
+                    feed.initials = response.user.initials
+                    feed.avatarPath = response.user.avatarUrl
+                    if response.cards.contains(where: \.isOwner) {
+                        feed.isSelf = true
+                    }
+                    if replacing {
+                        feed.cards = merged(feed.cards, with: response.cards)
+                        feed.cardIDs = Set(feed.cards.map(\.id))
+                    } else {
+                        feed.cards.reserveCapacity(feed.cards.count + response.cards.count)
+                        for item in response.cards {
+                            guard let card = HomeCard(stored: item) else {
+                                continue
+                            }
+                            guard feed.cardIDs.insert(card.id).inserted else {
+                                continue
+                            }
+                            feed.cards.append(card)
+                        }
+                    }
+                    if let last = response.cards.last {
+                        feed.before = "\(last.createdAt)|\(last.id.lowercased())"
+                    }
+                    feed.hasMore = response.cards.count >= Self.feedPageSize
+                    feed.footerState = .idle
+                    feed.loadState = .loaded
+                    feed.hasLoaded = true
+                }
+            }
+        } catch {
+            guard !Task.isCancelled, authorFeeds[id]?.generation == generation, !Self.isCancellation(error) else {
+                return
+            }
+            mutateAuthor(id) { feed in
+                if case APIError.httpStatus(let status, _) = error, status == 404 {
+                    feed.loadState = .failed("That profile isn't available.")
+                    feed.footerState = .idle
+                    feed.hasMore = false
+                } else if replacing, feed.cards.isEmpty {
+                    feed.loadState = .failed("Couldn't load these posts.")
+                    feed.footerState = .idle
+                } else {
+                    feed.footerState = .failed
+                }
+            }
+        }
+    }
+
+    private func mutateAuthor(_ id: UUID, _ body: (inout AuthorFeed) -> Void) {
+        guard var feed = authorFeeds[id] else {
+            return
+        }
+        body(&feed)
+        authorFeeds[id] = feed
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

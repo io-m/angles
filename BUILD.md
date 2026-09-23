@@ -72,6 +72,7 @@ Loading and error are **states on Results**, not their own screens.
 | 9p | Fixed Profile header | polish | done | `ProfileView.swift` | Independent native vertical lists restore lazy performance and real per-tab extents; the shared glass header stays compact and horizontal paging remains interactive. |
 | 9q | Home style tabs | polish | done | `HomeView.swift`; `HomeViewModel.swift`; `StyleTabPager.swift`; `ProfileView.swift`; `HeaderChrome.swift`; `CardsService.swift`; `feed.ts`; `db/feed.ts` | All-default tabs aligned with trailing filter; no Home Settings; one feed; tab-bar footer fade. |
 | 9r | Native Home pull-to-refresh | polish | done | `HomeFeedPullRefresh.swift`; `HomeView.swift`; `HomeViewModel.swift` | SwiftUI's native refresh interaction starts below the fixed tabs while the shared feed refreshes in place. |
+| 9s | Public author profile | screen | done | `AuthorProfileView.swift`; `ReframeCardView.swift`; `HomeViewModel.swift`; `users.ts`; `feed.ts`; `ReframeModels.swift` | Avatar opens that author's public posts full screen; your own avatar switches to Profile. |
 
 ### 1. Compose (home)
 
@@ -225,6 +226,16 @@ Not a new screen. Corrective polish on 9q.
 - **Indicator placement.** The vertical scroll viewport begins below the fixed Home chrome instead of behind the safe area. Its system spinner therefore emerges directly below the style tabs without UIKit positioning overrides.
 - **Shared refresh.** The native async action awaits `HomeViewModel.refreshFeed()`. Existing cards stay visible and all tabs continue filtering the same in-memory feed.
 
+### 9s. Public author profile
+
+Tapping someone else's card avatar pushes this page over Home or Profile, covering the tab bar. Your own avatar switches to the Profile tab. The compose avatar does not navigate. The private Profile tab stays the library.
+
+- **Who.** Every card author includes `id`. Initials-only authors open the same way as authors with a photo. The header is a back button, the style tabs, and that avatar on the right (photo or initials). There is no display name.
+- **Posts.** `GET /users/:id/cards` returns that person's public cards, newest first, with the same cursor as Home. Private cards stay off the page, including the author's own. An empty public list is still that person. Unknown ids are an error on the page.
+- **Tabs.** All is the default mixed cover. A style tab keeps posts that have that angle and opens on it, from the one loaded list. No Favorites, no Life area or Mood sheet, no Settings.
+- **Hearts and owner actions.** Same as Home, written through the existing card and feed endpoints. The author list, Home, and the library update in place. Opening this page does not refetch either.
+- **Back.** The header back button and the left-edge swipe both use the system navigation pop. The tab bar returns with the card that opened the page. A tap on this page for the author already showing does nothing.
+
 ### 9i. Profile identity + style tabs
 
 Not a new screen. Profile is a private identity page, not a greeting plus two card lists.
@@ -355,6 +366,7 @@ Account / auth settings wait until auth exists. Appearance already shipped in 2a
 
 ## Shipped log
 
+- 2026-09-23 — Public author profile: a card avatar opens that person's published posts; the private Profile tab stays the library.
 - 2026-09-23 — Profile photos upload to the private Railway bucket and every card shows that photo or the author's initials.
 - 2026-09-23 — Chat glow follows the selected model color; accent picker is out of Settings; Settings edits a local name/photo and the subscription sheet shows the live plan with Restore and Apple change/cancel.
 - 2026-09-23 — The save cover slides off the new card with a premium traveling border spark and deepened ambient shadow (currently previewed on Home open and tab return); compose lines stay at the top.

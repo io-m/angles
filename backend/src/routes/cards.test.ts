@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEV_USER_ID } from "../lib/authStub.js";
 import { STYLES, type CreateCardInput, type StoredCard } from "../types/index.js";
 
 vi.mock("../db/client.js", () => {
@@ -76,7 +77,7 @@ function storedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     isPublic: false,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: true,
-    author: { initials: "JM" },
+    author: { id: DEV_USER_ID, initials: "JM" },
     ...overrides,
   };
 }

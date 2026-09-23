@@ -82,6 +82,14 @@ struct CardsService: Sendable {
         )
     }
 
+    func listAuthorCards(id: String, limit: Int, before: String? = nil) async throws -> AuthorCardsResponse {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let before {
+            queryItems.append(URLQueryItem(name: "before", value: before))
+        }
+        return try await client.get(path: "users/\(id)/cards", queryItems: queryItems)
+    }
+
     func removeFromBoard(id: String) async throws {
         try await client.delete(path: "feed/cards/\(id)/saves", timeout: Self.writeTimeout)
     }

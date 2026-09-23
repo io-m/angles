@@ -34,6 +34,7 @@ struct AppRoot: View {
     @State private var hasRoutedLaunch = false
     @State private var selectedTab: RootTab = .home
     @State private var lastContentTab: RootTab = .home
+    @State private var authorRoute: AuthorRoute?
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
     @State private var paywallPhase: PaywallPresentationPhase = .idle
     @State private var paywallShowsCelebration = false
@@ -53,24 +54,23 @@ struct AppRoot: View {
             theme.paper
                 .ignoresSafeArea()
 
-            TabView(selection: $selectedTab) {
-                NavigationStack {
+            NavigationStack {
+                TabView(selection: $selectedTab) {
                     HomeView(
                         safeAreaInsets: homeSafeAreaInsets,
                         viewModel: viewModel,
                         storeKitManager: storeKitManager,
                         isActiveTab: selectedTab == .home,
-                        onLogOut: logOut
+                        onLogOut: logOut,
+                        onOpenAuthor: openAuthor
                     )
-                }
-                .tabItem { Label("Home", systemImage: "house") }
-                .tag(RootTab.home)
+                    .tabItem { Label("Home", systemImage: "house") }
+                    .tag(RootTab.home)
 
-                Color.clear
-                    .tabItem { Label("Inspire me", systemImage: "sparkle") }
-                    .tag(RootTab.compose)
+                    Color.clear
+                        .tabItem { Label("Inspire me", systemImage: "sparkle") }
+                        .tag(RootTab.compose)
 
-                NavigationStack {
                     ProfileView(
                         safeAreaInsets: homeSafeAreaInsets,
                         viewModel: viewModel,
@@ -78,11 +78,21 @@ struct AppRoot: View {
                         identityStore: identityStore,
                         onInspire: presentCompose,
                         onLogOut: logOut,
-                        canLoadFullAppContent: canLoadProfileContent
+                        canLoadFullAppContent: canLoadProfileContent,
+                        onOpenAuthor: openAuthor
+                    )
+                    .tabItem { Label("Profile", systemImage: "person") }
+                    .tag(RootTab.profile)
+                }
+                .navigationDestination(item: $authorRoute) { route in
+                    AuthorProfileView(
+                        route: route,
+                        safeAreaInsets: homeSafeAreaInsets,
+                        viewModel: viewModel,
+                        onOpenAuthor: openAuthor
                     )
                 }
-                .tabItem { Label("Profile", systemImage: "person") }
-                .tag(RootTab.profile)
+                .toolbar(.hidden, for: .navigationBar)
             }
             .tint(theme.ink)
             .opacity(showsHomeFeed ? 1 : 0)
@@ -455,9 +465,39 @@ struct AppRoot: View {
             homeRevealPhase = .hidden
             selectedTab = .home
             lastContentTab = .home
+            authorRoute = nil
             isOnboardingTasteSession = true
             isComposePresented = true
         }
+    }
+
+    private func openAuthor(_ card: HomeCard) {
+        if card.isOwner {
+            showOwnProfile()
+            return
+        }
+        guard let authorId = card.authorId, authorRoute?.id != authorId else {
+            return
+        }
+        authorRoute = AuthorRoute(
+            id: authorId,
+            initials: card.authorInitials,
+            avatarPath: card.authorAvatarPath,
+            isSelf: card.isOwner
+        )
+    }
+
+    private func showOwnProfile() {
+        if authorRoute != nil {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                selectedTab = .profile
+            }
+            authorRoute = nil
+            return
+        }
+        selectedTab = .profile
     }
 
     private func handleTabChange(_ newTab: RootTab) {

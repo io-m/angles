@@ -333,8 +333,52 @@ struct StoredCardTag: Codable, Equatable, Sendable {
 }
 
 struct StoredCardAuthor: Codable, Equatable, Sendable {
+    let id: String
     let initials: String
-    let avatarUrl: String? = nil
+    let avatarUrl: String?
+
+    init(id: String = "", initials: String, avatarUrl: String? = nil) {
+        self.id = id
+        self.initials = initials
+        self.avatarUrl = avatarUrl
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case initials
+        case avatarUrl
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        initials = try container.decodeIfPresent(String.self, forKey: .initials) ?? ""
+        avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(initials, forKey: .initials)
+        try container.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
+    }
+}
+
+struct AuthorCardsResponse: Decodable, Equatable, Sendable {
+    let user: StoredCardAuthor
+    let cards: [StoredCard]
+
+    private enum CodingKeys: String, CodingKey {
+        case user
+        case cards
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        user = try container.decode(StoredCardAuthor.self, forKey: .user)
+        let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
+        cards = raw.compactMap(\.value)
+    }
 }
 
 struct StoredCard: Decodable, Equatable, Sendable {

@@ -62,7 +62,7 @@ function feedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     isPublic: true,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: false,
-    author: { initials: "AL" },
+    author: { id: "00000000-0000-4000-8000-000000000099", initials: "AL" },
     ...overrides,
   };
 }

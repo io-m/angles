@@ -64,6 +64,7 @@ struct ReframeCardView: View, Equatable {
     var onToggleFavorite: (Style) -> Void = { _ in }
     var onSetPublic: (Bool) -> Void = { _ in }
     var onRemoveFromBoard: () -> Void = {}
+    var onOpenAuthor: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -353,16 +354,34 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
+    private func authorMark(side: CGFloat) -> some View {
+        AuthorMark(
+            initials: card.authorInitials,
+            avatarPath: card.authorAvatarPath,
+            prefersLocalPhoto: card.isOwner,
+            side: side,
+            fill: theme.ink,
+            symbol: theme.paper
+        )
+    }
+
+    @ViewBuilder
+    private func authorControl(side: CGFloat) -> some View {
+        if let onOpenAuthor, card.authorId != nil {
+            Button(action: onOpenAuthor) {
+                authorMark(side: side)
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Posts by \(card.authorInitials)")
+        } else {
+            authorMark(side: side)
+        }
+    }
+
     private var storedHeader: some View {
         HStack(spacing: 10) {
-            AuthorMark(
-                initials: card.authorInitials,
-                avatarPath: card.authorAvatarPath,
-                prefersLocalPhoto: card.isOwner,
-                side: ReframeCardMetrics.avatarSize,
-                fill: theme.ink,
-                symbol: theme.paper
-            )
+            authorControl(side: ReframeCardMetrics.avatarSize)
 
             Text(HomeViewModel.dateLabel(for: card.createdAt))
                 .font(.caption.weight(.medium))
@@ -380,14 +399,7 @@ struct ReframeCardView: View, Equatable {
 
     private var tallStoredHeader: some View {
         HStack(spacing: 12) {
-            AuthorMark(
-                initials: card.authorInitials,
-                avatarPath: card.authorAvatarPath,
-                prefersLocalPhoto: card.isOwner,
-                side: ReframeCardMetrics.tallAvatarSize,
-                fill: theme.ink,
-                symbol: theme.paper
-            )
+            authorControl(side: ReframeCardMetrics.tallAvatarSize)
 
             Text(HomeViewModel.dateLabel(for: card.createdAt))
                 .font(.subheadline.weight(.medium))
@@ -409,14 +421,7 @@ struct ReframeCardView: View, Equatable {
 
     private var favoriteHeader: some View {
         HStack(spacing: 8) {
-            AuthorMark(
-                initials: card.authorInitials,
-                avatarPath: card.authorAvatarPath,
-                prefersLocalPhoto: card.isOwner,
-                side: 32,
-                fill: theme.ink,
-                symbol: theme.paper
-            )
+            authorControl(side: 32)
 
             Text(HomeViewModel.dateLabel(for: card.createdAt))
                 .font(.caption2.weight(.medium))

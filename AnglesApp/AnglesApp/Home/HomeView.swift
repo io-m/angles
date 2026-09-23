@@ -16,6 +16,7 @@ struct HomeView: View {
     var isGlimpseActive = false
     var isActiveTab: Bool = true
     var onLogOut: (() -> Void)? = nil
+    var onOpenAuthor: (HomeCard) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -104,7 +105,8 @@ struct HomeView: View {
                                 onDelete: deleteCard,
                                 onToggleFavorite: toggleFavorite,
                                 onSetPublic: setPublic,
-                                onRemoveFromBoard: removeFromBoard
+                                onRemoveFromBoard: removeFromBoard,
+                                onOpenAuthor: onOpenAuthor
                             )
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
@@ -297,6 +299,7 @@ private struct HomeFeedTabPage: View {
     let onToggleFavorite: (HomeCard, Style) -> Void
     let onSetPublic: (HomeCard, Bool) -> Void
     let onRemoveFromBoard: (HomeCard) -> Void
+    let onOpenAuthor: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -405,6 +408,7 @@ private struct HomeFeedTabPage: View {
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
                         shiningCardID: shiningCardID,
+                        onOpenAuthor: onOpenAuthor,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6
                     )

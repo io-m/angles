@@ -47,6 +47,7 @@ struct ProfileView: View {
     var onInspire: () -> Void = {}
     var onLogOut: (() -> Void)? = nil
     var canLoadFullAppContent = false
+    var onOpenAuthor: (HomeCard) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -147,7 +148,8 @@ struct ProfileView: View {
                                 onDelete: deleteCard,
                                 onToggleFavorite: toggleFavorite,
                                 onSetPublic: setPublic,
-                                onRemoveFromBoard: removeFromBoard
+                                onRemoveFromBoard: removeFromBoard,
+                                onOpenAuthor: onOpenAuthor
                             )
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
@@ -434,6 +436,7 @@ private struct ProfileTabPage: View {
     var onToggleFavorite: (HomeCard, Style) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
     var onRemoveFromBoard: (HomeCard) -> Void
+    var onOpenAuthor: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -529,7 +532,8 @@ private struct ProfileTabPage: View {
                     onDelete: onDelete,
                     onToggleFavorite: onToggleFavorite,
                     onSetPublic: onSetPublic,
-                    onRemoveFromBoard: onRemoveFromBoard
+                    onRemoveFromBoard: onRemoveFromBoard,
+                    onOpenAuthor: onOpenAuthor
                 )
                 .equatable()
                 .padding(.horizontal, HeaderCollapse.horizontalPadding)
@@ -545,7 +549,8 @@ private struct ProfileTabPage: View {
                     onToggleFavorite: onToggleFavorite,
                     onSetPublic: onSetPublic,
                     onRemoveFromBoard: onRemoveFromBoard,
-                    shiningCardID: shiningCardID
+                    shiningCardID: shiningCardID,
+                    onOpenAuthor: onOpenAuthor
                 )
                 .equatable()
                 .padding(.horizontal, HeaderCollapse.horizontalPadding)

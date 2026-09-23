@@ -6,13 +6,13 @@
   "fill-specializations" : [
     {
       "value" : {
-        "automatic-gradient" : "display-p3:0.97894,0.96436,0.98541,1.00000"
+        "automatic-gradient" : "display-p3:1.00000,1.00000,1.00000,1.00000"
       }
     },
     {
       "appearance" : "dark",
       "value" : {
-        "automatic-gradient" : "display-p3:0.06184,0.03080,0.08565,1.00000"
+        "automatic-gradient" : "display-p3:0.03448,0.04672,0.05957,1.00000"
       }
     }
   ],
@@ -22,47 +22,26 @@
       "hidden" : false,
       "layers" : [
         {
-          "blend-mode-specializations" : [
-            {
-              "appearance" : "tinted",
-              "value" : "plus-darker"
-            }
-          ],
+          "blend-mode" : "normal",
           "fill-specializations" : [
             {
               "value" : {
                 "linear-gradient" : [
-                  "display-p3:0.09459,0.06446,0.12837,0.90000",
-                  "display-p3:0.05354,0.02740,0.08287,1.00000"
+                  "display-p3:0.05438,0.04581,0.04530,1.00000",
+                  "display-p3:0.01380,0.00636,0.00592,1.00000"
                 ]
               }
             },
             {
               "appearance" : "dark",
               "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.90697,0.89069,0.93157,0.90000",
-                  "display-p3:0.95297,0.93869,0.97455,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.5,
-                    "y" : 1
-                  },
-                  "stop" : {
-                    "x" : 0.5,
-                    "y" : 0
-                  }
-                }
+                "automatic-gradient" : "display-p3:1.00000,1.00000,1.00000,1.00000"
               }
             },
             {
               "appearance" : "tinted",
               "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.09459,0.06446,0.12837,1.00000",
-                  "display-p3:0.05354,0.02740,0.08287,1.00000"
-                ]
+                "solid" : "display-p3:1.00000,1.00000,1.00000,1.00000"
               }
             }
           ],
@@ -72,27 +51,16 @@
             },
             {
               "appearance" : "tinted",
-              "value" : false
+              "value" : true
             }
           ],
-          "hidden" : false,
-          "image-name" : "mingcute_x-skew-fill.svg",
-          "name" : "mingcute_x-skew-fill",
-          "opacity-specializations" : [
-            {
-              "appearance" : "dark",
-              "value" : 1
-            },
-            {
-              "appearance" : "tinted",
-              "value" : 1
-            }
-          ],
+          "image-name" : "at-icons_angle.svg",
+          "name" : "at-icons_angle",
           "position" : {
-            "scale" : 1.2,
+            "scale" : 1.02,
             "translation-in-points" : [
-              -3.6600658859242685e-07,
-              0.019051924455311564
+              0.009949271388109082,
+              0.007426996248341311
             ]
           }
         }

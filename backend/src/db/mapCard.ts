@@ -41,7 +41,7 @@ export function authorOf(
   userId: string,
   user: { initials: string; avatarKey: string | null },
 ): StoredCard["author"] {
-  const author: StoredCard["author"] = { initials: user.initials };
+  const author: StoredCard["author"] = { id: userId, initials: user.initials };
   const avatarUrl = avatarUrlFor(userId, user.avatarKey);
   if (avatarUrl) {
     author.avatarUrl = avatarUrl;

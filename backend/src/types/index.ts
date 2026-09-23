@@ -116,8 +116,14 @@ export type StoredCardTag = {
 };
 
 export type StoredCardAuthor = {
+  id: string;
   initials: string;
   avatarUrl?: string;
+};
+
+export type AuthorCardsResponse = {
+  user: StoredCardAuthor;
+  cards: StoredCard[];
 };
 
 export type ProfileBody = {
