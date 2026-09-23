@@ -41,6 +41,7 @@ struct ProfileView: View {
     let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
     let storeKitManager: StoreKitManager
+    var identityStore: ProfileIdentityStore? = nil
     /// Filled from Sign in with Apple / Better Auth in row 8. Nil keeps the session label.
     var displayName: String? = nil
     var onInspire: () -> Void = {}
@@ -65,6 +66,9 @@ struct ProfileView: View {
     }
 
     private var profileTitle: String {
+        if let identityStore {
+            return identityStore.profileTitle
+        }
         let trimmed = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? "On this iPhone" : trimmed
     }
@@ -84,6 +88,7 @@ struct ProfileView: View {
                 pagerState: pagerState,
                 settledSelection: committedTab,
                 showSettings: $showSettings,
+                identityStore: identityStore,
                 onSelectTab: selectTab
             )
             .ignoresSafeArea(edges: .top)
@@ -104,6 +109,7 @@ struct ProfileView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(
                 storeKitManager: storeKitManager,
+                identityStore: identityStore,
                 onLogOut: {
                     onLogOut?()
                     showSettings = false
@@ -271,6 +277,7 @@ private struct ProfileChrome: View {
     let pagerState: StyleTabPagerState<ProfileGridFilter>
     let settledSelection: ProfileGridFilter
     @Binding var showSettings: Bool
+    var identityStore: ProfileIdentityStore? = nil
     let onSelectTab: (ProfileGridFilter) -> Void
 
     var body: some View {
@@ -282,10 +289,11 @@ private struct ProfileChrome: View {
                 title: title,
                 safeTop: safeTop,
                 collapseDistance: collapseDistance,
-                showSettings: $showSettings
+                showSettings: $showSettings,
+                identityStore: identityStore
             )
 
-            ProfileIdentityHeader(title: title)
+            ProfileIdentityHeader(title: title, identityStore: identityStore)
                 .frame(
                     height: ProfileMetrics.identityHeight - collapseDistance,
                     alignment: .top
@@ -323,6 +331,7 @@ private enum ProfileViewAvatar {
 
 private struct ProfileIdentityHeader: View {
     let title: String
+    var identityStore: ProfileIdentityStore? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -330,7 +339,8 @@ private struct ProfileIdentityHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            InitialsAvatar(
+            ProfileAvatar(
+                identityStore: identityStore,
                 letters: UserInitials.letters,
                 side: ProfileViewAvatar.large,
                 fill: theme.ink,
@@ -357,6 +367,7 @@ private struct ProfileTopBar: View {
     let safeTop: CGFloat
     let collapseDistance: CGFloat
     @Binding var showSettings: Bool
+    var identityStore: ProfileIdentityStore? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -368,7 +379,8 @@ private struct ProfileTopBar: View {
 
         HStack(spacing: 10) {
             HStack(spacing: 8) {
-                InitialsAvatar(
+                ProfileAvatar(
+                    identityStore: identityStore,
                     letters: UserInitials.letters,
                     side: ProfileViewAvatar.compact,
                     fill: theme.ink,

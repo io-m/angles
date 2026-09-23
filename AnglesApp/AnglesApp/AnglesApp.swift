@@ -28,6 +28,7 @@ struct AnglesApp: App {
 struct AppRoot: View {
     @State private var viewModel = HomeViewModel()
     @State private var storeKitManager = StoreKitManager()
+    @State private var identityStore = ProfileIdentityStore()
     @State private var isComposePresented = false
     @State private var isOnboardingTasteSession = false
     @State private var hasRoutedLaunch = false
@@ -74,6 +75,7 @@ struct AppRoot: View {
                         safeAreaInsets: homeSafeAreaInsets,
                         viewModel: viewModel,
                         storeKitManager: storeKitManager,
+                        identityStore: identityStore,
                         onInspire: presentCompose,
                         onLogOut: logOut,
                         canLoadFullAppContent: canLoadProfileContent
@@ -108,6 +110,7 @@ struct AppRoot: View {
                 isActive: isComposePresented,
                 isOnboardingTaste: isOnboardingTasteSession,
                 storeKitManager: storeKitManager,
+                identityStore: identityStore,
                 onClose: handleComposeClose,
                 onShowMembership: presentMembershipPaywall,
                 onSave: handleSavedCard,
@@ -174,6 +177,12 @@ struct AppRoot: View {
                     .ignoresSafeArea()
                     .zIndex(30)
                     .accessibilityHidden(true)
+            }
+        }
+        .environment(\.profileIdentity, identityStore)
+        .task {
+            identityStore.onSynced = { initials, avatarPath in
+                viewModel.applyOwnerIdentity(initials: initials, avatarPath: avatarPath)
             }
         }
         .task {

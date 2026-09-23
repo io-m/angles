@@ -43,6 +43,7 @@ struct ComposeSheetView: View {
     var isActive: Bool = true
     var isOnboardingTaste: Bool = false
     var storeKitManager: StoreKitManager?
+    var identityStore: ProfileIdentityStore? = nil
     var onClose: () -> Void = {}
     var onShowMembership: () -> Void = {}
     var onSave: (HomeCard) -> Void = { _ in }
@@ -51,9 +52,9 @@ struct ComposeSheetView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accentPalette) private var accentPalette
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    private var composerGlowColor: Color { viewModel.selectedModel.brandColor }
     @FocusState private var composerFocused: Bool
     @State private var headerStrip: CGFloat = 119
     @State private var showRestartAlert = false
@@ -480,6 +481,7 @@ struct ComposeSheetView: View {
                         thoughtOriginal: cook.thoughtOriginal,
                         results: cook.results,
                         recookingStyle: viewModel.recookingStyle,
+                        identityStore: identityStore,
                         isPublic: $viewModel.composeIsPublic,
                         allowsRecook: !isOnboardingTaste,
                         onRecook: { style in
@@ -627,8 +629,14 @@ struct ComposeSheetView: View {
     }
 
     private var userAvatar: some View {
-        InitialsAvatar(letters: UserInitials.letters, side: 40, fill: theme.ink, symbol: theme.paper)
-            .accessibilityHidden(true)
+        AuthorMark(
+            initials: identityStore?.avatarLetters ?? identityStore?.serverInitials ?? UserInitials.letters,
+            avatarPath: identityStore?.avatarPath,
+            prefersLocalPhoto: true,
+            side: 40,
+            fill: theme.ink,
+            symbol: theme.paper
+        )
     }
 
     private var aiAvatar: some View {
@@ -785,15 +793,15 @@ struct ComposeSheetView: View {
         EllipticalGradient(
             stops: [
                 .init(
-                    color: accentPalette.accent.opacity(colorScheme == .dark ? 0.16 : 0.10),
+                    color: composerGlowColor.opacity(colorScheme == .dark ? 0.16 : 0.10),
                     location: 0
                 ),
                 .init(
-                    color: accentPalette.accent.opacity(colorScheme == .dark ? 0.07 : 0.045),
+                    color: composerGlowColor.opacity(colorScheme == .dark ? 0.07 : 0.045),
                     location: 0.42
                 ),
                 .init(
-                    color: accentPalette.accent.opacity(colorScheme == .dark ? 0.02 : 0.015),
+                    color: composerGlowColor.opacity(colorScheme == .dark ? 0.02 : 0.015),
                     location: 0.72
                 ),
                 .init(color: .clear, location: 1),

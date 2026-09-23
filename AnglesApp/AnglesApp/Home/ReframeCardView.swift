@@ -355,8 +355,10 @@ struct ReframeCardView: View, Equatable {
 
     private var storedHeader: some View {
         HStack(spacing: 10) {
-            InitialsAvatar(
-                letters: card.authorInitials,
+            AuthorMark(
+                initials: card.authorInitials,
+                avatarPath: card.authorAvatarPath,
+                prefersLocalPhoto: card.isOwner,
                 side: ReframeCardMetrics.avatarSize,
                 fill: theme.ink,
                 symbol: theme.paper
@@ -378,8 +380,10 @@ struct ReframeCardView: View, Equatable {
 
     private var tallStoredHeader: some View {
         HStack(spacing: 12) {
-            InitialsAvatar(
-                letters: card.authorInitials,
+            AuthorMark(
+                initials: card.authorInitials,
+                avatarPath: card.authorAvatarPath,
+                prefersLocalPhoto: card.isOwner,
                 side: ReframeCardMetrics.tallAvatarSize,
                 fill: theme.ink,
                 symbol: theme.paper
@@ -405,8 +409,10 @@ struct ReframeCardView: View, Equatable {
 
     private var favoriteHeader: some View {
         HStack(spacing: 8) {
-            InitialsAvatar(
-                letters: card.authorInitials,
+            AuthorMark(
+                initials: card.authorInitials,
+                avatarPath: card.authorAvatarPath,
+                prefersLocalPhoto: card.isOwner,
                 side: 32,
                 fill: theme.ink,
                 symbol: theme.paper
@@ -764,6 +770,7 @@ struct OverlayProposalCard: View {
     var thoughtOriginal: String?
     let results: [ReframeResult]
     var recookingStyle: Style?
+    var identityStore: ProfileIdentityStore? = nil
     @Binding var isPublic: Bool
     var allowsRecook: Bool = true
     var onRecook: (Style) -> Void = { _ in }
@@ -841,8 +848,10 @@ struct OverlayProposalCard: View {
 
     private var overlayHeader: some View {
         HStack(spacing: 10) {
-            InitialsAvatar(
-                letters: UserInitials.letters,
+            AuthorMark(
+                initials: identityStore?.avatarLetters ?? identityStore?.serverInitials ?? UserInitials.letters,
+                avatarPath: identityStore?.avatarPath,
+                prefersLocalPhoto: true,
                 side: ReframeCardMetrics.avatarSize,
                 fill: theme.ink,
                 symbol: theme.paper
@@ -1335,5 +1344,62 @@ private struct RisingHeart: View {
                     launched = true
                 }
             }
+    }
+}
+
+/// Photo when the author has one. Initials stay visible while it loads and if it fails.
+struct AuthorMark: View {
+    var initials: String
+    var avatarPath: String?
+    var prefersLocalPhoto = false
+    var side: CGFloat
+    var fill: Color
+    var symbol: Color
+
+    @Environment(\.profileIdentity) private var identity
+
+    var body: some View {
+        ZStack {
+            InitialsAvatar(letters: shownInitials, side: side, fill: fill, symbol: symbol)
+            if prefersLocalPhoto, let image = identity?.photo {
+                fitted(Image(uiImage: image))
+            } else if let url = remoteURL {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        fitted(image)
+                    }
+                }
+            }
+        }
+        .frame(width: side, height: side)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
+    }
+
+    private var shownInitials: String {
+        let trimmed = initials.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Y" : trimmed
+    }
+
+    private func fitted(_ image: Image) -> some View {
+        image
+            .resizable()
+            .scaledToFill()
+            .frame(width: side, height: side)
+            .clipShape(Circle())
+    }
+
+    private var remoteURL: URL? {
+        guard let avatarPath, !avatarPath.isEmpty else { return nil }
+        guard var components = URLComponents(url: AppConfig.baseURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        let pieces = avatarPath.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        let path = String(pieces[0])
+        components.path = path.hasPrefix("/") ? path : "/" + path
+        if pieces.count > 1, !pieces[1].isEmpty {
+            components.query = String(pieces[1])
+        }
+        return components.url
     }
 }

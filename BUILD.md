@@ -32,7 +32,7 @@ Loading and error are **states on Results**, not their own screens.
 | 1 | Compose (home) | screen | done | `AnglesApp.swift`; `Home/*.swift` | Favorites strip (max 6) + mixed-style grid; answer-first flip; long-press Delete. |
 | 1b | Favorites | screen | done | `FavoritesView.swift`; `ProfileSubsetView.swift`; `ProfileView.swift` | Title opens a full favorites grid. Server-backed with the library. |
 | 2 | Results | screen | done | `ComposeSheetView.swift`; `HomeViewModel.swift`; `ReframeCardView.swift`; `SampleCardCopy.swift` | Ready card header with JM avatar + Public/Private (Public default); Save sends `isPublic`. |
-| 2a | Settings (appearance + accent) | screen | done | `Theme/*`; `Settings/*`; `HomePalette.swift` | Warm-neutral charcoal tokens; modal Settings with profile, appearance, accent, subscription stub. |
+| 2a | Settings (appearance + profile + subscription) | screen | done | `Theme/*`; `Settings/*` | Warm-neutral charcoal tokens; modal Settings with local profile name/photo, appearance popover, real subscription sheet. Accent picker removed. |
 | 3 | Multi-style results | same screen as 2 | done | `ComposeSheetView.swift`; `ReframeCardView.swift` | Always all 4 styles. Answer-first carousels on home and overlay. |
 | 4 | Hook up fetching | feature | done | `ReframeService.swift`; `backend/src/routes/reframe.ts` | API contract exists. Overlay mocks on-device until a real LLM. |
 | 4b | Tabs + Profile shell | screen | done | `AnglesApp.swift`; `Root/RootTabBar.swift`; `HomeView.swift`; `ProfileView.swift`; `HomeCardGrid.swift` | Home empty + Settings; Sparkle compose; Profile filters by style present, not cover. |
@@ -96,9 +96,9 @@ One statement, then AI refine (not a chat transcript).
 - Start again (header) asks to confirm, then wipes the session and returns the composer (and the Public default). Overlay stays open.
 - Save (icon + label) sits where the composer was and writes all 4 with the chosen privacy. X discards.
 
-### 2a. Settings (appearance + accent)
+### 2a. Settings (appearance + profile + subscription)
 
-Home-tab Settings sheet. Gradient chrome, large title that collapses to inline. Appearance is a popover. Accent and subscription stay sheets. Prefs in UserDefaults, not SwiftData.
+Profile-gear Settings sheet. Gradient chrome, large title that collapses to inline. Identity header edits a display name and photo. The photo uploads to the private Railway bucket `angles-avatars` (`PUT /profile/avatar`) with a spinner and a short checkmark; a failure keeps the previous photo. The name patches initials (`PATCH /profile`). Cards show that photo, or the author's initials while it loads and when there is none. Appearance is a popover. Subscription is a sheet showing the live plan (Yearly / Monthly / Inactive), price, and renewal, with Restore plus Change/Cancel through Apple's manage-subscriptions sheet. The accent picker is gone; the chat composer glow follows the selected model color instead. Prefs in UserDefaults, not SwiftData.
 
 ### 3. Multi-style results
 
@@ -229,7 +229,7 @@ Not a new screen. Corrective polish on 9q.
 
 Not a new screen. Profile is a private identity page, not a greeting plus two card lists.
 
-- **Header.** Large JM initials and **On this iPhone**. `displayName` is a nil seam for Auth (row 8). No mock full name.
+- **Header.** Local profile photo plus the typed display name (falls back to initials, then a person glyph; empty still reads **On this iPhone**). `displayName` is a nil seam for Auth (row 8). No mock full name.
 - **Tabs.** Five pinned icon tabs replace the style popover: Stoic, Optimistic, Humorous, Tough love, Favorite angles. Default is Stoic. There is no All tab. Style tabs show owned cards that have that angle and open on it; Favorites is the full liked-angle grid. Empty library still uses the Inspire me hero under the tabs.
 - **Removed.** Favorite angles strip, `HomeCardStrip`, `FavoritesView`, `ProfileSubsetView`, and the header filter popover. Home has no Settings gear; Profile keeps the trailing gear.
 
@@ -344,7 +344,7 @@ Not a new screen. Debug on device talks only to App Store sandbox — no `.store
 | --- | --- | --- | --- | --- |
 | 8 | Auth | feature | not started | Sign in with Apple / Better Auth; guest-card claim; `users.tasteCompletedAt`; Settings session Sign in/out does not void StoreKit |
 
-Account / auth settings wait until auth exists. Appearance + accent already shipped in 2a.
+Account / auth settings wait until auth exists. Appearance already shipped in 2a; the accent picker is removed.
 
 ## Out of scope (until listed)
 
@@ -355,6 +355,8 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 
 ## Shipped log
 
+- 2026-09-23 — Profile photos upload to the private Railway bucket and every card shows that photo or the author's initials.
+- 2026-09-23 — Chat glow follows the selected model color; accent picker is out of Settings; Settings edits a local name/photo and the subscription sheet shows the live plan with Restore and Apple change/cancel.
 - 2026-09-23 — The save cover slides off the new card with a premium traveling border spark and deepened ambient shadow (currently previewed on Home open and tab return); compose lines stay at the top.
 - 2026-09-23 — A public post now appears on the author’s Home, and Save lands on that card.
 - 2026-09-23 — Profile style tabs now use the Home tall card.
@@ -455,7 +457,7 @@ Account / auth settings wait until auth exists. Appearance + accent already ship
 - 2026-09-09 — Compose (home): keep the home grid still while the frost overlay fades.
 - 2026-09-09 — Compose (home): fixed composer to 8pt bottom padding so it no longer jumps with the keyboard.
 - 2026-09-09 — Compose (home): Bandaid-matched composer (newline Return, Send on text, Optimistic default), smoother frost close, wider dock–FAB gap.
-- 2026-09-09 — Compose (home): subtle bell-shaped accent glow around the overlay composer.
+- 2026-09-09 — Compose (home): bell-shaped glow around the overlay composer in the selected model's brand color.
 - 2026-09-09 — Compose (home): frosted overlay, inverted bubbles, cooking line, pill composer, and a header style popover.
 - 2026-09-09 — Compose (home): removed Help drawer item; nudged flipped card washes closer to white.
 - 2026-09-09 — Compose (home): circled drawer icons with new help/about glyphs, gradient FAB with glow, softer dock glow, and blur-crossfade title.

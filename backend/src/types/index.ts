@@ -117,6 +117,12 @@ export type StoredCardTag = {
 
 export type StoredCardAuthor = {
   initials: string;
+  avatarUrl?: string;
+};
+
+export type ProfileBody = {
+  initials: string;
+  avatarUrl?: string;
 };
 
 export type StoredReframeResult = {

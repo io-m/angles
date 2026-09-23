@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
+import { avatarUrlFor } from "../lib/avatarUrl.js";
 import { intensityBand, type StoredCard, type StoredReframeResult, type Style } from "../types/index.js";
 import { getDb } from "./client.js";
 import { savedAngles, type CardReframeRow, type CardRow, type TagRow } from "./schema.js";
@@ -9,7 +10,7 @@ type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 export type CardLoaded = CardRow & {
   reframes: CardReframeRow[];
   cardTags: { tag: TagRow }[];
-  user: { initials: string };
+  user: { initials: string; avatarKey: string | null };
 };
 
 /** A viewer's saves on other people's cards. Hearts are the only save there is. */
@@ -34,6 +35,18 @@ export async function loadViewerSaves(
   }
 
   return { angles };
+}
+
+export function authorOf(
+  userId: string,
+  user: { initials: string; avatarKey: string | null },
+): StoredCard["author"] {
+  const author: StoredCard["author"] = { initials: user.initials };
+  const avatarUrl = avatarUrlFor(userId, user.avatarKey);
+  if (avatarUrl) {
+    author.avatarUrl = avatarUrl;
+  }
+  return author;
 }
 
 export function toStoredCard(row: CardLoaded, saves: ViewerSaves, viewerId: string = getOwnerUserId()): StoredCard {
@@ -93,7 +106,7 @@ export function toStoredCard(row: CardLoaded, saves: ViewerSaves, viewerId: stri
     isPublic: row.isPublic,
     createdAt: row.createdAt.toISOString(),
     isOwner,
-    author: { initials: row.user.initials },
+    author: authorOf(row.userId, row.user),
   };
 
   if (row.thoughtOriginal) {

@@ -22,6 +22,8 @@ struct HomeCard: Identifiable, Equatable {
     var isPublic: Bool
     var isOwner: Bool
     var authorInitials: String
+    /// `/avatars/{id}?v=` when this author has a photo. Nil means initials.
+    var authorAvatarPath: String?
     /// Model that wrote the answer. Unknown ids stay nil so the card does not invent a logo.
     var model: LlmModel?
     /// In memory only until History (SwiftData) lands. Shape exists now for matching later.
@@ -37,6 +39,7 @@ struct HomeCard: Identifiable, Equatable {
         isPublic: Bool = false,
         isOwner: Bool = true,
         authorInitials: String = UserInitials.letters,
+        authorAvatarPath: String? = nil,
         model: LlmModel? = nil,
         meta: ReframeMeta? = nil
     ) {
@@ -49,6 +52,7 @@ struct HomeCard: Identifiable, Equatable {
         self.isPublic = isPublic
         self.isOwner = isOwner
         self.authorInitials = authorInitials
+        self.authorAvatarPath = authorAvatarPath
         self.model = model
         self.meta = meta
     }
@@ -79,6 +83,7 @@ struct HomeCard: Identifiable, Equatable {
             isPublic: stored.isPublic,
             isOwner: stored.isOwner,
             authorInitials: stored.author.initials,
+            authorAvatarPath: stored.author.avatarUrl,
             model: LlmModel(rawValue: stored.model),
             meta: stored.reframeMeta
         )
@@ -127,6 +132,8 @@ struct HomeCard: Identifiable, Equatable {
     mutating func apply(_ stored: StoredCard) {
         isPublic = stored.isPublic
         thoughtOriginal = stored.thoughtOriginal
+        authorInitials = stored.author.initials
+        authorAvatarPath = stored.author.avatarUrl
         model = LlmModel(rawValue: stored.model)
         for index in slides.indices {
             let style = slides[index].result.style
@@ -453,6 +460,17 @@ final class HomeViewModel {
 
     var ownedCards: [HomeCard] {
         cards.filter(\.isOwner)
+    }
+
+    func applyOwnerIdentity(initials: String, avatarPath: String?) {
+        for index in cards.indices where cards[index].isOwner {
+            cards[index].authorInitials = initials
+            cards[index].authorAvatarPath = avatarPath
+        }
+        for index in feedCards.indices where feedCards[index].isOwner {
+            feedCards[index].authorInitials = initials
+            feedCards[index].authorAvatarPath = avatarPath
+        }
     }
 
     var favoriteAngleCards: [HomeCard] {

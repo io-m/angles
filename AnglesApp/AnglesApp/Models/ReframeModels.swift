@@ -334,6 +334,7 @@ struct StoredCardTag: Codable, Equatable, Sendable {
 
 struct StoredCardAuthor: Codable, Equatable, Sendable {
     let initials: String
+    let avatarUrl: String? = nil
 }
 
 struct StoredCard: Decodable, Equatable, Sendable {

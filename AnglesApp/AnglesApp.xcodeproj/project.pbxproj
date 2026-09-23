@@ -33,6 +33,7 @@
 		99EEAB90C5E209CBF852F02A /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7498958071766D66B285676C /* StoreKitManager.swift */; };
 		A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A473004998C2F650FCA971D /* DrawerStubView.swift */; };
 		A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = CECAAC54ED5DE586764B6970 /* HomePalette.swift */; };
+		A524721420264A194D882278 /* ProfileIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAC3C2E3C735CDB1A8F28E87 /* ProfileIdentityStore.swift */; };
 		A72468A7C749E204738C1D2C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B13ED3B345E39F024359E6C0 /* Assets.xcassets */; };
 		A822B18D9B139FF8129822CC /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7E4784E528CDE420C415B939 /* Lottie */; };
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
@@ -40,8 +41,9 @@
 		C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564F37666F47FDFD54D03D2D /* HomeView.swift */; };
 		E2DC973B158B0229CB1C3AD1 /* StyleTabPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA854E5DFB79BE265F1D553D /* StyleTabPager.swift */; };
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
-		EBDA2E1E27376A11583D19E9 /* AccentPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */; };
+		E893FFE90BB36CD6A2D17F5C /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */; };
 		F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551EA9251B494B0E82C36D47 /* ColorTokens.swift */; };
+		FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0F4006AE6DACF0D19171814 /* ProfileService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -56,7 +58,6 @@
 		4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
 		54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		551EA9251B494B0E82C36D47 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
-		55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentPickerView.swift; sourceTree = "<group>"; };
 		564F37666F47FDFD54D03D2D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		657231FF50708210A4AA9FDD /* UserAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAppearance.swift; sourceTree = "<group>"; };
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
@@ -75,10 +76,13 @@
 		C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		C4B72925153855FD655114F4 /* celebration-checkmark.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "celebration-checkmark.json"; sourceTree = "<group>"; };
 		C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeStore.swift; sourceTree = "<group>"; };
+		CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionView.swift; sourceTree = "<group>"; };
 		CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
 		CECAAC54ED5DE586764B6970 /* HomePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomePalette.swift; sourceTree = "<group>"; };
 		D3BCFBFF2318D9F3BE56CB22 /* HomeFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFilterSheet.swift; sourceTree = "<group>"; };
 		DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccentPalette.swift; sourceTree = "<group>"; };
+		EAC3C2E3C735CDB1A8F28E87 /* ProfileIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileIdentityStore.swift; sourceTree = "<group>"; };
+		F0F4006AE6DACF0D19171814 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileService.swift; sourceTree = "<group>"; };
 		F2D55F6643C769B38928FD8B /* ReframeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeModels.swift; sourceTree = "<group>"; };
 		FA854E5DFB79BE265F1D553D /* StyleTabPager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StyleTabPager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -100,6 +104,7 @@
 			children = (
 				B1EBC59EB491832949278518 /* APIClient.swift */,
 				91621A647BBA93B4181D3EB3 /* CardsService.swift */,
+				F0F4006AE6DACF0D19171814 /* ProfileService.swift */,
 				40B602E536EA39A5C8524CE6 /* ReframeService.swift */,
 			);
 			path = Networking;
@@ -161,9 +166,10 @@
 		A1EEEC4B1AED5D4B34FC7B21 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				55FA361F0152E1F3C2D2333F /* AccentPickerView.swift */,
 				CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */,
+				EAC3C2E3C735CDB1A8F28E87 /* ProfileIdentityStore.swift */,
 				C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */,
+				CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -313,7 +319,6 @@
 			files = (
 				6B24BAA80221DF85876BB30A /* APIClient.swift in Sources */,
 				23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */,
-				EBDA2E1E27376A11583D19E9 /* AccentPickerView.swift in Sources */,
 				48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */,
 				9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */,
 				7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */,
@@ -332,6 +337,8 @@
 				01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
 				1C5A8915F3447627232F0B0D /* PaywallView.swift in Sources */,
+				A524721420264A194D882278 /* ProfileIdentityStore.swift in Sources */,
+				FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */,
 				01A8AEC059C1A4D61340EAB5 /* ProfileView.swift in Sources */,
 				327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */,
 				3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */,
@@ -340,6 +347,7 @@
 				ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */,
 				99EEAB90C5E209CBF852F02A /* StoreKitManager.swift in Sources */,
 				E2DC973B158B0229CB1C3AD1 /* StyleTabPager.swift in Sources */,
+				E893FFE90BB36CD6A2D17F5C /* SubscriptionView.swift in Sources */,
 				26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */,
 				978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */,
 			);

@@ -35,9 +35,10 @@ export const users = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     initials: text("initials").notNull(),
+    avatarKey: text("avatar_key"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
-  (table) => [check("users_initials_len", sql`char_length(initials) = 2`)],
+  (table) => [check("users_initials_len", sql`char_length(initials) between 1 and 2`)],
 );
 
 export const cards = pgTable(

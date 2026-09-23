@@ -7,26 +7,34 @@ import { errorBody } from "./lib/http.js";
 import { cardsRoute } from "./routes/cards.js";
 import { feedRoute } from "./routes/feed.js";
 import { healthRoute } from "./routes/health.js";
+import { avatarsRoute, profileRoute } from "./routes/profile.js";
 import { reframeRoute } from "./routes/reframe.js";
 
 const MAX_BODY_BYTES = 8 * 1024;
+
+const jsonBodyLimit = bodyLimit({
+  maxSize: MAX_BODY_BYTES,
+  onError: (c) => c.json(errorBody("Request body too large", "PAYLOAD_TOO_LARGE"), 413),
+});
 
 export function createApp(): Hono {
   const app = new Hono();
 
   app.use("*", logger());
-  app.use(
-    "*",
-    bodyLimit({
-      maxSize: MAX_BODY_BYTES,
-      onError: (c) => c.json(errorBody("Request body too large", "PAYLOAD_TOO_LARGE"), 413),
-    }),
-  );
+  app.use("*", async (c, next) => {
+    if (c.req.method === "PUT" && c.req.path === "/profile/avatar") {
+      await next();
+      return;
+    }
+    return jsonBodyLimit(c, next);
+  });
 
   app.route("/health", healthRoute);
   app.route("/reframe", reframeRoute);
   app.route("/cards", cardsRoute);
   app.route("/feed", feedRoute);
+  app.route("/profile", profileRoute);
+  app.route("/avatars", avatarsRoute);
 
   app.notFound((c) => c.json(errorBody("Not found", "NOT_FOUND"), 404));
 

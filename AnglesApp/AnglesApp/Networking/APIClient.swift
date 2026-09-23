@@ -83,6 +83,24 @@ final class APIClient: @unchecked Sendable {
         try await decode(try await send(path: path, method: "DELETE", timeout: timeout))
     }
 
+    func putData<Response: Decodable>(
+        path: String,
+        body: Data,
+        contentType: String,
+        timeout: TimeInterval? = nil
+    ) async throws -> Response {
+        try await decode(
+            try await perform(
+                path: path,
+                method: "PUT",
+                queryItems: [],
+                bodyData: body,
+                contentType: contentType,
+                timeout: timeout
+            )
+        )
+    }
+
     private func decode<Response: Decodable>(_ data: Data) throws -> Response {
         do {
             return try decoder.decode(Response.self, from: data)
@@ -97,7 +115,7 @@ final class APIClient: @unchecked Sendable {
         queryItems: [URLQueryItem] = [],
         timeout: TimeInterval? = nil
     ) async throws -> Data {
-        try await perform(path: path, method: method, queryItems: queryItems, bodyData: nil, timeout: timeout)
+        try await perform(path: path, method: method, queryItems: queryItems, bodyData: nil, contentType: nil, timeout: timeout)
     }
 
     private func send<Body: Encodable>(
@@ -112,6 +130,7 @@ final class APIClient: @unchecked Sendable {
             method: method,
             queryItems: queryItems,
             bodyData: try encoder.encode(body),
+            contentType: "application/json",
             timeout: timeout
         )
     }
@@ -121,6 +140,7 @@ final class APIClient: @unchecked Sendable {
         method: String,
         queryItems: [URLQueryItem],
         bodyData: Data?,
+        contentType: String?,
         timeout: TimeInterval?
     ) async throws -> Data {
         guard let url = resolvedURL(path: path, queryItems: queryItems) else {
@@ -134,7 +154,9 @@ final class APIClient: @unchecked Sendable {
         }
         // TODO(auth): attach Authorization from the Better Auth session once auth exists
         if let bodyData {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let contentType {
+                request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+            }
             request.httpBody = bodyData
         }
 
