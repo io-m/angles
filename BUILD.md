@@ -385,6 +385,9 @@ Account / auth settings wait until auth exists. Appearance already shipped in 2a
 
 ## Shipped log
 
+- 2026-09-24 — Owner globes open the same privacy menu on both Profile card layouts.
+- 2026-09-24 — Profile privacy actions now apply directly without a second confirmation dialog.
+- 2026-09-24 — Tapping the globe on the author’s own Home post opens the native card-action menu; Make private removes it with one smooth list transaction.
 - 2026-09-24 — Narrow-layout hardening: shared pager tabs choose a stable 36pt or 30pt density from available width, card style rows gain a final icon-only fallback, compose/proposal chrome can grow or reflow, Profile/Following labels stay bounded, and paywall plan/legal content reflows while compact-height or large-type membership content scrolls.
 - 2026-09-24 — Home, public author, and model pages now instantiate one `HomeFeedPager` for horizontal paging, chip scrub, wash, tab pages, refresh, footer, and bottom fade; trailing author/model identity overlays no longer compress the wide Humorous and Tough Love chips, model chrome is logo-only, and back is chevron-only.
 - 2026-09-23 — Audit fixes, server: `POST /cards` only stores a cook `/reframe` signed (HMAC, `COOK_SIGNING_KEY`) and rejects any safety flag; a hearted card leaves the viewer's library once its author makes it private, and can still be removed from the board; feed, author, and library pages share one index-seekable `createdAt|id` cursor on millisecond timestamps; per-page save lookups.

@@ -601,7 +601,8 @@ private struct ProfileTabPage: View {
                         onOpenAuthor: onOpenAuthor,
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
-                        loadMorePrefetchDistance: 6
+                        loadMorePrefetchDistance: 6,
+                        offersOwnerPrivacyMenu: true
                     )
                     .equatable()
                     .padding(.horizontal, HeaderCollapse.horizontalPadding)
@@ -626,7 +627,8 @@ private struct ProfileTabPage: View {
                         onOpenModel: onOpenModel,
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
-                        loadMorePrefetchDistance: 6
+                        loadMorePrefetchDistance: 6,
+                        offersOwnerPrivacyMenu: true
                     )
                     .equatable()
                     .padding(.horizontal, HeaderCollapse.horizontalPadding)

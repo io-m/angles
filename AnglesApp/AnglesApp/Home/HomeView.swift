@@ -18,6 +18,7 @@ struct HomeView: View {
     var onOpenModel: (HomeCard) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showHomeFilter = false
 
@@ -40,6 +41,7 @@ struct HomeView: View {
             shiningCardID: viewModel.shiningCardID,
             isScrollDisabled: isGlimpseActive,
             canPullToRefresh: canLoadFullAppContent && !isGlimpseActive,
+            offersOwnerPrivacyMenu: true,
             externalSelectionTab: viewModel.saveLanding == .home ? .all : nil,
             externalSelectionToken: viewModel.saveLandingToken,
             onCommitPage: commitPage,
@@ -115,8 +117,15 @@ struct HomeView: View {
     }
 
     private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
-        if card.isOwner {
+        guard card.isOwner else {
+            return
+        }
+        if reduceMotion {
             viewModel.setPublic(card.id, isPublic: isPublic)
+        } else {
+            withAnimation(.smooth(duration: 0.3)) {
+                viewModel.setPublic(card.id, isPublic: isPublic)
+            }
         }
     }
 
@@ -138,6 +147,7 @@ struct HomeFeedPager<Chrome: View>: View {
     let shiningCardID: UUID?
     let isScrollDisabled: Bool
     let canPullToRefresh: Bool
+    let offersOwnerPrivacyMenu: Bool
     let externalSelectionTab: HomeFeedTab?
     let externalSelectionToken: Int
     let onCommitPage: (HomeFeedTab) -> Void
@@ -175,6 +185,7 @@ struct HomeFeedPager<Chrome: View>: View {
         shiningCardID: UUID? = nil,
         isScrollDisabled: Bool = false,
         canPullToRefresh: Bool = true,
+        offersOwnerPrivacyMenu: Bool = false,
         externalSelectionTab: HomeFeedTab? = nil,
         externalSelectionToken: Int = 0,
         onCommitPage: @escaping (HomeFeedTab) -> Void = { _ in },
@@ -205,6 +216,7 @@ struct HomeFeedPager<Chrome: View>: View {
         self.shiningCardID = shiningCardID
         self.isScrollDisabled = isScrollDisabled
         self.canPullToRefresh = canPullToRefresh
+        self.offersOwnerPrivacyMenu = offersOwnerPrivacyMenu
         self.externalSelectionTab = externalSelectionTab
         self.externalSelectionToken = externalSelectionToken
         self.onCommitPage = onCommitPage
@@ -281,7 +293,8 @@ struct HomeFeedPager<Chrome: View>: View {
                                 onRemoveFromBoard: onRemoveFromBoard,
                                 onOpenAuthor: onOpenAuthor,
                                 onOpenModel: onOpenModel,
-                                onToggleFollow: onToggleFollow
+                                onToggleFollow: onToggleFollow,
+                                offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
                             )
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
@@ -445,6 +458,7 @@ struct HomeFeedTabPage: View {
     let onOpenAuthor: (HomeCard) -> Void
     let onOpenModel: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
+    let offersOwnerPrivacyMenu: Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -578,7 +592,8 @@ struct HomeFeedTabPage: View {
                         onOpenModel: onOpenModel,
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
-                        loadMorePrefetchDistance: 6
+                        loadMorePrefetchDistance: 6,
+                        offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
                     )
                     .equatable()
                     .padding(.horizontal, HeaderCollapse.horizontalPadding)

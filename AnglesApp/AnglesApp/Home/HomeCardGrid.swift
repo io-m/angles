@@ -17,6 +17,7 @@ struct HomeCardGrid: View, Equatable {
     /// Fires before the end is visible, so a server-paged grid can append off screen.
     var onReachEnd: (() -> Void)? = nil
     var loadMorePrefetchDistance = 0
+    var offersOwnerPrivacyMenu = false
 
     static func == (lhs: HomeCardGrid, rhs: HomeCardGrid) -> Bool {
         lhs.cards == rhs.cards
@@ -24,6 +25,7 @@ struct HomeCardGrid: View, Equatable {
             && lhs.presentation == rhs.presentation
             && lhs.openingStyle == rhs.openingStyle
             && lhs.loadMorePrefetchDistance == rhs.loadMorePrefetchDistance
+            && lhs.offersOwnerPrivacyMenu == rhs.offersOwnerPrivacyMenu
     }
 
     var body: some View {
@@ -39,7 +41,8 @@ struct HomeCardGrid: View, Equatable {
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
                     onRemoveFromBoard: { onRemoveFromBoard(card) },
                     onOpenAuthor: openAuthorAction(for: card),
-                    onToggleFollow: followAction(for: card)
+                    onToggleFollow: followAction(for: card),
+                    offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
                 )
                 .equatable()
                 .onAppear {
@@ -110,6 +113,7 @@ struct TallHomeCardGrid: View, Equatable {
     /// Fires before the end is visible, so a server-paged grid can append off screen.
     var onReachEnd: (() -> Void)? = nil
     var loadMorePrefetchDistance = 0
+    var offersOwnerPrivacyMenu = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -120,6 +124,7 @@ struct TallHomeCardGrid: View, Equatable {
             && lhs.openingStyle == rhs.openingStyle
             && lhs.shiningCardID == rhs.shiningCardID
             && lhs.loadMorePrefetchDistance == rhs.loadMorePrefetchDistance
+            && lhs.offersOwnerPrivacyMenu == rhs.offersOwnerPrivacyMenu
     }
 
     var body: some View {
@@ -137,7 +142,8 @@ struct TallHomeCardGrid: View, Equatable {
                     onRemoveFromBoard: { onRemoveFromBoard(card) },
                     onOpenAuthor: openAuthorAction(for: card),
                     onOpenModel: openModelAction(for: card),
-                    onToggleFollow: followAction(for: card)
+                    onToggleFollow: followAction(for: card),
+                    offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
                 )
                 .equatable()
                 .overlay {

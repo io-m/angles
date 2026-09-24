@@ -69,6 +69,7 @@ struct ReframeCardView: View, Equatable {
     var onOpenAuthor: (() -> Void)? = nil
     var onOpenModel: (() -> Void)? = nil
     var onToggleFollow: (() -> Void)? = nil
+    var offersOwnerPrivacyMenu = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -87,7 +88,6 @@ struct ReframeCardView: View, Equatable {
     @State private var heartScale: CGFloat = 1
     @State private var isFavoriteFlipped = false
     @State private var showDeleteConfirm = false
-    @State private var showPublishConfirm = false
     /// Uncapped height of the tall card, measured off-screen. Drives the reply scroll.
     @State private var tallIdealHeight: CGFloat = 0
 
@@ -98,6 +98,7 @@ struct ReframeCardView: View, Equatable {
             && lhs.openingStyle == rhs.openingStyle
             && lhs.limitsFavoriteCopyHeight == rhs.limitsFavoriteCopyHeight
             && lhs.tallCardMaxHeight == rhs.tallCardMaxHeight
+            && lhs.offersOwnerPrivacyMenu == rhs.offersOwnerPrivacyMenu
     }
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -185,16 +186,6 @@ struct ReframeCardView: View, Equatable {
             ) {
                 Button("Delete", role: .destructive, action: onDelete)
                 Button("Cancel", role: .cancel) {}
-            }
-            .confirmationDialog(
-                "Make this card public?",
-                isPresented: $showPublishConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Make public") { onSetPublic(true) }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Everyone on Home can see this card.")
             }
     }
 
@@ -406,10 +397,34 @@ struct ReframeCardView: View, Equatable {
     @ViewBuilder
     private func publicMark(font: Font) -> some View {
         if card.isOwner, card.isPublic {
-            Image(systemName: "globe")
-                .font(font)
-                .foregroundStyle(theme.muted)
+            if offersOwnerPrivacyMenu {
+                Menu {
+                    Button {
+                        Task { @MainActor in
+                            await Task.yield()
+                            onSetPublic(false)
+                        }
+                    } label: {
+                        Label("Make private", systemImage: "lock.fill")
+                    }
+                } label: {
+                    Image(systemName: "globe")
+                        .font(font)
+                        .foregroundStyle(theme.muted)
+                        .padding(8)
+                        .contentShape(Rectangle())
+                        .padding(-8)
+                }
+                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
                 .accessibilityLabel("Public")
+                .accessibilityHint("Opens privacy actions")
+            } else {
+                Image(systemName: "globe")
+                    .font(font)
+                    .foregroundStyle(theme.muted)
+                    .accessibilityLabel("Public")
+            }
         }
     }
 
@@ -715,11 +730,7 @@ struct ReframeCardView: View, Equatable {
             )
         case .owner:
             Button {
-                if card.isPublic {
-                    onSetPublic(false)
-                } else {
-                    showPublishConfirm = true
-                }
+                onSetPublic(!card.isPublic)
             } label: {
                 Label(
                     card.isPublic ? "Make private" : "Make public",
