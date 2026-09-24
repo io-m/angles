@@ -50,6 +50,8 @@ struct PaywallView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     @State private var selectedPlan: PaywallPlan = .annual
     @State private var hasChosenPlan = false
@@ -59,6 +61,9 @@ struct PaywallView: View {
     @State private var infoSheetDetent: PresentationDetent = .large
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    private var usesScrollableMembershipContent: Bool {
+        verticalSizeClass == .compact || dynamicTypeSize > .large
+    }
 
     init(
         storeKitManager: StoreKitManager,
@@ -171,8 +176,36 @@ struct PaywallView: View {
     }
 
     /// One locked screen: four-angle specimen on paper, commerce spread in the floor.
-    /// Furniture lives behind the (i) sheet so this never scrolls.
+    /// The specimen scrolls only for compact height or larger Dynamic Type.
     private var membershipStage: some View {
+        Group {
+            if usesScrollableMembershipContent {
+                ScrollView {
+                    membershipContent(fillsAvailableHeight: false)
+                }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+            } else {
+                membershipContent(fillsAvailableHeight: true)
+            }
+        }
+        .animation(restoreFeedbackAnimation, value: storeKitManager.priorMembershipProductID)
+        .animation(restoreFeedbackAnimation, value: storeKitManager.errorMessage)
+        .animation(planSwitchAnimation, value: selectedPlan)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            purchaseModule
+        }
+        .sheet(isPresented: $showsInfoSheet) {
+            paywallInfoSheet
+                .onAppear { infoSheetDetent = .large }
+        }
+        .allowsHitTesting(!storeKitManager.isBusy || showsInfoSheet)
+        .accessibilityHidden(storeKitManager.isBusy && !showsInfoSheet)
+    }
+
+    private func membershipContent(
+        fillsAvailableHeight: Bool
+    ) -> some View {
         VStack(spacing: 0) {
             HStack {
                 Spacer(minLength: 0)
@@ -203,20 +236,11 @@ struct PaywallView: View {
             }
             .padding(.horizontal, 20)
             .frame(maxWidth: 560)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: fillsAvailableHeight ? .infinity : nil
+            )
         }
-        .animation(restoreFeedbackAnimation, value: storeKitManager.priorMembershipProductID)
-        .animation(restoreFeedbackAnimation, value: storeKitManager.errorMessage)
-        .animation(planSwitchAnimation, value: selectedPlan)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            purchaseModule
-        }
-        .sheet(isPresented: $showsInfoSheet) {
-            paywallInfoSheet
-                .onAppear { infoSheetDetent = .large }
-        }
-        .allowsHitTesting(!storeKitManager.isBusy || showsInfoSheet)
-        .accessibilityHidden(storeKitManager.isBusy && !showsInfoSheet)
     }
 
     private var infoButton: some View {
@@ -414,29 +438,26 @@ struct PaywallView: View {
         return Button {
             selectPlan(plan)
         } label: {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(plan.title)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.ink)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    planCopy(plan)
 
-                    Text(planDetail(plan))
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(theme.muted)
+                    Spacer(minLength: 12)
+
+                    planPriceAndSelection(plan, isSelected: isSelected)
                 }
 
-                Spacer(minLength: 12)
+                VStack(alignment: .leading, spacing: 10) {
+                    planCopy(plan)
 
-                Text(planPrice(plan))
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.ink)
-                    .contentTransition(.numericText())
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(isSelected ? theme.ink : theme.faint)
+                    HStack(spacing: 12) {
+                        Spacer(minLength: 0)
+                        planPriceAndSelection(plan, isSelected: isSelected)
+                    }
+                }
             }
             .padding(.horizontal, 16)
+            .padding(.vertical, 10)
             .frame(minHeight: 64)
             .background {
                 rowShape.fill(theme.ink.opacity(isSelected ? 0.05 : 0))
@@ -456,6 +477,35 @@ struct PaywallView: View {
         .accessibilityValue(planDetail(plan))
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .accessibilityHint(isSelected ? "" : "Double-tap to select")
+    }
+
+    private func planCopy(_ plan: PaywallPlan) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(plan.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(theme.ink)
+
+            Text(planDetail(plan))
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func planPriceAndSelection(
+        _ plan: PaywallPlan,
+        isSelected: Bool
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(planPrice(plan))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(theme.ink)
+                .contentTransition(.numericText())
+
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(isSelected ? theme.ink : theme.faint)
+        }
     }
 
     private func planPrice(_ plan: PaywallPlan) -> String {
@@ -550,13 +600,30 @@ struct PaywallView: View {
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 20) {
-                Link("Terms of Service", destination: URL(string: "https://angles.app/terms")!)
-                Link("Privacy Policy", destination: URL(string: "https://angles.app/privacy")!)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 20) {
+                    legalLinks
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    legalLinks
+                }
             }
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(theme.ink)
         }
+    }
+
+    @ViewBuilder
+    private var legalLinks: some View {
+        Link(
+            "Terms of Service",
+            destination: URL(string: "https://angles.app/terms")!
+        )
+        Link(
+            "Privacy Policy",
+            destination: URL(string: "https://angles.app/privacy")!
+        )
     }
 
     private var selectedProduct: Product? {

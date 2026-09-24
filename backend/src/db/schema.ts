@@ -79,6 +79,9 @@ export const cards = pgTable(
     index("cards_public_created_idx")
       .on(table.createdAt.desc().nullsFirst(), table.id.desc().nullsFirst())
       .where(sql`${table.isPublic} = true`),
+    index("cards_public_model_created_idx")
+      .on(table.model, table.createdAt.desc().nullsFirst(), table.id.desc().nullsFirst())
+      .where(sql`${table.isPublic} = true`),
     index("cards_emotions_gin_idx").using("gin", table.emotions),
     check("cards_intensity_range", sql`intensity between 1 and 5`),
   ],

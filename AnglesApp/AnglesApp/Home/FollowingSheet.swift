@@ -116,6 +116,9 @@ struct FollowingSheet: View {
                     Text(displayInitials(person.initials))
                         .font(.body.weight(.medium))
                         .foregroundStyle(theme.ink)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
 
                     Spacer(minLength: 12)
                 }

@@ -20,8 +20,10 @@ enum ReframeCardMetrics {
     static let tallAvatarSize: CGFloat = 48
     static let tallSectionSpacing: CGFloat = 20
     static let tallThoughtFont: Font = .body.weight(.regular)
-    static let tallAnswerFont: Font = .title2.weight(.medium)
-    static let tallAnswerLineSpacing: CGFloat = 4
+    static let tallAnswerFont: Font = .title3.weight(.medium)
+    static let tallLifeAreaBadgeIconSize: CGFloat = 14
+    static let tallLifeAreaBadgeFont: Font = .footnote.weight(.medium)
+    static let tallAnswerLineSpacing: CGFloat = 3
     static let tallAnswerVerticalPadding: CGFloat = 18
     /// Flip-only favorites: answer on front, thought on back — grows with copy.
     static let favoriteStripMinHeight: CGFloat = 168
@@ -65,6 +67,7 @@ struct ReframeCardView: View, Equatable {
     var onSetPublic: (Bool) -> Void = { _ in }
     var onRemoveFromBoard: () -> Void = {}
     var onOpenAuthor: (() -> Void)? = nil
+    var onOpenModel: (() -> Void)? = nil
     var onToggleFollow: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
@@ -286,7 +289,8 @@ struct ReframeCardView: View, Equatable {
                 answerVerticalPadding: ReframeCardMetrics.tallAnswerVerticalPadding,
                 model: card.model,
                 modelFill: activeAppearance.ink,
-                scrollsAnswer: scrollsAnswer
+                scrollsAnswer: scrollsAnswer,
+                onOpenModel: onOpenModel
             )
             .frame(maxHeight: scrollsAnswer ? .infinity : nil, alignment: .top)
 
@@ -445,8 +449,8 @@ struct ReframeCardView: View, Equatable {
 
             headerTrailingCluster(
                 menuGlyphSize: 17,
-                badgeIconSize: 16,
-                badgeFont: .subheadline.weight(.medium)
+                badgeIconSize: ReframeCardMetrics.tallLifeAreaBadgeIconSize,
+                badgeFont: ReframeCardMetrics.tallLifeAreaBadgeFont
             )
         }
         .padding(.horizontal, ReframeCardMetrics.tallRhythm)
@@ -892,6 +896,40 @@ struct OverlayProposalCard: View {
     }
 
     private var overlayHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            overlayHeaderRow
+
+            VStack(alignment: .leading, spacing: 8) {
+                AuthorMark(
+                    initials: identityStore?.avatarLetters
+                        ?? identityStore?.serverInitials
+                        ?? UserInitials.letters,
+                    avatarPath: identityStore?.avatarPath,
+                    prefersLocalPhoto: true,
+                    side: ReframeCardMetrics.avatarSize,
+                    fill: theme.ink,
+                    symbol: theme.paper
+                )
+                .accessibilityHidden(true)
+
+                HStack(spacing: 8) {
+                    overlayPrivacyToggle
+
+                    Spacer(minLength: 4)
+
+                    if hasOriginal {
+                        OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {
+                            showingOriginal.toggle()
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, ReframeCardMetrics.chromeInset)
+        .padding(.top, ReframeCardMetrics.chromeInset)
+    }
+
+    private var overlayHeaderRow: some View {
         HStack(spacing: 10) {
             AuthorMark(
                 initials: identityStore?.avatarLetters ?? identityStore?.serverInitials ?? UserInitials.letters,
@@ -913,8 +951,6 @@ struct OverlayProposalCard: View {
                 }
             }
         }
-        .padding(.horizontal, ReframeCardMetrics.chromeInset)
-        .padding(.top, ReframeCardMetrics.chromeInset)
     }
 
     private var overlayPrivacyToggle: some View {
@@ -982,10 +1018,13 @@ struct OverlayProposalCard: View {
                 }
                 Text(isRecooking ? "New \(style.displayName.lowercased()) angle…" : "New answer")
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .multilineTextAlignment(.center)
             }
             .foregroundStyle(ink)
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
             .frame(minHeight: 44)
             .background(ink.opacity(0.12), in: Capsule())
             .contentShape(Capsule())
@@ -1030,6 +1069,7 @@ private struct ReframeCopyStack: View {
     var modelFill: Color? = nil
     /// When the card is at the viewport cap, only the reply scrolls.
     var scrollsAnswer: Bool = false
+    var onOpenModel: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -1072,18 +1112,7 @@ private struct ReframeCopyStack: View {
     private func answerRow(_ answer: String) -> some View {
         VStack(alignment: .leading, spacing: model == nil ? 0 : ReframeCardMetrics.tallRhythm) {
             if let model {
-                HStack(spacing: 10) {
-                    ModelLogo(model: model, side: 18)
-                        .frame(width: ReframeCardMetrics.chipSize, height: ReframeCardMetrics.chipSize)
-                        .background((modelFill ?? theme.ink).opacity(0.08), in: Circle())
-
-                    Text(model.displayName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(theme.ink)
-                        .lineLimit(1)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Written by \(model.displayName)")
+                modelRow(model)
             }
 
             Text(answer)
@@ -1099,6 +1128,34 @@ private struct ReframeCopyStack: View {
         .padding(.top, model == nil ? answerVerticalPadding : ReframeCardMetrics.tallRhythm)
         .padding(.bottom, model == nil ? answerVerticalPadding : 0)
         .frame(maxHeight: scrollsAnswer ? .infinity : nil, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func modelRow(_ model: LlmModel) -> some View {
+        let row = HStack(spacing: 10) {
+            ModelLogo(model: model, side: 18)
+                .frame(width: ReframeCardMetrics.chipSize, height: ReframeCardMetrics.chipSize)
+                .background((modelFill ?? theme.ink).opacity(0.08), in: Circle())
+
+            Text(model.displayName)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(-1)
+        }
+        .accessibilityElement(children: .combine)
+
+        if let onOpenModel {
+            Button(action: onOpenModel) {
+                row
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Posts by \(model.displayName)")
+        } else {
+            row
+                .accessibilityLabel("Written by \(model.displayName)")
+        }
     }
 }
 
@@ -1165,21 +1222,46 @@ private struct StyleChipRow: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            row(side: ReframeCardMetrics.chipSize)
-            row(side: ReframeCardMetrics.chipSizeCompact)
+            row(
+                side: ReframeCardMetrics.chipSize,
+                showsSelectedLabel: true
+            )
+            row(
+                side: ReframeCardMetrics.chipSizeCompact,
+                showsSelectedLabel: true
+            )
+            row(
+                side: ReframeCardMetrics.chipSizeCompact,
+                showsSelectedLabel: false
+            )
         }
         .sensoryFeedback(.selection, trigger: selectHaptic)
     }
 
-    private func row(side: CGFloat) -> some View {
-        HStack(spacing: ReframeCardMetrics.chipSpacing) {
+    private func row(
+        side: CGFloat,
+        showsSelectedLabel: Bool
+    ) -> some View {
+        HStack(
+            spacing: side == ReframeCardMetrics.chipSize
+                ? ReframeCardMetrics.chipSpacing
+                : 4
+        ) {
             ForEach(styles, id: \.self) { style in
-                chip(style, side: side)
+                chip(
+                    style,
+                    side: side,
+                    showsSelectedLabel: showsSelectedLabel
+                )
             }
         }
     }
 
-    private func chip(_ style: Style, side: CGFloat) -> some View {
+    private func chip(
+        _ style: Style,
+        side: CGFloat,
+        showsSelectedLabel: Bool
+    ) -> some View {
         let appearance = CardStyleAppearance(style: style)
         let isSelected = style == selected
         let glyph: CGFloat = side >= ReframeCardMetrics.chipSize ? 14 : 12
@@ -1199,11 +1281,20 @@ private struct StyleChipRow: View {
                     .symbolRenderingMode(.hierarchical)
                     .font(.system(size: glyph, weight: .semibold))
 
-                if isSelected {
+                if isSelected, showsSelectedLabel {
                     Text(style.displayName)
-                        .font(.caption.weight(.semibold))
+                        .font(
+                            side == ReframeCardMetrics.chipSize
+                                ? .caption.weight(.semibold)
+                                : .caption2.weight(.semibold)
+                        )
                         .lineLimit(1)
-                        .fixedSize()
+                        .minimumScaleFactor(0.78)
+                        .frame(
+                            maxWidth: side == ReframeCardMetrics.chipSize
+                                ? nil
+                                : 64
+                        )
                         .transition(
                             .asymmetric(
                                 insertion: .opacity.combined(
@@ -1221,8 +1312,15 @@ private struct StyleChipRow: View {
                     ? appearance.ink
                     : appearance.ink.opacity(appearance.chipUnselectedInkOpacity(for: colorScheme))
             )
-            .padding(.horizontal, isSelected ? 10 : 0)
-            .frame(width: isSelected ? nil : side, height: side, alignment: .center)
+            .padding(
+                .horizontal,
+                isSelected && showsSelectedLabel ? 10 : 0
+            )
+            .frame(
+                width: isSelected && showsSelectedLabel ? nil : side,
+                height: side,
+                alignment: .center
+            )
             .background {
                 Capsule(style: .continuous)
                     .fill(

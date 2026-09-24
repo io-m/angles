@@ -72,9 +72,10 @@ Loading and error are **states on Results**, not their own screens.
 | 9p | Fixed Profile header | polish | done | `ProfileView.swift` | Independent native vertical lists restore lazy performance and real per-tab extents; the shared glass header stays compact and horizontal paging remains interactive. |
 | 9q | Home style tabs | polish | done | `HomeView.swift`; `HomeViewModel.swift`; `StyleTabPager.swift`; `ProfileView.swift`; `HeaderChrome.swift`; `CardsService.swift`; `feed.ts`; `db/feed.ts` | All-default tabs aligned with trailing filter; no Home Settings; one feed; tab-bar footer fade. |
 | 9r | Native Home pull-to-refresh | polish | done | `HomeFeedPullRefresh.swift`; `HomeView.swift`; `HomeViewModel.swift` | SwiftUI's native refresh interaction starts below the fixed tabs while the shared feed refreshes in place. |
-| 9s | Public author profile | screen | done | `AuthorProfileView.swift`; `ReframeCardView.swift`; `HomeViewModel.swift`; `users.ts`; `feed.ts`; `ReframeModels.swift` | Avatar opens that author's public posts full screen; your own avatar switches to Profile. |
+| 9s | Public author profile | screen | done | `AuthorProfileView.swift`; `HomeView.swift`; `StyleTabPager.swift`; `ReframeCardView.swift`; `HomeViewModel.swift`; `users.ts`; `feed.ts`; `ReframeModels.swift` | Avatar opens that author's public posts in Home's five-tab pager; your own avatar switches to Profile. |
 | 9t | Following | feature | done | `follows.ts`; `schema.ts`; `0006_worthless_liz_osborn.sql`; `users.ts`; `mapCard.ts`; `feed.ts`; `ReframeCardView.swift`; `HomeViewModel.swift`; `AuthorProfileView.swift` | One-way follow badge on other people's avatars; their public posts stay in the same Home mix. |
 | 9u | Following list | feature | done | `follows.ts`; `profile.ts`; `FollowingSheet.swift`; `ProfileView.swift`; `HomeViewModel.swift`; `ProfileService.swift` | A people icon beside Settings opens the people you follow; a row opens their posts, and the minus icon unfollows. |
+| 9v | Model cards page | screen | done | `ModelProfileView.swift`; `HomeView.swift`; `StyleTabPager.swift`; `HomeViewModel.swift`; `models.ts`; `feed.ts`; `schema.ts`; `0008_public_model_created_idx.sql`; `ReframeModels.swift` | Tapping a model opens its public cards in Home's five-tab pager, with a logo-only header. |
 
 ### 1. Compose (home)
 
@@ -252,7 +253,7 @@ Tapping someone else's card avatar pushes this page over Home or Profile, coveri
 - **Posts.** `GET /users/:id/cards` returns that person's public cards, newest first, with the same cursor as Home. Private cards stay off the page, including the author's own. An empty public list is still that person. Unknown ids are an error on the page.
 - **Tabs.** All is the default mixed cover. A style tab keeps posts that have that angle and opens on it, from the one loaded list. No Favorites, no Life area or Mood sheet, no Settings.
 - **Hearts and owner actions.** Same as Home, written through the existing card and feed endpoints. The author list, Home, and the library update in place. Opening this page does not refetch either.
-- **Back.** The header back button and the left-edge swipe both use the system navigation pop. The tab bar returns with the card that opened the page. A tap on this page for the author already showing does nothing.
+- **Back.** Only the header chevron pops the page. Each pushed public destination hides the native back control, disabling the system edge-pop so horizontal drags belong exclusively to the style pager. The tab bar returns with the card that opened the page. A tap on this page for the author already showing does nothing.
 
 ### 9i. Profile identity + style tabs
 
@@ -384,6 +385,8 @@ Account / auth settings wait until auth exists. Appearance already shipped in 2a
 
 ## Shipped log
 
+- 2026-09-24 — Narrow-layout hardening: shared pager tabs choose a stable 36pt or 30pt density from available width, card style rows gain a final icon-only fallback, compose/proposal chrome can grow or reflow, Profile/Following labels stay bounded, and paywall plan/legal content reflows while compact-height or large-type membership content scrolls.
+- 2026-09-24 — Home, public author, and model pages now instantiate one `HomeFeedPager` for horizontal paging, chip scrub, wash, tab pages, refresh, footer, and bottom fade; trailing author/model identity overlays no longer compress the wide Humorous and Tough Love chips, model chrome is logo-only, and back is chevron-only.
 - 2026-09-23 — Audit fixes, server: `POST /cards` only stores a cook `/reframe` signed (HMAC, `COOK_SIGNING_KEY`) and rejects any safety flag; a hearted card leaves the viewer's library once its author makes it private, and can still be removed from the board; feed, author, and library pages share one index-seekable `createdAt|id` cursor on millisecond timestamps; per-page save lookups.
 - 2026-09-23 — Audit fixes, iOS: pull-to-refresh keeps the page cursor, so a failed refresh can still load more; publishing under a filter refetches the unfiltered page; thin style tabs keep paging; the library pages past 200; a card that went away says so; Make public asks first and public cards show a globe to their author; recook failures and Following-sheet unfollow failures show; the name saves on blur; leaving waits for a save; Log out clears loaded cards; author photos are cached and downsampled; the author page's edge swipe no longer disables the root's pop gate; Release has no API host until one exists.
 - 2026-09-23 — Following sheet search filters initials with the system search field.

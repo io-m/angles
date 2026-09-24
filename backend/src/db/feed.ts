@@ -104,6 +104,40 @@ export async function listPublicCardsForUser(query: {
   }
 }
 
+/** Public cards cooked by one model. Private cards stay out. */
+export async function listPublicCardsForModel(query: {
+  model: string;
+  limit: number;
+  before?: FeedCursor;
+}): Promise<StoredCard[]> {
+  try {
+    const viewerId = getOwnerUserId();
+    const db = getDb();
+    const filters = [eq(cards.model, query.model), sql`${cards.isPublic} = true`];
+    if (query.before) {
+      filters.push(olderThanCursor(query.before));
+    }
+
+    const rows = await db.query.cards.findMany({
+      where: and(...filters),
+      orderBy: [desc(cards.createdAt), desc(cards.id)],
+      limit: query.limit,
+      with: {
+        user: true,
+        reframes: { orderBy: [asc(cardReframes.position)] },
+        cardTags: { with: { tag: true } },
+      },
+    });
+
+    return storedCardsForViewer(rows, viewerId);
+  } catch (error) {
+    if (error instanceof DbError) {
+      throw error;
+    }
+    throw wrapDbError(error, "listPublicCardsForModel");
+  }
+}
+
 export type FeedSaveResult =
   | { ok: true; card: StoredCard }
   | { ok: false; reason: "not_found" | "unknown_style" };

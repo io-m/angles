@@ -28,6 +28,7 @@
 		729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */; };
 		7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */; };
 		830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */; };
+		8A83FB23A4CA28CC1AC7971C /* ModelProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5E9DDB98903339C5AC14D80 /* ModelProfileView.swift */; };
 		9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */; };
 		978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657231FF50708210A4AA9FDD /* UserAppearance.swift */; };
 		97F14BFA6DDA6699C4DD5EB2 /* AvatarImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95069BD81A4DA98625DFD6FE /* AvatarImage.swift */; };
@@ -81,6 +82,7 @@
 		B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnglesApp.swift; sourceTree = "<group>"; };
 		C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		C4B72925153855FD655114F4 /* celebration-checkmark.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "celebration-checkmark.json"; sourceTree = "<group>"; };
+		C5E9DDB98903339C5AC14D80 /* ModelProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProfileView.swift; sourceTree = "<group>"; };
 		C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeStore.swift; sourceTree = "<group>"; };
 		CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionView.swift; sourceTree = "<group>"; };
 		CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
@@ -220,6 +222,7 @@
 				CECAAC54ED5DE586764B6970 /* HomePalette.swift */,
 				564F37666F47FDFD54D03D2D /* HomeView.swift */,
 				4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */,
+				C5E9DDB98903339C5AC14D80 /* ModelProfileView.swift */,
 				A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */,
 				B05847EC66A8A1B53179B539 /* ReframeCardView.swift */,
 				FA854E5DFB79BE265F1D553D /* StyleTabPager.swift */,
@@ -348,6 +351,7 @@
 				830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */,
 				01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
+				8A83FB23A4CA28CC1AC7971C /* ModelProfileView.swift in Sources */,
 				1C5A8915F3447627232F0B0D /* PaywallView.swift in Sources */,
 				A524721420264A194D882278 /* ProfileIdentityStore.swift in Sources */,
 				FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */,

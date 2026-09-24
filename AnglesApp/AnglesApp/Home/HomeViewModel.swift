@@ -404,7 +404,19 @@ private struct AuthorFeed {
     var generation = 0
     var task: Task<Void, Never>?
     var isRefreshing = false
-    var selectedTab: HomeFeedTab = .all
+}
+
+private struct ModelFeed {
+    var cards: [HomeCard] = []
+    var cardIDs: Set<UUID> = []
+    var loadState: LibraryLoadState = .loading
+    var footerState: FeedFooterState = .idle
+    var before: String?
+    var hasMore = true
+    var hasLoaded = false
+    var generation = 0
+    var task: Task<Void, Never>?
+    var isRefreshing = false
 }
 
 @MainActor
@@ -487,6 +499,7 @@ final class HomeViewModel {
     private var deleteTasks: [UUID: Task<Void, Never>] = [:]
     private var boardTasks: [UUID: Task<Void, Never>] = [:]
     private var authorFeeds: [UUID: AuthorFeed] = [:]
+    private var modelFeeds: [LlmModel: ModelFeed] = [:]
     private var writeErrorTask: Task<Void, Never>?
     private var shineTask: Task<Void, Never>?
 
@@ -546,6 +559,14 @@ final class HomeViewModel {
                     feed.initials = initials
                     feed.avatarPath = avatarPath
                 }
+                for index in feed.cards.indices where feed.cards[index].isOwner {
+                    feed.cards[index].authorInitials = initials
+                    feed.cards[index].authorAvatarPath = avatarPath
+                }
+            }
+        }
+        for model in Array(modelFeeds.keys) {
+            mutateModel(model) { feed in
                 for index in feed.cards.indices where feed.cards[index].isOwner {
                     feed.cards[index].authorInitials = initials
                     feed.cards[index].authorAvatarPath = avatarPath
@@ -768,6 +789,7 @@ final class HomeViewModel {
             withTransaction(transaction) {
                 insertFeedCardAtFront(card)
                 insertPublicCardIntoLoadedAuthorFeed(card)
+                insertPublicCardIntoLoadedModelFeed(card)
             }
             homeFeedTab = .all
             saveLanding = .home
@@ -943,6 +965,7 @@ final class HomeViewModel {
         for task in deleteTasks.values { task.cancel() }
         for task in boardTasks.values { task.cancel() }
         for feed in authorFeeds.values { feed.task?.cancel() }
+        for feed in modelFeeds.values { feed.task?.cancel() }
         favoriteTasks = [:]
         followTasks = [:]
         followGeneration = [:]
@@ -950,6 +973,7 @@ final class HomeViewModel {
         deleteTasks = [:]
         boardTasks = [:]
         authorFeeds = [:]
+        modelFeeds = [:]
 
         feedGeneration &+= 1
         feedCards = []
@@ -1311,9 +1335,39 @@ final class HomeViewModel {
         authorFeeds[authorId] = feed
     }
 
+    /// Keeps a loaded model page in step with a public card cooked by that model.
+    private func insertPublicCardIntoLoadedModelFeed(_ card: HomeCard) {
+        guard card.isPublic, let model = card.model, var feed = modelFeeds[model], feed.hasLoaded else {
+            return
+        }
+        if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
+            feed.cards[index].isPublic = true
+            modelFeeds[model] = feed
+            return
+        }
+        if feed.hasMore, let last = feed.cards.last, !feedSortIsBefore(card, last) {
+            return
+        }
+        let index = feed.cards.firstIndex { feedSortIsBefore(card, $0) } ?? feed.cards.endIndex
+        feed.cards.insert(card, at: index)
+        feed.cardIDs.insert(card.id)
+        modelFeeds[model] = feed
+    }
+
     private func removeFromAuthorFeeds(_ id: UUID) {
         for authorId in Array(authorFeeds.keys) {
             mutateAuthor(authorId) { feed in
+                guard feed.cardIDs.remove(id) != nil || feed.cards.contains(where: { $0.id == id }) else {
+                    return
+                }
+                feed.cards.removeAll { $0.id == id }
+            }
+        }
+    }
+
+    private func removeFromModelFeeds(_ id: UUID) {
+        for model in Array(modelFeeds.keys) {
+            mutateModel(model) { feed in
                 guard feed.cardIDs.remove(id) != nil || feed.cards.contains(where: { $0.id == id }) else {
                     return
                 }
@@ -1332,9 +1386,31 @@ final class HomeViewModel {
         return indexes
     }
 
+    private func modelCardIndexes(_ id: UUID) -> [LlmModel: Int] {
+        var indexes: [LlmModel: Int] = [:]
+        for (model, feed) in modelFeeds {
+            if let index = feed.cards.firstIndex(where: { $0.id == id }) {
+                indexes[model] = index
+            }
+        }
+        return indexes
+    }
+
     private func restoreAuthorCards(_ card: HomeCard, at indexes: [UUID: Int]) {
         for (authorId, index) in indexes {
             mutateAuthor(authorId) { feed in
+                guard !feed.cards.contains(where: { $0.id == card.id }) else {
+                    return
+                }
+                feed.cards.insert(card, at: min(index, feed.cards.count))
+                feed.cardIDs.insert(card.id)
+            }
+        }
+    }
+
+    private func restoreModelCards(_ card: HomeCard, at indexes: [LlmModel: Int]) {
+        for (model, index) in indexes {
+            mutateModel(model) { feed in
                 guard !feed.cards.contains(where: { $0.id == card.id }) else {
                     return
                 }
@@ -1391,6 +1467,11 @@ final class HomeViewModel {
                 return match
             }
         }
+        for feed in modelFeeds.values {
+            if let match = feed.cards.first(where: { $0.id == id }), match.isOwner {
+                return match
+            }
+        }
         return nil
     }
 
@@ -1413,11 +1494,13 @@ final class HomeViewModel {
         let libraryIndex = cards.firstIndex(where: { $0.id == id })
         let feedIndex = feedCards.firstIndex(where: { $0.id == id })
         let previousAuthorIndexes = authorCardIndexes(id)
+        let previousModelIndexes = modelCardIndexes(id)
         if libraryIndex != nil {
             cards.removeAll { $0.id == id }
         }
         removeFromFeed(id)
         removeFromAuthorFeeds(id)
+        removeFromModelFeeds(id)
 
         deleteTasks[id]?.cancel()
         deleteTasks[id] = Task { @MainActor in
@@ -1436,6 +1519,7 @@ final class HomeViewModel {
                     feedCardIDs.insert(id)
                 }
                 restoreAuthorCards(snapshot, at: previousAuthorIndexes)
+                restoreModelCards(snapshot, at: previousModelIndexes)
                 reportWriteFailure(error, "Couldn't delete that card. Check your connection.")
             }
         }
@@ -1506,6 +1590,7 @@ final class HomeViewModel {
         cards.removeAll { $0.id == id }
         removeFromFeed(id)
         removeFromAuthorFeeds(id)
+        removeFromModelFeeds(id)
     }
 
     func toggleFavorite(_ id: UUID, style: Style) {
@@ -1659,6 +1744,7 @@ final class HomeViewModel {
         ensureOwnerInLibrary(snapshot)
         let previousFeedIndex = feedCards.firstIndex(where: { $0.id == id })
         let previousAuthorIndexes = authorCardIndexes(id)
+        let previousModelIndexes = modelCardIndexes(id)
         applyLocal(id: id) { card in
             card.isPublic = isPublic
         }
@@ -1666,9 +1752,11 @@ final class HomeViewModel {
             snapshot.isPublic = true
             insertPublicCardIntoLoadedFeed(snapshot)
             insertPublicCardIntoLoadedAuthorFeed(snapshot)
+            insertPublicCardIntoLoadedModelFeed(snapshot)
         } else {
             removeFromFeed(id)
             removeFromAuthorFeeds(id)
+            removeFromModelFeeds(id)
         }
 
         publicTasks[id]?.cancel()
@@ -1696,13 +1784,22 @@ final class HomeViewModel {
                             }
                         }
                     }
+                    for model in Array(modelFeeds.keys) {
+                        mutateModel(model) { feed in
+                            if let index = feed.cards.firstIndex(where: { $0.id == cardId }) {
+                                feed.cards[index].apply(stored)
+                            }
+                        }
+                    }
                 }
                 if stored.isPublic, let card = ownerCard(id: id) {
                     insertPublicCardIntoLoadedFeed(card)
                     insertPublicCardIntoLoadedAuthorFeed(card)
+                    insertPublicCardIntoLoadedModelFeed(card)
                 } else {
                     removeFromFeed(id)
                     removeFromAuthorFeeds(id)
+                    removeFromModelFeeds(id)
                 }
             } catch {
                 guard !Task.isCancelled else {
@@ -1725,8 +1822,10 @@ final class HomeViewModel {
                     var restored = snapshot
                     restored.isPublic = previousPublic
                     restoreAuthorCards(restored, at: previousAuthorIndexes)
+                    restoreModelCards(restored, at: previousModelIndexes)
                 } else {
                     removeFromAuthorFeeds(id)
+                    removeFromModelFeeds(id)
                 }
                 reportWriteFailure(error, "Couldn't change who can see this. Check your connection.")
             }
@@ -1774,6 +1873,11 @@ final class HomeViewModel {
                 return match
             }
         }
+        for feed in modelFeeds.values {
+            if let match = feed.cards.first(where: { $0.id == id }) {
+                return match
+            }
+        }
         return nil
     }
 
@@ -1786,6 +1890,13 @@ final class HomeViewModel {
         }
         for authorId in Array(authorFeeds.keys) {
             mutateAuthor(authorId) { feed in
+                if let index = feed.cards.firstIndex(where: { $0.id == id }) {
+                    body(&feed.cards[index])
+                }
+            }
+        }
+        for model in Array(modelFeeds.keys) {
+            mutateModel(model) { feed in
                 if let index = feed.cards.firstIndex(where: { $0.id == id }) {
                     body(&feed.cards[index])
                 }
@@ -1816,6 +1927,13 @@ final class HomeViewModel {
         }
         for authorId in Array(authorFeeds.keys) {
             mutateAuthor(authorId) { feed in
+                if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
+                    feed.cards[index] = card
+                }
+            }
+        }
+        for model in Array(modelFeeds.keys) {
+            mutateModel(model) { feed in
                 if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
                     feed.cards[index] = card
                 }
@@ -2068,29 +2186,6 @@ final class HomeViewModel {
         let generation = authorFeeds[id]?.generation ?? 0
         await fetchAuthorPage(id: id, replacing: true, generation: generation)
         mutateAuthor(id) { $0.isRefreshing = false }
-        if authorFeeds[id]?.generation == generation {
-            ensureAuthorTabFilled(id)
-        }
-    }
-
-    func selectAuthorTab(_ id: UUID, _ tab: HomeFeedTab) {
-        guard authorFeeds[id] != nil, authorFeeds[id]?.selectedTab != tab else {
-            return
-        }
-        mutateAuthor(id) { $0.selectedTab = tab }
-        ensureAuthorTabFilled(id)
-    }
-
-    private func ensureAuthorTabFilled(_ id: UUID) {
-        guard let feed = authorFeeds[id],
-              let style = feed.selectedTab.matchingStyle,
-              feed.loadState == .loaded,
-              feed.hasMore,
-              feed.cards.lazy.filter({ $0.hasStyle(style) }).count < Self.tabFillMinimum
-        else {
-            return
-        }
-        loadMoreAuthor(id)
     }
 
     func retryLoadAuthor(_ id: UUID) {
@@ -2150,7 +2245,6 @@ final class HomeViewModel {
                 return
             }
             self.mutateAuthor(id) { $0.task = nil }
-            self.ensureAuthorTabFilled(id)
         }
         feed.task = task
         authorFeeds[id] = feed
@@ -2244,7 +2338,12 @@ final class HomeViewModel {
         if cards.contains(where: { $0.authorId == authorId && $0.isOwner }) {
             return true
         }
-        return authorFeeds.values.contains { feed in
+        if authorFeeds.values.contains(where: { feed in
+            feed.cards.contains { $0.authorId == authorId && $0.isOwner }
+        }) {
+            return true
+        }
+        return modelFeeds.values.contains { feed in
             feed.cards.contains { $0.authorId == authorId && $0.isOwner }
         }
     }
@@ -2260,6 +2359,11 @@ final class HomeViewModel {
             return card.authorFollowing
         }
         for feed in authorFeeds.values {
+            if let card = feed.cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
+                return card.authorFollowing
+            }
+        }
+        for feed in modelFeeds.values {
             if let card = feed.cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
                 return card.authorFollowing
             }
@@ -2285,6 +2389,14 @@ final class HomeViewModel {
                 }
             }
         }
+        for model in Array(modelFeeds.keys) {
+            mutateModel(model) { feed in
+                for index in feed.cards.indices
+                where feed.cards[index].authorId == authorId && !feed.cards[index].isOwner {
+                    feed.cards[index].authorFollowing = following
+                }
+            }
+        }
     }
 
     private func mutateAuthor(_ id: UUID, _ body: (inout AuthorFeed) -> Void) {
@@ -2293,6 +2405,185 @@ final class HomeViewModel {
         }
         body(&feed)
         authorFeeds[id] = feed
+    }
+
+    func modelCards(for model: LlmModel, tab: HomeFeedTab) -> [HomeCard] {
+        guard let feed = modelFeeds[model] else {
+            return []
+        }
+        guard let style = tab.matchingStyle else {
+            return feed.cards
+        }
+        return feed.cards.filter { $0.hasStyle(style) }
+    }
+
+    func modelLoadState(for model: LlmModel) -> LibraryLoadState {
+        modelFeeds[model]?.loadState ?? .loading
+    }
+
+    func modelFooterState(for model: LlmModel) -> FeedFooterState {
+        modelFeeds[model]?.footerState ?? .idle
+    }
+
+    func loadModelIfNeeded(_ model: LlmModel) async {
+        if modelFeeds[model] == nil {
+            modelFeeds[model] = ModelFeed()
+        }
+        guard modelFeeds[model]?.hasLoaded != true else {
+            return
+        }
+        if let task = modelFeeds[model]?.task {
+            await task.value
+            return
+        }
+        startModelTask(model, replacing: true)
+        await modelFeeds[model]?.task?.value
+    }
+
+    func refreshModel(_ model: LlmModel) async {
+        guard modelFeeds[model] != nil, modelFeeds[model]?.isRefreshing != true else {
+            return
+        }
+        mutateModel(model) { feed in
+            feed.isRefreshing = true
+            feed.task?.cancel()
+            feed.task = nil
+            feed.generation &+= 1
+            feed.footerState = .idle
+            if feed.cards.isEmpty {
+                feed.loadState = .loading
+            }
+        }
+        let generation = modelFeeds[model]?.generation ?? 0
+        await fetchModelPage(model: model, replacing: true, generation: generation)
+        mutateModel(model) { $0.isRefreshing = false }
+    }
+
+    func retryLoadModel(_ model: LlmModel) {
+        guard modelFeeds[model] != nil else {
+            return
+        }
+        mutateModel(model) { feed in
+            feed.task?.cancel()
+            feed.task = nil
+            feed.generation &+= 1
+            feed.before = nil
+            feed.hasMore = true
+            feed.footerState = .idle
+            feed.hasLoaded = false
+            if feed.cards.isEmpty {
+                feed.loadState = .loading
+            }
+        }
+        startModelTask(model, replacing: true)
+    }
+
+    func loadMoreModel(_ model: LlmModel) {
+        guard let feed = modelFeeds[model],
+              feed.hasLoaded,
+              feed.hasMore,
+              feed.before != nil,
+              feed.footerState == .idle,
+              feed.task == nil,
+              !feed.isRefreshing
+        else {
+            return
+        }
+        mutateModel(model) { $0.footerState = .loading }
+        startModelTask(model, replacing: false)
+    }
+
+    func retryLoadMoreModel(_ model: LlmModel) {
+        guard let feed = modelFeeds[model],
+              feed.footerState == .failed,
+              feed.task == nil,
+              !feed.isRefreshing
+        else {
+            return
+        }
+        mutateModel(model) { $0.footerState = .loading }
+        startModelTask(model, replacing: feed.before == nil)
+    }
+
+    private func startModelTask(_ model: LlmModel, replacing: Bool) {
+        guard var feed = modelFeeds[model], feed.task == nil else {
+            return
+        }
+        let generation = feed.generation
+        let task = Task { @MainActor in
+            await self.fetchModelPage(model: model, replacing: replacing, generation: generation)
+            guard self.modelFeeds[model]?.generation == generation else {
+                return
+            }
+            self.mutateModel(model) { $0.task = nil }
+        }
+        feed.task = task
+        modelFeeds[model] = feed
+    }
+
+    private func fetchModelPage(model: LlmModel, replacing: Bool, generation: Int) async {
+        let before = replacing ? nil : modelFeeds[model]?.before
+        do {
+            let response = try await cardsService.listModelCards(
+                id: model.rawValue,
+                limit: Self.feedPageSize,
+                before: before
+            )
+            guard !Task.isCancelled, modelFeeds[model]?.generation == generation else {
+                return
+            }
+
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                mutateModel(model) { feed in
+                    if replacing {
+                        feed.cards = merged(feed.cards, with: response.cards)
+                        feed.cardIDs = Set(feed.cards.map(\.id))
+                    } else {
+                        feed.cards.reserveCapacity(feed.cards.count + response.cards.count)
+                        for item in response.cards {
+                            guard let card = HomeCard(stored: item) else {
+                                continue
+                            }
+                            guard feed.cardIDs.insert(card.id).inserted else {
+                                continue
+                            }
+                            feed.cards.append(card)
+                        }
+                    }
+                    if let cursor = response.page.nextCursor {
+                        feed.before = cursor
+                    } else if replacing {
+                        feed.before = nil
+                    }
+                    feed.hasMore = response.page.hasMore(pageSize: Self.feedPageSize)
+                    feed.footerState = .idle
+                    feed.loadState = .loaded
+                    feed.hasLoaded = true
+                }
+            }
+        } catch {
+            guard !Task.isCancelled, modelFeeds[model]?.generation == generation, !Self.isCancellation(error) else {
+                return
+            }
+            mutateModel(model) { feed in
+                if replacing, feed.cards.isEmpty {
+                    feed.loadState = .failed("Couldn't load these posts.")
+                    feed.footerState = .idle
+                } else {
+                    feed.footerState = .failed
+                }
+            }
+        }
+    }
+
+    private func mutateModel(_ model: LlmModel, _ body: (inout ModelFeed) -> Void) {
+        guard var feed = modelFeeds[model] else {
+            return
+        }
+        body(&feed)
+        modelFeeds[model] = feed
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

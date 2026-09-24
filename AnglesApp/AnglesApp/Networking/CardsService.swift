@@ -89,6 +89,15 @@ struct CardsService: Sendable {
         try await client.deleteJSON(path: "users/\(id)/follow", timeout: Self.writeTimeout)
     }
 
+    func listModelCards(id: String, limit: Int, before: String? = nil) async throws -> ModelCardsResponse {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let before {
+            queryItems.append(URLQueryItem(name: "before", value: before))
+        }
+        let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await client.get(path: "models/\(encoded)/cards", queryItems: queryItems)
+    }
+
     func listAuthorCards(id: String, limit: Int, before: String? = nil) async throws -> AuthorCardsResponse {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {

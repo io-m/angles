@@ -216,26 +216,56 @@ struct ComposeSheetView: View {
     }
 
     private var standardHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            standardHeaderRow
+
+            VStack(spacing: 6) {
+                HStack(alignment: .center, spacing: 12) {
+                    headerLeadingControl
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: 40,
+                            alignment: .leading
+                        )
+
+                    modelPickerButton
+                }
+
+                if hasStatement, !isOnboardingTaste {
+                    HStack {
+                        Spacer(minLength: 0)
+                        startAgainButton
+                    }
+                }
+            }
+        }
+    }
+
+    private var standardHeaderRow: some View {
         HStack(alignment: .center, spacing: 12) {
             headerLeadingControl
                 .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
 
             HStack(spacing: 12) {
                 if hasStatement, !isOnboardingTaste {
-                    Button("Start again") {
-                        showRestartAlert = true
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(theme.ink)
-                    .disabled(viewModel.isSaving)
-                    .opacity(viewModel.isSaving ? 0.4 : 1)
-                    .accessibilityHint("Wipes this session and starts a new thought")
+                    startAgainButton
                 }
 
                 modelPickerButton
             }
         }
         .frame(minHeight: 40)
+    }
+
+    private var startAgainButton: some View {
+        Button("Start again") {
+            showRestartAlert = true
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(theme.ink)
+        .disabled(viewModel.isSaving)
+        .opacity(viewModel.isSaving ? 0.4 : 1)
+        .accessibilityHint("Wipes this session and starts a new thought")
     }
 
     private var restoreHeader: some View {
@@ -786,9 +816,11 @@ struct ComposeSheetView: View {
                 Text(isRestoring ? "Checking subscription…" : "Already have an account?")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Color(uiColor: .link))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .multilineTextAlignment(.leading)
             }
-            .frame(height: 40)
+            .frame(minHeight: 40)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -845,7 +877,7 @@ struct ComposeSheetView: View {
                 text: $viewModel.composeText,
                 axis: .vertical
             )
-            .font(.system(size: 16, weight: .medium))
+            .font(.body.weight(.medium))
             .foregroundStyle(theme.ink)
             .textInputAutocapitalization(.sentences)
             .focused($composerFocused)

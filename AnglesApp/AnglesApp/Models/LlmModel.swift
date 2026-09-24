@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum LlmModel: String, Codable, CaseIterable, Identifiable, Sendable {
+enum LlmModel: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
     case mistral = "mistral-small-latest"
     case gemini = "gemini-3.8-flash"
     case deepseek = "deepseek-flash"

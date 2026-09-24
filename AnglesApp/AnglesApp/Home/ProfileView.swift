@@ -2,7 +2,7 @@ import Observation
 import SwiftUI
 
 private enum ProfileMetrics {
-    static let identityHeight: CGFloat = 124
+    static let identityHeight: CGFloat = 132
     static let tabBarHeight = StyleTabMetrics.tabBarHeight
     static let pagerSpace = "profilePager"
 
@@ -48,6 +48,7 @@ struct ProfileView: View {
     var onLogOut: (() -> Void)? = nil
     var canLoadFullAppContent = false
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
+    var onOpenModel: (HomeCard) -> Void = { _ in }
     var onOpenFollowed: (FollowedPerson) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -177,6 +178,7 @@ struct ProfileView: View {
                                 onSetPublic: setPublic,
                                 onRemoveFromBoard: removeFromBoard,
                                 onOpenAuthor: onOpenAuthor,
+                                onOpenModel: onOpenModel,
                                 onToggleFollow: toggleFollow
                             )
                             .containerRelativeFrame(.horizontal)
@@ -343,7 +345,7 @@ private struct ProfileChrome: View {
                 .accessibilityHidden(identityProgress >= 0.5)
                 .animation(nil, value: collapseDistance)
 
-            StyleTabBar(
+            AdaptiveStyleTabBar(
                 pagerState: pagerState,
                 settledSelection: settledSelection,
                 onSelect: onSelectTab
@@ -396,6 +398,7 @@ private struct ProfileIdentityHeader: View {
         .padding(.horizontal, HeaderCollapse.horizontalPadding)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
     }
@@ -431,6 +434,7 @@ private struct ProfileTopBar: View {
                     .font(.headline.weight(.bold))
                     .foregroundStyle(theme.ink)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.72)
                     .layoutPriority(-1)
             }
             .opacity(progress)
@@ -490,6 +494,7 @@ private struct ProfileTabPage: View {
     var onSetPublic: (HomeCard, Bool) -> Void
     var onRemoveFromBoard: (HomeCard) -> Void
     var onOpenAuthor: (HomeCard) -> Void
+    var onOpenModel: (HomeCard) -> Void
     var onToggleFollow: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -618,6 +623,7 @@ private struct ProfileTabPage: View {
                         onRemoveFromBoard: onRemoveFromBoard,
                         shiningCardID: shiningCardID,
                         onOpenAuthor: onOpenAuthor,
+                        onOpenModel: onOpenModel,
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6

@@ -1,14 +1,11 @@
 import SwiftUI
 
-struct AuthorRoute: Hashable, Identifiable {
-    let id: UUID
-    let initials: String
-    let avatarPath: String?
-    let isSelf: Bool
+struct ModelRoute: Hashable {
+    let model: LlmModel
 }
 
-struct AuthorProfileView: View {
-    let route: AuthorRoute
+struct ModelProfileView: View {
+    let route: ModelRoute
     let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
     let onOpenAuthor: (HomeCard) -> Void
@@ -19,31 +16,21 @@ struct AuthorProfileView: View {
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
-    private var header: AuthorHeader {
-        viewModel.authorHeader(for: route.id)
-            ?? AuthorHeader(
-                initials: route.initials,
-                avatarPath: route.avatarPath,
-                isSelf: route.isSelf,
-                following: false
-            )
-    }
-
     var body: some View {
         HomeFeedPager(
             safeAreaInsets: safeAreaInsets,
             cards: { tab in
-                viewModel.authorCards(for: route.id, tab: tab)
+                viewModel.modelCards(for: route.model, tab: tab)
             },
-            loadState: viewModel.authorLoadState(for: route.id),
-            footerState: viewModel.authorFooterState(for: route.id),
+            loadState: viewModel.modelLoadState(for: route.model),
+            footerState: viewModel.modelFooterState(for: route.model),
             emptyCopy: { tab in
                 tab.emptyCopy(appliedFilter: HomeFeedFilter())
             },
-            onRetry: { viewModel.retryLoadAuthor(route.id) },
-            onRefresh: { await viewModel.refreshAuthor(route.id) },
-            onLoadMore: { viewModel.loadMoreAuthor(route.id) },
-            onRetryLoadMore: { viewModel.retryLoadMoreAuthor(route.id) },
+            onRetry: { viewModel.retryLoadModel(route.model) },
+            onRefresh: { await viewModel.refreshModel(route.model) },
+            onLoadMore: { viewModel.loadMoreModel(route.model) },
+            onRetryLoadMore: { viewModel.retryLoadMoreModel(route.model) },
             onDelete: deleteCard,
             onToggleFavorite: toggleFavorite,
             onSetPublic: setPublic,
@@ -52,14 +39,13 @@ struct AuthorProfileView: View {
             onOpenModel: onOpenModel,
             onToggleFollow: toggleFollow
         ) { pagerState, settledSelection, onSelectTab in
-            AuthorChrome(
+            ModelChrome(
                 safeTop: safeAreaInsets.top,
                 pagerState: pagerState,
                 settledSelection: settledSelection,
-                header: header,
+                model: route.model,
                 onBack: dismiss.callAsFunction,
-                onSelectTab: onSelectTab,
-                onToggleFollow: { viewModel.toggleFollow(route.id) }
+                onSelectTab: onSelectTab
             )
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -67,8 +53,8 @@ struct AuthorProfileView: View {
         .accessibilityAction(named: "Back") {
             dismiss()
         }
-        .task(id: route.id) {
-            await viewModel.loadAuthorIfNeeded(route)
+        .task(id: route.model) {
+            await viewModel.loadModelIfNeeded(route.model)
         }
     }
 
@@ -103,14 +89,13 @@ struct AuthorProfileView: View {
     }
 }
 
-private struct AuthorChrome: View {
+private struct ModelChrome: View {
     let safeTop: CGFloat
     let pagerState: StyleTabPagerState<HomeFeedTab>
     let settledSelection: HomeFeedTab
-    let header: AuthorHeader
+    let model: LlmModel
     let onBack: () -> Void
     let onSelectTab: (HomeFeedTab) -> Void
-    let onToggleFollow: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -147,27 +132,15 @@ private struct AuthorChrome: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                ZStack(alignment: .bottomTrailing) {
-                    AuthorMark(
-                        initials: header.initials,
-                        avatarPath: header.avatarPath,
-                        prefersLocalPhoto: header.isSelf,
-                        side: CircleIcon.Size.normal.side,
-                        fill: theme.ink,
-                        symbol: theme.paper
+                ModelLogo(model: model, side: 18)
+                    .frame(
+                        width: CircleIcon.Size.normal.side,
+                        height: CircleIcon.Size.normal.side
                     )
+                    .background(model.brandColor.opacity(0.12), in: Circle())
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Posts by \(header.initials)")
                     .accessibilityAddTraits(.isHeader)
-
-                    if !header.isSelf {
-                        FollowBadge(
-                            following: header.following,
-                            action: onToggleFollow
-                        )
-                        .offset(FollowBadge.overhang)
-                    }
-                }
+                    .accessibilityLabel(model.displayName)
             }
             .padding(.horizontal, HeaderCollapse.horizontalPadding)
             .frame(height: HeaderCollapse.headerHeight)

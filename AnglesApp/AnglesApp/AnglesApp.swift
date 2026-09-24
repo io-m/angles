@@ -13,6 +13,11 @@ private enum HomeRevealPhase: Equatable {
     case visible
 }
 
+enum BrowseRoute: Hashable {
+    case author(AuthorRoute)
+    case model(ModelRoute)
+}
+
 @main
 struct AnglesApp: App {
     @StateObject private var themeStore = ThemeStore()
@@ -34,7 +39,7 @@ struct AppRoot: View {
     @State private var hasRoutedLaunch = false
     @State private var selectedTab: RootTab = .home
     @State private var lastContentTab: RootTab = .home
-    @State private var authorRoute: AuthorRoute?
+    @State private var browsePath: [BrowseRoute] = []
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
     @State private var paywallPhase: PaywallPresentationPhase = .idle
     @State private var paywallShowsCelebration = false
@@ -54,7 +59,7 @@ struct AppRoot: View {
             theme.paper
                 .ignoresSafeArea()
 
-            NavigationStack {
+            NavigationStack(path: $browsePath) {
                 TabView(selection: $selectedTab) {
                     HomeView(
                         safeAreaInsets: homeSafeAreaInsets,
@@ -62,7 +67,8 @@ struct AppRoot: View {
                         storeKitManager: storeKitManager,
                         isActiveTab: selectedTab == .home,
                         onLogOut: logOut,
-                        onOpenAuthor: openAuthor
+                        onOpenAuthor: openAuthor,
+                        onOpenModel: openModel
                     )
                     .tabItem { Label("Home", systemImage: "house") }
                     .tag(RootTab.home)
@@ -80,18 +86,33 @@ struct AppRoot: View {
                         onLogOut: logOut,
                         canLoadFullAppContent: canLoadProfileContent,
                         onOpenAuthor: openAuthor,
+                        onOpenModel: openModel,
                         onOpenFollowed: openFollowed
                     )
                     .tabItem { Label("Profile", systemImage: "person") }
                     .tag(RootTab.profile)
                 }
-                .navigationDestination(item: $authorRoute) { route in
-                    AuthorProfileView(
-                        route: route,
-                        safeAreaInsets: homeSafeAreaInsets,
-                        viewModel: viewModel,
-                        onOpenAuthor: openAuthor
-                    )
+                .navigationDestination(for: BrowseRoute.self) { route in
+                    switch route {
+                    case .author(let author):
+                        AuthorProfileView(
+                            route: author,
+                            safeAreaInsets: homeSafeAreaInsets,
+                            viewModel: viewModel,
+                            onOpenAuthor: openAuthor,
+                            onOpenModel: openModel
+                        )
+                        .navigationBarBackButtonHidden(true)
+                    case .model(let model):
+                        ModelProfileView(
+                            route: model,
+                            safeAreaInsets: homeSafeAreaInsets,
+                            viewModel: viewModel,
+                            onOpenAuthor: openAuthor,
+                            onOpenModel: openModel
+                        )
+                        .navigationBarBackButtonHidden(true)
+                    }
                 }
                 .toolbar(.hidden, for: .navigationBar)
             }
@@ -467,21 +488,25 @@ struct AppRoot: View {
             homeRevealPhase = .hidden
             selectedTab = .home
             lastContentTab = .home
-            authorRoute = nil
+            browsePath.removeAll()
             isOnboardingTasteSession = true
             isComposePresented = true
         }
     }
 
     private func openFollowed(_ person: FollowedPerson) {
-        guard authorRoute?.id != person.id else {
+        if case .author(let current) = browsePath.last, current.id == person.id {
             return
         }
-        authorRoute = AuthorRoute(
-            id: person.id,
-            initials: person.initials,
-            avatarPath: person.avatarPath,
-            isSelf: false
+        browsePath.append(
+            .author(
+                AuthorRoute(
+                    id: person.id,
+                    initials: person.initials,
+                    avatarPath: person.avatarPath,
+                    isSelf: false
+                )
+            )
         )
     }
 
@@ -490,25 +515,42 @@ struct AppRoot: View {
             showOwnProfile()
             return
         }
-        guard let authorId = card.authorId, authorRoute?.id != authorId else {
+        guard let authorId = card.authorId else {
             return
         }
-        authorRoute = AuthorRoute(
-            id: authorId,
-            initials: card.authorInitials,
-            avatarPath: card.authorAvatarPath,
-            isSelf: card.isOwner
+        if case .author(let current) = browsePath.last, current.id == authorId {
+            return
+        }
+        browsePath.append(
+            .author(
+                AuthorRoute(
+                    id: authorId,
+                    initials: card.authorInitials,
+                    avatarPath: card.authorAvatarPath,
+                    isSelf: card.isOwner
+                )
+            )
         )
     }
 
+    private func openModel(_ card: HomeCard) {
+        guard let model = card.model else {
+            return
+        }
+        if case .model(let current) = browsePath.last, current.model == model {
+            return
+        }
+        browsePath.append(.model(ModelRoute(model: model)))
+    }
+
     private func showOwnProfile() {
-        if authorRoute != nil {
+        if !browsePath.isEmpty {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 selectedTab = .profile
             }
-            authorRoute = nil
+            browsePath.removeAll()
             return
         }
         selectedTab = .profile

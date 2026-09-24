@@ -142,6 +142,11 @@ export type AuthorCardsResponse = {
   cards: StoredCard[];
 };
 
+export type ModelCardsResponse = {
+  model: string;
+  cards: StoredCard[];
+};
+
 export type ProfileBody = {
   initials: string;
   avatarUrl?: string;

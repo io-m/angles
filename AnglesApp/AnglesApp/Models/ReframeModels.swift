@@ -416,6 +416,25 @@ struct FollowedPerson: Identifiable, Equatable, Hashable, Sendable {
     }
 }
 
+struct ModelCardsResponse: Decodable, Equatable, Sendable {
+    let model: String
+    let cards: [StoredCard]
+    let page: CardPage
+
+    private enum CodingKeys: String, CodingKey {
+        case model
+        case cards
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        model = try container.decode(String.self, forKey: .model)
+        let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
+        cards = raw.compactMap(\.value)
+        page = try CardPage(container: container, key: .cards)
+    }
+}
+
 struct AuthorCardsResponse: Decodable, Equatable, Sendable {
     let user: StoredCardAuthor
     let cards: [StoredCard]

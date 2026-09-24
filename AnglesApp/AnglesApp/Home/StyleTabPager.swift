@@ -11,6 +11,48 @@ enum StyleTabMetrics {
     }
 }
 
+enum StyleTabDensity: Equatable {
+    case standard
+    case compact
+
+    static let standardMinimumWidth: CGFloat = 304
+
+    var side: CGFloat {
+        switch self {
+        case .standard: ReframeCardMetrics.chipSize
+        case .compact: ReframeCardMetrics.chipSizeCompact
+        }
+    }
+
+    var spacing: CGFloat {
+        switch self {
+        case .standard: ReframeCardMetrics.chipSpacing
+        case .compact: 4
+        }
+    }
+
+    var expandedHorizontalPadding: CGFloat {
+        switch self {
+        case .standard: 10
+        case .compact: 8
+        }
+    }
+
+    var iconLabelSpacing: CGFloat {
+        switch self {
+        case .standard: 6
+        case .compact: 5
+        }
+    }
+
+    var glyphSize: CGFloat {
+        switch self {
+        case .standard: 14
+        case .compact: 12
+        }
+    }
+}
+
 protocol StyleTabRepresentable: Hashable, CaseIterable {
     var title: String { get }
     var chipTitle: String { get }
@@ -153,8 +195,8 @@ private struct StyleTabPagerOffsetKey: PreferenceKey {
     }
 }
 
-struct StyleTabPagerOffsetProbe: View {
-    let space: String
+struct StyleTabPagerOffsetProbe<Space: Hashable>: View {
+    let space: Space
 
     var body: some View {
         GeometryReader { proxy in
@@ -209,20 +251,65 @@ struct StyleTabPagerTracking<T: StyleTabRepresentable>: ViewModifier {
     }
 }
 
-struct StyleTabBar<T: StyleTabRepresentable>: View {
+struct AdaptiveStyleTabBar<T: StyleTabRepresentable>: View {
     let pagerState: StyleTabPagerState<T>
     let settledSelection: T
+    var reservedTrailingWidth: CGFloat = 0
+    var includesTrailingSpacer = true
+    var padded = true
+    let onSelect: (T) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        GeometryReader { proxy in
+            let horizontalInsets = padded
+                ? HeaderCollapse.horizontalPadding * 2
+                : 0
+            let usableWidth = max(
+                0,
+                proxy.size.width - horizontalInsets - reservedTrailingWidth
+            )
+            let density: StyleTabDensity =
+                usableWidth < StyleTabDensity.standardMinimumWidth
+                    || dynamicTypeSize > .large
+                ? .compact
+                : .standard
+
+            StyleTabBar(
+                pagerState: pagerState,
+                settledSelection: settledSelection,
+                density: density,
+                includesTrailingSpacer: includesTrailingSpacer,
+                padded: padded,
+                onSelect: onSelect
+            )
+        }
+        .frame(
+            height: padded
+                ? StyleTabMetrics.tabBarHeight
+                : CircleIcon.Size.normal.side
+        )
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+    }
+}
+
+private struct StyleTabBar<T: StyleTabRepresentable>: View {
+    let pagerState: StyleTabPagerState<T>
+    let settledSelection: T
+    let density: StyleTabDensity
     var includesTrailingSpacer = true
     var padded = true
     let onSelect: (T) -> Void
 
     var body: some View {
-        HStack(spacing: ReframeCardMetrics.chipSpacing) {
+        HStack(spacing: density.spacing) {
             ForEach(Array(T.allCases.enumerated()), id: \.element) { index, tab in
                 StyleTabChip(
                     tab: tab,
                     expansion: pagerState.expansion(at: index),
                     isSettledSelection: settledSelection == tab,
+                    density: density,
                     onSelect: { onSelect(tab) }
                 )
             }
@@ -369,6 +456,7 @@ private struct StyleTabChipLayout: Layout {
     }
 
     var expansion: CGFloat
+    let density: StyleTabDensity
 
     var animatableData: CGFloat {
         get { expansion }
@@ -399,10 +487,14 @@ private struct StyleTabChipLayout: Layout {
             return .zero
         }
 
-        let side = ReframeCardMetrics.chipSize
+        let side = density.side
+        let horizontalPadding = density.expandedHorizontalPadding
         let expandedWidth = max(
             side,
-            20 + cache.iconSize.width + 6 + cache.labelSize.width
+            (horizontalPadding * 2)
+                + cache.iconSize.width
+                + density.iconLabelSpacing
+                + cache.labelSize.width
         )
 
         return CGSize(
@@ -421,11 +513,11 @@ private struct StyleTabChipLayout: Layout {
             return
         }
 
-        let side = ReframeCardMetrics.chipSize
+        let side = density.side
         let iconSize = cache.iconSize
         let labelSize = cache.labelSize
         let collapsedIconX = (side - iconSize.width) / 2
-        let expandedIconX: CGFloat = 10
+        let expandedIconX = density.expandedHorizontalPadding
         let iconX = collapsedIconX
             + ((expandedIconX - collapsedIconX) * expansion)
         let iconY = bounds.midY - (iconSize.height / 2)
@@ -438,7 +530,10 @@ private struct StyleTabChipLayout: Layout {
 
         subviews[1].place(
             at: CGPoint(
-                x: bounds.minX + expandedIconX + iconSize.width + 6,
+                x: bounds.minX
+                    + expandedIconX
+                    + iconSize.width
+                    + density.iconLabelSpacing,
                 y: bounds.midY - (labelSize.height / 2)
             ),
             anchor: .topLeading,
@@ -451,6 +546,7 @@ private struct StyleTabChip<T: StyleTabRepresentable>: View {
     let tab: T
     let expansion: CGFloat
     let isSettledSelection: Bool
+    let density: StyleTabDensity
     let onSelect: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -466,7 +562,7 @@ private struct StyleTabChip<T: StyleTabRepresentable>: View {
     }
 
     var body: some View {
-        let side = ReframeCardMetrics.chipSize
+        let side = density.side
         let slop = (ReframeCardMetrics.chipHitSize - side) / 2
         let clampedExpansion = min(1, max(0, expansion))
 
@@ -478,13 +574,20 @@ private struct StyleTabChip<T: StyleTabRepresentable>: View {
             selectHaptic += 1
             onSelect()
         } label: {
-            StyleTabChipLayout(expansion: clampedExpansion) {
+            StyleTabChipLayout(
+                expansion: clampedExpansion,
+                density: density
+            ) {
                 Image(systemName: tab.systemImage)
                     .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: density.glyphSize, weight: .semibold))
 
                 Text(tab.chipTitle)
-                    .font(.caption.weight(.semibold))
+                    .font(
+                        density == .standard
+                            ? .caption.weight(.semibold)
+                            : .caption2.weight(.semibold)
+                    )
                     .lineLimit(1)
                     .fixedSize()
                     .opacity(clampedExpansion)

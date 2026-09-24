@@ -1,8 +1,6 @@
 import SwiftUI
 
-private enum HomeMetrics {
-    static let pagerSpace = "homePager"
-
+enum HomeFeedPagerMetrics {
     static func chromeHeight(safeTop: CGFloat) -> CGFloat {
         HeaderCollapse.overlayHeight(safeTop: safeTop) + StyleTabMetrics.chromeBottomInset
     }
@@ -17,48 +15,55 @@ struct HomeView: View {
     var isActiveTab: Bool = true
     var onLogOut: (() -> Void)? = nil
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
+    var onOpenModel: (HomeCard) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var pagerState = StyleTabPagerState<HomeFeedTab>(initialTab: .all)
-    @State private var committedTab: HomeFeedTab = .all
     @State private var showHomeFilter = false
-    @State private var sameTabScrollToken = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var canLoadFullAppContent: Bool {
         storeKitManager.entitlementsReady && storeKitManager.hasUnlockedFullApp
     }
 
-    private var fixedChromeHeight: CGFloat {
-        HomeMetrics.chromeHeight(safeTop: safeAreaInsets.top)
-    }
-
     var body: some View {
-        ZStack(alignment: .top) {
-            StyleTabPageBackground(pagerState: pagerState)
-                .ignoresSafeArea()
-
-            pager
-                .ignoresSafeArea(edges: .top)
-
+        HomeFeedPager(
+            safeAreaInsets: safeAreaInsets,
+            cards: cards(for:),
+            loadState: viewModel.feedLoadState,
+            footerState: viewModel.feedFooterState,
+            emptyCopy: viewModel.feedEmptyCopy(for:),
+            glimpseCard: glimpseCard,
+            scrollToTopToken: viewModel.saveLanding == .home
+                ? viewModel.saveLandingToken
+                : 0,
+            shiningCardID: viewModel.shiningCardID,
+            isScrollDisabled: isGlimpseActive,
+            canPullToRefresh: canLoadFullAppContent && !isGlimpseActive,
+            externalSelectionTab: viewModel.saveLanding == .home ? .all : nil,
+            externalSelectionToken: viewModel.saveLandingToken,
+            onCommitPage: commitPage,
+            onRetry: viewModel.retryLoadFeed,
+            onRefresh: { await viewModel.refreshFeed() },
+            onLoadMore: viewModel.loadMoreFeed,
+            onRetryLoadMore: viewModel.retryLoadMoreFeed,
+            onDelete: deleteCard,
+            onToggleFavorite: toggleFavorite,
+            onSetPublic: setPublic,
+            onRemoveFromBoard: removeFromBoard,
+            onOpenAuthor: onOpenAuthor,
+            onOpenModel: onOpenModel,
+            onToggleFollow: toggleFollow
+        ) { pagerState, settledSelection, onSelectTab in
             HomeChrome(
                 safeTop: safeAreaInsets.top,
                 pagerState: pagerState,
-                settledSelection: committedTab,
+                settledSelection: settledSelection,
                 appliedCount: viewModel.appliedFilter.appliedCount,
                 showFilter: $showHomeFilter,
-                onSelectTab: selectTab
+                onSelectTab: onSelectTab
             )
-            .ignoresSafeArea(edges: .top)
-
-            StyleTabBottomFade(pagerState: pagerState, safeBottom: safeAreaInsets.bottom)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .ignoresSafeArea(.container, edges: .bottom)
-                .allowsHitTesting(false)
         }
-        .allowsHitTesting(!isGlimpseActive)
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
         .task(id: canLoadFullAppContent) {
@@ -77,93 +82,6 @@ struct HomeView: View {
         }
     }
 
-    private var pager: some View {
-        GeometryReader { proxy in
-            ScrollViewReader { scrollProxy in
-                ScrollView(.horizontal) {
-                    HStack(spacing: 0) {
-                        ForEach(HomeFeedTab.allCases, id: \.self) { tab in
-                            HomeFeedTabPage(
-                                tab: tab,
-                                cards: cards(for: tab),
-                                loadState: viewModel.feedLoadState,
-                                footerState: viewModel.feedFooterState,
-                                emptyCopy: viewModel.feedEmptyCopy(for: tab),
-                                chromeHeight: fixedChromeHeight,
-                                glimpseCard: tab == .all ? glimpseCard : nil,
-                                scrollToTopToken: tab == .all && viewModel.saveLanding == .home
-                                    ? viewModel.saveLandingToken
-                                    : 0,
-                                sameTabScrollToken: sameTabScrollToken,
-                                isCurrentPage: tab == committedTab,
-                                shiningCardID: viewModel.shiningCardID,
-                                isScrollDisabled: isGlimpseActive,
-                                allowsPullToRefresh: canLoadFullAppContent
-                                    && !isGlimpseActive
-                                    && tab == committedTab,
-                                onRetry: viewModel.retryLoadFeed,
-                                onRefresh: { await viewModel.refreshFeed() },
-                                onLoadMore: viewModel.loadMoreFeed,
-                                onRetryLoadMore: viewModel.retryLoadMoreFeed,
-                                onDelete: deleteCard,
-                                onToggleFavorite: toggleFavorite,
-                                onSetPublic: setPublic,
-                                onRemoveFromBoard: removeFromBoard,
-                                onOpenAuthor: onOpenAuthor,
-                                onToggleFollow: toggleFollow
-                            )
-                            .containerRelativeFrame(.horizontal)
-                            .frame(maxHeight: .infinity)
-                            .id(tab)
-                        }
-                    }
-                    .background(alignment: .leading) {
-                        StyleTabPagerOffsetProbe(space: HomeMetrics.pagerSpace)
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.paging)
-                .scrollDisabled(isGlimpseActive)
-                .coordinateSpace(name: HomeMetrics.pagerSpace)
-                .modifier(
-                    StyleTabPagerTracking(
-                        state: pagerState,
-                        fallbackWidth: proxy.size.width,
-                        onReachPage: commitPage
-                    )
-                )
-                .onChange(of: pagerState.requestSerial) { _, _ in
-                    let animation: Animation? = pagerState.requestAnimated ? tabAnimation : nil
-                    var transaction = Transaction(animation: animation)
-                    if animation == nil {
-                        transaction.disablesAnimations = true
-                    }
-                    withTransaction(transaction) {
-                        scrollProxy.scrollTo(
-                            pagerState.requestedTab,
-                            anchor: .leading
-                        )
-                    }
-                }
-                .onChange(of: viewModel.saveLandingToken) { _, token in
-                    guard token > 0, viewModel.saveLanding == .home else {
-                        return
-                    }
-                    settleHomeLanding()
-                    Task { @MainActor in
-                        settleHomeLanding()
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var tabAnimation: Animation? {
-        reduceMotion ? nil : StyleTabMetrics.chipSpring
-    }
-
     private func cards(for tab: HomeFeedTab) -> [HomeCard] {
         let base = viewModel.homeCards(for: tab)
         guard tab == .all, let glimpseCard else {
@@ -172,41 +90,9 @@ struct HomeView: View {
         return [glimpseCard] + base.filter { $0.id != glimpseCard.id }
     }
 
-    private func settleHomeLanding() {
-        guard viewModel.saveLanding == .home else {
-            return
-        }
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            committedTab = .all
-            if viewModel.homeFeedTab != .all {
-                viewModel.homeFeedTab = .all
-            }
-        }
-        pagerState.requestPage(.all, animated: false)
-    }
-
-    private func selectTab(_ tab: HomeFeedTab) {
-        guard tab != committedTab else {
-            sameTabScrollToken &+= 1
-            return
-        }
-        pagerState.requestPage(tab)
-    }
-
     private func commitPage(_ tab: HomeFeedTab) {
-        guard tab != committedTab else {
-            return
-        }
-
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            committedTab = tab
-            if tab != viewModel.homeFeedTab {
-                viewModel.homeFeedTab = tab
-            }
+        if tab != viewModel.homeFeedTab {
+            viewModel.homeFeedTab = tab
         }
     }
 
@@ -241,6 +127,249 @@ struct HomeView: View {
     }
 }
 
+struct HomeFeedPager<Chrome: View>: View {
+    let safeAreaInsets: EdgeInsets
+    let cards: (HomeFeedTab) -> [HomeCard]
+    let loadState: LibraryLoadState
+    let footerState: FeedFooterState
+    let emptyCopy: (HomeFeedTab) -> String
+    let glimpseCard: HomeCard?
+    let scrollToTopToken: Int
+    let shiningCardID: UUID?
+    let isScrollDisabled: Bool
+    let canPullToRefresh: Bool
+    let externalSelectionTab: HomeFeedTab?
+    let externalSelectionToken: Int
+    let onCommitPage: (HomeFeedTab) -> Void
+    let onRetry: () -> Void
+    let onRefresh: () async -> Void
+    let onLoadMore: () -> Void
+    let onRetryLoadMore: () -> Void
+    let onDelete: (HomeCard) -> Void
+    let onToggleFavorite: (HomeCard, Style) -> Void
+    let onSetPublic: (HomeCard, Bool) -> Void
+    let onRemoveFromBoard: (HomeCard) -> Void
+    let onOpenAuthor: (HomeCard) -> Void
+    let onOpenModel: (HomeCard) -> Void
+    let onToggleFollow: (HomeCard) -> Void
+    let chrome: (
+        StyleTabPagerState<HomeFeedTab>,
+        HomeFeedTab,
+        @escaping (HomeFeedTab) -> Void
+    ) -> Chrome
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pagerState = StyleTabPagerState<HomeFeedTab>(initialTab: .all)
+    @State private var committedTab: HomeFeedTab = .all
+    @State private var sameTabScrollToken = 0
+    @State private var pagerSpace = UUID()
+
+    init(
+        safeAreaInsets: EdgeInsets,
+        cards: @escaping (HomeFeedTab) -> [HomeCard],
+        loadState: LibraryLoadState,
+        footerState: FeedFooterState,
+        emptyCopy: @escaping (HomeFeedTab) -> String,
+        glimpseCard: HomeCard? = nil,
+        scrollToTopToken: Int = 0,
+        shiningCardID: UUID? = nil,
+        isScrollDisabled: Bool = false,
+        canPullToRefresh: Bool = true,
+        externalSelectionTab: HomeFeedTab? = nil,
+        externalSelectionToken: Int = 0,
+        onCommitPage: @escaping (HomeFeedTab) -> Void = { _ in },
+        onRetry: @escaping () -> Void,
+        onRefresh: @escaping () async -> Void,
+        onLoadMore: @escaping () -> Void,
+        onRetryLoadMore: @escaping () -> Void,
+        onDelete: @escaping (HomeCard) -> Void,
+        onToggleFavorite: @escaping (HomeCard, Style) -> Void,
+        onSetPublic: @escaping (HomeCard, Bool) -> Void,
+        onRemoveFromBoard: @escaping (HomeCard) -> Void,
+        onOpenAuthor: @escaping (HomeCard) -> Void,
+        onOpenModel: @escaping (HomeCard) -> Void,
+        onToggleFollow: @escaping (HomeCard) -> Void,
+        @ViewBuilder chrome: @escaping (
+            StyleTabPagerState<HomeFeedTab>,
+            HomeFeedTab,
+            @escaping (HomeFeedTab) -> Void
+        ) -> Chrome
+    ) {
+        self.safeAreaInsets = safeAreaInsets
+        self.cards = cards
+        self.loadState = loadState
+        self.footerState = footerState
+        self.emptyCopy = emptyCopy
+        self.glimpseCard = glimpseCard
+        self.scrollToTopToken = scrollToTopToken
+        self.shiningCardID = shiningCardID
+        self.isScrollDisabled = isScrollDisabled
+        self.canPullToRefresh = canPullToRefresh
+        self.externalSelectionTab = externalSelectionTab
+        self.externalSelectionToken = externalSelectionToken
+        self.onCommitPage = onCommitPage
+        self.onRetry = onRetry
+        self.onRefresh = onRefresh
+        self.onLoadMore = onLoadMore
+        self.onRetryLoadMore = onRetryLoadMore
+        self.onDelete = onDelete
+        self.onToggleFavorite = onToggleFavorite
+        self.onSetPublic = onSetPublic
+        self.onRemoveFromBoard = onRemoveFromBoard
+        self.onOpenAuthor = onOpenAuthor
+        self.onOpenModel = onOpenModel
+        self.onToggleFollow = onToggleFollow
+        self.chrome = chrome
+    }
+
+    private var chromeHeight: CGFloat {
+        HomeFeedPagerMetrics.chromeHeight(safeTop: safeAreaInsets.top)
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            StyleTabPageBackground(pagerState: pagerState)
+                .ignoresSafeArea()
+
+            pager
+                .ignoresSafeArea(edges: .top)
+
+            chrome(pagerState, committedTab, selectTab)
+                .ignoresSafeArea(edges: .top)
+
+            StyleTabBottomFade(
+                pagerState: pagerState,
+                safeBottom: safeAreaInsets.bottom
+            )
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .ignoresSafeArea(.container, edges: .bottom)
+            .allowsHitTesting(false)
+        }
+        .allowsHitTesting(!isScrollDisabled)
+    }
+
+    private var pager: some View {
+        GeometryReader { proxy in
+            ScrollViewReader { scrollProxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        ForEach(HomeFeedTab.allCases, id: \.self) { tab in
+                            HomeFeedTabPage(
+                                tab: tab,
+                                cards: cards(tab),
+                                loadState: loadState,
+                                footerState: footerState,
+                                emptyCopy: emptyCopy(tab),
+                                chromeHeight: chromeHeight,
+                                glimpseCard: tab == .all ? glimpseCard : nil,
+                                scrollToTopToken: tab == .all
+                                    ? scrollToTopToken
+                                    : 0,
+                                sameTabScrollToken: sameTabScrollToken,
+                                isCurrentPage: tab == committedTab,
+                                shiningCardID: shiningCardID,
+                                isScrollDisabled: isScrollDisabled,
+                                allowsPullToRefresh: canPullToRefresh
+                                    && tab == committedTab,
+                                onRetry: onRetry,
+                                onRefresh: onRefresh,
+                                onLoadMore: onLoadMore,
+                                onRetryLoadMore: onRetryLoadMore,
+                                onDelete: onDelete,
+                                onToggleFavorite: onToggleFavorite,
+                                onSetPublic: onSetPublic,
+                                onRemoveFromBoard: onRemoveFromBoard,
+                                onOpenAuthor: onOpenAuthor,
+                                onOpenModel: onOpenModel,
+                                onToggleFollow: onToggleFollow
+                            )
+                            .containerRelativeFrame(.horizontal)
+                            .frame(maxHeight: .infinity)
+                            .id(tab)
+                        }
+                    }
+                    .background(alignment: .leading) {
+                        StyleTabPagerOffsetProbe(space: pagerSpace)
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(.paging)
+                .scrollDisabled(isScrollDisabled)
+                .coordinateSpace(name: pagerSpace)
+                .modifier(
+                    StyleTabPagerTracking(
+                        state: pagerState,
+                        fallbackWidth: proxy.size.width,
+                        onReachPage: commitPage
+                    )
+                )
+                .onChange(of: pagerState.requestSerial) { _, _ in
+                    let animation: Animation? = pagerState.requestAnimated
+                        ? tabAnimation
+                        : nil
+                    var transaction = Transaction(animation: animation)
+                    if animation == nil {
+                        transaction.disablesAnimations = true
+                    }
+                    withTransaction(transaction) {
+                        scrollProxy.scrollTo(
+                            pagerState.requestedTab,
+                            anchor: .leading
+                        )
+                    }
+                }
+                .onChange(of: externalSelectionToken) { _, token in
+                    guard token > 0, externalSelectionTab != nil else {
+                        return
+                    }
+                    settleExternalSelection()
+                    Task { @MainActor in
+                        settleExternalSelection()
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var tabAnimation: Animation? {
+        reduceMotion ? nil : StyleTabMetrics.chipSpring
+    }
+
+    private func selectTab(_ tab: HomeFeedTab) {
+        guard tab != committedTab else {
+            sameTabScrollToken &+= 1
+            return
+        }
+        pagerState.requestPage(tab)
+    }
+
+    private func commitPage(_ tab: HomeFeedTab) {
+        guard tab != committedTab else {
+            return
+        }
+        settle(tab)
+    }
+
+    private func settleExternalSelection() {
+        guard let externalSelectionTab else {
+            return
+        }
+        settle(externalSelectionTab)
+        pagerState.requestPage(externalSelectionTab, animated: false)
+    }
+
+    private func settle(_ tab: HomeFeedTab) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            committedTab = tab
+            onCommitPage(tab)
+        }
+    }
+}
+
 private struct HomeChrome: View {
     let safeTop: CGFloat
     let pagerState: StyleTabPagerState<HomeFeedTab>
@@ -256,7 +385,7 @@ private struct HomeChrome: View {
                 .allowsHitTesting(false)
 
             HStack(alignment: .center, spacing: 12) {
-                StyleTabBar(
+                AdaptiveStyleTabBar(
                     pagerState: pagerState,
                     settledSelection: settledSelection,
                     includesTrailingSpacer: true,
@@ -281,7 +410,7 @@ private struct HomeChrome: View {
                 .allowsHitTesting(false)
         }
         .frame(
-            height: HomeMetrics.chromeHeight(safeTop: safeTop),
+            height: HomeFeedPagerMetrics.chromeHeight(safeTop: safeTop),
             alignment: .top
         )
         .background {
@@ -291,7 +420,7 @@ private struct HomeChrome: View {
     }
 }
 
-private struct HomeFeedTabPage: View {
+struct HomeFeedTabPage: View {
     let tab: HomeFeedTab
     let cards: [HomeCard]
     let loadState: LibraryLoadState
@@ -314,6 +443,7 @@ private struct HomeFeedTabPage: View {
     let onSetPublic: (HomeCard, Bool) -> Void
     let onRemoveFromBoard: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
+    let onOpenModel: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -445,6 +575,7 @@ private struct HomeFeedTabPage: View {
                         onRemoveFromBoard: onRemoveFromBoard,
                         shiningCardID: shiningCardID,
                         onOpenAuthor: onOpenAuthor,
+                        onOpenModel: onOpenModel,
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6

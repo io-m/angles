@@ -1,0 +1,1 @@
+CREATE INDEX "cards_public_model_created_idx" ON "cards" USING btree ("model","created_at" DESC NULLS FIRST,"id" DESC NULLS FIRST) WHERE "cards"."is_public" = true;
