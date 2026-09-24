@@ -13,6 +13,7 @@ struct ModelProfileView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -27,6 +28,7 @@ struct ModelProfileView: View {
             emptyCopy: { tab in
                 tab.emptyCopy(appliedFilter: HomeFeedFilter())
             },
+            offersOwnerPrivacyMenu: true,
             onRetry: { viewModel.retryLoadModel(route.model) },
             onRefresh: { await viewModel.refreshModel(route.model) },
             onLoadMore: { viewModel.loadMoreModel(route.model) },
@@ -77,8 +79,15 @@ struct ModelProfileView: View {
     }
 
     private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
-        if card.isOwner {
+        guard card.isOwner else {
+            return
+        }
+        if reduceMotion {
             viewModel.setPublic(card.id, isPublic: isPublic)
+        } else {
+            withAnimation(.smooth(duration: 0.3)) {
+                viewModel.setPublic(card.id, isPublic: isPublic)
+            }
         }
     }
 

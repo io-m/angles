@@ -385,6 +385,7 @@ Account / auth settings wait until auth exists. Appearance already shipped in 2a
 
 ## Shipped log
 
+- 2026-09-24 — The model page globe opens the same privacy menu as Home; Make private removes the card with one smooth list transaction.
 - 2026-09-24 — Owner globes open the same privacy menu on both Profile card layouts.
 - 2026-09-24 — Profile privacy actions now apply directly without a second confirmation dialog.
 - 2026-09-24 — Tapping the globe on the author’s own Home post opens the native card-action menu; Make private removes it with one smooth list transaction.
