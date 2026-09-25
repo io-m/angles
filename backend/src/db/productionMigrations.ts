@@ -20,7 +20,8 @@ type MigrationClient = Pick<postgres.Sql, "unsafe" | "end">;
 const EXISTING_OBJECT_NOTICE_CODES = new Set(["42P06", "42P07"]);
 
 export function logPostgresNotice(notice: postgres.Notice): void {
-  if (EXISTING_OBJECT_NOTICE_CODES.has(notice.code)) {
+  const code = notice.code;
+  if (code !== undefined && EXISTING_OBJECT_NOTICE_CODES.has(code)) {
     return;
   }
   console.log(notice);
