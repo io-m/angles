@@ -5,11 +5,23 @@ import Observation
 @MainActor
 @Observable
 final class SessionStore {
-    private(set) var session: SessionBody?
+    private(set) var session: SessionBody? {
+        didSet {
+            if session != nil {
+                errorMessage = nil
+            }
+        }
+    }
     private(set) var isRestored = false
     private(set) var isBusy = false
     var errorMessage: String?
 
+    /// Runs after the server confirms a sign-in and before the session is published, so the
+    /// first destination already knows this account's StoreKit answer (no paywall frame for a
+    /// subscriber). Launch restore skips it; the launch gate prepares StoreKit itself.
+    @ObservationIgnored var prepareAccountAccess: (@MainActor () async -> Void)?
+
+    @ObservationIgnored private var committedToken: String?
     private var pendingAppleNonce: String?
     private let authService = AuthService()
     private let profileService = ProfileService()
@@ -26,21 +38,17 @@ final class SessionStore {
     }
 
     func restore() async {
-        errorMessage = nil
-        let token = KeychainStore.read()
-        AuthCredentials.shared.bearerToken = token
-        defer { isRestored = true }
-        guard let token, !token.isEmpty else {
-            session = nil
+        await restore(preparingAccess: false)
+    }
+
+    /// Login "Try again" after the session read failed on the network.
+    func retryRestore() async {
+        guard !isBusy else {
             return
         }
-        do {
-            session = try await profileService.session()
-        } catch let APIError.httpStatus(code, _) where code == 401 {
-            clearLocal()
-        } catch {
-            errorMessage = "Couldn't reach Angles. Try again."
-        }
+        isBusy = true
+        defer { isBusy = false }
+        await restore(preparingAccess: true)
     }
 
     func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
@@ -77,19 +85,28 @@ final class SessionStore {
         }
     }
 
-    func signOut() async {
-        isBusy = true
-        defer { isBusy = false }
-        try? await authService.signOut()
+    /// Clears this iPhone's session in one synchronous step so no frame can still read it as
+    /// signed in, then revokes it on the server in the background with the captured token.
+    func endLocalSession(revokeOnServer: Bool) {
+        let token = committedToken ?? AuthCredentials.shared.bearerToken
         clearLocal()
+        errorMessage = nil
+        guard revokeOnServer, let token, !token.isEmpty else {
+            return
+        }
+        let authService = self.authService
+        Task.detached {
+            try? await authService.signOut(bearer: token)
+        }
     }
 
+    /// Server delete only. The caller ends the local session in the same frame as the rest of
+    /// the app state.
     func deleteAccount() async -> Bool {
         isBusy = true
         defer { isBusy = false }
         do {
             try await profileService.deleteAccount()
-            clearLocal()
             return true
         } catch {
             errorMessage = "Couldn't delete your account. Try again."
@@ -110,8 +127,38 @@ final class SessionStore {
         )
     }
 
-    func handleInvalidatedSession() {
-        clearLocal()
+    /// True only when the server rejected the session that is live now.
+    func isInvalidation(of token: String?) -> Bool {
+        guard let token, let committedToken else {
+            return false
+        }
+        return token == committedToken
+    }
+
+    private func restore(preparingAccess: Bool) async {
+        errorMessage = nil
+        let token = KeychainStore.read()
+        AuthCredentials.shared.bearerToken = token
+        defer { isRestored = true }
+        guard let token, !token.isEmpty else {
+            session = nil
+            committedToken = nil
+            return
+        }
+        do {
+            let body = try await profileService.session()
+            if preparingAccess {
+                await prepareAccountAccess?()
+            }
+            guard AuthCredentials.shared.bearerToken == token else {
+                return
+            }
+            commit(body, token: token)
+        } catch let APIError.httpStatus(code, _) where code == 401 {
+            clearLocal()
+        } catch {
+            errorMessage = "Couldn't reach Angles. Try again."
+        }
     }
 
     private func finishApple(
@@ -124,24 +171,48 @@ final class SessionStore {
         isBusy = true
         errorMessage = nil
         defer { isBusy = false }
+
+        let token: String
         do {
-            let token = try await authService.signInWithApple(
+            token = try await authService.signInWithApple(
                 idToken: idToken,
                 nonce: nonce,
                 firstName: firstName,
                 lastName: lastName,
                 email: email
             )
-            KeychainStore.write(token)
-            AuthCredentials.shared.bearerToken = token
-            session = try await profileService.session()
         } catch {
             errorMessage = "Couldn't sign in. Try again."
+            return
         }
+
+        KeychainStore.write(token)
+        AuthCredentials.shared.bearerToken = token
+        do {
+            let body = try await profileService.session()
+            await prepareAccountAccess?()
+            guard AuthCredentials.shared.bearerToken == token else {
+                errorMessage = "Couldn't sign in. Try again."
+                return
+            }
+            commit(body, token: token)
+        } catch let APIError.httpStatus(code, _) where code == 401 {
+            clearLocal()
+            errorMessage = "Couldn't sign in. Try again."
+        } catch {
+            // The token is valid; Try again re-reads the session without another Apple sheet.
+            errorMessage = "Couldn't reach Angles. Try again."
+        }
+    }
+
+    private func commit(_ body: SessionBody, token: String) {
+        committedToken = token
+        session = body
     }
 
     private func clearLocal() {
         session = nil
+        committedToken = nil
         AuthCredentials.shared.bearerToken = nil
         KeychainStore.delete()
         pendingAppleNonce = nil

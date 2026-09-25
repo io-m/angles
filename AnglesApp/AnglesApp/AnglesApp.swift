@@ -1,9 +1,5 @@
+import Combine
 import SwiftUI
-
-private enum PaywallPresentationPhase: Equatable {
-    case idle
-    case locked
-}
 
 private enum HomeRevealPhase: Equatable {
     case hidden
@@ -11,6 +7,12 @@ private enum HomeRevealPhase: Equatable {
     case waitingForHome
     case animating
     case visible
+}
+
+private enum SessionEnd {
+    case logOut
+    case deleted
+    case invalidated
 }
 
 enum BrowseRoute: Hashable {
@@ -35,23 +37,26 @@ struct AppRoot: View {
     @State private var storeKitManager = StoreKitManager()
     @State private var identityStore = ProfileIdentityStore()
     @State private var sessionStore = SessionStore()
+    /// Sparkle compose over Home. The onboarding taste is a destination, not this flag.
     @State private var isComposePresented = false
-    @State private var isOnboardingTasteSession = false
-    @State private var hasRoutedLaunch = false
+    @State private var membershipRequested = false
     @State private var selectedTab: RootTab = .home
     @State private var lastContentTab: RootTab = .home
     @State private var browsePath: [BrowseRoute] = []
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
-    @State private var paywallPhase: PaywallPresentationPhase = .idle
     @State private var paywallShowsCelebration = false
     @State private var paywallHeroCard: HomeCard?
     @State private var homeRevealPhase: HomeRevealPhase = .hidden
+    @State private var homeFeedTask: Task<Void, Never>?
+    @State private var homeArrivalCapTask: Task<Void, Never>?
+    @State private var homeArrivalTimedOut = false
     @State private var saveCoverLabel: String?
     @State private var saveCoverPresented = false
-    @AppStorage("hasCompletedOnboardingTaste") private var hasCompletedTaste = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
+
+    private static let homeArrivalCap: Duration = .seconds(10)
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -66,7 +71,7 @@ struct AppRoot: View {
                         safeAreaInsets: homeSafeAreaInsets,
                         viewModel: viewModel,
                         storeKitManager: storeKitManager,
-                        isSignedIn: sessionStore.isSignedIn,
+                        canLoadFullAppContent: isHomeRevealed,
                         isActiveTab: selectedTab == .home,
                         onLogOut: logOut,
                         onOpenAuthor: openAuthor,
@@ -120,9 +125,9 @@ struct AppRoot: View {
                 .toolbar(.hidden, for: .navigationBar)
             }
             .tint(theme.ink)
-            .opacity(showsHomeFeed ? 1 : 0)
-            .allowsHitTesting(showsHomeFeed && homeRevealPhase == .visible)
-            .accessibilityHidden(!showsHomeFeed || homeRevealPhase != .visible)
+            .opacity(destination == .home ? 1 : 0)
+            .allowsHitTesting(isHomeRevealed)
+            .accessibilityHidden(!isHomeRevealed)
             .onChange(of: selectedTab) { _, newTab in
                 handleTabChange(newTab)
             }
@@ -131,7 +136,7 @@ struct AppRoot: View {
 
             theme.paper
                 .ignoresSafeArea()
-                .opacity(isHomeRevealPending ? 1 : 0)
+                .opacity(isHomeCovered ? 1 : 0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
 
@@ -142,8 +147,8 @@ struct AppRoot: View {
 
             ComposeSheetView(
                 viewModel: viewModel,
-                isActive: isComposePresented,
-                isOnboardingTaste: isOnboardingTasteSession,
+                isActive: isComposeActive,
+                isOnboardingTaste: destination == .taste,
                 storeKitManager: storeKitManager,
                 identityStore: identityStore,
                 onClose: handleComposeClose,
@@ -152,15 +157,15 @@ struct AppRoot: View {
                 onPresentSaveCover: presentSaveCover,
                 onDismissSaveCover: dismissSaveCover
             )
-            .opacity(isComposePresented ? 1 : 0)
+            .opacity(isComposeActive ? 1 : 0)
             .animation(
                 saveCoverPresented
                     ? nil
-                    : ComposeMotion.contentFade(reduceMotion, presented: isComposePresented),
-                value: isComposePresented
+                    : ComposeMotion.contentFade(reduceMotion, presented: isComposeActive),
+                value: isComposeActive
             )
-            .allowsHitTesting(isComposePresented)
-            .accessibilityHidden(!isComposePresented)
+            .allowsHitTesting(isComposeActive)
+            .accessibilityHidden(!isComposeActive)
 
             if let saveCoverLabel {
                 GeometryReader { proxy in
@@ -182,7 +187,7 @@ struct AppRoot: View {
             }
             .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86), value: viewModel.writeError)
 
-            if paywallPhase == .locked {
+            if destination == .paywall {
                 PaywallView(
                     storeKitManager: storeKitManager,
                     showsCelebration: paywallShowsCelebration,
@@ -199,7 +204,7 @@ struct AppRoot: View {
             }
 
             Group {
-                if storeKitManager.isBusy {
+                if sessionStore.isSignedIn, storeKitManager.isBusy {
                     CheckoutLockOverlay(lines: storeKitManager.checkoutLockLines)
                         .transition(.opacity)
                 }
@@ -207,15 +212,15 @@ struct AppRoot: View {
             .animation(coveringFrostAnimation, value: storeKitManager.isBusy)
             .zIndex(25)
 
-            if showsLogin {
+            if destination == .login {
                 LoginView(sessionStore: sessionStore) {
-                    Task { await sessionStore.restore() }
+                    Task { await sessionStore.retryRestore() }
                 }
                 .transition(.opacity)
                 .zIndex(28)
             }
 
-            if !hasRoutedLaunch {
+            if destination == .launching {
                 theme.paper
                     .ignoresSafeArea()
                     .zIndex(30)
@@ -223,9 +228,14 @@ struct AppRoot: View {
             }
         }
         .environment(\.profileIdentity, identityStore)
-        .onReceive(NotificationCenter.default.publisher(for: .anglesSessionInvalidated)) { _ in
-            sessionStore.handleInvalidatedSession()
-            applyGate()
+        .onReceive(
+            NotificationCenter.default.publisher(for: .anglesSessionInvalidated)
+                .receive(on: DispatchQueue.main)
+        ) { note in
+            guard sessionStore.isInvalidation(of: note.object as? String) else {
+                return
+            }
+            endSession(.invalidated)
         }
         .task {
             identityStore.onSynced = { initials, avatarPath in
@@ -233,47 +243,21 @@ struct AppRoot: View {
             }
         }
         .task {
-            migrateLegacyPaywallFlag()
-            async let sessionRestore: Void = sessionStore.restore()
-            async let storePrepare: Void = storeKitManager.prepare()
-            _ = await (sessionRestore, storePrepare)
+            await launch()
+        }
+        .onChange(of: destination) { old, new in
+            handleDestinationChange(from: old, to: new)
+        }
+        .onChange(of: sessionStore.session?.id) { _, _ in
             if let session = sessionStore.session {
                 identityStore.applySession(session)
-                hasCompletedTaste = sessionStore.hasCompletedTaste
-            }
-            withoutAnimations {
-                applyGate()
-                hasRoutedLaunch = true
-            }
-        }
-        .onChange(of: sessionStore.isSignedIn) { _, signedIn in
-            guard sessionStore.isRestored else {
-                return
-            }
-            if signedIn {
-                if let session = sessionStore.session {
-                    identityStore.applySession(session)
-                }
-                hasCompletedTaste = sessionStore.hasCompletedTaste
-                storeKitManager.resumeAfterAccountSignIn()
-                Task {
-                    await storeKitManager.refreshEntitlements()
-                    applyGate()
-                }
-            } else {
-                hasCompletedTaste = false
-                applyGate()
-            }
-        }
-        .onChange(of: hasCompletedTaste) { _, completed in
-            if completed {
-                applyGate()
             }
         }
         .onChange(of: scenePhase) { _, phase in
             // A subscription can lapse while the app is alive. Ask Apple again on every
             // foreground so Home cannot outlive the entitlement until the next cold launch.
             guard phase == .active,
+                  sessionStore.isSignedIn,
                   storeKitManager.entitlementsReady,
                   !storeKitManager.isBusy else {
                 return
@@ -283,17 +267,11 @@ struct AppRoot: View {
                 await storeKitManager.probeSubscriptionOffer()
             }
         }
-        .onChange(of: storeKitManager.hasUnlockedFullApp) { _, _ in
-            guard storeKitManager.entitlementsReady else {
-                return
-            }
-            applyGate()
-        }
         .onChange(of: storeKitManager.isBusy) { _, _ in
-            guard storeKitManager.entitlementsReady, storeKitManager.hasUnlockedFullApp else {
-                return
-            }
-            applyGate()
+            handleCheckoutStateChange()
+        }
+        .onChange(of: storeKitManager.isCheckoutOperationInFlight) { _, _ in
+            handleCheckoutStateChange()
         }
         .onChange(of: viewModel.feedLoadState) { _, _ in
             advanceHomeRevealIfPossible()
@@ -312,36 +290,46 @@ struct AppRoot: View {
         }
     }
 
-    /// Home chrome stays invisible unless this is the real destination.
-    /// Paper/paywall/taste sit on top; a cover gap must never reveal the feed.
-    private var showsHomeFeed: Bool {
-        hasRoutedLaunch
-            && sessionStore.isSignedIn
-            && storeKitManager.hasUnlockedFullApp
-            && paywallPhase == .idle
-            && !isComposePresented
+    // MARK: - Gate
+
+    /// Read in one pass from the stores, so a destination never mixes a cleared value with a
+    /// stale one.
+    private var gateInputs: AppGateInputs {
+        AppGateInputs(
+            sessionRestored: sessionStore.isRestored,
+            entitlementsReady: storeKitManager.entitlementsReady,
+            isSignedIn: sessionStore.isSignedIn,
+            isEntitled: storeKitManager.isEntitledForGate,
+            serverTasteCompleted: sessionStore.hasCompletedTaste,
+            membershipRequested: membershipRequested
+        )
     }
 
-    private var showsLogin: Bool {
-        hasRoutedLaunch && sessionStore.isRestored && !sessionStore.isSignedIn
+    private var destination: AppDestination {
+        AppGate.resolve(gateInputs)
+    }
+
+    /// The first frame of a Home destination is covered even before the reveal starts.
+    private var isHomeCovered: Bool {
+        destination == .home && homeRevealPhase != .visible
+    }
+
+    private var isHomeRevealed: Bool {
+        destination == .home && homeRevealPhase == .visible
+    }
+
+    private var isComposeActive: Bool {
+        destination == .taste || (destination == .home && isComposePresented)
     }
 
     private var showsCoveringFrost: Bool {
-        isComposePresented
-            || isHomeRevealPending
-            || paywallPhase == .locked
-    }
-
-    private var isHomeRevealPending: Bool {
-        switch homeRevealPhase {
-        case .waitingForCheckout, .waitingForHome, .animating:
-            return true
-        case .hidden, .visible:
-            return false
-        }
+        isComposeActive || isHomeCovered || destination == .paywall
     }
 
     private var showsHomeArrivalStatus: Bool {
+        guard destination == .home else {
+            return false
+        }
         switch homeRevealPhase {
         case .waitingForHome, .animating:
             return true
@@ -351,6 +339,9 @@ struct AppRoot: View {
     }
 
     private var hasResolvedInitialHomeLoad: Bool {
+        if homeArrivalTimedOut {
+            return true
+        }
         switch viewModel.feedLoadState {
         case .loading:
             return false
@@ -363,21 +354,8 @@ struct AppRoot: View {
         reduceMotion ? nil : .easeInOut(duration: 0.45)
     }
 
-    private var needsOnboardingTaste: Bool {
-        sessionStore.isSignedIn
-            && !sessionStore.hasCompletedTaste
-            && !hasCompletedTaste
-            && !storeKitManager.hasUnlockedFullApp
-    }
-
-    private var hasConfirmedFullAppAccess: Bool {
-        storeKitManager.entitlementsReady && storeKitManager.hasUnlockedFullApp
-    }
-
     private var canLoadProfileContent: Bool {
-        hasConfirmedFullAppAccess
-            && homeRevealPhase == .visible
-            && selectedTab == .profile
+        isHomeRevealed && selectedTab == .profile
     }
 
     private func withoutAnimations(_ updates: () -> Void) {
@@ -386,103 +364,88 @@ struct AppRoot: View {
         withTransaction(transaction, updates)
     }
 
-    private func migrateLegacyPaywallFlag() {
-        if !hasCompletedTaste, UserDefaults.standard.bool(forKey: "hasEnteredPaywallFlow") {
-            hasCompletedTaste = true
+    private func launch() async {
+        removeLegacyTasteFlags()
+        let store = storeKitManager
+        sessionStore.prepareAccountAccess = {
+            await store.resumeAfterAccountSignIn()
         }
+        async let sessionRestore: Void = sessionStore.restore()
+        async let productLoad: Void = storeKitManager.loadProducts()
+        _ = await (sessionRestore, productLoad)
+        await storeKitManager.prepare(hasAccountSession: sessionStore.isSignedIn)
+    }
+
+    /// The server's `tasteCompletedAt` is the only taste flag since Auth.
+    private func removeLegacyTasteFlags() {
+        UserDefaults.standard.removeObject(forKey: "hasCompletedOnboardingTaste")
         UserDefaults.standard.removeObject(forKey: "hasEnteredPaywallFlow")
     }
 
-    /// Single destination for launch, entitlements, logout, and taste-complete.
-    /// Login first. Home only when StoreKit says unlocked. Paywall when taste is done and locked.
-    /// Taste compose stays up until Save.
-    private func applyGate() {
-        guard storeKitManager.entitlementsReady, sessionStore.isRestored else {
-            return
+    private func handleDestinationChange(from old: AppDestination, to new: AppDestination) {
+        #if DEBUG
+        print("[Angles Gate] \(old) -> \(new) \(gateInputs) storekit: \(storeKitManager.debugSnapshot)")
+        #endif
+        if old == .home, new != .home {
+            leaveHome()
         }
-
-        if !sessionStore.isSignedIn {
-            withoutAnimations {
-                homeRevealPhase = .hidden
-                isComposePresented = false
-                isOnboardingTasteSession = false
-                paywallPhase = .idle
-            }
-            return
+        if new == .home, old != .home {
+            enterHome()
         }
-
-        if storeKitManager.hasUnlockedFullApp {
-            beginHomeReveal()
-            return
+        if new == .taste, old != .taste {
+            viewModel.resetCompose()
+            viewModel.composeIsPublic = false
+            storeKitManager.clearError()
         }
-
-        withoutAnimations {
-            homeRevealPhase = .hidden
+        if new != .paywall {
+            paywallShowsCelebration = false
+            paywallHeroCard = nil
         }
-
-        if paywallPhase == .locked {
-            return
-        }
-
-        if isComposePresented, isOnboardingTasteSession {
-            return
-        }
-
-        if sessionStore.hasCompletedTaste || hasCompletedTaste {
-            withoutAnimations {
-                isComposePresented = false
-                isOnboardingTasteSession = false
-                paywallPhase = .locked
-            }
-            return
-        }
-
-        withoutAnimations {
-            paywallPhase = .idle
-            presentCompose()
+        if new == .home {
+            membershipRequested = false
         }
     }
 
-    private func beginHomeReveal() {
-        switch homeRevealPhase {
-        case .waitingForCheckout, .waitingForHome, .animating:
-            advanceHomeRevealIfPossible()
-            return
-        case .visible:
-            storeKitManager.releaseCheckoutLock()
-            return
-        case .hidden:
-            break
-        }
-
-        isOnboardingTasteSession = false
-        paywallShowsCelebration = false
-        paywallHeroCard = nil
-
-        let wasCovered = isComposePresented
-            || paywallPhase == .locked
-
+    /// Home is already covered on this frame. Taste/paywall are gone structurally; the reveal
+    /// waits for checkout, then the first Home result, then fades once.
+    private func enterHome() {
         viewModel.prepareForFullAppAccess()
-        Task { await viewModel.loadFeedIfNeeded() }
         withoutAnimations {
             isComposePresented = false
-            paywallPhase = .idle
-            homeRevealPhase = wasCovered || !hasResolvedInitialHomeLoad
-                ? .waitingForCheckout
-                : .visible
+            homeArrivalTimedOut = false
+            homeRevealPhase = .waitingForCheckout
+            selectedTab = .home
+            lastContentTab = .home
+            browsePath.removeAll()
         }
-
-        if homeRevealPhase == .visible {
-            storeKitManager.releaseCheckoutLock()
-            return
-        }
-
+        homeFeedTask?.cancel()
+        homeFeedTask = Task { await viewModel.loadFeedIfNeeded() }
         storeKitManager.releaseCheckoutLock()
         advanceHomeRevealIfPossible()
     }
 
+    private func leaveHome() {
+        homeFeedTask?.cancel()
+        homeFeedTask = nil
+        homeArrivalCapTask?.cancel()
+        homeArrivalCapTask = nil
+        withoutAnimations {
+            homeRevealPhase = .hidden
+            homeArrivalTimedOut = false
+            isComposePresented = false
+        }
+    }
+
+    private func handleCheckoutStateChange() {
+        // A Restore from Settings while Home is already showing has nothing left to reveal.
+        if isHomeRevealed, !storeKitManager.isCheckoutOperationInFlight {
+            storeKitManager.releaseCheckoutLock()
+        }
+        advanceHomeRevealIfPossible()
+    }
+
     private func advanceHomeRevealIfPossible() {
-        guard storeKitManager.entitlementsReady, storeKitManager.hasUnlockedFullApp else {
+        guard destination == .home else {
             return
         }
 
@@ -494,6 +457,7 @@ struct AppRoot: View {
             withoutAnimations {
                 homeRevealPhase = .waitingForHome
             }
+            startHomeArrivalCap()
             advanceHomeRevealIfPossible()
         case .waitingForHome:
             guard hasResolvedInitialHomeLoad else {
@@ -507,7 +471,7 @@ struct AppRoot: View {
                 guard homeRevealPhase == .animating else {
                     return
                 }
-                guard storeKitManager.hasUnlockedFullApp else {
+                guard destination == .home else {
                     withoutAnimations {
                         homeRevealPhase = .hidden
                     }
@@ -525,6 +489,8 @@ struct AppRoot: View {
                     }
                     return
                 }
+                homeArrivalCapTask?.cancel()
+                homeArrivalCapTask = nil
                 withAnimation(coveringFrostAnimation) {
                     homeRevealPhase = .visible
                 }
@@ -534,53 +500,62 @@ struct AppRoot: View {
         }
     }
 
+    /// Loading Home is bounded. Past the cap Home appears with its own loading or Retry state.
+    private func startHomeArrivalCap() {
+        homeArrivalCapTask?.cancel()
+        homeArrivalCapTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: Self.homeArrivalCap)
+            } catch {
+                return
+            }
+            guard destination == .home, homeRevealPhase == .waitingForHome else {
+                return
+            }
+            homeArrivalTimedOut = true
+            advanceHomeRevealIfPossible()
+        }
+    }
+
+    // MARK: - Session
+
     private func logOut() {
-        storeKitManager.signOut()
+        endSession(.logOut)
+    }
+
+    private func deleteAccount() async -> Bool {
+        guard await sessionStore.deleteAccount() else {
+            return false
+        }
+        endSession(.deleted)
+        return true
+    }
+
+    /// Logout, account deletion, and a rejected session all end here. Nothing awaits before the
+    /// session clears, so the next frame is Login — never taste, paywall, or Home.
+    private func endSession(_ reason: SessionEnd) {
+        homeFeedTask?.cancel()
+        homeFeedTask = nil
+        homeArrivalCapTask?.cancel()
+        homeArrivalCapTask = nil
         withoutAnimations {
-            hasCompletedTaste = false
+            sessionStore.endLocalSession(revokeOnServer: reason == .logOut)
+            storeKitManager.signOut()
+            membershipRequested = false
             paywallShowsCelebration = false
             paywallHeroCard = nil
-            paywallPhase = .idle
+            isComposePresented = false
+            homeRevealPhase = .hidden
+            homeArrivalTimedOut = false
+            saveCoverLabel = nil
+            saveCoverPresented = false
             viewModel.resetCompose()
             viewModel.resetForSignOut()
             identityStore.reset()
-            homeRevealPhase = .hidden
-            selectedTab = .home
-            lastContentTab = .home
-            browsePath.removeAll()
-            isOnboardingTasteSession = false
-            isComposePresented = false
         }
-        Task { await sessionStore.signOut() }
     }
 
-    private func deleteAccount() {
-        Task {
-            let deleted = await sessionStore.deleteAccount()
-            guard deleted else {
-                viewModel.showWriteError(
-                    sessionStore.errorMessage ?? "Couldn't delete your account. Try again."
-                )
-                return
-            }
-            storeKitManager.signOut()
-            withoutAnimations {
-                hasCompletedTaste = false
-                paywallShowsCelebration = false
-                paywallHeroCard = nil
-                paywallPhase = .idle
-                viewModel.resetCompose()
-                viewModel.resetForSignOut()
-                identityStore.reset()
-                homeRevealPhase = .hidden
-                selectedTab = .home
-                lastContentTab = .home
-                browsePath.removeAll()
-                isOnboardingTasteSession = false
-                isComposePresented = false
-            }
-        }
-    }
+    // MARK: - Navigation
 
     private func openFollowed(_ person: FollowedPerson) {
         if case .author(let current) = browsePath.last, current.id == person.id {
@@ -658,42 +633,34 @@ struct AppRoot: View {
         lastContentTab = newTab
     }
 
+    // MARK: - Compose
+
     private func presentCompose() {
-        guard !isComposePresented else {
+        guard destination == .home, !isComposePresented else {
             return
         }
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         viewModel.resetCompose()
-        isOnboardingTasteSession = needsOnboardingTaste
-        if isOnboardingTasteSession {
-            viewModel.composeIsPublic = false
-            storeKitManager.clearError()
-        }
         isComposePresented = true
     }
 
     private func handleComposeClose() {
-        guard !isOnboardingTasteSession else {
+        guard destination != .taste else {
             return
         }
-
-        isOnboardingTasteSession = false
         isComposePresented = false
     }
 
     private func presentMembershipPaywall() {
-        guard isOnboardingTasteSession, storeKitManager.hasEndedMembership else {
+        guard destination == .taste, storeKitManager.hasEndedMembership else {
             return
         }
 
-        paywallShowsCelebration = false
-        paywallHeroCard = nil
         withoutAnimations {
-            homeRevealPhase = .hidden
-            isComposePresented = false
-            isOnboardingTasteSession = false
-            paywallPhase = .locked
+            paywallShowsCelebration = false
+            paywallHeroCard = nil
+            membershipRequested = true
         }
     }
 
@@ -706,7 +673,6 @@ struct AppRoot: View {
 
     private func dismissSaveCover(_ cardID: UUID) {
         withoutAnimations {
-            isOnboardingTasteSession = false
             isComposePresented = false
         }
         let slide = reduceMotion ? 0.2 : 0.48
@@ -723,8 +689,10 @@ struct AppRoot: View {
         }
     }
 
+    /// The server stamped `tasteCompletedAt` in the same transaction as the card. Recording it
+    /// locally moves the destination to the celebrating paywall in this frame.
     private func handleSavedCard(_ card: HomeCard) {
-        guard isOnboardingTasteSession else {
+        guard destination == .taste else {
             if card.isPublic {
                 lastContentTab = .home
                 selectedTab = .home
@@ -735,18 +703,13 @@ struct AppRoot: View {
             return
         }
 
-        lastContentTab = .home
-        selectedTab = .home
-        paywallHeroCard = card
-        paywallShowsCelebration = true
         withoutAnimations {
-            homeRevealPhase = .hidden
-            paywallPhase = .locked
-            isComposePresented = false
-            isOnboardingTasteSession = false
+            lastContentTab = .home
+            selectedTab = .home
+            paywallHeroCard = card
+            paywallShowsCelebration = true
+            sessionStore.noteTasteCompleted()
         }
-        hasCompletedTaste = true
-        sessionStore.noteTasteCompleted()
     }
 
     private func captureHomeInsets(_ insets: EdgeInsets) {

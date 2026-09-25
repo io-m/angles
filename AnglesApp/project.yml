@@ -65,4 +65,23 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: Angles talks to the API on your Mac while developing.
-    scheme: {}
+    scheme:
+      testTargets:
+        - AnglesAppTests
+  # Pure gate/session logic only. Runs hosted on Joe's iPhone; StoreKit is never exercised here.
+  AnglesAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AnglesAppTests
+    dependencies:
+      - target: AnglesApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.angles.ios.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Angles.app/Angles"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: true
+        DEVELOPMENT_TEAM: 36U79UTZM9
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"

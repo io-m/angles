@@ -948,7 +948,7 @@ struct ComposeSheetView: View {
         }
 
         Task {
-            guard let savedCard = await viewModel.saveCook() else {
+            guard let savedCard = await viewModel.saveCook(forcePrivate: isOnboardingTaste) else {
                 return
             }
             if isOnboardingTaste {

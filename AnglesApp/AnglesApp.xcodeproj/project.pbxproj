@@ -29,6 +29,7 @@
 		6B24BAA80221DF85876BB30A /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EBC59EB491832949278518 /* APIClient.swift */; };
 		6F472A68899B089E43ED8A99 /* HomeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3BCFBFF2318D9F3BE56CB22 /* HomeFilterSheet.swift */; };
 		729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */; };
+		77767A426BAC877733A44558 /* AppGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01BEA95023B9310D87B3474C /* AppGate.swift */; };
 		7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */; };
 		7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391AB20557C346784058025E /* LoginView.swift */; };
 		830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */; };
@@ -55,9 +56,21 @@
 		E893FFE90BB36CD6A2D17F5C /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */; };
 		F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551EA9251B494B0E82C36D47 /* ColorTokens.swift */; };
 		FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0F4006AE6DACF0D19171814 /* ProfileService.swift */; };
+		FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		746F63279E606FAFD10EE525 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F75451B2349893709BB6C782 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A5CD102802C54AA739FBF3A1;
+			remoteInfo = AnglesApp;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		01BEA95023B9310D87B3474C /* AppGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGate.swift; sourceTree = "<group>"; };
 		03485114E1C729FE4BB7383D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderChrome.swift; sourceTree = "<group>"; };
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
@@ -77,6 +90,7 @@
 		54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		551EA9251B494B0E82C36D47 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
 		564F37666F47FDFD54D03D2D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		62650FD62250B7B2A3695C5D /* AnglesAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AnglesAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		657231FF50708210A4AA9FDD /* UserAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAppearance.swift; sourceTree = "<group>"; };
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
 		7498958071766D66B285676C /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
@@ -87,6 +101,7 @@
 		926E1968DC6C213D5BAAAF2E /* HomeFeedPullRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedPullRefresh.swift; sourceTree = "<group>"; };
 		95069BD81A4DA98625DFD6FE /* AvatarImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarImage.swift; sourceTree = "<group>"; };
 		9B6CE33C2217655B2170B5F3 /* LlmModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LlmModel.swift; sourceTree = "<group>"; };
+		9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGateTests.swift; sourceTree = "<group>"; };
 		A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleIcon.swift; sourceTree = "<group>"; };
 		B05847EC66A8A1B53179B539 /* ReframeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeCardView.swift; sourceTree = "<group>"; };
@@ -158,6 +173,7 @@
 			isa = PBXGroup;
 			children = (
 				3726E6089528365BA6EC3BA8 /* AnglesApp.app */,
+				62650FD62250B7B2A3695C5D /* AnglesAppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -166,6 +182,7 @@
 			isa = PBXGroup;
 			children = (
 				E5867170AF5329B3B1527D6E /* AnglesApp */,
+				EA4A7B8B3E747C809A06B9B6 /* AnglesAppTests */,
 				36A7FDF3680174422F75E625 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -231,6 +248,7 @@
 		B76BADF40D79DBF4341405FC /* Root */ = {
 			isa = PBXGroup;
 			children = (
+				01BEA95023B9310D87B3474C /* AppGate.swift */,
 				B3956722F5CD9FC2607E738A /* RootTabBar.swift */,
 			);
 			path = Root;
@@ -282,9 +300,35 @@
 			path = AnglesApp;
 			sourceTree = "<group>";
 		};
+		EA4A7B8B3E747C809A06B9B6 /* AnglesAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */,
+			);
+			path = AnglesAppTests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		81FBC4299F94B41996A9F2A5 /* AnglesAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 001BBAC7301CA6039922EDD4 /* Build configuration list for PBXNativeTarget "AnglesAppTests" */;
+			buildPhases = (
+				4A6C3B3E896BE23932F9B615 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5AEC832FCDF3DB991C422358 /* PBXTargetDependency */,
+			);
+			name = AnglesAppTests;
+			packageProductDependencies = (
+			);
+			productName = AnglesAppTests;
+			productReference = 62650FD62250B7B2A3695C5D /* AnglesAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		A5CD102802C54AA739FBF3A1 /* AnglesApp */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 614458DE2D57E48748FB8378 /* Build configuration list for PBXNativeTarget "AnglesApp" */;
@@ -314,6 +358,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					81FBC4299F94B41996A9F2A5 = {
+						DevelopmentTeam = 36U79UTZM9;
+						ProvisioningStyle = Automatic;
+					};
 					A5CD102802C54AA739FBF3A1 = {
 						DevelopmentTeam = 36U79UTZM9;
 						ProvisioningStyle = Automatic;
@@ -338,6 +386,7 @@
 			projectRoot = "";
 			targets = (
 				A5CD102802C54AA739FBF3A1 /* AnglesApp */,
+				81FBC4299F94B41996A9F2A5 /* AnglesAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -356,6 +405,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		4A6C3B3E896BE23932F9B615 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		BE1F0821CE8B8D26D9828CBC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -364,6 +421,7 @@
 				23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */,
 				48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */,
 				9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */,
+				77767A426BAC877733A44558 /* AppGate.swift in Sources */,
 				7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */,
 				44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */,
 				8717B2AC854FC7A03D4101DF /* AuthNonce.swift in Sources */,
@@ -409,7 +467,34 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		5AEC832FCDF3DB991C422358 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A5CD102802C54AA739FBF3A1 /* AnglesApp */;
+			targetProxy = 746F63279E606FAFD10EE525 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		198364C0E274B0C320CB3B43 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 36U79UTZM9;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.angles.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Angles.app/Angles";
+			};
+			name = Debug;
+		};
 		26E14BB339A7A13BBFAFEA18 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -464,6 +549,25 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		4A13D60E6E39388307B9BC9C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 36U79UTZM9;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.angles.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Angles.app/Angles";
 			};
 			name = Release;
 		};
@@ -582,6 +686,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		001BBAC7301CA6039922EDD4 /* Build configuration list for PBXNativeTarget "AnglesAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				198364C0E274B0C320CB3B43 /* Debug */,
+				4A13D60E6E39388307B9BC9C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		614458DE2D57E48748FB8378 /* Build configuration list for PBXNativeTarget "AnglesApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

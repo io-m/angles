@@ -43,17 +43,17 @@ Loading and error are **states on Results**, not their own screens.
 | 5d | Owner card menu | feature | done | `ReframeCardView.swift`; `cards.ts` | Long press opens the card menu (9c moved it off the ⋯ button): confirm delete, privacy flag, original-vs-English. |
 | 5e | Thought type + card height | polish | done | `ReframeCardView.swift` | Thought is slightly smaller and heavier; height hugs max thought/reframe plus chrome. |
 | 5f | List and in-card chrome | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `ProfileView.swift` | Strip list-dots and tighter grid rows. In-card dots went away with the pager in 9c. |
-| 6 | Onboarding taste | screen | done | `ComposeSheetView.swift`; `AnglesApp.swift`; `HomeViewModel.swift`; `SettingsView.swift` | Native chat welcome hero ('Break the spiral') in ComposeSheetView; zero survey, zero auth at launch; auto-presents on fresh install. A successful taste Save stamps install-local `hasCompletedOnboardingTaste`; Settings Log out replays first-run. |
+| 6 | Onboarding taste | screen | done | `ComposeSheetView.swift`; `AnglesApp.swift`; `Root/AppGate.swift`; `HomeViewModel.swift`; `SettingsView.swift` | Native chat welcome hero ('Break the spiral') in ComposeSheetView; zero survey. Shown after Apple sign-in when `tasteCompletedAt` is empty and StoreKit is not entitled. Taste Save is always private and stamps server `tasteCompletedAt` in the card transaction; Settings Log out returns to Login. |
 | 7 | Paywall | screen | done | `Paywall/*.swift`; `Resources/celebration-checkmark.json`; `StoreKit/StoreKitManager.swift`; `AnglesApp.swift`; `HomeView.swift`; `SettingsView.swift` | Saved taste crossfades onto the Lottie celebration, then the four-angle paper and annual/monthly hard paywall. |
 | 7b | StoreKit sandbox | feature | done | `StoreKitManager.swift`; `PaywallView.swift`; `project.yml` | Debug on device always uses App Store sandbox; verified entitlements unlock; empty catalog shows Retry; DEBUG product/transaction logs. |
 | 7c | Taste-once routing | polish | done | `AnglesApp.swift`; `StoreKitManager.swift`; `ComposeSheetView.swift`; `PaywallView.swift`; `SettingsView.swift`; `HomeView.swift` | Launch waits for StoreKit entitlements; only live status, `currentEntitlements`, or a fresh verified purchase unlock Home; taste header link restores purchases; overlay is not dismissible until ready; paywall Restore purchases; Settings Log out is a local session and does not cancel Apple. |
-| 7d | Frost handoffs | polish | done | `AnglesApp.swift`; `PaywallGlimpseView.swift`; `PaywallView.swift`; `StoreKitManager.swift` | One covering frost; checkout glass overlay over the paywall; a single applyGate destination so launch/logout never flash Home; an expired subscription stays on the paywall with Renew. |
+| 7d | Frost handoffs | polish | done | `AnglesApp.swift`; `Root/AppGate.swift`; `PaywallView.swift`; `StoreKitManager.swift` | One covering frost; checkout glass overlay over the paywall; one pure `AppGate` destination from a single input snapshot so launch/login/logout never flash Home, taste, or paywall; an expired subscription stays on the paywall with Renew. |
 | 7e | Membership paywall | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Celebration, four-angle paper, 44pt price, and annual/monthly checkout share one screen; there is no intermediate plans step. |
 | 7f | Taste header + membership | polish | done | `ComposeSheetView.swift`; `PaywallView.swift`; `StoreKitManager.swift`; `AnglesApp.swift` | Taste restore sits in the model-button row; ended membership opens the same two-plan paywall, preselects the prior plan, and purchases the selected SKU. |
 | 7g | Paywall positive capture | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Paper sells four angles as a 2x2 of style tiles; purchase module is spread commerce (44pt price, both plans, CTA); (i) holds library/Home, restore, legal. |
 | 7h | Sandbox-only checkout | polish | done | `project.yml`; `StoreKitManager.swift`; `AnglesApp.swift`; `PaywallView.swift`; `HomeView.swift`; `ProfileView.swift`; `HomeViewModel.swift` | No local StoreKit file; prior-plan-aware renewal; neutral checkout copy; one serialized checkout/feed/frost handoff; first loads wait for entitlement readiness. |
 | 7i | Paywall specimen marquee | polish | done | `PaywallCardMarquee.swift`; `PaywallView.swift` | Paper is a tilted 3-row marquee of specimen cards that bleeds behind the purchase sheet’s rounded corners; (i) sits on the module. |
-| 8 | Auth | feature | done | `auth.ts`; `authStub.ts`; `schema.ts`; `0009_auth_tables.sql`; `profile.ts`; `LoginView.swift`; `SessionStore.swift`; `APIClient.swift`; `AnglesApp.swift`; `SettingsView.swift` | Continue with Apple first; `tasteCompletedAt` on the user; Keychain bearer on every API call; Settings log out and delete account. Native POSTs skip browser CSRF so a leftover cookie cannot 403 login. |
+| 8 | Auth | feature | done | `auth.ts`; `authStub.ts`; `schema.ts`; `0009_auth_tables.sql`; `profile.ts`; `LoginView.swift`; `SessionStore.swift`; `AuthCredentials.swift`; `APIClient.swift`; `AnglesApp.swift`; `SettingsView.swift` | Continue with Apple first; `tasteCompletedAt` on the user; Keychain bearer on every API call; Settings log out and delete account. Native POSTs skip browser CSRF so a leftover cookie cannot 403 login. A sign-in is published only after StoreKit answers for that account; log out clears the session locally in one frame, then revokes it; a 401 only ends the session whose token it rejected. |
 | 9 | Public opt-in / community Home | screen | done | `HomeView.swift`; `feed.ts`; `schema.ts`; `CardsService.swift` | Public-others feed by Recent, category, and emotion; viewer pin/heart saves; `pnpm db:seed-community`. |
 | 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 | 9c | Style chips, flip chevron, no pins | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `APIClient.swift`; `feed.ts`; `cards.ts` | Chips replace the in-card pager; heart top-right, flip chevron bottom-right; pins gone; failed writes say so. |
@@ -307,12 +307,12 @@ Not a new screen. Corrective polish on 9m.
 Frictionless first-run experience directly in the real app compose canvas:
 
 - Zero profiling survey (no questions about personal demographics or body metrics).
-- Zero auth at launch: no email, no password, no login gate. Complies with Apple Guideline 2.1 (no reviewer demo credentials required) and 5.1.1(v).
+- No email or password: Continue with Apple (row 8) is the only sign-in. Complies with Apple Guideline 2.1 (no reviewer demo credentials required) and 5.1.1(v).
 - Native welcome hero in `ComposeSheetView`: "Break the spiral." with subtitle capturing the mental loop/overthinking problem. Starter prompt chips are not in the compose hero.
-- Auto-presents the native compose sheet on first install after StoreKit entitlements are known. An active subscription skips taste.
+- Taste is the `AppGate` destination for a signed-in account with an empty `tasteCompletedAt` and no StoreKit entitlement. An active subscription skips taste. There is no install-local taste flag; the old `hasCompletedOnboardingTaste` / `hasEnteredPaywallFlow` keys are removed at launch.
 - Sending a thought runs the cook with cycling progress lines, arriving at the ready card.
-- The overlay cannot be dismissed during the taste. Only a successful Save stamps `hasCompletedOnboardingTaste = true` and crossfades onto the celebration frost, so killing the app on an unsaved result cannot skip to the paywall.
-- Settings **Log out** starts over on this iPhone (taste again). It does not cancel Apple. Taste **Already have an account?** and paywall Restore purchases sign the session back in.
+- The overlay cannot be dismissed during the taste. Taste Save is always private (`saveCook(forcePrivate:)`). Only a successful Save stamps `tasteCompletedAt` (server, same transaction as the card) and moves the destination to the celebrating paywall, so killing the app on an unsaved result cannot skip to the paywall.
+- Settings **Log out** returns to Login. It does not cancel Apple. Taste **Already have an account?** and paywall Restore purchases use the same restore path.
 
 ### 7. Paywall
 
@@ -333,15 +333,15 @@ Not a new screen. Hardens row 7 for App Store sandbox:
 
 Not a new screen. Hardens rows 6–7 so a returning subscriber is not sent through the free chat:
 
-- Launch holds chrome until `StoreKitManager.prepare()` finishes. Active entitlements skip taste, stamp `hasCompletedOnboardingTaste`, and open Home. Entitlement is `Product.SubscriptionInfo.Status` (subscribed / grace / billing retry), an unexpired verified `currentEntitlements` transaction, or a just-completed verified purchase — which unlocks immediately and is not overwritten if that refresh is still empty. `Transaction.latest(for:)` is ended-subscription detection only and never opens Home, so Restore on an expired subscription offers Renew instead of Home.
+- Launch holds chrome until the Keychain session restore and `StoreKitManager.prepare(hasAccountSession:)` finish. Active entitlements skip taste and open Home. Entitlement is `Product.SubscriptionInfo.Status` (subscribed / grace / billing retry), an unexpired verified `currentEntitlements` transaction, or a just-completed verified purchase — which unlocks immediately and is not overwritten if that refresh is still empty. `Transaction.latest(for:)` is ended-subscription detection only and never opens Home, so Restore on an expired subscription offers Renew instead of Home.
 - Taste overlay hides Close and Start again, blocks canvas dismiss and recook, and stamps taste only after a successful Save. Save raises the celebration frost before compose dismisses so the Home feed never flashes.
 - Taste: optional top-leading **Already have an account?** unless an ended subscription is found — then the overlay shows **We found your previous subscription** and **Renew membership**, which opens the normal two-plan paywall. The probe runs at the end of `prepare()` and again when the paywall appears, and only records ended history when no Annual or Monthly is live. Restore remains available and uses `AppStore.sync()` for receipts not on this phone; the probe never syncs or raises a password sheet.
-- Settings **Log out** is a local session: start over on this iPhone, ignore StoreKit until the next taste restore, paywall Subscribe, or Restore. It does not cancel Apple. Sign in with Apple waits for row 8.
-- One local flag (`hasCompletedOnboardingTaste`). The old `hasEnteredPaywallFlow` value is migrated once and removed. No Keychain device fingerprint. Auth / `tasteCompletedAt` wait for row 8.
+- Settings **Log out** is a local session: back to Login, ignore StoreKit until the next Apple sign-in, paywall Subscribe, or Restore. It does not cancel Apple.
+- Taste is decided by server `tasteCompletedAt` only (row 8). No Keychain device fingerprint.
 
 ### 7d. Frost handoffs
 
-Not a new screen. Taste, paywall, purchase, and restore share one AppRoot covering frost. Checkout uses an ultra-thin glass overlay above the still-visible paywall. A single `applyGate()` picks Home, paywall, or taste only after StoreKit is ready. A successful entitlement structurally removes Taste/paywall under the cover, waits for the StoreKit operation and first Home result, then runs one frost-to-Home crossfade. Failed checks remove the checkout glass and leave an actionable paywall/taste state.
+Not a new screen. Taste, paywall, purchase, and restore share one AppRoot covering frost. Checkout uses an ultra-thin glass overlay above the still-visible paywall. `Root/AppGate.swift` resolves one destination (launching, login, taste, paywall, home) from a single snapshot of session restored, StoreKit ready, signed in, entitled, server taste, and taste Renew; AppRoot renders only from it, and the first frame of a Home destination is always covered. A successful entitlement structurally removes Taste/paywall under the cover, waits for the StoreKit operation and first Home result, then runs one frost-to-Home crossfade. Failed checks remove the checkout glass and leave an actionable paywall/taste state.
 
 ### 7e. Membership paywall
 
@@ -366,7 +366,19 @@ Not a new screen. Debug on device talks only to App Store sandbox — no `.store
 
 **Checkout race regression:** `holdCheckoutUntilHome()` is armed before purchase/restore can change entitlement. A transaction update may arrive while that async call is suspended, so no continuation may arm the hold again. StoreKit owns `isPurchasing`/`isRestoring` until their `defer` runs; AppRoot can release only the visual confirmation hold. `AppRoot.applyGate()` moves an Apple-backed unlock through hidden → waiting for checkout → waiting for the first Home result → one animated visible state. The full native TabView pre-renders behind an opaque curtain so cards, bottom gradient, and tab bar arrive as one frame. Home never animates underneath checkout glass, and Taste Save never runs a second close transaction. Cancel, pending, no-active-subscription, and verification failure release the glass with clear feedback.
 
-**Logout race regression:** Apple status/history calls already in flight when Log out is tapped must re-check `hasSignedOutSession` after every await. They may finish and clean up transactions, but only an explicit purchase or Restore can sign the local session back in; passive refresh/probe work cannot leave Home visible while Settings reports Inactive.
+**Logout race regression:** Apple status/history calls already in flight when Log out is tapped must re-check `hasSignedOutSession` after every await. They may finish and clean up transactions, but only an explicit purchase, Restore, or Apple account sign-in can sign the local session back in; passive refresh/probe work cannot leave Home visible while Settings reports Inactive. Logout clears the session in the same synchronous step as StoreKit, so no frame reads signed in + locked + untasted.
+
+**Entitlement hardening:** `Transaction.latest` is never `.active`, even when unexpired; only live status or `currentEntitlements` unlock, and Restore/probe unlock only through the same refresh. Status is read once per subscription group. Upgraded-away receipts are skipped. A fresh purchase names its plan in Settings immediately. An expiry watchdog refreshes shortly after `activeExpiresAt`, so a lapse while Home is open lands on the paywall (or taste) without backgrounding; foreground still refreshes. The Home arrival is bounded at 10s, after which Home shows its own loading/Retry.
+
+**Sandbox re-purchase (Joe’s iPhone, App Store sandbox, no `.storekit`):**
+
+1. Cancel: Profile → Settings → Subscription → **Cancel** (Apple's manage sheet), or iOS Settings → **Developer → Sandbox Apple Account → Manage** (older iOS: **App Store → Sandbox Account → Manage**). Renewal Rate lives there too; **Clear Purchase History** resets to a never-subscribed tester (no Renew hint).
+2. Wait for the period to end (Monthly ≈5 min, Yearly ≈1 h at the default rate). Foreground the app: Settings → Subscription reads Inactive and Home becomes the paywall.
+3. Apple login with `tasteCompletedAt` set → paywall with the prior plan as **Renew membership**, the other as **Switch**. With the Angles account deleted → taste (with **We found your previous subscription**) → Save privately → celebration → paywall.
+4. Purchase: Apple's sandbox sheet → checkout glass → frost → Loading Home → Home; feed loads with the bearer; Settings shows Yearly/Monthly.
+5. Live sub + Apple login → Home, no paywall/taste frame. Log out from Home → Login only. Restore on a live sub → Home; on an expired sub → Renew/Switch stays up. Cancel the sheet, Ask to Buy pending, and an offline catalog (Retry) leave an actionable paywall. Killing the app mid-checkout recovers through `Transaction.unfinished` on relaunch.
+
+DEBUG console: `[Angles Gate] old -> new` with every gate input and the StoreKit snapshot (product, expiry, environment, signed-out flag), plus `[Angles StoreKit]` transaction lines. No thought text.
 
 ### 7i. Paywall specimen marquee
 
@@ -379,7 +391,9 @@ Sign in first, then one taste if this account still needs it.
 - Launch is **Continue with Apple**. First tap creates the account; the next tap is log-in. Session token lives in Keychain and goes out as `Authorization: Bearer` on every API call.
 - After a session: StoreKit subscribed → Home. `users.tasteCompletedAt` set → paywall. Empty taste flag and unpaid → one free taste, then the paywall if they still have no subscription.
 - Taste Save writes the card as this user and stamps `tasteCompletedAt`. There is no anonymous stub user and no guest-card claim.
-- Settings **Log out** returns to the login screen and does not cancel Apple. **Delete account** is Apple 5.1.1(v).
+- Settings **Log out** returns to the login screen and does not cancel Apple. **Delete account** is Apple 5.1.1(v); Settings stays up with a progress row until the server confirms, then returns to Login.
+- Sign-in is atomic: token → Keychain → `GET /profile/session` → StoreKit refresh for this account → publish the session. The first destination is already Home, taste, or paywall; Login keeps its spinner meanwhile.
+- Log out clears session, Keychain, bearer, and StoreKit in one frame, then revokes the server session in the background with the captured token. A 401 ends only the session whose token it rejected, so a late 401 from an old token cannot sign out a new one.
 
 ## Postponed (do not start)
 
@@ -394,6 +408,7 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-09-25 — One pure `AppGate` destination: logout goes straight to Login with no taste/paywall frame; Apple login publishes the session only after StoreKit answers, so subscribers land on Home and tasted users on the paywall directly; server `tasteCompletedAt` is the only taste flag; `Transaction.latest` can no longer unlock; Settings names the freshly bought plan; an expiry watchdog and a 10s arrival cap keep Home from outliving the subscription or spinning forever; delete account waits for the server; sandbox re-purchase recipe under 7h.
 - 2026-09-25 — Native Apple sign-in no longer 403s on a leftover session cookie without a browser Origin.
 - 2026-09-25 — Home waits for a signed-in session before fetching the feed, so Apple login does not stall on Loading Home.
 - 2026-09-25 — Login cards start fully off-screen; dark blooms match the first dissipated look, light a notch stronger.

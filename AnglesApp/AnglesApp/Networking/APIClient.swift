@@ -74,14 +74,17 @@ final class APIClient: @unchecked Sendable {
         return (data, response.value(forHTTPHeaderField: header))
     }
 
-    func postEmpty(path: String, timeout: TimeInterval? = nil) async throws {
+    /// `bearer` overrides the shared session token, so a sign-out can still revoke the session
+    /// it just cleared locally.
+    func postEmpty(path: String, bearer: String? = nil, timeout: TimeInterval? = nil) async throws {
         _ = try await execute(
             path: path,
             method: "POST",
             queryItems: [],
             bodyData: Data("{}".utf8),
             contentType: "application/json",
-            timeout: timeout
+            timeout: timeout,
+            bearer: bearer
         )
     }
 
@@ -189,7 +192,8 @@ final class APIClient: @unchecked Sendable {
         queryItems: [URLQueryItem],
         bodyData: Data?,
         contentType: String?,
-        timeout: TimeInterval?
+        timeout: TimeInterval?,
+        bearer: String? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         guard let url = resolvedURL(path: path, queryItems: queryItems) else {
             throw APIError.invalidURL
@@ -203,8 +207,9 @@ final class APIClient: @unchecked Sendable {
         if let origin = originHeader(for: url) {
             request.setValue(origin, forHTTPHeaderField: "Origin")
         }
-        if let token = AuthCredentials.shared.bearerToken, !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let sentToken = bearer ?? AuthCredentials.shared.bearerToken
+        if let sentToken, !sentToken.isEmpty {
+            request.setValue("Bearer \(sentToken)", forHTTPHeaderField: "Authorization")
         }
         if let bodyData {
             if let contentType {
@@ -230,9 +235,9 @@ final class APIClient: @unchecked Sendable {
         }
 
         guard (200 ... 299).contains(http.statusCode) else {
-            if http.statusCode == 401, request.value(forHTTPHeaderField: "Authorization") != nil {
-                AuthCredentials.shared.bearerToken = nil
-                NotificationCenter.default.post(name: .anglesSessionInvalidated, object: nil)
+            if http.statusCode == 401, let sentToken, !sentToken.isEmpty,
+               AuthCredentials.shared.clear(ifMatching: sentToken) {
+                NotificationCenter.default.post(name: .anglesSessionInvalidated, object: sentToken)
             }
             let message = String(data: data, encoding: .utf8)
             throw APIError.httpStatus(http.statusCode, message)

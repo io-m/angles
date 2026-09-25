@@ -10,7 +10,8 @@ struct HomeView: View {
     let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
     let storeKitManager: StoreKitManager
-    var isSignedIn = false
+    /// AppRoot owns Home's first load; this only gates in-place refresh.
+    var canLoadFullAppContent = false
     var glimpseCard: HomeCard? = nil
     var isGlimpseActive = false
     var isActiveTab: Bool = true
@@ -24,9 +25,6 @@ struct HomeView: View {
     @State private var showHomeFilter = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-    private var canLoadFullAppContent: Bool {
-        isSignedIn && storeKitManager.entitlementsReady && storeKitManager.hasUnlockedFullApp
-    }
 
     var body: some View {
         HomeFeedPager(
@@ -69,12 +67,6 @@ struct HomeView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .tint(theme.ink)
-        .task(id: canLoadFullAppContent) {
-            guard canLoadFullAppContent else {
-                return
-            }
-            await viewModel.loadFeedIfNeeded()
-        }
         .sheet(isPresented: $showHomeFilter) {
             HomeFilterSheet(appliedFilter: viewModel.appliedFilter) { filter in
                 viewModel.applyFeedFilter(filter)

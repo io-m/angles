@@ -724,7 +724,8 @@ final class HomeViewModel {
         startRefine()
     }
 
-    func saveCook() async -> HomeCard? {
+    /// `forcePrivate` is the onboarding taste: that save is private whatever the toggle says.
+    func saveCook(forcePrivate: Bool = false) async -> HomeCard? {
         guard case .ready(let cook) = phase, !cook.results.isEmpty, !isSaving else {
             return nil
         }
@@ -733,6 +734,7 @@ final class HomeViewModel {
         saveError = nil
         let styles = cook.results.map(\.style)
         let spotlight = styles[cards.count % styles.count]
+        let isPublic = forcePrivate ? false : composeIsPublic
         let task = Task<HomeCard?, Never> { @MainActor in
             do {
                 let stored = try await cardsService.create(
@@ -744,7 +746,7 @@ final class HomeViewModel {
                         signature: cook.signature,
                         model: cook.model.rawValue,
                         spotlightStyle: spotlight,
-                        isPublic: composeIsPublic
+                        isPublic: isPublic
                     )
                 )
                 guard !Task.isCancelled else {
@@ -1013,6 +1015,15 @@ final class HomeViewModel {
     func loadFeedIfNeeded() async {
         guard !hasLoadedFeed else {
             return
+        }
+
+        let generation = feedGeneration
+        defer {
+            // A cancelled first load must not strand the arrival on Loading with nothing running.
+            if Task.isCancelled, generation == feedGeneration, !hasLoadedFeed,
+               feedTask == nil, feedCards.isEmpty, feedLoadState == .loading {
+                feedLoadState = .failed("Couldn't load Home.")
+            }
         }
 
         for attempt in 0 ... Self.initialLoadRetryDelays.count {

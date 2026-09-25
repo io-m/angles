@@ -37,6 +37,17 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "81FBC4299F94B41996A9F2A5"
+               BuildableName = "AnglesAppTests.xctest"
+               BlueprintName = "AnglesAppTests"
+               ReferencedContainer = "container:AnglesApp.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

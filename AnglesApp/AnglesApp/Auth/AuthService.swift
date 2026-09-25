@@ -47,8 +47,8 @@ struct AuthService: Sendable {
         throw APIError.decoding("Sign in did not return a session.")
     }
 
-    func signOut() async throws {
-        try await client.postEmpty(path: "api/auth/sign-out")
+    func signOut(bearer: String) async throws {
+        try await client.postEmpty(path: "api/auth/sign-out", bearer: bearer, timeout: 6)
     }
 }
 

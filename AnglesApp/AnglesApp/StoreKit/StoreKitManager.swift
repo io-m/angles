@@ -40,15 +40,26 @@ final class StoreKitManager {
     private(set) var priorMembershipProductID: String?
     private(set) var errorMessage: String?
     private(set) var activeProductID: String?
-    private(set) var activeExpiresAt: Date?
+    private(set) var activeExpiresAt: Date? {
+        didSet {
+            if activeExpiresAt != oldValue {
+                scheduleExpiryRefresh()
+            }
+        }
+    }
     private var isProbingSubscription = false
+    private var hasSignedOutSession = false
+    @ObservationIgnored private var activeEnvironment: String?
 
     private var transactionListener: Task<Void, Never>?
     private var unfinishedListener: Task<Void, Never>?
+    @ObservationIgnored private var expiryTask: Task<Void, Never>?
 
     init() {
         Self.migrateLegacySignOutFlag()
-        if UserDefaults.standard.bool(forKey: Self.signedOutSessionKey) {
+        let signedOut = UserDefaults.standard.bool(forKey: Self.signedOutSessionKey)
+        hasSignedOutSession = signedOut
+        if signedOut {
             hasUnlockedFullApp = false
         } else {
             hasUnlockedFullApp = UserDefaults.standard.bool(forKey: Self.unlockDefaultsKey)
@@ -129,13 +140,29 @@ final class StoreKitManager {
         products.first { $0.id == productID }
     }
 
-    func prepare() async {
-        await loadProducts()
+    /// Launch. Call after `loadProducts()` and the Keychain session restore, so the refresh can
+    /// read subscription status and a live account session is never read as signed out.
+    func prepare(hasAccountSession: Bool) async {
+        if hasAccountSession, isSignedOut {
+            signIn()
+        }
         await refreshEntitlements()
         entitlementsReady = true
-        // Products are loaded by now, so the probe can read status as well as receipts. It runs
-        // detached: the launch gate must not wait on a status read to pick a destination.
+        // Detached: the launch gate must not wait on a history read to pick a destination.
         Task { await probeSubscriptionOffer() }
+    }
+
+    /// Whether the gate may treat this device as paid right now.
+    var isEntitledForGate: Bool {
+        entitlementsReady && !isSignedOut && hasUnlockedFullApp
+    }
+
+    var debugSnapshot: String {
+        let expires = activeExpiresAt.map { ISO8601DateFormatter().string(from: $0) } ?? "nil"
+        return "ready=\(entitlementsReady) unlocked=\(hasUnlockedFullApp) signedOut=\(isSignedOut) "
+            + "product=\(activeProductID ?? "nil") expires=\(expires) env=\(activeEnvironment ?? "nil") "
+            + "prior=\(priorMembershipProductID ?? "nil") purchasing=\(isPurchasing) restoring=\(isRestoring) "
+            + "confirming=\(isConfirmingAccess)"
     }
 
     func loadProducts() async {
@@ -277,10 +304,11 @@ final class StoreKitManager {
 
         switch await membershipHistoryProbe() {
         case .active:
-            priorMembershipProductID = nil
-            hasUnlockedFullApp = true
-            errorMessage = nil
-            return true
+            await refreshEntitlements(lockWhenEmpty: false)
+            if hasUnlockedFullApp {
+                errorMessage = nil
+                return true
+            }
         case .ended(let productID):
             presentEndedMembership(
                 productID: productID,
@@ -317,8 +345,7 @@ final class StoreKitManager {
         switch history {
         case .active:
             priorMembershipProductID = nil
-            hasUnlockedFullApp = true
-            errorMessage = nil
+            await refreshEntitlements(lockWhenEmpty: false)
         case .ended(let productID):
             presentEndedMembership(productID: productID)
         case .none:
@@ -342,8 +369,9 @@ final class StoreKitManager {
         priorMembershipProductID = nil
         activeProductID = nil
         activeExpiresAt = nil
+        activeEnvironment = nil
         releaseCheckoutLock()
-        UserDefaults.standard.set(true, forKey: Self.signedOutSessionKey)
+        isSignedOut = true
         hasUnlockedFullApp = false
         Self.debugLog("local session signed out")
     }
@@ -352,17 +380,28 @@ final class StoreKitManager {
         errorMessage = nil
     }
 
+    /// Observable mirror of the persisted flag so the gate re-reads it in the same frame.
     private var isSignedOut: Bool {
-        UserDefaults.standard.bool(forKey: Self.signedOutSessionKey)
+        get { hasSignedOutSession }
+        set {
+            hasSignedOutSession = newValue
+            UserDefaults.standard.set(newValue, forKey: Self.signedOutSessionKey)
+        }
     }
 
-    /// Resume StoreKit entitlements after a real account sign-in. Does not cancel Apple.
-    func resumeAfterAccountSignIn() {
+    /// A real account sign-in resumes StoreKit and asks Apple before the session is published.
+    /// A still-live subscription goes straight Home; that is paid access, not a skipped paywall.
+    func resumeAfterAccountSignIn() async {
         signIn()
+        await refreshEntitlements()
+        entitlementsReady = true
+        if !hasUnlockedFullApp {
+            Task { await probeSubscriptionOffer() }
+        }
     }
 
     private func signIn() {
-        UserDefaults.standard.set(false, forKey: Self.signedOutSessionKey)
+        isSignedOut = false
         Self.debugLog("local session signed in by explicit StoreKit action")
     }
 
@@ -410,11 +449,7 @@ final class StoreKitManager {
         isFreshPurchase: Bool = false
     ) async throws {
         let transaction = try verified(result)
-        Self.debugLog("verified transaction product ID: \(transaction.productID)")
-        Self.debugLog("transaction environment: \(String(describing: transaction.environment))")
-        Self.debugLog(
-            "transaction dates purchase=\(transaction.purchaseDate) expiration=\(String(describing: transaction.expirationDate)) revoked=\(String(describing: transaction.revocationDate))"
-        )
+        Self.logTransaction(isFreshPurchase ? "purchased" : "incoming", transaction)
 
         let unlockedFromThisTransaction: Bool
         if isFreshPurchase {
@@ -447,6 +482,10 @@ final class StoreKitManager {
         }
         if isFreshPurchase || isActiveAnglesEntitlement(transaction, now: Date()) {
             priorMembershipProductID = nil
+            // Settings names the plan even while `currentEntitlements` has not listed it yet.
+            activeProductID = transaction.productID
+            activeExpiresAt = transaction.expirationDate
+            activeEnvironment = String(describing: transaction.environment)
             hasUnlockedFullApp = true
             Self.debugLog("unlocked from verified transaction \(transaction.productID)")
             return true
@@ -456,77 +495,138 @@ final class StoreKitManager {
 
     private func refreshEntitlements(lockWhenEmpty: Bool) async {
         if isSignedOut {
-            hasUnlockedFullApp = false
-            activeProductID = nil
-            activeExpiresAt = nil
+            clearActiveEntitlement()
             return
         }
 
-        let detail = await activeSubscriptionDetail()
+        let detail = await activeSubscriptionDetail(statuses: await groupStatuses())
         guard !isSignedOut else {
-            hasUnlockedFullApp = false
-            activeProductID = nil
-            activeExpiresAt = nil
+            clearActiveEntitlement()
             Self.debugLog("entitlement refresh kept local signed-out session locked")
             return
         }
         if let detail {
             activeProductID = detail.productID
             activeExpiresAt = detail.expiresAt
+            activeEnvironment = detail.environment
             priorMembershipProductID = nil
             hasUnlockedFullApp = true
             errorMessage = nil
         } else if lockWhenEmpty {
-            hasUnlockedFullApp = false
-            activeProductID = nil
-            activeExpiresAt = nil
+            clearActiveEntitlement()
         }
         Self.debugLog(
-            "entitlements active=\(detail != nil) unlocked=\(hasUnlockedFullApp) lockWhenEmpty=\(lockWhenEmpty)"
+            "entitlements active=\(detail != nil) unlocked=\(hasUnlockedFullApp) lockWhenEmpty=\(lockWhenEmpty) \(debugSnapshot)"
         )
+    }
+
+    private func clearActiveEntitlement() {
+        hasUnlockedFullApp = false
+        activeProductID = nil
+        activeExpiresAt = nil
+        activeEnvironment = nil
+    }
+
+    /// Refreshes once shortly after the live period ends, so a lapse while Home is open lands on
+    /// the paywall without waiting for the next foreground. A renewal moves the date and re-arms.
+    private func scheduleExpiryRefresh() {
+        expiryTask?.cancel()
+        expiryTask = nil
+        guard let expiresAt = activeExpiresAt else {
+            return
+        }
+        expiryTask = Task { [weak self] in
+            let wait = max(expiresAt.timeIntervalSinceNow, 0) + Self.expiryRefreshSlack
+            do {
+                try await Task.sleep(for: .milliseconds(Int(wait * 1000)))
+            } catch {
+                return
+            }
+            while let self, self.isBusy {
+                do {
+                    try await Task.sleep(for: .seconds(5))
+                } catch {
+                    return
+                }
+            }
+            guard let self, !Task.isCancelled else {
+                return
+            }
+            Self.debugLog("expiry watchdog refresh")
+            await self.refreshEntitlements()
+            if !self.hasUnlockedFullApp {
+                await self.probeSubscriptionOffer()
+            }
+        }
     }
 
     private struct ActiveSubscription {
         let productID: String
         let expiresAt: Date?
+        let environment: String
     }
 
-    /// Which SKU Apple currently entitles, for the Settings plan row.
-    /// Unlock rules are unchanged: subscribed / grace / billing-retry status first,
-    /// then an unexpired verified `currentEntitlements` transaction.
-    private func activeSubscriptionDetail() async -> ActiveSubscription? {
+    /// One status read per subscription group. Either product returns every status in the group,
+    /// so reading both only doubled the time a stalled sandbox read could hold login or launch.
+    private func groupStatuses() async -> [Product.SubscriptionInfo.Status] {
+        var seenGroups = Set<String>()
+        var statuses: [Product.SubscriptionInfo.Status] = []
         for product in products {
-            guard Self.productIDs.contains(product.id), let subscription = product.subscription else {
+            guard Self.productIDs.contains(product.id),
+                  let subscription = product.subscription,
+                  seenGroups.insert(subscription.subscriptionGroupID).inserted else {
                 continue
             }
-            for status in await subscriptionStatuses(for: subscription, productID: product.id) {
-                switch status.state {
-                case .subscribed, .inGracePeriod, .inBillingRetryPeriod:
-                    guard let transaction = try? verified(status.transaction),
-                          Self.productIDs.contains(transaction.productID),
-                          isAppStoreBacked(transaction) else {
-                        continue
-                    }
-                    return ActiveSubscription(
-                        productID: transaction.productID,
-                        expiresAt: transaction.expirationDate
-                    )
-                default:
+            statuses += await subscriptionStatuses(for: subscription, productID: product.id)
+        }
+        return statuses
+    }
+
+    /// Apple's live answer only: subscribed / grace / billing-retry status first, then an
+    /// unexpired verified `currentEntitlements` transaction. `Transaction.latest` is deliberately
+    /// absent: a leftover receipt for an expired subscription must never unlock Home.
+    private func activeSubscriptionDetail(
+        statuses: [Product.SubscriptionInfo.Status]
+    ) async -> ActiveSubscription? {
+        for status in statuses {
+            Self.debugLog("subscription status: \(String(describing: status.state))")
+            switch status.state {
+            case .subscribed, .inGracePeriod, .inBillingRetryPeriod:
+                guard let transaction = try? verified(status.transaction),
+                      Self.productIDs.contains(transaction.productID),
+                      isAppStoreBacked(transaction) else {
+                    Self.debugLog("ignored non-App Store status")
                     continue
                 }
+                Self.logTransaction("status", transaction)
+                return ActiveSubscription(
+                    productID: transaction.productID,
+                    expiresAt: transaction.expirationDate,
+                    environment: String(describing: transaction.environment)
+                )
+            default:
+                continue
             }
         }
 
         let now = Date()
-        var candidates: [(productID: String, expiresAt: Date?)] = []
+        var candidates: [ActiveSubscription] = []
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else {
+                Self.debugLog("verification failed for current entitlement")
                 continue
             }
+            Self.logTransaction("current entitlement", transaction)
             guard isActiveAnglesEntitlement(transaction, now: now) else {
                 continue
             }
-            candidates.append((transaction.productID, transaction.expirationDate))
+            candidates.append(
+                ActiveSubscription(
+                    productID: transaction.productID,
+                    expiresAt: transaction.expirationDate,
+                    environment: String(describing: transaction.environment)
+                )
+            )
         }
         // Same subscription group, so at most one is live. Prefer Annual on a tie.
         candidates.sort {
@@ -537,48 +637,7 @@ final class StoreKitManager {
             }
             return productOrder($0.productID) < productOrder($1.productID)
         }
-        guard let best = candidates.first else {
-            return nil
-        }
-        return ActiveSubscription(productID: best.productID, expiresAt: best.expiresAt)
-    }
-
-    /// Apple's live answer only. `Transaction.latest` is deliberately absent: a leftover receipt
-    /// for an expired subscription must never unlock Home.
-    private func hasActiveAnglesSubscription() async -> Bool {
-        if await hasActiveSubscriptionStatus() {
-            return true
-        }
-        return await hasActiveCurrentEntitlement()
-    }
-
-    private func hasActiveSubscriptionStatus() async -> Bool {
-        for product in products {
-            guard Self.productIDs.contains(product.id), let subscription = product.subscription else {
-                continue
-            }
-            for status in await subscriptionStatuses(for: subscription, productID: product.id) {
-                Self.debugLog("subscription status \(product.id): \(String(describing: status.state))")
-                switch status.state {
-                case .subscribed, .inGracePeriod, .inBillingRetryPeriod:
-                    guard let transaction = try? verified(status.transaction),
-                          Self.productIDs.contains(transaction.productID),
-                          isAppStoreBacked(transaction) else {
-                        Self.debugLog("ignored non-App Store status for \(product.id)")
-                        continue
-                    }
-                    Self.debugLog("status transaction product ID: \(transaction.productID)")
-                    Self.debugLog("transaction environment: \(String(describing: transaction.environment))")
-                    Self.debugLog(
-                        "transaction dates purchase=\(transaction.purchaseDate) expiration=\(String(describing: transaction.expirationDate)) revoked=\(String(describing: transaction.revocationDate))"
-                    )
-                    return true
-                default:
-                    continue
-                }
-            }
-        }
-        return false
+        return candidates.first
     }
 
     /// Sandbox status reads can stall. Bound every one so launch routing cannot wait forever.
@@ -601,39 +660,13 @@ final class StoreKitManager {
         }
     }
 
-    private func hasActiveCurrentEntitlement() async -> Bool {
-        let now = Date()
-        var hasActive = false
-        for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result else {
-                Self.debugLog("verification failed for current entitlement")
-                continue
-            }
-
-            Self.debugLog("verified current entitlement product ID: \(transaction.productID)")
-            Self.debugLog("transaction environment: \(String(describing: transaction.environment))")
-            Self.debugLog(
-                "transaction dates purchase=\(transaction.purchaseDate) expiration=\(String(describing: transaction.expirationDate)) revoked=\(String(describing: transaction.revocationDate))"
-            )
-
-            if transaction.environment == .xcode {
-                Self.debugLog("skipped Xcode StoreKit Testing entitlement \(transaction.productID)")
-                continue
-            }
-
-            guard isActiveAnglesEntitlement(transaction, now: now) else {
-                continue
-            }
-
-            hasActive = true
-        }
-        return hasActive
-    }
-
-    /// Ended-membership UI hint only. `Transaction.latest` never reaches the unlock path.
-    /// The active group check comes first so an expired Annual cannot beat a live Monthly.
+    /// Ended-membership UI hint only. `Transaction.latest` never reaches the unlock path: an
+    /// unexpired latest receipt is neither active nor ended here, and only live status or
+    /// `currentEntitlements` can report `.active`. The live group check comes first so an
+    /// expired Annual cannot beat a live Monthly.
     private func membershipHistoryProbe() async -> MembershipHistoryProbe {
-        if await hasActiveAnglesSubscription() {
+        let statuses = await groupStatuses()
+        if await activeSubscriptionDetail(statuses: statuses) != nil {
             return .active
         }
 
@@ -645,36 +678,27 @@ final class StoreKitManager {
                   Self.productIDs.contains(transaction.productID) else {
                 continue
             }
-            Self.debugLog(
-                "latest transaction \(transaction.productID) environment \(transaction.environment)"
-            )
+            Self.logTransaction("latest", transaction)
             guard isAppStoreBacked(transaction) else {
                 continue
             }
             if isActiveAnglesEntitlement(transaction, now: now) {
-                return .active
+                continue
             }
             candidates.append(endedCandidate(for: transaction))
         }
 
-        for product in products {
-            guard Self.productIDs.contains(product.id), let subscription = product.subscription else {
+        for status in statuses {
+            guard let transaction = try? verified(status.transaction),
+                  Self.productIDs.contains(transaction.productID),
+                  isAppStoreBacked(transaction) else {
                 continue
             }
-            for status in await subscriptionStatuses(for: subscription, productID: product.id) {
-                guard let transaction = try? verified(status.transaction),
-                      Self.productIDs.contains(transaction.productID),
-                      isAppStoreBacked(transaction) else {
-                    continue
-                }
-                switch status.state {
-                case .subscribed, .inGracePeriod, .inBillingRetryPeriod:
-                    return .active
-                case .expired, .revoked:
-                    candidates.append(endedCandidate(for: transaction))
-                default:
-                    continue
-                }
+            switch status.state {
+            case .expired, .revoked:
+                candidates.append(endedCandidate(for: transaction))
+            default:
+                continue
             }
         }
         guard let productID = candidates.max(by: { $0.endedAt < $1.endedAt })?.productID else {
@@ -692,7 +716,8 @@ final class StoreKitManager {
     }
 
     /// `Transaction.currentEntitlements` already includes grace and billing-retry while Apple
-    /// still considers the user entitled. Expired, revoked, or Xcode Testing receipts are skipped.
+    /// still considers the user entitled. Expired, revoked, upgraded-away, or Xcode Testing
+    /// receipts are skipped.
     private func isActiveAnglesEntitlement(_ transaction: Transaction, now: Date) -> Bool {
         guard isAppStoreBacked(transaction) else {
             return false
@@ -700,13 +725,19 @@ final class StoreKitManager {
         guard Self.productIDs.contains(transaction.productID) else {
             return false
         }
-        guard transaction.revocationDate == nil else {
+        guard transaction.revocationDate == nil, !transaction.isUpgraded else {
             return false
         }
         if let expirationDate = transaction.expirationDate, expirationDate <= now {
             return false
         }
         return true
+    }
+
+    private static func logTransaction(_ source: String, _ transaction: Transaction) {
+        debugLog(
+            "\(source) transaction \(transaction.productID) env=\(String(describing: transaction.environment)) purchase=\(transaction.purchaseDate) expiration=\(String(describing: transaction.expirationDate)) revoked=\(String(describing: transaction.revocationDate)) upgraded=\(transaction.isUpgraded)"
+        )
     }
 
     /// Local StoreKit Testing receipts (`.xcode`) survive after `Angles.storekit` is removed.
@@ -768,6 +799,7 @@ final class StoreKitManager {
     private static let purchaseConfirmationError = "Apple didn’t confirm an active Angles subscription. Try again or restore purchases."
     private static let restoreNetworkError = "Need a connection to check your subscription."
     private static let statusTimeout: Duration = .seconds(6)
+    private static let expiryRefreshSlack: TimeInterval = 2
 }
 
 private struct EndedMembershipCandidate {

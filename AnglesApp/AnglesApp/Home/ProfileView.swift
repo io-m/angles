@@ -46,7 +46,7 @@ struct ProfileView: View {
     var displayName: String? = nil
     var onInspire: () -> Void = {}
     var onLogOut: (() -> Void)? = nil
-    var onDeleteAccount: (() -> Void)? = nil
+    var onDeleteAccount: (() async -> Bool)? = nil
     var canLoadFullAppContent = false
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
     var onOpenModel: (HomeCard) -> Void = { _ in }
@@ -121,8 +121,11 @@ struct ProfileView: View {
                     showSettings = false
                 },
                 onDeleteAccount: {
-                    onDeleteAccount?()
+                    guard await onDeleteAccount?() == true else {
+                        return false
+                    }
                     showSettings = false
+                    return true
                 }
             )
             .presentationDetents([.large])

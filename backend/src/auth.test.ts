@@ -57,4 +57,34 @@ describe("native Apple sign-in", () => {
     const body = (await response.json()) as { code?: string };
     expect(body.code).not.toBe("MISSING_OR_NULL_ORIGIN");
   });
+
+  it("does not CSRF-reject a bearer-only sign-out from a native client", async () => {
+    // The app clears its session locally first, then revokes with the captured token.
+    const response = await app.request("/api/auth/sign-out", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer stale-session-token",
+      },
+      body: "{}",
+    });
+    expect(response.status).not.toBe(403);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).not.toBe("MISSING_OR_NULL_ORIGIN");
+  });
+
+  it("does not CSRF-reject a bearer sign-out that also carries a leftover cookie", async () => {
+    const response = await app.request("/api/auth/sign-out", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer stale-session-token",
+        Cookie: "better-auth.session_token=stale",
+      },
+      body: "{}",
+    });
+    expect(response.status).not.toBe(403);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).not.toBe("MISSING_OR_NULL_ORIGIN");
+  });
 });

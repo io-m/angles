@@ -9,11 +9,14 @@ struct SettingsView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var onLogOut: (() -> Void)? = nil
-    var onDeleteAccount: (() -> Void)? = nil
+    /// Returns whether the server deleted the account. The sheet stays up until it answers.
+    var onDeleteAccount: (() async -> Bool)? = nil
 
     @State private var showAppearance = false
     @State private var showSubscription = false
     @State private var showDeleteAccount = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
     @State private var photoItem: PhotosPickerItem?
     @FocusState private var nameFocused: Bool
 
@@ -74,12 +77,20 @@ struct SettingsView: View {
                     cardRow(
                         symbol: "trash",
                         title: "Delete account",
-                        subtitle: "Removes your Angles account and cards. Does not cancel Apple."
+                        subtitle: deleteAccountSubtitle
                     ) {
+                        guard !isDeletingAccount else {
+                            return
+                        }
                         showDeleteAccount = true
                     } trailing: {
-                        EmptyView()
+                        if isDeletingAccount {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(theme.ink)
+                        }
                     }
+                    .disabled(isDeletingAccount)
                 }
                 .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             }
@@ -103,11 +114,32 @@ struct SettingsView: View {
         .alert("Delete account?", isPresented: $showDeleteAccount) {
             Button("Delete account", role: .destructive) {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onDeleteAccount?()
+                Task { await deleteAccount() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This permanently deletes your Angles account and cards. It does not cancel Apple.")
+        }
+        .interactiveDismissDisabled(isDeletingAccount)
+    }
+
+    private var deleteAccountSubtitle: String {
+        if isDeletingAccount {
+            return "Deleting your account…"
+        }
+        return deleteAccountError ?? "Removes your Angles account and cards. Does not cancel Apple."
+    }
+
+    private func deleteAccount() async {
+        guard !isDeletingAccount, let onDeleteAccount else {
+            return
+        }
+        deleteAccountError = nil
+        isDeletingAccount = true
+        let deleted = await onDeleteAccount()
+        isDeletingAccount = false
+        if !deleted {
+            deleteAccountError = "Couldn't delete your account. Try again."
         }
     }
 
