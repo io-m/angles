@@ -70,7 +70,9 @@ describe("listPublicCardsForModel", () => {
     await listPublicCardsForModel({ model: "deepseek-flash", limit: 24 });
 
     expect(findMany).toHaveBeenCalledOnce();
-    const query = findMany.mock.calls[0]?.[0] as {
+    const firstCall = findMany.mock.calls[0] as unknown as [unknown] | undefined;
+    expect(firstCall).toBeDefined();
+    const query = firstCall![0] as {
       where: unknown;
       orderBy: unknown;
       limit: number;
@@ -89,7 +91,9 @@ describe("listPublicCardsForModel", () => {
     };
     await listPublicCardsForModel({ model: "mistral-small-latest", limit: 10, before });
 
-    const where = queryText((findMany.mock.calls[0]?.[0] as { where: unknown }).where);
+    const firstCall = findMany.mock.calls[0] as unknown as [unknown] | undefined;
+    expect(firstCall).toBeDefined();
+    const where = queryText((firstCall![0] as { where: unknown }).where);
     expect(where).toContain("mistral-small-latest");
     expect(where).toContain("2026-09-10T12:00:00.000Z");
     expect(where).toContain(CARD_A);

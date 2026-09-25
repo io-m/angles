@@ -36,7 +36,7 @@ pnpm install
 pnpm dev
 ```
 
-API listens on `http://localhost:8787` (bind `0.0.0.0`). A physical device must use the Mac LAN IP, not localhost. Until auth exists, anyone on the same network can use the API as the dev user, so run it only on networks you trust.
+API listens on `http://localhost:8787` (bind `0.0.0.0`). A physical device must use the Mac LAN IP, not localhost. Product routes require a Better Auth session (`Authorization: Bearer`).
 
 - `GET /health` → `{ "status": "ok", "db": "ok" }` (503 when Postgres is down)
 - `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[], "styles"?: Style[], "model"? }` → `{ "kind": "continue", ... }` or `{ "kind": "ready", "thought", "results", "meta", "signature" }`. Never writes a card.
@@ -64,9 +64,9 @@ Do not add `railway.json` / `railway.toml` (Config as Code is deprecated for new
 - Use the `backend/Dockerfile`, or Railpack with `pnpm build` / `pnpm start`
 - Health check path: `/health`
 - Bind `PORT` (the server already reads `process.env.PORT`)
-- Better Auth is still later
+- Better Auth is Sign in with Apple. Set `BETTER_AUTH_SECRET` (32+ chars), `BETTER_AUTH_URL`, and `APPLE_CLIENT_SECRET`.
 - Project-level IaC, when you need it, is `.railway/railway.ts` via the Railway CLI
 
 ## Constraints
 
-Follow [`BUILD.md`](BUILD.md). Do not invent screens, auth, or extra product features outside that order.
+Follow [`BUILD.md`](BUILD.md). Do not invent screens or extra product features outside that order.

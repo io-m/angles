@@ -11,9 +11,9 @@ Paid reframe app. The library is private; community Home shipped, and a card app
 - iOS: SwiftUI, iOS 17+, `URLSession` only (`AnglesApp/`). Run on **Joe’s iPhone**, not Simulator.
 - LLM: `backend/src/lib/llmClient.ts` only. Never from the app.
 - Screen/feature order is `BUILD.md`. Build only the current item. Update that file in the same change as every new screen or feature.
-- Do not add SwiftData or Better Auth until that row in `BUILD.md` is next (or the user asked for that task). StoreKit and Drizzle have shipped.
+- Do not add SwiftData until that row in `BUILD.md` is next (or the user asked for that task). StoreKit, Drizzle, and Auth have shipped.
 - `POST /cards` only stores a cook signed by `/reframe` (`backend/src/lib/cookSignature.ts`); never loosen that to trust client content.
 - Keep `backend/src/types/index.ts` and `ReframeModels.swift` JSON-identical.
 - Do not log user thought text. Do not add browser CORS.
-- Auth hook is `authStub.ts` (TODO). DB is Postgres + Drizzle (`postgres` driver).
+- Auth is Better Auth (Sign in with Apple). Owner seam is `requireAuth` / `getOwnerUserId()` in `authStub.ts`. DB is Postgres + Drizzle (`postgres` driver).
 - Prefer failing a multi-style reframe over a partial `results` array.

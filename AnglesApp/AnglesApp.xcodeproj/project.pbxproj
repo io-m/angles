@@ -22,13 +22,17 @@
 		327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05847EC66A8A1B53179B539 /* ReframeCardView.swift */; };
 		3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D55F6643C769B38928FD8B /* ReframeModels.swift */; };
 		3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */; };
+		44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */; };
 		475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */; };
 		48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */; };
+		58A035A5DC5F50F8E711CA76 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B056E3708A9AE432904A684 /* SessionStore.swift */; };
 		6B24BAA80221DF85876BB30A /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EBC59EB491832949278518 /* APIClient.swift */; };
 		6F472A68899B089E43ED8A99 /* HomeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3BCFBFF2318D9F3BE56CB22 /* HomeFilterSheet.swift */; };
 		729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */; };
 		7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */; };
+		7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391AB20557C346784058025E /* LoginView.swift */; };
 		830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */; };
+		8717B2AC854FC7A03D4101DF /* AuthNonce.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245774EE58FAD79304953B8A /* AuthNonce.swift */; };
 		8A83FB23A4CA28CC1AC7971C /* ModelProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5E9DDB98903339C5AC14D80 /* ModelProfileView.swift */; };
 		9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */; };
 		978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657231FF50708210A4AA9FDD /* UserAppearance.swift */; };
@@ -40,7 +44,9 @@
 		A72468A7C749E204738C1D2C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B13ED3B345E39F024359E6C0 /* Assets.xcassets */; };
 		A822B18D9B139FF8129822CC /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7E4784E528CDE420C415B939 /* Lottie */; };
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
+		B9938F536C7B31B2B2AB7059 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB09EE79B4A27D757AD2944A /* AuthService.swift */; };
 		BD5651910EFAA74B0C7C11AD /* HomeFeedPullRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926E1968DC6C213D5BAAAF2E /* HomeFeedPullRefresh.swift */; };
+		BFB32DC8E79F7A90F9203F19 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */; };
 		C20D7F03983C11800E9C8E9A /* AuthorProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */; };
 		C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564F37666F47FDFD54D03D2D /* HomeView.swift */; };
 		DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */; };
@@ -57,12 +63,16 @@
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
 		1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorProfileView.swift; sourceTree = "<group>"; };
 		22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallCardMarquee.swift; sourceTree = "<group>"; };
+		245774EE58FAD79304953B8A /* AuthNonce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthNonce.swift; sourceTree = "<group>"; };
 		277F500C2565CC7DF5621C5A /* Angles.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Angles.icon; sourceTree = "<group>"; };
 		338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
 		3726E6089528365BA6EC3BA8 /* AnglesApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnglesApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		391AB20557C346784058025E /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		40B602E536EA39A5C8524CE6 /* ReframeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeService.swift; sourceTree = "<group>"; };
+		4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthCredentials.swift; sourceTree = "<group>"; };
 		4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModalScreen.swift; sourceTree = "<group>"; };
 		4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowingSheet.swift; sourceTree = "<group>"; };
+		4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
 		54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		551EA9251B494B0E82C36D47 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
@@ -70,7 +80,9 @@
 		657231FF50708210A4AA9FDD /* UserAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAppearance.swift; sourceTree = "<group>"; };
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
 		7498958071766D66B285676C /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
+		7B056E3708A9AE432904A684 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCardGrid.swift; sourceTree = "<group>"; };
+		8598E7366020BE50E4CF231A /* Angles.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Angles.entitlements; sourceTree = "<group>"; };
 		91621A647BBA93B4181D3EB3 /* CardsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardsService.swift; sourceTree = "<group>"; };
 		926E1968DC6C213D5BAAAF2E /* HomeFeedPullRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedPullRefresh.swift; sourceTree = "<group>"; };
 		95069BD81A4DA98625DFD6FE /* AvatarImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarImage.swift; sourceTree = "<group>"; };
@@ -86,6 +98,7 @@
 		C4B72925153855FD655114F4 /* celebration-checkmark.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "celebration-checkmark.json"; sourceTree = "<group>"; };
 		C5E9DDB98903339C5AC14D80 /* ModelProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProfileView.swift; sourceTree = "<group>"; };
 		C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeStore.swift; sourceTree = "<group>"; };
+		CB09EE79B4A27D757AD2944A /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionView.swift; sourceTree = "<group>"; };
 		CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
 		CECAAC54ED5DE586764B6970 /* HomePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomePalette.swift; sourceTree = "<group>"; };
@@ -166,6 +179,19 @@
 			path = Paywall;
 			sourceTree = "<group>";
 		};
+		55885B68E6C816ED0A1419B9 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */,
+				245774EE58FAD79304953B8A /* AuthNonce.swift */,
+				CB09EE79B4A27D757AD2944A /* AuthService.swift */,
+				4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */,
+				391AB20557C346784058025E /* LoginView.swift */,
+				7B056E3708A9AE432904A684 /* SessionStore.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
 		6CBF3A7EC581D3C9244338E9 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -236,10 +262,12 @@
 		E5867170AF5329B3B1527D6E /* AnglesApp */ = {
 			isa = PBXGroup;
 			children = (
+				8598E7366020BE50E4CF231A /* Angles.entitlements */,
 				277F500C2565CC7DF5621C5A /* Angles.icon */,
 				B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */,
 				B13ED3B345E39F024359E6C0 /* Assets.xcassets */,
 				03485114E1C729FE4BB7383D /* Info.plist */,
+				55885B68E6C816ED0A1419B9 /* Auth */,
 				012C5054BE598FCD6B7B32D6 /* Config */,
 				D295652A17D76C4EDC80DF36 /* Home */,
 				B6B237C79F6DE4D015CCAE8C /* Models */,
@@ -337,6 +365,9 @@
 				48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */,
 				9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */,
 				7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */,
+				44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */,
+				8717B2AC854FC7A03D4101DF /* AuthNonce.swift in Sources */,
+				B9938F536C7B31B2B2AB7059 /* AuthService.swift in Sources */,
 				C20D7F03983C11800E9C8E9A /* AuthorProfileView.swift in Sources */,
 				97F14BFA6DDA6699C4DD5EB2 /* AvatarImage.swift in Sources */,
 				17CBFD4C422D6640341241AA /* CardsService.swift in Sources */,
@@ -352,7 +383,9 @@
 				A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */,
 				C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */,
 				830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */,
+				BFB32DC8E79F7A90F9203F19 /* KeychainStore.swift in Sources */,
 				01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */,
+				7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
 				8A83FB23A4CA28CC1AC7971C /* ModelProfileView.swift in Sources */,
 				3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */,
@@ -364,6 +397,7 @@
 				3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */,
 				2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */,
 				1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */,
+				58A035A5DC5F50F8E711CA76 /* SessionStore.swift in Sources */,
 				ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */,
 				99EEAB90C5E209CBF852F02A /* StoreKitManager.swift in Sources */,
 				E2DC973B158B0229CB1C3AD1 /* StyleTabPager.swift in Sources */,
@@ -502,6 +536,7 @@
 			buildSettings = {
 				ANGLES_API_BASE_URL = "http://192.168.0.39:8787";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Angles;
+				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 7;
@@ -525,6 +560,7 @@
 			buildSettings = {
 				ANGLES_API_BASE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Angles;
+				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 7;

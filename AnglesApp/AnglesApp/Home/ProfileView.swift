@@ -46,6 +46,7 @@ struct ProfileView: View {
     var displayName: String? = nil
     var onInspire: () -> Void = {}
     var onLogOut: (() -> Void)? = nil
+    var onDeleteAccount: (() -> Void)? = nil
     var canLoadFullAppContent = false
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
     var onOpenModel: (HomeCard) -> Void = { _ in }
@@ -117,6 +118,10 @@ struct ProfileView: View {
                 identityStore: identityStore,
                 onLogOut: {
                     onLogOut?()
+                    showSettings = false
+                },
+                onDeleteAccount: {
+                    onDeleteAccount?()
                     showSettings = false
                 }
             )

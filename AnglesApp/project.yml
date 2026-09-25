@@ -26,6 +26,11 @@ targets:
           - "**/.DS_Store"
     dependencies:
       - package: Lottie
+    entitlements:
+      path: AnglesApp/Angles.entitlements
+      properties:
+        com.apple.developer.applesignin:
+          - Default
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.angles.ios
@@ -34,6 +39,7 @@ targets:
         CURRENT_PROJECT_VERSION: "7"
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: AnglesApp/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AnglesApp/Angles.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: Angles
         DEVELOPMENT_TEAM: 36U79UTZM9
         CODE_SIGN_STYLE: Automatic

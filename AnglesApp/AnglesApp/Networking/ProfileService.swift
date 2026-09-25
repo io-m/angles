@@ -36,4 +36,12 @@ struct ProfileService: Sendable {
     func following() async throws -> FollowingListResponse {
         try await client.get(path: "profile/following")
     }
+
+    func session() async throws -> SessionBody {
+        try await client.get(path: "profile/session")
+    }
+
+    func deleteAccount() async throws {
+        try await client.delete(path: "profile")
+    }
 }

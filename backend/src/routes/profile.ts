@@ -3,8 +3,8 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { listFollowing } from "../db/follows.js";
-import { getUserById, setOwnerAvatar, updateOwnerInitials } from "../db/users.js";
-import { getOwnerUserId, authStub } from "../lib/authStub.js";
+import { getUserById, setOwnerAvatar, updateOwnerInitials, deleteOwnerAccount } from "../db/users.js";
+import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
 import { avatarObjectKey, avatarUrlFor, initialsFromDisplayName } from "../lib/avatarUrl.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import {
@@ -13,7 +13,7 @@ import {
   putAvatar,
   StorageUnavailableError,
 } from "../lib/objectStorage.js";
-import type { FollowingListResponse, ProfileBody } from "../types/index.js";
+import type { FollowingListResponse, ProfileBody, SessionBody } from "../types/index.js";
 
 const MAX_AVATAR_BYTES = Math.floor(1.5 * 1024 * 1024);
 
@@ -43,14 +43,51 @@ function storageFailure(error: unknown): { error: string; code: "STORAGE_UNAVAIL
 
 export const profileRoute = new Hono();
 
-profileRoute.get("/following", authStub, async (c) => {
+profileRoute.get("/session", requireAuth, async (c) => {
+  const user = await getUserById(getOwnerUserId());
+  if (!user) {
+    return c.json(errorBody("Sign in required", "UNAUTHENTICATED"), 401);
+  }
+  const body: SessionBody = {
+    id: user.id,
+    initials: user.initials,
+    name: user.name,
+    tasteCompletedAt: user.tasteCompletedAt ? user.tasteCompletedAt.toISOString() : null,
+  };
+  const avatarUrl = avatarUrlFor(user.id, user.avatarKey);
+  if (avatarUrl) {
+    body.avatarUrl = avatarUrl;
+  }
+  return c.json(body);
+});
+
+profileRoute.delete("/", requireAuth, async (c) => {
+  const ownerId = getOwnerUserId();
+  const current = await getUserById(ownerId);
+  if (!current) {
+    return c.json(errorBody("Profile was not found", "NOT_FOUND"), 404);
+  }
+  if (current.avatarKey) {
+    try {
+      await deleteAvatar(current.avatarKey);
+    } catch (error) {
+      console.error("account_delete_avatar_failed", {
+        name: error instanceof Error ? error.name : "error",
+      });
+    }
+  }
+  await deleteOwnerAccount();
+  return c.body(null, 204);
+});
+
+profileRoute.get("/following", requireAuth, async (c) => {
   const body: FollowingListResponse = { users: await listFollowing() };
   return c.json(body);
 });
 
 profileRoute.patch(
   "/",
-  authStub,
+  requireAuth,
   zValidator("json", patchProfileSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
@@ -73,7 +110,7 @@ profileRoute.patch(
 
 profileRoute.put(
   "/avatar",
-  authStub,
+  requireAuth,
   bodyLimit({
     maxSize: MAX_AVATAR_BYTES,
     onError: (c) => c.json(errorBody("Photo is too large", "PAYLOAD_TOO_LARGE"), 413),
@@ -121,7 +158,7 @@ profileRoute.put(
   },
 );
 
-profileRoute.delete("/avatar", authStub, async (c) => {
+profileRoute.delete("/avatar", requireAuth, async (c) => {
   const ownerId = getOwnerUserId();
   const current = await getUserById(ownerId);
   if (!current) {

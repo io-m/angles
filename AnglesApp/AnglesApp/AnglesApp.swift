@@ -34,6 +34,7 @@ struct AppRoot: View {
     @State private var viewModel = HomeViewModel()
     @State private var storeKitManager = StoreKitManager()
     @State private var identityStore = ProfileIdentityStore()
+    @State private var sessionStore = SessionStore()
     @State private var isComposePresented = false
     @State private var isOnboardingTasteSession = false
     @State private var hasRoutedLaunch = false
@@ -65,6 +66,7 @@ struct AppRoot: View {
                         safeAreaInsets: homeSafeAreaInsets,
                         viewModel: viewModel,
                         storeKitManager: storeKitManager,
+                        isSignedIn: sessionStore.isSignedIn,
                         isActiveTab: selectedTab == .home,
                         onLogOut: logOut,
                         onOpenAuthor: openAuthor,
@@ -84,6 +86,7 @@ struct AppRoot: View {
                         identityStore: identityStore,
                         onInspire: presentCompose,
                         onLogOut: logOut,
+                        onDeleteAccount: deleteAccount,
                         canLoadFullAppContent: canLoadProfileContent,
                         onOpenAuthor: openAuthor,
                         onOpenModel: openModel,
@@ -204,6 +207,14 @@ struct AppRoot: View {
             .animation(coveringFrostAnimation, value: storeKitManager.isBusy)
             .zIndex(25)
 
+            if showsLogin {
+                LoginView(sessionStore: sessionStore) {
+                    Task { await sessionStore.restore() }
+                }
+                .transition(.opacity)
+                .zIndex(28)
+            }
+
             if !hasRoutedLaunch {
                 theme.paper
                     .ignoresSafeArea()
@@ -212,6 +223,10 @@ struct AppRoot: View {
             }
         }
         .environment(\.profileIdentity, identityStore)
+        .onReceive(NotificationCenter.default.publisher(for: .anglesSessionInvalidated)) { _ in
+            sessionStore.handleInvalidatedSession()
+            applyGate()
+        }
         .task {
             identityStore.onSynced = { initials, avatarPath in
                 viewModel.applyOwnerIdentity(initials: initials, avatarPath: avatarPath)
@@ -219,10 +234,35 @@ struct AppRoot: View {
         }
         .task {
             migrateLegacyPaywallFlag()
-            await storeKitManager.prepare()
+            async let sessionRestore: Void = sessionStore.restore()
+            async let storePrepare: Void = storeKitManager.prepare()
+            _ = await (sessionRestore, storePrepare)
+            if let session = sessionStore.session {
+                identityStore.applySession(session)
+                hasCompletedTaste = sessionStore.hasCompletedTaste
+            }
             withoutAnimations {
                 applyGate()
                 hasRoutedLaunch = true
+            }
+        }
+        .onChange(of: sessionStore.isSignedIn) { _, signedIn in
+            guard sessionStore.isRestored else {
+                return
+            }
+            if signedIn {
+                if let session = sessionStore.session {
+                    identityStore.applySession(session)
+                }
+                hasCompletedTaste = sessionStore.hasCompletedTaste
+                storeKitManager.resumeAfterAccountSignIn()
+                Task {
+                    await storeKitManager.refreshEntitlements()
+                    applyGate()
+                }
+            } else {
+                hasCompletedTaste = false
+                applyGate()
             }
         }
         .onChange(of: hasCompletedTaste) { _, completed in
@@ -276,9 +316,14 @@ struct AppRoot: View {
     /// Paper/paywall/taste sit on top; a cover gap must never reveal the feed.
     private var showsHomeFeed: Bool {
         hasRoutedLaunch
+            && sessionStore.isSignedIn
             && storeKitManager.hasUnlockedFullApp
             && paywallPhase == .idle
             && !isComposePresented
+    }
+
+    private var showsLogin: Bool {
+        hasRoutedLaunch && sessionStore.isRestored && !sessionStore.isSignedIn
     }
 
     private var showsCoveringFrost: Bool {
@@ -319,7 +364,10 @@ struct AppRoot: View {
     }
 
     private var needsOnboardingTaste: Bool {
-        !hasCompletedTaste && !storeKitManager.hasUnlockedFullApp
+        sessionStore.isSignedIn
+            && !sessionStore.hasCompletedTaste
+            && !hasCompletedTaste
+            && !storeKitManager.hasUnlockedFullApp
     }
 
     private var hasConfirmedFullAppAccess: Bool {
@@ -346,10 +394,20 @@ struct AppRoot: View {
     }
 
     /// Single destination for launch, entitlements, logout, and taste-complete.
-    /// Home only when StoreKit says unlocked. Paywall only when taste is done and locked.
-    /// Taste compose stays up until Save or Close.
+    /// Login first. Home only when StoreKit says unlocked. Paywall when taste is done and locked.
+    /// Taste compose stays up until Save.
     private func applyGate() {
-        guard storeKitManager.entitlementsReady else {
+        guard storeKitManager.entitlementsReady, sessionStore.isRestored else {
+            return
+        }
+
+        if !sessionStore.isSignedIn {
+            withoutAnimations {
+                homeRevealPhase = .hidden
+                isComposePresented = false
+                isOnboardingTasteSession = false
+                paywallPhase = .idle
+            }
             return
         }
 
@@ -370,7 +428,7 @@ struct AppRoot: View {
             return
         }
 
-        if hasCompletedTaste {
+        if sessionStore.hasCompletedTaste || hasCompletedTaste {
             withoutAnimations {
                 isComposePresented = false
                 isOnboardingTasteSession = false
@@ -397,7 +455,6 @@ struct AppRoot: View {
             break
         }
 
-        hasCompletedTaste = true
         isOnboardingTasteSession = false
         paywallShowsCelebration = false
         paywallHeroCard = nil
@@ -406,6 +463,7 @@ struct AppRoot: View {
             || paywallPhase == .locked
 
         viewModel.prepareForFullAppAccess()
+        Task { await viewModel.loadFeedIfNeeded() }
         withoutAnimations {
             isComposePresented = false
             paywallPhase = .idle
@@ -485,12 +543,42 @@ struct AppRoot: View {
             paywallPhase = .idle
             viewModel.resetCompose()
             viewModel.resetForSignOut()
+            identityStore.reset()
             homeRevealPhase = .hidden
             selectedTab = .home
             lastContentTab = .home
             browsePath.removeAll()
-            isOnboardingTasteSession = true
-            isComposePresented = true
+            isOnboardingTasteSession = false
+            isComposePresented = false
+        }
+        Task { await sessionStore.signOut() }
+    }
+
+    private func deleteAccount() {
+        Task {
+            let deleted = await sessionStore.deleteAccount()
+            guard deleted else {
+                viewModel.showWriteError(
+                    sessionStore.errorMessage ?? "Couldn't delete your account. Try again."
+                )
+                return
+            }
+            storeKitManager.signOut()
+            withoutAnimations {
+                hasCompletedTaste = false
+                paywallShowsCelebration = false
+                paywallHeroCard = nil
+                paywallPhase = .idle
+                viewModel.resetCompose()
+                viewModel.resetForSignOut()
+                identityStore.reset()
+                homeRevealPhase = .hidden
+                selectedTab = .home
+                lastContentTab = .home
+                browsePath.removeAll()
+                isOnboardingTasteSession = false
+                isComposePresented = false
+            }
         }
     }
 
@@ -658,6 +746,7 @@ struct AppRoot: View {
             isOnboardingTasteSession = false
         }
         hasCompletedTaste = true
+        sessionStore.noteTasteCompleted()
     }
 
     private func captureHomeInsets(_ insets: EdgeInsets) {

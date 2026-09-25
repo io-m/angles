@@ -334,8 +334,6 @@ struct ComposeSheetView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close without saving")
-            } else if showsOnboardingRestore {
-                onboardingAccountLink
             } else {
                 Color.clear
                     .frame(width: 40, height: 40)
@@ -794,39 +792,6 @@ struct ComposeSheetView: View {
             .background {
                 composerGlow
             }
-    }
-
-    private var onboardingAccountLink: some View {
-        let isRestoring = storeKitManager?.isRestoring == true
-        return Button {
-            guard let storeKitManager, !storeKitManager.isBusy else {
-                return
-            }
-            composerFocused = false
-            Task {
-                _ = await storeKitManager.restorePurchases()
-            }
-        } label: {
-            HStack(spacing: 6) {
-                if isRestoring {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(Color(uiColor: .link))
-                }
-                Text(isRestoring ? "Checking subscription…" : "Already have an account?")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Color(uiColor: .link))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                    .multilineTextAlignment(.leading)
-            }
-            .frame(minHeight: 40)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(storeKitManager?.isBusy == true)
-        .accessibilityLabel("Restore purchases if you already subscribe")
-        .accessibilityAddTraits(.isLink)
     }
 
     private var composerGlow: some View {

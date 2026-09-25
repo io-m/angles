@@ -2,8 +2,6 @@
 
 Living document for **what to build, in what order**. Update this file in the same change as every new screen or feature.
 
-Assume the user is already paid. **No onboarding, paywall, or auth until the core loop is done.**
-
 ## How to update
 
 When you add or change a screen/feature:
@@ -19,7 +17,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**8. Auth** — Sign in with Apple / Better Auth, guest-card claim after subscription, `tasteCompletedAt` on the user, and Settings session Sign in/out that does not hide a StoreKit entitlement.
+**None listed.** Do not invent extras.
 
 ## Core loop
 
@@ -55,6 +53,7 @@ Loading and error are **states on Results**, not their own screens.
 | 7g | Paywall positive capture | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Paper sells four angles as a 2x2 of style tiles; purchase module is spread commerce (44pt price, both plans, CTA); (i) holds library/Home, restore, legal. |
 | 7h | Sandbox-only checkout | polish | done | `project.yml`; `StoreKitManager.swift`; `AnglesApp.swift`; `PaywallView.swift`; `HomeView.swift`; `ProfileView.swift`; `HomeViewModel.swift` | No local StoreKit file; prior-plan-aware renewal; neutral checkout copy; one serialized checkout/feed/frost handoff; first loads wait for entitlement readiness. |
 | 7i | Paywall specimen marquee | polish | done | `PaywallCardMarquee.swift`; `PaywallView.swift` | Paper is a tilted 3-row marquee of specimen cards that bleeds behind the purchase sheet’s rounded corners; (i) sits on the module. |
+| 8 | Auth | feature | done | `auth.ts`; `authStub.ts`; `schema.ts`; `0009_auth_tables.sql`; `profile.ts`; `LoginView.swift`; `SessionStore.swift`; `APIClient.swift`; `AnglesApp.swift`; `SettingsView.swift` | Continue with Apple first; `tasteCompletedAt` on the user; Keychain bearer on every API call; Settings log out and delete account. Native POSTs skip browser CSRF so a leftover cookie cannot 403 login. |
 | 9 | Public opt-in / community Home | screen | done | `HomeView.swift`; `feed.ts`; `schema.ts`; `CardsService.swift` | Public-others feed by Recent, category, and emotion; viewer pin/heart saves; `pnpm db:seed-community`. |
 | 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 | 9c | Style chips, flip chevron, no pins | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `APIClient.swift`; `feed.ts`; `cards.ts` | Chips replace the in-card pager; heart top-right, flip chevron bottom-right; pins gone; failed writes say so. |
@@ -373,13 +372,18 @@ Not a new screen. Debug on device talks only to App Store sandbox — no `.store
 
 Not a new screen. Polish on 7g. Replaces the 2×2 style-benefit tiles with a full-bleed tilted 3-row marquee of thought/reframe specimens (canned community copy, plus the saved taste card when present). Cards bleed under the status bar and behind the Yearly/Monthly sheet’s rounded corners. There is no headline or miss line. The (i) sits on the trailing edge of the purchase module. Celebration and StoreKit are unchanged. Reduce Motion shows a static clipped collage. Compact height and large Dynamic Type scroll the purchase module over the marquee.
 
+### 8. Auth
+
+Sign in first, then one taste if this account still needs it.
+
+- Launch is **Continue with Apple**. First tap creates the account; the next tap is log-in. Session token lives in Keychain and goes out as `Authorization: Bearer` on every API call.
+- After a session: StoreKit subscribed → Home. `users.tasteCompletedAt` set → paywall. Empty taste flag and unpaid → one free taste, then the paywall if they still have no subscription.
+- Taste Save writes the card as this user and stamps `tasteCompletedAt`. There is no anonymous stub user and no guest-card claim.
+- Settings **Log out** returns to the login screen and does not cancel Apple. **Delete account** is Apple 5.1.1(v).
+
 ## Postponed (do not start)
 
-| # | Item | Kind | Status | Why later |
-| --- | --- | --- | --- | --- |
-| 8 | Auth | feature | not started | Sign in with Apple / Better Auth; guest-card claim; `users.tasteCompletedAt`; Settings session Sign in/out does not void StoreKit |
-
-Account / auth settings wait until auth exists. Appearance already shipped in 2a; the accent picker is removed.
+Nothing queued. Do not invent extras.
 
 ## Out of scope (until listed)
 
@@ -390,6 +394,15 @@ Account / auth settings wait until auth exists. Appearance already shipped in 2a
 
 ## Shipped log
 
+- 2026-09-25 — Native Apple sign-in no longer 403s on a leftover session cookie without a browser Origin.
+- 2026-09-25 — Home waits for a signed-in session before fetching the feed, so Apple login does not stall on Loading Home.
+- 2026-09-25 — Login cards start fully off-screen; dark blooms match the first dissipated look, light a notch stronger.
+- 2026-09-25 — Login cards fall from the top, spring onto the dock, then float in the pile.
+- 2026-09-25 — Login sits a real Home card deck on the dock; dark blooms are a whisper.
+- 2026-09-25 — Login marquee tilts through the four angles; light blooms stay quiet; dark blooms unchanged.
+- 2026-09-25 — Login breathes with compositor animation, stains light paper with the four style hues, and says Reframe your mind / Four angles on the same situation.
+- 2026-09-25 — Login is Apple-only: four-angle paper, specimen fan, native Continue with Apple. Google OAuth is gone.
+- 2026-09-25 — Sign in first (Continue with Apple), then one taste if `tasteCompletedAt` is empty; tasted unpaid users see the paywall; subscribers go Home. Session in Keychain, `Authorization` on API calls, Settings log out and delete account.
 - 2026-09-25 — Paywall’s two main marquee rows always show Stoic, Optimistic, Humorous, and Tough Love together.
 - 2026-09-25 — Paywall marquee uses four rows so the collage fills from the top fade down behind the sheet.
 - 2026-09-25 — Paywall marquee lifts a third card row into the top fade.

@@ -25,6 +25,7 @@ vi.mock("../db/users.js", () => ({
   getUserById: vi.fn(),
   setOwnerAvatar: vi.fn(),
   updateOwnerInitials: vi.fn(),
+  deleteOwnerAccount: vi.fn(),
 }));
 
 vi.mock("../db/follows.js", () => ({
@@ -51,7 +52,7 @@ vi.mock("../lib/objectStorage.js", () => {
 
 const { createApp } = await import("../app.js");
 const { listFollowing } = await import("../db/follows.js");
-const { getUserById, setOwnerAvatar, updateOwnerInitials } = await import("../db/users.js");
+const { getUserById, setOwnerAvatar, updateOwnerInitials, deleteOwnerAccount } = await import("../db/users.js");
 const { deleteAvatar, getAvatar, putAvatar, StorageUnavailableError } = await import("../lib/objectStorage.js");
 
 const app = createApp();
@@ -59,8 +60,14 @@ const app = createApp();
 const owner = {
   id: DEV_USER_ID,
   initials: "JM",
+  name: "JM",
+  email: "dev@angles.invalid",
+  emailVerified: false,
+  image: null as string | null,
   avatarKey: null as string | null,
+  tasteCompletedAt: null as Date | null,
   createdAt: new Date("2026-09-10T12:00:00.000Z"),
+  updatedAt: new Date("2026-09-10T12:00:00.000Z"),
 };
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
@@ -180,5 +187,33 @@ describe("profile avatar", () => {
     const response = await app.request(`/avatars/${DEV_USER_ID}`);
     expect(response.status).toBe(404);
     expect(getAvatar).not.toHaveBeenCalled();
+  });
+
+  it("returns the session for the signed-in user", async () => {
+    const tasted = new Date("2026-09-25T12:00:00.000Z");
+    vi.mocked(getUserById).mockResolvedValue(user({ tasteCompletedAt: tasted }));
+    const response = await app.request("/profile/session");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      id: DEV_USER_ID,
+      initials: "JM",
+      name: "JM",
+      tasteCompletedAt: tasted.toISOString(),
+    });
+  });
+
+  it("rejects a missing session", async () => {
+    const response = await app.request("/profile/session", {
+      headers: { Authorization: "Bearer none" },
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+
+  it("deletes the account", async () => {
+    vi.mocked(deleteOwnerAccount).mockResolvedValue(undefined);
+    const response = await app.request("/profile", { method: "DELETE" });
+    expect(response.status).toBe(204);
+    expect(deleteOwnerAccount).toHaveBeenCalledOnce();
   });
 });

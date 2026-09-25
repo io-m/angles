@@ -655,6 +655,21 @@ describe("POST /reframe", () => {
     expect(generateJson).not.toHaveBeenCalled();
   });
 
+  it("rejects a cook without a session", async () => {
+    const response = await app.request("/reframe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer none" },
+      body: JSON.stringify({ text: SHORT_TEXT }),
+    });
+
+    expect(response.status).toBe(401);
+    await expect(jsonOf(response)).resolves.toEqual({
+      error: "Sign in required",
+      code: "UNAUTHENTICATED",
+    });
+    expect(generateJson).not.toHaveBeenCalled();
+  });
+
   it("rejects more than six follow-ups", async () => {
     const response = await post({
       text: SHORT_TEXT,

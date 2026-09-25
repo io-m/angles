@@ -5,7 +5,7 @@ import { listPublicCardsForModel } from "../db/feed.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { cardCursorSchema } from "../lib/cursor.js";
 import { LLM_MODEL_IDS } from "../lib/llmClient.js";
-import { authStub } from "../lib/authStub.js";
+import { requireAuth } from "../lib/authStub.js";
 import type { ModelCardsResponse } from "../types/index.js";
 
 const paramsSchema = z.object({
@@ -23,7 +23,7 @@ export const modelsRoute = new Hono();
 
 modelsRoute.get(
   "/:id/cards",
-  authStub,
+  requireAuth,
   zValidator("param", paramsSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);

@@ -11,7 +11,7 @@ import {
 import { getDb, wrapDbError, DbError } from "./client.js";
 import { olderThanCursor } from "./cursor.js";
 import { storedCardsForViewer, toStoredCard } from "./mapCard.js";
-import { cardReframes, cardTags, cards, categoryProposals, savedAngles, tags } from "./schema.js";
+import { cardReframes, cardTags, cards, categoryProposals, savedAngles, tags, users } from "./schema.js";
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
 
@@ -120,6 +120,10 @@ export async function createCard(input: CreateCardInput): Promise<StoredCard> {
       if (!loaded) {
         throw new DbError("Database error");
       }
+      await tx
+        .update(users)
+        .set({ tasteCompletedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(users.id, getOwnerUserId()), sql`${users.tasteCompletedAt} is null`));
       return loaded;
     });
   } catch (error) {

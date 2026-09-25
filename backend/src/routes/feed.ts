@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import { clearFeedSaves, listFeed, saveFeedAngle, unsaveFeedAngle } from "../db/feed.js";
-import { authStub } from "../lib/authStub.js";
+import { requireAuth } from "../lib/authStub.js";
 import { cardCursorSchema } from "../lib/cursor.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { CATEGORIES, EMOTIONS, STYLES } from "../types/index.js";
@@ -47,7 +47,7 @@ export const feedRoute = new Hono();
 
 feedRoute.get(
   "/",
-  authStub,
+  requireAuth,
   zValidator("query", listQuerySchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
@@ -68,7 +68,7 @@ feedRoute.get(
 
 feedRoute.put(
   "/cards/:id/angles/:style",
-  authStub,
+  requireAuth,
   zValidator("param", angleParamSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
@@ -89,7 +89,7 @@ feedRoute.put(
 
 feedRoute.delete(
   "/cards/:id/angles/:style",
-  authStub,
+  requireAuth,
   zValidator("param", angleParamSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
@@ -110,7 +110,7 @@ feedRoute.delete(
 
 feedRoute.delete(
   "/cards/:id/saves",
-  authStub,
+  requireAuth,
   zValidator("param", idParamSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);

@@ -397,6 +397,14 @@ struct FollowingListResponse: Decodable, Equatable, Sendable {
     let users: [StoredCardAuthor]
 }
 
+struct SessionBody: Decodable, Equatable, Sendable {
+    let id: String
+    let initials: String
+    let name: String
+    let tasteCompletedAt: String?
+    let avatarUrl: String?
+}
+
 struct FollowedPerson: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID
     let initials: String

@@ -1857,6 +1857,19 @@ final class HomeViewModel {
         writeError = nil
     }
 
+    func showWriteError(_ message: String) {
+        writeError = message
+        writeErrorTask?.cancel()
+        writeErrorTask = Task { @MainActor in
+            defer { writeErrorTask = nil }
+            try? await Task.sleep(for: Self.writeErrorDuration)
+            guard !Task.isCancelled else {
+                return
+            }
+            writeError = nil
+        }
+    }
+
     private static func favoriteTaskKey(id: UUID, style: Style) -> String {
         "\(id.uuidString)-\(style.rawValue)"
     }

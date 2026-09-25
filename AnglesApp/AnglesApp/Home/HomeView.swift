@@ -10,6 +10,7 @@ struct HomeView: View {
     let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
     let storeKitManager: StoreKitManager
+    var isSignedIn = false
     var glimpseCard: HomeCard? = nil
     var isGlimpseActive = false
     var isActiveTab: Bool = true
@@ -24,7 +25,7 @@ struct HomeView: View {
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var canLoadFullAppContent: Bool {
-        storeKitManager.entitlementsReady && storeKitManager.hasUnlockedFullApp
+        isSignedIn && storeKitManager.entitlementsReady && storeKitManager.hasUnlockedFullApp
     }
 
     var body: some View {

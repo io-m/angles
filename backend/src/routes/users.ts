@@ -5,7 +5,7 @@ import { listPublicCardsForUser } from "../db/feed.js";
 import { followedAuthorIds, followUser, unfollowUser } from "../db/follows.js";
 import { authorOf } from "../db/mapCard.js";
 import { getUserById } from "../db/users.js";
-import { authStub, getOwnerUserId } from "../lib/authStub.js";
+import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { cardCursorSchema } from "../lib/cursor.js";
 import type { AuthorCardsResponse, FollowStateResponse } from "../types/index.js";
@@ -25,7 +25,7 @@ export const usersRoute = new Hono();
 
 usersRoute.get(
   "/:id/cards",
-  authStub,
+  requireAuth,
   zValidator("param", paramsSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
@@ -63,7 +63,7 @@ usersRoute.get(
 
 usersRoute.put(
   "/:id/follow",
-  authStub,
+  requireAuth,
   zValidator("param", paramsSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
@@ -88,7 +88,7 @@ usersRoute.put(
 
 usersRoute.delete(
   "/:id/follow",
-  authStub,
+  requireAuth,
   zValidator("param", paramsSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);

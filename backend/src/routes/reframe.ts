@@ -1,7 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
-import { authStub } from "../lib/authStub.js";
+import { requireAuth } from "../lib/authStub.js";
 import { signCook, signResult } from "../lib/cookSignature.js";
 import { runDecision, type ReadyDecision } from "../lib/decision.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
@@ -281,7 +281,7 @@ export const reframeRoute = new Hono();
 
 reframeRoute.post(
   "/",
-  authStub,
+  requireAuth,
   zValidator("json", reframeRequestSchema, (result, c) => {
     if (!result.success) {
       return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);

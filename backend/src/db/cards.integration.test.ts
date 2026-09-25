@@ -82,6 +82,10 @@ describe.skipIf(!testUrl)("cards integration", () => {
     await getSql()`
       TRUNCATE follows, saved_angles, card_reframes, card_tags, cards, tags, category_proposals RESTART IDENTITY CASCADE
     `;
+    await getDb()
+      .update(users)
+      .set({ tasteCompletedAt: null })
+      .where(eq(users.id, DEV_USER_ID));
   });
 
   afterAll(async () => {
@@ -110,6 +114,25 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
     const fetched = await getCard(stored.id);
     expect(fetched?.thought).toBe(baseInput.thought);
+  });
+
+  it("stamps tasteCompletedAt on the first save and leaves it on the next", async () => {
+    const first = await createCard(baseInput);
+    const afterFirst = await getDb().query.users.findFirst({
+      where: eq(users.id, DEV_USER_ID),
+    });
+    expect(afterFirst?.tasteCompletedAt).toBeInstanceOf(Date);
+    const stamped = afterFirst?.tasteCompletedAt?.getTime();
+
+    await createCard({
+      ...baseInput,
+      thought: "I keep waiting for the offer that is not coming.",
+    });
+    const afterSecond = await getDb().query.users.findFirst({
+      where: eq(users.id, DEV_USER_ID),
+    });
+    expect(afterSecond?.tasteCompletedAt?.getTime()).toBe(stamped);
+    expect(first.id).toBeTruthy();
   });
 
   it("persists isPublic when create sets it", async () => {
@@ -252,7 +275,15 @@ describe.skipIf(!testUrl)("cards integration", () => {
     createdAt?: Date;
   }): Promise<string> {
     const db = getDb();
-    await db.insert(users).values({ id: OTHER_USER_ID, initials: "AL" }).onConflictDoNothing();
+    await db
+      .insert(users)
+      .values({
+        id: OTHER_USER_ID,
+        initials: "AL",
+        name: "AL",
+        email: `seed-${OTHER_USER_ID}@angles.invalid`,
+      })
+      .onConflictDoNothing();
     const [inserted] = await db
       .insert(cards)
       .values({

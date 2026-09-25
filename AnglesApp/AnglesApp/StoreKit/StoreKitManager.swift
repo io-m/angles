@@ -356,6 +356,11 @@ final class StoreKitManager {
         UserDefaults.standard.bool(forKey: Self.signedOutSessionKey)
     }
 
+    /// Resume StoreKit entitlements after a real account sign-in. Does not cancel Apple.
+    func resumeAfterAccountSignIn() {
+        signIn()
+    }
+
     private func signIn() {
         UserDefaults.standard.set(false, forKey: Self.signedOutSessionKey)
         Self.debugLog("local session signed in by explicit StoreKit action")

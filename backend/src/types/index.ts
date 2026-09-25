@@ -152,6 +152,14 @@ export type ProfileBody = {
   avatarUrl?: string;
 };
 
+export type SessionBody = {
+  id: string;
+  initials: string;
+  name: string;
+  tasteCompletedAt: string | null;
+  avatarUrl?: string;
+};
+
 export type StoredReframeResult = {
   style: Style;
   reframe: string;

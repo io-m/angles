@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import { DbError } from "./db/client.js";
+import { getAuth } from "./auth.js";
 import { errorBody } from "./lib/http.js";
 import { cardsRoute } from "./routes/cards.js";
 import { feedRoute } from "./routes/feed.js";
@@ -32,6 +33,8 @@ export function createApp(): Hono {
   });
 
   app.route("/health", healthRoute);
+  app.on(["POST", "GET"], "/api/auth/*", (c) => getAuth().handler(c.req.raw));
+  app.on(["POST", "GET"], "/api/auth/*/*", (c) => getAuth().handler(c.req.raw));
   app.route("/reframe", reframeRoute);
   app.route("/cards", cardsRoute);
   app.route("/feed", feedRoute);

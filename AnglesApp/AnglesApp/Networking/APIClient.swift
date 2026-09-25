@@ -40,6 +40,8 @@ final class APIClient: @unchecked Sendable {
             // Server cook budget is 10s; this is slack for the network, not a hang.
             configuration.timeoutIntervalForRequest = 15
             configuration.timeoutIntervalForResource = 30
+            configuration.httpShouldSetCookies = false
+            configuration.httpCookieAcceptPolicy = .never
             configuration.httpAdditionalHeaders = ["Accept": "application/json"]
             self.session = URLSession(configuration: configuration)
         }
@@ -53,6 +55,34 @@ final class APIClient: @unchecked Sendable {
         timeout: TimeInterval? = nil
     ) async throws -> Response {
         try await decode(try await send(path: path, method: "POST", body: body, timeout: timeout))
+    }
+
+    func postCapturingHeader<Body: Encodable>(
+        path: String,
+        body: Body,
+        header: String,
+        timeout: TimeInterval? = nil
+    ) async throws -> (Data, String?) {
+        let (data, response) = try await execute(
+            path: path,
+            method: "POST",
+            queryItems: [],
+            bodyData: try encoder.encode(body),
+            contentType: "application/json",
+            timeout: timeout
+        )
+        return (data, response.value(forHTTPHeaderField: header))
+    }
+
+    func postEmpty(path: String, timeout: TimeInterval? = nil) async throws {
+        _ = try await execute(
+            path: path,
+            method: "POST",
+            queryItems: [],
+            bodyData: Data("{}".utf8),
+            contentType: "application/json",
+            timeout: timeout
+        )
     }
 
     func get<Response: Decodable>(
@@ -143,6 +173,24 @@ final class APIClient: @unchecked Sendable {
         contentType: String?,
         timeout: TimeInterval?
     ) async throws -> Data {
+        try await execute(
+            path: path,
+            method: method,
+            queryItems: queryItems,
+            bodyData: bodyData,
+            contentType: contentType,
+            timeout: timeout
+        ).0
+    }
+
+    private func execute(
+        path: String,
+        method: String,
+        queryItems: [URLQueryItem],
+        bodyData: Data?,
+        contentType: String?,
+        timeout: TimeInterval?
+    ) async throws -> (Data, HTTPURLResponse) {
         guard let url = resolvedURL(path: path, queryItems: queryItems) else {
             throw APIError.invalidURL
         }
@@ -152,7 +200,12 @@ final class APIClient: @unchecked Sendable {
         if let timeout {
             request.timeoutInterval = timeout
         }
-        // TODO(auth): attach Authorization from the Better Auth session once auth exists
+        if let origin = originHeader(for: url) {
+            request.setValue(origin, forHTTPHeaderField: "Origin")
+        }
+        if let token = AuthCredentials.shared.bearerToken, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         if let bodyData {
             if let contentType {
                 request.setValue(contentType, forHTTPHeaderField: "Content-Type")
@@ -177,11 +230,23 @@ final class APIClient: @unchecked Sendable {
         }
 
         guard (200 ... 299).contains(http.statusCode) else {
+            if http.statusCode == 401, request.value(forHTTPHeaderField: "Authorization") != nil {
+                AuthCredentials.shared.bearerToken = nil
+                NotificationCenter.default.post(name: .anglesSessionInvalidated, object: nil)
+            }
             let message = String(data: data, encoding: .utf8)
             throw APIError.httpStatus(http.statusCode, message)
         }
 
-        return data
+        return (data, http)
+    }
+
+    private func originHeader(for url: URL) -> String? {
+        var components = URLComponents()
+        components.scheme = url.scheme
+        components.host = url.host
+        components.port = url.port
+        return components.string
     }
 
     private func resolvedURL(path: String, queryItems: [URLQueryItem] = []) -> URL? {

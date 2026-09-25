@@ -35,7 +35,7 @@ Change only `src/lib/llmClient.ts`. Keep `generateReframe`, `generateJson`, and 
 
 ## Auth / DB
 
-`authStub.getOwnerUserId()` is the owner seam (seeded local user today). Replace `authStub` with Better Auth later. Schema is Drizzle + local Postgres using `postgres` (postgres.js), not Neon. Apple Sign In is required on iOS if other social providers ship.
+`requireAuth` + `getOwnerUserId()` is the owner seam (`backend/src/lib/authStub.ts`). Better Auth (Apple ID tokens, bearer plugin) lives in `backend/src/auth.ts`. Schema is Drizzle + local Postgres using `postgres` (postgres.js), not Neon. Sign in with Apple is the only login.
 
 ## Deploy
 

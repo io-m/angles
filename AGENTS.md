@@ -1,6 +1,6 @@
 # Angles — agent notes
 
-Paid-only reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then returns 1–3 sentences in all 4 styles. The server stores a card private unless the save says otherwise; compose Save defaults to **Post** (public) with a Save privately toggle, and the onboarding taste always saves privately. Publishing a card puts it on Home for everyone, including the author. Onboarding: one free taste (all 4 styles), then a hard paywall.
+Paid-only reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then returns 1–3 sentences in all 4 styles. The server stores a card private unless the save says otherwise; compose Save defaults to **Post** (public) with a Save privately toggle, and the onboarding taste always saves privately. Publishing a card puts it on Home for everyone, including the author. Onboarding: Continue with Apple, then one free taste if `tasteCompletedAt` is empty, then a hard paywall.
 
 ## Stack (this repo)
 
@@ -9,10 +9,10 @@ Paid-only reframe app (iOS). User submits a negative thought; the backend may as
 | iOS | Swift, SwiftUI, iOS 17+, MVVM when screens exist, native `URLSession` only |
 | API | Hono on Node (`@hono/node-server`), pnpm, Railway |
 | LLM | Server-side only, isolated in `backend/src/lib/llmClient.ts` |
-| Auth (later) | Better Auth, social logins. iOS must also offer Sign in with Apple (Guideline 4.8) if any other social login ships. Hook: `backend/src/lib/authStub.ts` (`getOwnerUserId`) |
+| Auth | Better Auth, Apple ID tokens only. Session: `requireAuth` + `getOwnerUserId()` in `backend/src/lib/authStub.ts` |
 | DB | Local Postgres in Docker (host 5433) + Drizzle, `postgres` (postgres.js) driver — not a serverless Neon adapter. Paths: `backend/src/db/`, `backend/drizzle.config.ts` |
 
-Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated for new Railway services).
+Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated for new Railway services). SwiftData is still later.
 
 ## Layout
 
@@ -22,7 +22,9 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/routes/cards.ts` — `POST/GET/PATCH/DELETE /cards`; `POST` only stores a signed cook
 - `backend/src/routes/feed.ts` — flat `GET /feed` (paged; multi-category/mood facets), viewer heart saves
 - `backend/src/routes/users.ts` — `GET /users/:id/cards` (an author's public posts), `PUT/DELETE /users/:id/follow`
-- `backend/src/routes/profile.ts` — `PATCH /profile` (name → initials), `GET /profile/following`, avatar upload/delete, public `GET /avatars/:userId`
+- `backend/src/auth.ts` — Better Auth (Sign in with Apple, bearer plugin)
+- `backend/src/lib/authStub.ts` — `requireAuth` + `getOwnerUserId()`
+- `backend/src/routes/profile.ts` — `PATCH /profile` (name → initials), `GET /profile/session`, `DELETE /profile`, `GET /profile/following`, avatar upload/delete, public `GET /avatars/:userId`
 - `backend/src/routes/health.ts` — `GET /health` (includes a DB probe)
 - `backend/src/db/schema.ts` — Drizzle tables
 - `backend/src/db/cards.ts` — SQL seam for the library (own cards plus hearted cards that are still public)
@@ -46,12 +48,13 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Home/ReframeCardView.swift` — stacked thought + selected answer everywhere except equal-height flipping Favorite angles; per-style chips/hearts and shared tap/long-press actions; globe on the author's public cards
 - `AnglesApp/AnglesApp/Home/AvatarImage.swift` — ImageIO downsampling and the in-memory author photo cache
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`, `CardsService`
+- `AnglesApp/AnglesApp/Auth/` — login, Keychain session, Sign in with Apple
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
 - `BUILD.md` — **screen/feature order**. Update it in the same change as every new screen or feature.
 
 ## Do not invent
 
-Follow `BUILD.md`. Do not add screens or features that are not the current item. No SwiftData, Better Auth, CORS “for browsers”, or client-side LLM keys until that row in `BUILD.md` is next. StoreKit and community Home have shipped.
+Follow `BUILD.md`. Do not add screens or features that are not the current item. No SwiftData, CORS “for browsers”, or client-side LLM keys until that row in `BUILD.md` is next. StoreKit, community Home, and Auth have shipped.
 
 ## Reframe contract
 
@@ -81,7 +84,7 @@ Not used. Native iOS `URLSession` is not a browser. Do not add wildcard CORS.
 ## iOS
 
 - API URL is the `ANGLES_API_BASE_URL` build setting in `project.yml` (Info.plist `AnglesAPIBaseURL`). Debug is the Mac's LAN IP (`http://192.168.0.39:8787`); Release is empty until the production host exists, so a Release build fails its requests locally. Never point it at a host we do not own.
-- The dev API binds `0.0.0.0` so the iPhone can reach it. Until auth exists, anyone on the same network can use it as the dev user, including reading the private library and spending LLM credit. Run it only on networks you trust.
+- The dev API binds `0.0.0.0` so the iPhone can reach it. Product routes need a Better Auth session. Run it only on networks you trust.
 - ATS: `NSAllowsLocalNetworking` only. Never `NSAllowsArbitraryLoads`.
 - No third-party networking libraries.
 - ViewModels arrive with screens. Keep networking free of UIKit/SwiftUI.

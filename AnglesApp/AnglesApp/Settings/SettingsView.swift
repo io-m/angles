@@ -9,9 +9,11 @@ struct SettingsView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var onLogOut: (() -> Void)? = nil
+    var onDeleteAccount: (() -> Void)? = nil
 
     @State private var showAppearance = false
     @State private var showSubscription = false
+    @State private var showDeleteAccount = false
     @State private var photoItem: PhotosPickerItem?
     @FocusState private var nameFocused: Bool
 
@@ -59,10 +61,22 @@ struct SettingsView: View {
                     cardRow(
                         symbol: "rectangle.portrait.and.arrow.right",
                         title: "Log out",
-                        subtitle: "Start over on this iPhone. Does not cancel Apple."
+                        subtitle: "Returns to sign in. Does not cancel Apple."
                     ) {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         onLogOut?()
+                    } trailing: {
+                        EmptyView()
+                    }
+
+                    rowDivider
+
+                    cardRow(
+                        symbol: "trash",
+                        title: "Delete account",
+                        subtitle: "Removes your Angles account and cards. Does not cancel Apple."
+                    ) {
+                        showDeleteAccount = true
                     } trailing: {
                         EmptyView()
                     }
@@ -85,6 +99,15 @@ struct SettingsView: View {
         .onDisappear {
             guard let identityStore else { return }
             Task { await identityStore.commitName() }
+        }
+        .alert("Delete account?", isPresented: $showDeleteAccount) {
+            Button("Delete account", role: .destructive) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onDeleteAccount?()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your Angles account and cards. It does not cancel Apple.")
         }
     }
 

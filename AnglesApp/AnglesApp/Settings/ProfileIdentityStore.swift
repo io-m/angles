@@ -26,7 +26,7 @@ final class ProfileIdentityStore {
     var photoSync: PhotoSyncState = .idle
     var nameSyncError: String?
     private(set) var avatarPath: String?
-    private(set) var serverInitials: String = "JM"
+    private(set) var serverInitials: String = ""
 
     /// Fired after the server accepts a name or photo, so owned cards can update in place.
     var onSynced: ((String, String?) -> Void)?
@@ -93,13 +93,34 @@ final class ProfileIdentityStore {
         }
     }
 
-    /// Row 8 seam: fills the name from Sign in with Apple only when the user never typed one.
+    /// Row 8: fills the name from Sign in with Apple only when the user never typed one.
     func seedName(_ value: String) {
         guard !hasCustomName else { return }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, displayName.isEmpty else { return }
         displayName = String(trimmed.prefix(40))
         UserDefaults.standard.set(displayName, forKey: Keys.displayName)
+    }
+
+    func applySession(_ session: SessionBody) {
+        serverInitials = session.initials
+        avatarPath = session.avatarUrl
+        seedName(session.name)
+        onSynced?(session.initials, session.avatarUrl)
+    }
+
+    func reset() {
+        displayName = ""
+        hasCustomName = false
+        photo = nil
+        photoSync = .idle
+        nameSyncError = nil
+        avatarPath = nil
+        serverInitials = ""
+        committedName = nil
+        UserDefaults.standard.removeObject(forKey: Keys.displayName)
+        UserDefaults.standard.removeObject(forKey: Keys.hasCustomName)
+        try? FileManager.default.removeItem(at: Self.photoURL)
     }
 
     func uploadPhoto(data original: Data) async {

@@ -36,7 +36,14 @@ async function main(): Promise<void> {
   await db.delete(cards).where(ne(cards.userId, DEV_USER_ID));
   await db.delete(users).where(ne(users.id, DEV_USER_ID));
 
-  await db.insert(users).values(fixture.users.map((user) => ({ id: user.id, initials: user.initials })));
+  await db.insert(users).values(
+    fixture.users.map((user) => ({
+      id: user.id,
+      initials: user.initials,
+      name: user.initials,
+      email: `seed-${user.id}@angles.invalid`,
+    })),
+  );
 
   const allSlugs = [...new Set(fixture.posts.flatMap((post) => post.tags))];
   if (allSlugs.length > 0) {

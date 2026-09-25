@@ -22,7 +22,7 @@ Target: iOS 17+, bundle id `app.angles.ios` (placeholder). No SPM networking pac
 - `APIClient` — JSON `URLSession` verbs (`GET`, `POST`, `PATCH`, `DELETE`), decode `Decodable`, map failures to `APIError`.
 - `ReframeService.refine(text:followUps:styles:model:)` — `POST /reframe` only. Answers `.continueTurn` or `.ready`.
 - `CardsService` — `POST/GET/PATCH/DELETE /cards`. Profile library source of truth.
-- Auth header: TODO on the request in `APIClient`. Do not invent a token store.
+- Auth header: `Authorization: Bearer` from the Keychain session (`AuthCredentials` / `SessionStore`). Sign in with Apple only. `requireAuth` on product routes.
 
 ## Models
 

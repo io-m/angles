@@ -61,8 +61,14 @@ function userRow(overrides: { id?: string; initials?: string; avatarKey?: string
   return {
     id: overrides.id ?? AUTHOR_ID,
     initials: overrides.initials ?? "AL",
+    name: overrides.initials ?? "AL",
+    email: `seed-${overrides.id ?? AUTHOR_ID}@angles.invalid`,
+    emailVerified: false,
+    image: null as string | null,
     avatarKey: overrides.avatarKey ?? null,
+    tasteCompletedAt: null as Date | null,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-09-01T00:00:00.000Z"),
   };
 }
 
