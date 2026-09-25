@@ -24,6 +24,8 @@ targets:
       - path: AnglesApp
         excludes:
           - "**/.DS_Store"
+          - Info.plist
+          - Info-Debug.plist
     dependencies:
       - package: Lottie
     entitlements:
@@ -35,8 +37,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.angles.ios
         PRODUCT_NAME: Angles
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "7"
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "8"
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: AnglesApp/Info.plist
         CODE_SIGN_ENTITLEMENTS: AnglesApp/Angles.entitlements
@@ -48,23 +50,18 @@ targets:
         # Devices cannot reach localhost; Debug points at the Mac's LAN IP.
         Debug:
           ANGLES_API_BASE_URL: "http://192.168.0.39:8787"
+          ANGLES_PRIVACY_POLICY_URL: ""
+          ANGLES_TERMS_OF_SERVICE_URL: ""
+          ANGLES_SUPPORT_URL: ""
+          ANGLES_SUPPORT_EMAIL: ""
+          INFOPLIST_FILE: AnglesApp/Info-Debug.plist
         # Empty until the production host exists; requests fail locally rather than guess a host.
         Release:
           ANGLES_API_BASE_URL: ""
-    info:
-      path: AnglesApp/Info.plist
-      properties:
-        CFBundleDisplayName: Angles
-        CFBundleShortVersionString: "$(MARKETING_VERSION)"
-        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        LSRequiresIPhoneOS: true
-        AnglesAPIBaseURL: "$(ANGLES_API_BASE_URL)"
-        UILaunchScreen: {}
-        UISupportedInterfaceOrientations:
-          - UIInterfaceOrientationPortrait
-        NSAppTransportSecurity:
-          NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: Angles talks to the API on your Mac while developing.
+          ANGLES_PRIVACY_POLICY_URL: ""
+          ANGLES_TERMS_OF_SERVICE_URL: ""
+          ANGLES_SUPPORT_URL: ""
+          ANGLES_SUPPORT_EMAIL: ""
     scheme:
       testTargets:
         - AnglesAppTests

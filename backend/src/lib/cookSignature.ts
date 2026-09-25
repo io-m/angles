@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ReframeMeta, Style } from "../types/index.js";
 
 const MIN_KEY_LENGTH = 32;
-const VERSION = "v1";
+const VERSION = "v2";
 
 /** The part of a cook's meta that the card stores. `matching` is re-derived on save. */
 export type SignableMeta = Omit<ReframeMeta, "matching">;
@@ -10,6 +10,7 @@ export type SignableMeta = Omit<ReframeMeta, "matching">;
 export type SignableCook = {
   thought: string;
   thoughtOriginal?: string;
+  model: string;
   meta: SignableMeta;
 };
 
@@ -37,11 +38,12 @@ function matches(expected: string, actual: string): boolean {
 }
 
 // Values are trimmed the same way `POST /cards` trims them, so a signed cook verifies after validation.
-function cookParts({ thought, thoughtOriginal, meta }: SignableCook): unknown[] {
+function cookParts({ thought, thoughtOriginal, model, meta }: SignableCook): unknown[] {
   return [
     "cook",
     thought.trim(),
     thoughtOriginal?.trim() ?? null,
+    model,
     meta.category,
     meta.proposedCategory ?? null,
     meta.proposedLabel ?? null,
@@ -55,8 +57,8 @@ function cookParts({ thought, thoughtOriginal, meta }: SignableCook): unknown[] 
   ];
 }
 
-function resultParts(thought: string, style: Style, reframe: string): unknown[] {
-  return ["result", thought.trim(), style, reframe.trim()];
+function resultParts(thought: string, style: Style, reframe: string, model: string): unknown[] {
+  return ["result", thought.trim(), style, reframe.trim(), model];
 }
 
 export function signCook(cook: SignableCook): string {
@@ -64,8 +66,13 @@ export function signCook(cook: SignableCook): string {
 }
 
 /** A result is bound to the cleaned thought it answers, so a recook verifies against the same card. */
-export function signResult(thought: string, style: Style, reframe: string): string {
-  return hmac(resultParts(thought, style, reframe));
+export function signResult(
+  thought: string,
+  style: Style,
+  reframe: string,
+  model: string,
+): string {
+  return hmac(resultParts(thought, style, reframe, model));
 }
 
 export function verifyCook(
@@ -78,6 +85,6 @@ export function verifyCook(
     return false;
   }
   return cook.results.every((item) =>
-    matches(signResult(cook.thought, item.style, item.reframe), item.signature),
+    matches(signResult(cook.thought, item.style, item.reframe, cook.model), item.signature),
   );
 }

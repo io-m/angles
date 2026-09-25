@@ -76,6 +76,11 @@ Loading and error are **states on Results**, not their own screens.
 | 9t | Following | feature | done | `follows.ts`; `schema.ts`; `0006_worthless_liz_osborn.sql`; `users.ts`; `mapCard.ts`; `feed.ts`; `ReframeCardView.swift`; `HomeViewModel.swift`; `AuthorProfileView.swift` | One-way follow badge on other people's avatars; their public posts stay in the same Home mix. |
 | 9u | Following list | feature | done | `follows.ts`; `profile.ts`; `FollowingSheet.swift`; `ProfileView.swift`; `HomeViewModel.swift`; `ProfileService.swift` | A people icon beside Settings opens the people you follow; a row opens their posts, and the minus icon unfollows. |
 | 9v | Model cards page | screen | done | `ModelProfileView.swift`; `HomeView.swift`; `StyleTabPager.swift`; `HomeViewModel.swift`; `models.ts`; `feed.ts`; `schema.ts`; `0008_public_model_created_idx.sql`; `ReframeModels.swift` | Tapping a model opens its public cards in Home's five-tab pager, with a logo-only header. |
+| 9w | Production community safety | feature | done | `ReframeModels.swift`; `CardsService.swift`; `ProfileService.swift`; `ReframeCardView.swift`; `BlockedPeopleSheet.swift`; `SettingsView.swift`; `HomeViewModel.swift` | Report reasons and confirmed blocks remove unsafe community content across loaded pages; Settings lists blocked people for undo. |
+| 10 | Production legal/privacy hardening | feature | done | `docs/legal/*`; `PrivacyInfo.xcprivacy`; `AppConfig.swift`; `Info*.plist`; `project.yml`; `SettingsView.swift`; `PaywallView.swift` | Source privacy/terms, App Privacy declarations, Release-safe configuration, and centralized legal/support links. |
+| 11 | Server subscription entitlement | feature | done | `subscriptions.ts`; `appStoreVerifier.ts`; `appStoreNotifications.ts`; `StoreKitManager.swift`; `ProfileService.swift`; `0011_workable_rage.sql` | Account-bound StoreKit purchases sync verified JWS receipts to a server-owned entitlement; account generations prevent late Apple/server results from crossing sessions. |
+| 12 | Production credit metering | feature | done | `metering.ts`; `meteringPolicy.ts`; `reframe.ts`; `ReframeModels.swift`; `APIClient.swift`; `ReframeService.swift`; `HomeViewModel.swift`; `ComposeSheetView.swift`; `SubscriptionView.swift` | Monthly server-owned credits, retry-safe per-operation idempotency, account-period warnings, model tariffs/availability, and Subscription balance/reset UI. |
+| 13 | Backend release hardening | feature | done | `productionConfig.ts`; `productionMigrations.ts`; `seedCommunityGuard.ts`; `Dockerfile`; `.github/workflows/backend.yml` | Runtime migrations, production configuration fail-fast checks, a production seed kill-switch, non-root container health checks, and database-backed CI. |
 
 ### 1. Compose (home)
 
@@ -136,7 +141,7 @@ Not a new screen. Every `POST /reframe` runs one structured decision call (`deci
 
 ### 5. Card persistence
 
-Not a new screen. Local Postgres in Docker (host 5433) + Drizzle. Profile is the private library and reads from `GET /cards`. Save posts the kept cook to `POST /cards`; X still discards. Categories are an enum column; tags have their own table. `POST /reframe` still never writes. No SwiftData.
+Not a new screen. Local Postgres in Docker (host 5433) + Drizzle. Profile is the private library and reads from `GET /cards`. Save posts the kept cook to `POST /cards`; X still discards. Categories are an enum column; tags have their own table. `POST /reframe` never stores cards or thought text; production metering later added text-free operation and provider-cost writes. No SwiftData.
 
 ### 5b. Favorite angles
 
@@ -236,6 +241,14 @@ Not a new screen. The Profile bar has a people icon in the same round container 
 - **List.** `GET /profile/following` is the people you follow, newest follow first. Each row is a 40pt photo or initials and those initials. There is no display name and no count. Empty copy says you aren't following anyone yet. The system search field under the title filters those initials; no matches uses the system search empty state.
 - **Open.** A tap on the person closes the sheet and pushes their public posts.
 - **Unfollow.** The trailing person-minus icon unfollows them and drops the row. If the write fails, the row comes back with the existing write banner.
+
+### 9w. Production community safety
+
+Every non-owner community card offers Report and Block. Reporting chooses a compact reason; blocking requires confirmation and removes the author's cards, saves, and follow state across Home, Profile, author, and model pages. The author profile chrome exposes the same block action. Settings → Blocked people lists blocked accounts and restores a row if unblock fails. Public save/publish moderation errors explain whether the content is disallowed or moderation is temporarily unavailable.
+
+### 10. Production legal/privacy hardening
+
+Source privacy and terms documents describe account, AI-provider, card, profile, community, subscription, retention, deletion, moderation, and mental-health handling. The app declares no tracking and its collected data/UserDefaults use, centralizes optional legal/support destinations, keeps development LAN permission out of Release, and reports unavailable links only in Debug until operator-owned hosting and support details are configured.
 
 ### 9t. Following
 
@@ -395,6 +408,14 @@ Sign in first, then one taste if this account still needs it.
 - Sign-in is atomic: token → Keychain → `GET /profile/session` → StoreKit refresh for this account → publish the session. The first destination is already Home, taste, or paywall; Login keeps its spinner meanwhile.
 - Log out clears session, Keychain, bearer, and StoreKit in one frame, then revokes the server session in the background with the captured token. A 401 ends only the session whose token it rejected, so a late 401 from an old token cannot sign out a new one.
 
+### 12. Production credit metering
+
+The server owns a 600-credit membership period and returns remaining/granted credits, reset time, warning level, model availability, and tariff data. Mistral costs 1, DeepSeek 2, and Gemini 6. Every intentional refine turn and recook sends a fresh UUID `Idempotency-Key`. There is no automatic retry; if the user retries after an ambiguous transport failure, the client reuses that logical operation's UUID so the retry cannot spend twice. An explicit server failure or a new turn gets a new UUID.
+
+Compose keeps all three models visible with their costs and disables only models excluded by the latest server summary. A newly unaffordable selection visibly falls back in Mistral-first cost order, while an unavailable local usage endpoint leaves the picker usable until authoritative usage arrives. Low credit warnings appear once per period, critical/empty state stays beside the picker, and each paid ready response quietly reports the credits used. Metering, rate-limit, taste, duplicate-operation, and subscription errors have specific recovery copy; an already-completed result is never automatically retried.
+
+Settings → Subscription loads `GET /profile/usage` independently and shows remaining of granted credits, period reset date, a progress bar, and retryable load failure. There are no credit packs, push/email warnings, modal warnings, or separate usage screen.
+
 ## Postponed (do not start)
 
 Nothing queued. Do not invent extras.
@@ -408,6 +429,12 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-09-25 — Final iOS audit fixes: StoreKit work is account-generation scoped; card writes and block loads reject stale completions; ambiguous reframe retries reuse their operation UUID; low-credit warnings are account-period scoped; subscription dates use neutral active-until copy and failed server sync has an explicit retry.
+- 2026-09-25 — Backend release hardening: packaged runtime migrations before schema checks, strict production configuration assertions, production seed refusal, non-root Docker health checks, and Postgres-backed backend CI.
+- 2026-09-25 — Production credit metering UI: authoritative model costs/availability and automatic visible fallback, per-period low/critical/empty warnings, per-cook usage feedback, idempotent refine headers, structured metering errors, and Subscription credit balance/reset.
+- 2026-09-25 — StoreKit-to-backend entitlement: account-token purchases, verified transaction sync, idempotent App Store Server Notifications V2, one-time legacy claims, server diagnostics, and optional post-taste cooking enforcement.
+- 2026-09-25 — Production legal/privacy hardening: source terms and privacy policy, no-tracking privacy manifest, explicit export declaration, Release-safe plist split, centralized legal/support destinations, and version 1.0.0 (8).
+- 2026-09-25 — Production community safety: report with a reason, confirmed user blocking, synchronized local removal and rollback, blocked-people management in Settings, and clear public-moderation save/publish errors.
 - 2026-09-25 — One pure `AppGate` destination: logout goes straight to Login with no taste/paywall frame; Apple login publishes the session only after StoreKit answers, so subscribers land on Home and tasted users on the paywall directly; server `tasteCompletedAt` is the only taste flag; `Transaction.latest` can no longer unlock; Settings names the freshly bought plan; an expiry watchdog and a 10s arrival cap keep Home from outliving the subscription or spinning forever; delete account waits for the server; sandbox re-purchase recipe under 7h.
 - 2026-09-25 — Native Apple sign-in no longer 403s on a leftover session cookie without a browser Origin.
 - 2026-09-25 — Home waits for a signed-in session before fetching the feed, so Apple login does not stall on Loading Home.

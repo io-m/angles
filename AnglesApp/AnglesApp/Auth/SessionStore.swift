@@ -19,7 +19,7 @@ final class SessionStore {
     /// Runs after the server confirms a sign-in and before the session is published, so the
     /// first destination already knows this account's StoreKit answer (no paywall frame for a
     /// subscriber). Launch restore skips it; the launch gate prepares StoreKit itself.
-    @ObservationIgnored var prepareAccountAccess: (@MainActor () async -> Void)?
+    @ObservationIgnored var prepareAccountAccess: (@MainActor (SessionBody) async -> Void)?
 
     @ObservationIgnored private var committedToken: String?
     private var pendingAppleNonce: String?
@@ -31,10 +31,7 @@ final class SessionStore {
     }
 
     var hasCompletedTaste: Bool {
-        if let tasteCompletedAt = session?.tasteCompletedAt, !tasteCompletedAt.isEmpty {
-            return true
-        }
-        return false
+        session?.hasUsedTaste == true
     }
 
     func restore() async {
@@ -123,6 +120,7 @@ final class SessionStore {
             initials: current.initials,
             name: current.name,
             tasteCompletedAt: ISO8601Dates.string(from: Date()),
+            tasteConsumedAt: current.tasteConsumedAt,
             avatarUrl: current.avatarUrl
         )
     }
@@ -148,13 +146,13 @@ final class SessionStore {
         do {
             let body = try await profileService.session()
             if preparingAccess {
-                await prepareAccountAccess?()
+                await prepareAccountAccess?(body)
             }
             guard AuthCredentials.shared.bearerToken == token else {
                 return
             }
             commit(body, token: token)
-        } catch let APIError.httpStatus(code, _) where code == 401 {
+        } catch let APIError.httpStatus(code, _, _) where code == 401 {
             clearLocal()
         } catch {
             errorMessage = "Couldn't reach Angles. Try again."
@@ -190,13 +188,13 @@ final class SessionStore {
         AuthCredentials.shared.bearerToken = token
         do {
             let body = try await profileService.session()
-            await prepareAccountAccess?()
+            await prepareAccountAccess?(body)
             guard AuthCredentials.shared.bearerToken == token else {
                 errorMessage = "Couldn't sign in. Try again."
                 return
             }
             commit(body, token: token)
-        } catch let APIError.httpStatus(code, _) where code == 401 {
+        } catch let APIError.httpStatus(code, _, _) where code == 401 {
             clearLocal()
             errorMessage = "Couldn't sign in. Try again."
         } catch {

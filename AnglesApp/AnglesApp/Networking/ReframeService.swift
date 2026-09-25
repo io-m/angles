@@ -11,11 +11,13 @@ struct ReframeService: Sendable {
         text: String,
         followUps: [FollowUpAnswer] = [],
         styles: [Style]? = nil,
-        model: LlmModel? = nil
+        model: LlmModel? = nil,
+        requestID: UUID = UUID()
     ) async throws -> ReframeResponse {
         try await client.post(
             path: "reframe",
-            body: ReframeRequest(text: text, followUps: followUps, styles: styles, model: model)
+            body: ReframeRequest(text: text, followUps: followUps, styles: styles, model: model),
+            headers: ["Idempotency-Key": requestID.uuidString.lowercased()]
         )
     }
 }

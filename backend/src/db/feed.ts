@@ -2,15 +2,29 @@ import { and, arrayOverlaps, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import type { FeedCursor, FeedListQuery, StoredCard, Style } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
+import {
+  lockUserPair,
+  notBlockedBetween,
+  notReportedBy,
+  usersAreBlocked,
+} from "./communitySafety.js";
 import { olderThanCursor } from "./cursor.js";
 import { storedCardsForViewer, type CardLoaded } from "./mapCard.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
 
-async function loadFeedCardRow(db: Queryable, id: string): Promise<CardLoaded | null> {
+async function loadFeedCardRow(
+  db: Queryable,
+  id: string,
+  viewerId: string,
+): Promise<CardLoaded | null> {
   const row = await db.query.cards.findFirst({
-    where: eq(cards.id, id),
+    where: and(
+      eq(cards.id, id),
+      notBlockedBetween(viewerId, cards.userId),
+      notReportedBy(viewerId, cards.id),
+    ),
     with: {
       user: true,
       reframes: { orderBy: [asc(cardReframes.position)] },
@@ -36,7 +50,11 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
     const viewerId = getOwnerUserId();
     const db = getDb();
     // A literal, not a bound parameter, so even a generic plan can prove the partial index applies.
-    const filters = [sql`${cards.isPublic} = true`];
+    const filters = [
+      sql`${cards.isPublic} = true`,
+      notBlockedBetween(viewerId, cards.userId),
+      notReportedBy(viewerId, cards.id),
+    ];
     if (query.categories?.length) {
       filters.push(inArray(cards.category, query.categories));
     }
@@ -79,7 +97,12 @@ export async function listPublicCardsForUser(query: {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
-    const filters = [eq(cards.userId, query.userId), eq(cards.isPublic, true)];
+    const filters = [
+      eq(cards.userId, query.userId),
+      eq(cards.isPublic, true),
+      notBlockedBetween(viewerId, cards.userId),
+      notReportedBy(viewerId, cards.id),
+    ];
     if (query.before) {
       filters.push(olderThanCursor(query.before));
     }
@@ -113,7 +136,12 @@ export async function listPublicCardsForModel(query: {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
-    const filters = [eq(cards.model, query.model), sql`${cards.isPublic} = true`];
+    const filters = [
+      eq(cards.model, query.model),
+      sql`${cards.isPublic} = true`,
+      notBlockedBetween(viewerId, cards.userId),
+      notReportedBy(viewerId, cards.id),
+    ];
     if (query.before) {
       filters.push(olderThanCursor(query.before));
     }
@@ -151,7 +179,29 @@ async function withFeedTarget(
   try {
     return await getDb().transaction(async (tx) => {
       const viewerId = getOwnerUserId();
-      const row = await loadFeedCardRow(tx, id);
+      const [target] = await tx
+        .select({ authorId: cards.userId })
+        .from(cards)
+        .where(eq(cards.id, id))
+        .limit(1);
+      if (!target || target.authorId === viewerId) {
+        return { ok: false, reason: "not_found" };
+      }
+      await lockUserPair(tx, viewerId, target.authorId);
+      const [locked] = await tx
+        .select({ authorId: cards.userId, isPublic: cards.isPublic })
+        .from(cards)
+        .where(eq(cards.id, id))
+        .for("update");
+      if (
+        !locked ||
+        !locked.isPublic ||
+        locked.authorId !== target.authorId ||
+        (await usersAreBlocked(viewerId, locked.authorId, tx))
+      ) {
+        return { ok: false, reason: "not_found" };
+      }
+      const row = await loadFeedCardRow(tx, id, viewerId);
       if (!row || !isFeedSaveTarget(row, viewerId)) {
         return { ok: false, reason: "not_found" };
       }
@@ -170,7 +220,7 @@ async function returnViewerCard(
   id: string,
   viewerId: string,
 ): Promise<FeedSaveResult> {
-  const row = await loadFeedCardRow(db, id);
+  const row = await loadFeedCardRow(db, id, viewerId);
   if (!row) {
     return { ok: false, reason: "not_found" };
   }
@@ -215,15 +265,26 @@ export async function unsaveFeedAngle(id: string, style: Style): Promise<FeedSav
 export async function clearFeedSaves(id: string): Promise<{ ok: boolean }> {
   try {
     const viewerId = getOwnerUserId();
-    const removed = await getDb()
-      .delete(savedAngles)
-      .where(and(eq(savedAngles.userId, viewerId), eq(savedAngles.cardId, id)))
-      .returning({ cardId: savedAngles.cardId });
-    if (removed.length > 0) {
-      return { ok: true };
-    }
-    const row = await loadFeedCardRow(getDb(), id);
-    return { ok: row !== null && isFeedSaveTarget(row, viewerId) };
+    return await getDb().transaction(async (tx) => {
+      const [target] = await tx
+        .select({ authorId: cards.userId })
+        .from(cards)
+        .where(eq(cards.id, id))
+        .limit(1);
+      if (!target || target.authorId === viewerId) {
+        return { ok: false };
+      }
+      await lockUserPair(tx, viewerId, target.authorId);
+      const removed = await tx
+        .delete(savedAngles)
+        .where(and(eq(savedAngles.userId, viewerId), eq(savedAngles.cardId, id)))
+        .returning({ cardId: savedAngles.cardId });
+      if (removed.length > 0) {
+        return { ok: true };
+      }
+      const row = await loadFeedCardRow(tx, id, viewerId);
+      return { ok: row !== null && isFeedSaveTarget(row, viewerId) };
+    });
   } catch (error) {
     if (error instanceof DbError) {
       throw error;

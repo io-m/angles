@@ -1,232 +1,86 @@
-# Production readiness
+# App Store readiness
 
-Dated snapshot: **17 Sep 2026**. Product shape is treated as settled: taste → paywall → compose → private library → community Home. This file is only **what is still fake, local, or shared** so a stranger cannot use it as a real service.
+Current as of **September 25, 2026**.
 
-[`BUILD.md`](../BUILD.md) stays the feature tracker. Next product row is still **8. Auth**.
+## Release status
 
-**Verdict: the app is a working local demo, not a production service.** One iPhone against Docker Postgres can cook, pay in sandbox, save, and browse Home. A second person, a second phone, or a public API URL would share one user, one library, and an unmetered LLM bill.
+The production feature work is implemented in the repository. The app is not ready to submit or operate publicly until the external configuration and App Store assets below are completed.
 
----
+### Implemented
 
-## What already works (keep)
+- Sign in with Apple through Better Auth, Keychain bearer sessions, server-owned users, log out, and in-app account deletion.
+- Account-scoped onboarding: Apple sign-in first, one server-tracked taste while both taste timestamps are empty, a private taste save, then the hard paywall.
+- StoreKit 2 annual and monthly purchase, restore, renewal/expiry handling, Settings subscription status, plan management, and cancellation handoff to Apple.
+- Server-side verification of signed App Store transactions and Server Notifications V2, account-bound entitlements, idempotent notification processing, and subscription enforcement after the taste.
+- A server-owned allowance of 600 credits per monthly membership period for both products. Mistral costs 1 credit, DeepSeek 2, and Gemini 6 for a ready result; continue, safety, and failed operations cost 0 user credits.
+- All three public models in the picker with credit-aware availability, fallback to an affordable model, 20% and 10% warnings, reset information, request idempotency, and daily/burst abuse limits.
+- Provider token usage and estimated/reported company cost recorded for every real provider attempt without storing thought text in the metering ledger.
+- Public/private cards, community Home, follows, per-angle favorites, reporting, blocking/unblocking, and pre-publication moderation.
+- Production hardening: runtime migrations before schema checks, production configuration fail-fast validation, a production seed guard, a non-root container with a health check, and Postgres-backed backend CI.
+- Source privacy/terms documents, privacy manifest, Release-safe plist split, and centralized API/legal/support configuration.
 
-These are the product. They do not need reinventing for launch.
+`POST /reframe` does not store cards or thought text. It does write text-free operation, idempotency, usage, token, and company-cost metadata. A card is stored only when the signed cook is sent to `POST /cards`.
 
-| Area | Status |
-| --- | --- |
-| Compose + decision + four styles + recook | Done. Overlay talks to `POST /reframe`. |
-| Taste once, then hard paywall | Done. StoreKit 2 annual `$39.99` / monthly `$4.99`. Restore exists on paywall and taste. |
-| Private library | Done *as a single-user loop*. Save, heart per style, delete, public/private, Original. |
-| Community Home | Done. Faceted feed, style tabs, pull-to-refresh, viewer hearts. |
-| Profile chrome | Done. Identity header, Favorites + four style tabs, Settings gear. |
-| Safety on cook | Done. Unsafe thoughts `continue` with 988; no reframe. Thought text is not logged. |
-| Local backend | Done. Docker Postgres 5433, Drizzle, `/health`, Dockerfile, ~114 Vitest cases. |
+## Remaining external blockers
 
-Stale copy: [`README.md`](../README.md) and [`AGENTS.md`](../AGENTS.md) still say Home is postponed. The binary has Home. Ignore those sentences.
+These are deployment, operator, Apple, provider, and submission tasks; they are not missing product implementations.
 
----
+### Release app configuration
 
-## What is missing (functional)
+- Set the Release `ANGLES_API_BASE_URL` to the production HTTPS API.
+- Set `ANGLES_PRIVACY_POLICY_URL`, `ANGLES_TERMS_OF_SERVICE_URL`, and either `ANGLES_SUPPORT_URL` or `ANGLES_SUPPORT_EMAIL`.
+- Verify those destinations load from the archived build. They are intentionally empty today.
+- Confirm the final Apple team, signing, bundle record, capabilities, and Release archive/export configuration.
 
-Ranked by “would this break for a real user or a real bill.”
+### Hosted legal and support
 
-### 1. There is only one user — blocking
+- Replace all operator placeholders in `docs/legal/privacy.md` and `docs/legal/terms.md`, including legal operator, privacy/support contact, mailing address, and governing law.
+- Complete the provider-retention/training review noted in the privacy policy.
+- Publish both documents at operator-controlled HTTPS URLs and provide a working support destination.
 
-Every API call is the seeded UUID `00000000-0000-4000-8000-000000000001`.
+### Apple production configuration
 
-```ts
-// backend/src/lib/authStub.ts
-export function getOwnerUserId(): string {
-  return DEV_USER_ID;
-}
-```
+- Download and configure the required Apple root certificates in `APPLE_ROOT_CERTIFICATES_BASE64`.
+- Set the numeric App Store Connect `APPLE_APP_ID`.
+- Create the production Sign in with Apple and App Store configuration, including a valid `APPLE_CLIENT_SECRET`, product/subscription-group availability, agreements, tax, banking, and any App Store Server API issuer/key/private-key setup used by release operations.
+- Configure App Store Server Notifications V2 for the production API endpoint `POST /app-store/notifications` and send/verify Apple's test notification.
+- Confirm the production bundle ID and product IDs are exactly `app.angles.ios`, `app.angles.ios.monthly`, and `app.angles.ios.annual`.
 
-The middleware is a no-op. iOS sends no `Authorization` header (`APIClient.swift`). Profile is hardcoded **JM** / “Josip Miljak” (`CircleIcon.swift`). Settings **Log out** only clears a local StoreKit session flag; it does not switch accounts.
+### Railway and infrastructure
 
-**If you point production at this API:**
+- Create the Railway project, API service, production Postgres database, and private `angles-avatars` bucket.
+- Assign the final HTTPS domain and set `BETTER_AUTH_URL` to that origin.
+- Configure every required production secret from `backend/.env.example`: database, Better Auth/Apple, cook signing, metering HMAC, all three model providers, Apple verification, and bucket credentials.
+- Set both `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
+- Deploy, confirm packaged migrations complete, and verify `/health`, authentication, purchase sync, notification delivery, avatar storage, and a full cook/save cycle.
+- Never run the destructive community seed against production; the production guard must remain enabled.
 
-- Everyone reads and writes the same library.
-- Everyone’s Home hearts are the same viewer.
-- Public/private is meaningless (you are always the owner of “your” cards and never of anyone else’s, except the seed users).
-- A second iPhone with Restore unlocks Home via Apple, then loads **Joe’s cards**, not a blank account.
+### Provider operations
 
-**Needed (BUILD.md row 8):**
+- Configure production keys separately from local/CI keys.
+- Set Mistral organization/workspace spend limits, a Gemini project/prepay cap, and a deliberately small DeepSeek prepaid balance.
+- Configure spend/balance alerts and operational handling for a provider pause or outage.
+- Recheck current provider prices against `LLM_RATE_VERSION` before launch and bump the version when rates change.
 
-- Sign in with Apple + Better Auth on Postgres.
-- iOS attaches the session on every request.
-- Guest taste card **claimed** onto the new user after Subscribe / Restore, so the first cook is not orphaned.
-- `users` grows past `id` + `initials` (Apple subject, `tasteCompletedAt`, display name).
-- Profile uses the real name/initials.
-- Settings Sign in / Log out is a real session and still does not cancel Apple.
+### App Store Connect submission
 
-Until this exists, do not expose the API.
+- Complete app name/subtitle/description, keywords, category, copyright, review contact, and version notes.
+- Upload final device screenshots and any required preview media.
+- Complete App Privacy answers from the shipped privacy manifest and actual backend behavior.
+- Complete the age-rating questionnaire with the AI-generated content, mental-health themes, and user-generated public content represented accurately.
+- Add the reviewer notes from `docs/app-review-notes.md`; do not provide demo credentials.
+- Verify both subscription products, localization, pricing, review screenshots, and the subscription group are submitted with the app version.
 
-### 2. There is no production host — blocking
+## Release gate
 
-| Piece | Today |
-| --- | --- |
-| Railway | No Angles project (account has biteandstride, ideon, Appsail). |
-| Release URL | Placeholder `https://api.angles.app` in [`AppConfig.swift`](../AnglesApp/AnglesApp/Config/AppConfig.swift). That host is not this app. `angles.app` is someone else’s camera waitlist. |
-| Debug URL | Hardcoded LAN IP `http://192.168.0.39:8787`. Breaks when the Mac’s IP changes. |
-| TLS | Only whatever Railway (or similar) would terminate. App has no prod origin. |
-| Migrate | `assertSchemaCurrent()` **fails boot** if schema is behind. Image `CMD` is `node dist/index.js` — it does **not** migrate. |
-| Secrets | Local `.env` only. Prod needs `DATABASE_URL`, `MISTRAL_API_KEY`, optional Gemini/DeepSeek, later `BETTER_AUTH_*`. |
+Do not submit until all of the following are true:
 
-**Needed:**
+1. The production API and Postgres are live behind HTTPS with required enforcement enabled.
+2. Apple production verification and Server Notifications V2 pass end to end.
+3. Release API, legal, and support destinations are non-empty and reachable.
+4. Legal placeholders and provider-review notes are resolved on the hosted pages.
+5. Provider caps and alerts are active.
+6. A signed Release build installs and launches on Joe's unlocked iPhone and completes the reviewer path against production.
+7. App Store metadata, screenshots, privacy answers, age rating, and subscription review assets are complete.
 
-- Postgres + API on Railway (or equivalent). Health check `/health`.
-- A hostname **you** control for the API. Put it in Release `AppConfig`.
-- Run `pnpm db:migrate` as a release step, not by hand on Joe’s laptop.
-- Debug URL from a single config/env, not a committed LAN IP.
-
-### 3. The paywall does not protect the API — blocking
-
-Unlock is **client-only**. StoreKit decides whether the iOS chrome shows Home. `POST /reframe` and `POST /cards` do not check a subscription.
-
-Once the URL is public:
-
-- Unpaid clients, curl, or a cloned binary cook for free.
-- Taste-once is an iOS flag (`hasCompletedOnboardingTaste`), not a server quota.
-
-Restore already works for **this phone’s** Apple ID. It does not mint a backend user or attach an entitlement to one.
-
-**Needed, with Auth:**
-
-- Server verifies the Apple subscription (App Store Server API / signed transaction) before `/reframe`.
-- Taste is one free cook **per account** (or per Apple ID), not per install.
-- Expired / refunded / revoked → API refuses cooks; iOS already sends them to the paywall.
-
-### 4. LLM cost is uncapped — blocking for a public URL
-
-No HTTP rate limit. Guards today: 8 KiB body, 2000-char text, 6 follow-ups, 10s cook, 3 in-flight provider calls. Those stop accidents, not a loop.
-
-The compose picker offers **Mistral, Gemini, and DeepSeek** to every entitled client. [`docs/subscription-tiers.md`](subscription-tiers.md) says the cheap SKU is Mistral-only and plans a soft **20 ready cooks / day** (later a credits ledger). **None of that is implemented.**
-
-Company spend caps in Mistral / Google / DeepSeek consoles are also unset from this repo.
-
-**Needed before the API is public:**
-
-- Rate limit per user (and a tight anonymous/IP limit until Auth exists — better: no public API until Auth).
-- Fair-use cap or credits; recook counts; continues can stay free.
-- Default model only on `$4.99`, or charge Gemini/DeepSeek more.
-- Provider monthly caps so a leaked key cannot run an unbounded bill.
-- Parse provider `usage` and store millicents **without** thought text (tiers memo). After Auth.
-
-### 5. Subscription Settings is a stub — product hole
-
-Settings → Subscription opens `DrawerStubView("Coming later")`. Status label (Subscribed / Inactive) is real. There is no:
-
-- Restore purchases (only paywall (i) and taste)
-- Manage / cancel (App Store subscriptions sheet)
-- Plan name, renewal, or “you’re on Yearly”
-
-A paying user who is already in the app has no place to restore on a new phone except the taste link, which they will not see if StoreKit already unlocked them.
-
-**Needed:** a real Subscription screen: status, plan, Restore, Manage. Log out stays a session reset and does not cancel Apple.
-
-### 6. Cross-device and reinstall — follows from Auth
-
-StoreKit entitlement **does** follow the Apple ID to a new iPhone (Restore / `currentEntitlements`). The library **does not**. Cards live in Postgres keyed by the stub user, or after Auth by whatever account you create.
-
-Without guest claim:
-
-- Taste Save writes a card as whoever the API thinks is the owner (today: JM).
-- Subscribe creates (or should create) a real user — that card is not automatically theirs unless you claim it.
-
-With Auth and claim: new phone → Restore or Sign in with Apple → same library. That is the actual “subscription works on my devices” behavior.
-
-### 7. Community data is a fixture — launch hygiene
-
-`pnpm db:seed-community` loads 50 fake people / 330 public posts and **deletes every non-DEV user**. Fine for Joe’s phone. Lethal on production.
-
-Home with only seed content is a demo feed. Real Home is empty until people publish, or you keep a small curated seed **once** and never run the destructive script again.
-
-There is no report/block. You said the product is fine as-is; this is not a “must hide Home” note. It is: the first week of a public feed will collect junk, and you have no in-app way to take a post down except owner delete / DB. If you are the only moderator, a SQL/admin path is enough to start. If you are not, you will want report + hide.
-
-### 8. Dead buttons and wrong domain — polish that is still functional
-
-Paywall (i) **Terms of Service** and **Privacy Policy** go to `https://angles.app/terms` and `/privacy`. Those **404**. The root site is a different product. Tapping them does nothing useful.
-
-**Needed:** a domain you own, two live pages, those two URLs updated. Support email on the same site. Not a guideline lecture — the links are broken.
-
-### 9. Ops that keep it up
-
-| Gap | Why it matters |
-| --- | --- |
-| Image does not migrate | New deploy with a new Drizzle revision crash-loops until someone migrates. |
-| No CI | `pnpm test` / `typecheck` are laptop-only. Easy to ship a red schema. |
-| No crash reporter | TestFlight / prod failures are invisible unless someone screenshots. Optional if you watch Railway logs. |
-| No cook metrics | You cannot see p50 cooks/user without logging thought text. Count `POST /reframe` by user/model/status only. |
-| Lottie is the only extra SDK | Fine. Keep keys off the device. |
-
----
-
-## Order of work
-
-Do not parallelize 1–3. A hosted API without Auth and quota is worse than staying local.
-
-```mermaid
-flowchart TD
-  auth[Auth plus guest claim]
-  host[Hosted Postgres plus API]
-  gate[Server checks subscription]
-  cap[Rate limit and model fair use]
-  settings[Subscription screen]
-  domain[Live API hostname and legal URLs]
-  seed[Prod data: no destructive seed]
-  tf[TestFlight against prod]
-
-  auth --> host
-  host --> gate
-  gate --> cap
-  cap --> settings
-  settings --> domain
-  domain --> seed
-  seed --> tf
-```
-
-1. **Auth + claim** — real users, session header, taste card follows Subscribe/Restore, Profile name, Settings session. Still talk to local Docker while this lands.
-2. **Host** — Railway Postgres + API, migrate on release, secrets, `/health`.
-3. **Gate `/reframe`** — no cook without a live Apple entitlement tied to that user. Taste = one server-side free cook.
-4. **Cap spend** — per-user fair use; lock Gemini/DeepSeek; provider console caps.
-5. **Subscription Settings** — restore, manage, plan. Kill “Coming later.”
-6. **Hostname you control** — Release `AppConfig`, paywall legal URLs that load.
-7. **Prod data** — empty or curated Home; never `db:seed-community` against prod.
-8. **TestFlight** on the production API + sandbox IAP, then a real archive.
-
-Credits/millicents from the tiers memo wait until Auth exists. Unlimited Mistral under a daily cap is enough for v1.
-
----
-
-## Scoreboard
-
-| Capability | Demo today | Production |
-| --- | --- | --- |
-| Cook four styles | Yes | Yes, after gate + cap |
-| Paywall / Restore on this phone | Yes (sandbox) | Yes, plus server check |
-| My library | Yes, as JM | Only after Auth |
-| Home feed | Yes, mostly seed | Real users; don’t wipe them |
-| Second iPhone | Unlocks, shows JM’s data | Same Apple ID → same account |
-| Unpaid `/reframe` | Always allowed | Must refuse |
-| Gemini for $4.99 | Allowed | Must not be unbounded |
-| Settings → Subscription | “Coming later” | Real screen |
-| API URL | LAN IP / fake `api.angles.app` | Your host |
-
----
-
-## File index
-
-| What | Where |
-| --- | --- |
-| Auth stub | [`backend/src/lib/authStub.ts`](../backend/src/lib/authStub.ts) |
-| Missing `Authorization` | [`APIClient.swift`](../AnglesApp/AnglesApp/Networking/APIClient.swift) |
-| Release / debug URLs | [`AppConfig.swift`](../AnglesApp/AnglesApp/Config/AppConfig.swift) |
-| StoreKit (client only) | [`StoreKitManager.swift`](../AnglesApp/AnglesApp/StoreKit/StoreKitManager.swift) |
-| Subscription stub | [`SettingsView.swift`](../AnglesApp/AnglesApp/Settings/SettingsView.swift), [`DrawerStubView.swift`](../AnglesApp/AnglesApp/Home/DrawerStubView.swift) |
-| JM placeholder | [`CircleIcon.swift`](../AnglesApp/AnglesApp/Theme/CircleIcon.swift) |
-| Users schema | [`backend/src/db/schema.ts`](../backend/src/db/schema.ts) |
-| Deploy image | [`backend/Dockerfile`](../backend/Dockerfile) |
-| Env template | [`backend/.env.example`](../backend/.env.example) |
-| Destructive seed | [`backend/src/scripts/seedCommunity.ts`](../backend/src/scripts/seedCommunity.ts) |
-| Cost plan (not built) | [`docs/subscription-tiers.md`](subscription-tiers.md) |
-| Auth product spec | [`docs/onboarding-and-signup-flow.md`](onboarding-and-signup-flow.md) |
+Use `docs/release-checklist.md` for the executable checklist and `docs/app-review-notes.md` for App Review.

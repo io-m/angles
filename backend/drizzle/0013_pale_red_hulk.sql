@@ -1,0 +1,2 @@
+ALTER TABLE "subscription_entitlements" ADD COLUMN "grace_period_expires_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "subscription_entitlements" ADD COLUMN "renewal_date" timestamp with time zone;

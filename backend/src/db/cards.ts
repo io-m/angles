@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, not, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, not, or, sql } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { normalizeTagSlugs, titleCase } from "../lib/slugs.js";
 import {
@@ -9,9 +9,19 @@ import {
   type StoredCard,
 } from "../types/index.js";
 import { getDb, wrapDbError, DbError } from "./client.js";
+import { notBlockedBetween, notReportedBy } from "./communitySafety.js";
 import { olderThanCursor } from "./cursor.js";
 import { storedCardsForViewer, toStoredCard } from "./mapCard.js";
-import { cardReframes, cardTags, cards, categoryProposals, savedAngles, tags, users } from "./schema.js";
+import {
+  cardReframes,
+  cardReports,
+  cardTags,
+  cards,
+  categoryProposals,
+  savedAngles,
+  tags,
+  users,
+} from "./schema.js";
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
 
@@ -150,7 +160,15 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
 
     // The library is the viewer's own cards plus anything they hearted on Home that is still public.
     const filters = [
-      or(eq(cards.userId, viewerId), and(eq(cards.isPublic, true), inArray(cards.id, savedAngleIds)))!,
+      or(
+        eq(cards.userId, viewerId),
+        and(
+          eq(cards.isPublic, true),
+          inArray(cards.id, savedAngleIds),
+          notBlockedBetween(viewerId, cards.userId),
+          notReportedBy(viewerId, cards.id),
+        ),
+      )!,
     ];
     if (query.category) {
       filters.push(eq(cards.category, query.category));
@@ -203,15 +221,39 @@ export async function getCard(id: string): Promise<StoredCard | null> {
   }
 }
 
+export async function hasPublicationReportLock(id: string): Promise<boolean> {
+  try {
+    const [reports] = await getDb()
+      .select({ value: count() })
+      .from(cardReports)
+      .where(eq(cardReports.cardId, id));
+    return (reports?.value ?? 0) >= 3;
+  } catch (error) {
+    if (error instanceof DbError) {
+      throw error;
+    }
+    throw wrapDbError(error, "hasPublicationReportLock");
+  }
+}
+
 export type PatchCardResult =
   | { ok: true; card: StoredCard }
-  | { ok: false; reason: "not_found" | "unknown_style" };
+  | { ok: false; reason: "not_found" | "unknown_style" | "publication_blocked" };
 
 export async function patchCard(id: string, patch: PatchCardInput): Promise<PatchCardResult> {
   try {
     return await getDb().transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ id: cards.id })
+        .from(cards)
+        .where(and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())))
+        .for("update");
+      if (!owned) {
+        return { ok: false, reason: "not_found" };
+      }
+
       const existing = await tx.query.cards.findFirst({
-        where: and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())),
+        where: eq(cards.id, id),
         columns: { id: true },
         with: {
           reframes: { columns: { style: true } },
@@ -219,6 +261,16 @@ export async function patchCard(id: string, patch: PatchCardInput): Promise<Patc
       });
       if (!existing) {
         return { ok: false, reason: "not_found" };
+      }
+
+      if (patch.isPublic === true) {
+        const [reports] = await tx
+          .select({ value: count() })
+          .from(cardReports)
+          .where(eq(cardReports.cardId, id));
+        if ((reports?.value ?? 0) >= 3) {
+          return { ok: false, reason: "publication_blocked" };
+        }
       }
 
       if (patch.isFavorite !== undefined) {

@@ -21,7 +21,13 @@ import {
   type Style,
   type Timeframe,
 } from "../types/index.js";
-import { generateJson, LlmError, timeoutMsUntil, type LlmModelId } from "./llmClient.js";
+import {
+  generateJson,
+  LlmError,
+  timeoutMsUntil,
+  type LlmCallOptions,
+  type LlmModelId,
+} from "./llmClient.js";
 import {
   DECISION_BOUNCE_REPAIR,
   DECISION_FORCE_READY,
@@ -59,7 +65,7 @@ export type RunDecisionInput = {
   forceReady: boolean;
   deadlineAt?: number;
   abortSignal?: AbortSignal;
-};
+} & Pick<LlmCallOptions, "beforeProviderCall" | "usageSink">;
 
 const MAX_OPTIONS = 3;
 const MAX_EMOTIONS = 3;
@@ -385,12 +391,16 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
   const callOptions = {
     model: input.model,
     abortSignal: input.abortSignal,
+    beforeProviderCall: input.beforeProviderCall,
+    usageSink: input.usageSink,
     ...(input.deadlineAt !== undefined ? { timeoutMs: timeoutMsUntil(input.deadlineAt) } : {}),
   };
 
   const first = await generateJson({
     text: conversation,
     systemPrompt,
+    callKind: "decision",
+    attempt: 1,
     ...callOptions,
   });
 
@@ -417,6 +427,10 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
       : `${systemPrompt}\n\n${DECISION_REPAIR_PROMPT}`,
     model: input.model,
     abortSignal: input.abortSignal,
+    callKind: "decision",
+    attempt: 2,
+    beforeProviderCall: input.beforeProviderCall,
+    usageSink: input.usageSink,
     ...(input.deadlineAt !== undefined ? { timeoutMs: timeoutMsUntil(input.deadlineAt) } : {}),
   });
 

@@ -2,8 +2,19 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { listBlockedUsers } from "../db/communitySafety.js";
 import { listFollowing } from "../db/follows.js";
+import { getUsageSummary } from "../db/metering.js";
+import {
+  getSubscription,
+  SubscriptionOwnershipError,
+  syncSubscriptionTransaction,
+} from "../db/subscriptions.js";
 import { getUserById, setOwnerAvatar, updateOwnerInitials, deleteOwnerAccount } from "../db/users.js";
+import {
+  AppStoreVerificationError,
+  getAppStoreVerifier,
+} from "../lib/appStoreVerifier.js";
 import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
 import { avatarObjectKey, avatarUrlFor, initialsFromDisplayName } from "../lib/avatarUrl.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
@@ -19,6 +30,10 @@ const MAX_AVATAR_BYTES = Math.floor(1.5 * 1024 * 1024);
 
 const patchProfileSchema = z.object({
   displayName: z.string().max(40),
+});
+
+const syncSubscriptionSchema = z.object({
+  signedTransactionInfo: z.string().min(1).max(32_000),
 });
 
 function profileBody(user: { id: string; initials: string; avatarKey: string | null }): ProfileBody {
@@ -53,6 +68,7 @@ profileRoute.get("/session", requireAuth, async (c) => {
     initials: user.initials,
     name: user.name,
     tasteCompletedAt: user.tasteCompletedAt ? user.tasteCompletedAt.toISOString() : null,
+    tasteConsumedAt: user.tasteConsumedAt ? user.tasteConsumedAt.toISOString() : null,
   };
   const avatarUrl = avatarUrlFor(user.id, user.avatarKey);
   if (avatarUrl) {
@@ -60,6 +76,45 @@ profileRoute.get("/session", requireAuth, async (c) => {
   }
   return c.json(body);
 });
+
+profileRoute.get("/subscription", requireAuth, async (c) => {
+  return c.json(await getSubscription(getOwnerUserId()));
+});
+
+profileRoute.get("/usage", requireAuth, async (c) => {
+  return c.json(await getUsageSummary(getOwnerUserId()));
+});
+
+profileRoute.post(
+  "/subscription/sync",
+  requireAuth,
+  zValidator("json", syncSubscriptionSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    try {
+      const transaction = await getAppStoreVerifier().verifyTransaction(
+        c.req.valid("json").signedTransactionInfo,
+      );
+      return c.json(await syncSubscriptionTransaction(getOwnerUserId(), transaction));
+    } catch (error) {
+      if (error instanceof SubscriptionOwnershipError) {
+        return c.json(errorBody(error.message, "SUBSCRIPTION_OWNED_BY_ANOTHER_USER"), 409);
+      }
+      if (error instanceof AppStoreVerificationError) {
+        const status = error.kind === "configuration" ? 503 : 401;
+        const code =
+          error.kind === "configuration"
+            ? "APP_STORE_NOT_CONFIGURED"
+            : "APP_STORE_VERIFICATION_FAILED";
+        return c.json(errorBody("App Store transaction could not be verified", code), status);
+      }
+      throw error;
+    }
+  },
+);
 
 profileRoute.delete("/", requireAuth, async (c) => {
   const ownerId = getOwnerUserId();
@@ -82,6 +137,11 @@ profileRoute.delete("/", requireAuth, async (c) => {
 
 profileRoute.get("/following", requireAuth, async (c) => {
   const body: FollowingListResponse = { users: await listFollowing() };
+  return c.json(body);
+});
+
+profileRoute.get("/blocks", requireAuth, async (c) => {
+  const body: FollowingListResponse = { users: await listBlockedUsers() };
   return c.json(body);
 });
 

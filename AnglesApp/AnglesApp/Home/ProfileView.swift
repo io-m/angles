@@ -126,7 +126,14 @@ struct ProfileView: View {
                     }
                     showSettings = false
                     return true
-                }
+                },
+                blockedPeople: viewModel.blockedPeople,
+                blocksLoadState: viewModel.blocksLoadState,
+                onLoadBlocks: { await viewModel.loadBlocks() },
+                onRetryBlocks: { Task { await viewModel.loadBlocks() } },
+                onUnblock: viewModel.unblock,
+                writeError: viewModel.writeError,
+                onDismissWriteError: viewModel.dismissWriteError
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -185,6 +192,8 @@ struct ProfileView: View {
                                 onToggleFavorite: toggleFavorite,
                                 onSetPublic: setPublic,
                                 onRemoveFromBoard: removeFromBoard,
+                                onReport: reportCard,
+                                onBlock: blockAuthor,
                                 onOpenAuthor: onOpenAuthor,
                                 onOpenModel: onOpenModel,
                                 onToggleFollow: toggleFollow
@@ -314,6 +323,20 @@ struct ProfileView: View {
         withAnimation(favoriteLayoutAnimation) {
             viewModel.removeFromBoard(card.id)
         }
+    }
+
+    private func reportCard(_ card: HomeCard, _ reason: ReportReason) {
+        guard !card.isOwner else { return }
+        viewModel.reportCard(card.id, reason: reason)
+    }
+
+    private func blockAuthor(_ card: HomeCard) {
+        guard !card.isOwner, let authorId = card.authorId else { return }
+        viewModel.blockAuthor(
+            authorId,
+            initials: card.authorInitials,
+            avatarPath: card.authorAvatarPath
+        )
     }
 }
 
@@ -501,6 +524,8 @@ private struct ProfileTabPage: View {
     var onToggleFavorite: (HomeCard, Style) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
     var onRemoveFromBoard: (HomeCard) -> Void
+    var onReport: (HomeCard, ReportReason) -> Void
+    var onBlock: (HomeCard) -> Void
     var onOpenAuthor: (HomeCard) -> Void
     var onOpenModel: (HomeCard) -> Void
     var onToggleFollow: (HomeCard) -> Void
@@ -606,6 +631,8 @@ private struct ProfileTabPage: View {
                         onToggleFavorite: onToggleFavorite,
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
+                        onReport: onReport,
+                        onBlock: onBlock,
                         onOpenAuthor: onOpenAuthor,
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
@@ -630,6 +657,8 @@ private struct ProfileTabPage: View {
                         onToggleFavorite: onToggleFavorite,
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
+                        onReport: onReport,
+                        onBlock: onBlock,
                         shiningCardID: shiningCardID,
                         onOpenAuthor: onOpenAuthor,
                         onOpenModel: onOpenModel,

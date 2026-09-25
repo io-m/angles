@@ -35,6 +35,18 @@ vi.mock("../db/follows.js", () => ({
   listFollowing: vi.fn(),
 }));
 
+vi.mock("../db/communitySafety.js", () => ({
+  listBlockedUsers: vi.fn(),
+  blockUser: vi.fn(),
+  unblockUser: vi.fn(),
+  usersAreBlocked: vi.fn(),
+  reportCard: vi.fn(),
+}));
+
+vi.mock("../db/metering.js", () => ({
+  getUsageSummary: vi.fn(),
+}));
+
 vi.mock("../lib/objectStorage.js", () => {
   class StorageUnavailableError extends Error {
     constructor() {
@@ -51,7 +63,9 @@ vi.mock("../lib/objectStorage.js", () => {
 });
 
 const { createApp } = await import("../app.js");
+const { listBlockedUsers } = await import("../db/communitySafety.js");
 const { listFollowing } = await import("../db/follows.js");
+const { getUsageSummary } = await import("../db/metering.js");
 const { getUserById, setOwnerAvatar, updateOwnerInitials, deleteOwnerAccount } = await import("../db/users.js");
 const { deleteAvatar, getAvatar, putAvatar, StorageUnavailableError } = await import("../lib/objectStorage.js");
 
@@ -66,6 +80,7 @@ const owner = {
   image: null as string | null,
   avatarKey: null as string | null,
   tasteCompletedAt: null as Date | null,
+  tasteConsumedAt: null as Date | null,
   createdAt: new Date("2026-09-10T12:00:00.000Z"),
   updatedAt: new Date("2026-09-10T12:00:00.000Z"),
 };
@@ -85,6 +100,20 @@ describe("profile avatar", () => {
     vi.mocked(deleteAvatar).mockReset();
     vi.mocked(getAvatar).mockReset();
     vi.mocked(getUserById).mockResolvedValue(user());
+    vi.mocked(getUsageSummary).mockResolvedValue({
+      creditsGranted: 600,
+      creditsRemaining: 594,
+      periodStart: "2026-09-01T00:00:00.000Z",
+      periodEnd: "2026-10-01T00:00:00.000Z",
+      resetsAt: "2026-10-01T00:00:00.000Z",
+      warning: "normal",
+      allowedModels: ["mistral-small-latest", "deepseek-flash", "gemini-3.8-flash"],
+      creditCost: {
+        "mistral-small-latest": 1,
+        "deepseek-flash": 2,
+        "gemini-3.8-flash": 6,
+      },
+    });
     vi.mocked(putAvatar).mockResolvedValue(undefined);
     vi.mocked(deleteAvatar).mockResolvedValue(undefined);
   });
@@ -183,6 +212,17 @@ describe("profile avatar", () => {
     });
   });
 
+  it("returns the people the viewer blocked", async () => {
+    vi.mocked(listBlockedUsers).mockResolvedValue([
+      { id: "00000000-0000-4000-8000-000000000099", initials: "AL", following: false },
+    ]);
+    const response = await app.request("/profile/blocks");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      users: [{ id: "00000000-0000-4000-8000-000000000099", initials: "AL", following: false }],
+    });
+  });
+
   it("returns not found when a user has no photo", async () => {
     const response = await app.request(`/avatars/${DEV_USER_ID}`);
     expect(response.status).toBe(404);
@@ -199,7 +239,32 @@ describe("profile avatar", () => {
       initials: "JM",
       name: "JM",
       tasteCompletedAt: tasted.toISOString(),
+      tasteConsumedAt: null,
     });
+  });
+
+  it("returns taste consumption before the ready card is saved", async () => {
+    const consumed = new Date("2026-09-25T12:00:00.000Z");
+    vi.mocked(getUserById).mockResolvedValue(user({ tasteConsumedAt: consumed }));
+    const response = await app.request("/profile/session");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      tasteCompletedAt: null,
+      tasteConsumedAt: consumed.toISOString(),
+    });
+  });
+
+  it("returns only credit availability from usage diagnostics", async () => {
+    const response = await app.request("/profile/usage");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      creditsGranted: 600,
+      creditsRemaining: 594,
+      allowedModels: ["mistral-small-latest", "deepseek-flash", "gemini-3.8-flash"],
+    });
+    expect(body.tokens).toBeUndefined();
+    expect(body.cost).toBeUndefined();
   });
 
   it("rejects a missing session", async () => {

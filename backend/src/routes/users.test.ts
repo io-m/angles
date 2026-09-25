@@ -44,7 +44,16 @@ vi.mock("../db/follows.js", () => ({
   listFollowing: vi.fn(),
 }));
 
+vi.mock("../db/communitySafety.js", () => ({
+  blockUser: vi.fn(),
+  unblockUser: vi.fn(),
+  usersAreBlocked: vi.fn(async () => false),
+  listBlockedUsers: vi.fn(),
+  reportCard: vi.fn(),
+}));
+
 const { createApp } = await import("../app.js");
+const { blockUser, unblockUser, usersAreBlocked } = await import("../db/communitySafety.js");
 const { listPublicCardsForUser } = await import("../db/feed.js");
 const { followUser, followedAuthorIds, unfollowUser } = await import("../db/follows.js");
 const { getUserById } = await import("../db/users.js");
@@ -67,6 +76,7 @@ function userRow(overrides: { id?: string; initials?: string; avatarKey?: string
     image: null as string | null,
     avatarKey: overrides.avatarKey ?? null,
     tasteCompletedAt: null as Date | null,
+    tasteConsumedAt: null as Date | null,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
   };
@@ -106,6 +116,8 @@ describe("GET /users/:id/cards", () => {
     vi.mocked(getUserById).mockReset();
     vi.mocked(listPublicCardsForUser).mockReset();
     vi.mocked(followedAuthorIds).mockReset();
+    vi.mocked(usersAreBlocked).mockReset();
+    vi.mocked(usersAreBlocked).mockResolvedValue(false);
     vi.mocked(getUserById).mockResolvedValue(userRow());
     vi.mocked(listPublicCardsForUser).mockResolvedValue([]);
     vi.mocked(followedAuthorIds).mockResolvedValue(new Set());
@@ -214,6 +226,14 @@ describe("GET /users/:id/cards", () => {
     expect(listPublicCardsForUser).not.toHaveBeenCalled();
   });
 
+  it("404s an author profile when either user blocked the other", async () => {
+    vi.mocked(usersAreBlocked).mockResolvedValue(true);
+    const response = await app.request(`/users/${AUTHOR_ID}/cards`);
+    expect(response.status).toBe(404);
+    expect(getUserById).not.toHaveBeenCalled();
+    expect(listPublicCardsForUser).not.toHaveBeenCalled();
+  });
+
   it.each([
     "/users/not-a-uuid/cards",
     `/users/${AUTHOR_ID}/cards?categories=work`,
@@ -280,11 +300,45 @@ describe("PUT /users/:id/follow", () => {
     await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });
   });
 
+  it("hides a blocked follow target as not found", async () => {
+    vi.mocked(followUser).mockResolvedValue("blocked");
+    const response = await app.request(`/users/${AUTHOR_ID}/follow`, { method: "PUT" });
+    expect(response.status).toBe(404);
+  });
+
   it("rejects an id that is not a uuid", async () => {
     const response = await app.request("/users/not-a-uuid/follow", { method: "PUT" });
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
     expect(followUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("user blocks", () => {
+  beforeEach(() => {
+    vi.mocked(blockUser).mockReset();
+    vi.mocked(unblockUser).mockReset();
+  });
+
+  it("blocks another user idempotently", async () => {
+    vi.mocked(blockUser).mockResolvedValue("ok");
+    const response = await app.request(`/users/${AUTHOR_ID}/block`, { method: "PUT" });
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toEqual({ blocked: true });
+  });
+
+  it("unblocks another user idempotently", async () => {
+    vi.mocked(unblockUser).mockResolvedValue("ok");
+    const response = await app.request(`/users/${AUTHOR_ID}/block`, { method: "DELETE" });
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toEqual({ blocked: false });
+  });
+
+  it("rejects blocking yourself", async () => {
+    vi.mocked(blockUser).mockResolvedValue("self");
+    const response = await app.request(`/users/${DEV_USER_ID}/block`, { method: "PUT" });
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 });
 

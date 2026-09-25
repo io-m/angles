@@ -25,6 +25,7 @@ vi.mock("../db/cards.js", () => ({
   createCard: vi.fn(),
   listCards: vi.fn(),
   getCard: vi.fn(),
+  hasPublicationReportLock: vi.fn(),
   patchCard: vi.fn(),
   deleteCard: vi.fn(),
 }));

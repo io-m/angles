@@ -21,7 +21,7 @@ npm-debug.log*
 pnpm-debug.log*
 
 # Xcode / iOS
-DerivedData/
+DerivedData*/
 *.xcuserstate
 *.xccheckout
 *.xcscmblueprint

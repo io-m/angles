@@ -83,6 +83,11 @@ function createAuth() {
           required: false,
           input: false,
         },
+        tasteConsumedAt: {
+          type: "date",
+          required: false,
+          input: false,
+        },
       },
     },
     database: drizzleAdapter(getDb(), {

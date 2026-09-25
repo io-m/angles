@@ -216,28 +216,32 @@ struct ComposeSheetView: View {
     }
 
     private var standardHeader: some View {
-        ViewThatFits(in: .horizontal) {
-            standardHeaderRow
+        VStack(alignment: .trailing, spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                standardHeaderRow
 
-            VStack(spacing: 6) {
-                HStack(alignment: .center, spacing: 12) {
-                    headerLeadingControl
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: 40,
-                            alignment: .leading
-                        )
+                VStack(spacing: 6) {
+                    HStack(alignment: .center, spacing: 12) {
+                        headerLeadingControl
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: 40,
+                                alignment: .leading
+                            )
 
-                    modelPickerButton
-                }
+                        modelPickerButton
+                    }
 
-                if hasStatement, !isOnboardingTaste {
-                    HStack {
-                        Spacer(minLength: 0)
-                        startAgainButton
+                    if hasStatement, !isOnboardingTaste {
+                        HStack {
+                            Spacer(minLength: 0)
+                            startAgainButton
+                        }
                     }
                 }
             }
+
+            usageStatusLine
         }
     }
 
@@ -281,6 +285,9 @@ struct ComposeSheetView: View {
             if storeKitManager?.hasEndedMembership == true {
                 restoreRenewButton
             }
+
+            usageStatusLine
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .accessibilityElement(children: .contain)
     }
@@ -374,6 +381,7 @@ struct ComposeSheetView: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(LlmModel.allCases) { model in
                 let isSelected = viewModel.selectedModel == model
+                let isAvailable = viewModel.isModelAvailable(model)
 
                 Button {
                     viewModel.selectedModel = model
@@ -385,9 +393,13 @@ struct ComposeSheetView: View {
 
                         Text(model.displayName)
                             .font(.body.weight(.medium))
-                            .foregroundStyle(theme.ink)
+                            .foregroundStyle(isAvailable ? theme.ink : theme.faint)
 
                         Spacer(minLength: 12)
+
+                        Text("\(viewModel.creditCost(for: model)) \(viewModel.creditCost(for: model) == 1 ? "credit" : "credits")")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(theme.muted)
 
                         if isSelected {
                             Image(systemName: "checkmark")
@@ -400,7 +412,12 @@ struct ComposeSheetView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(!isAvailable || viewModel.isModelLocked)
+                .opacity(isAvailable ? 1 : 0.5)
                 .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+                .accessibilityValue(
+                    "\(viewModel.creditCost(for: model)) credits, \(isAvailable ? "available" : "unavailable")"
+                )
 
                 if model != LlmModel.allCases.last {
                     Rectangle()
@@ -413,6 +430,20 @@ struct ComposeSheetView: View {
         .padding(.vertical, 8)
         .frame(minWidth: 220)
         .background(theme.surface)
+    }
+
+    @ViewBuilder
+    private var usageStatusLine: some View {
+        if let status = viewModel.usagePickerStatus {
+            Text(status)
+                .font(.caption.weight(viewModel.usageSummary?.warning == .critical ? .semibold : .medium))
+                .foregroundStyle(
+                    viewModel.usageSummary?.warning == .critical ? theme.ink : theme.muted
+                )
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(status)
+        }
     }
 
     @ViewBuilder
@@ -519,7 +550,8 @@ struct ComposeSheetView: View {
                         recookingStyle: viewModel.recookingStyle,
                         identityStore: identityStore,
                         isPublic: $viewModel.composeIsPublic,
-                        allowsRecook: !isOnboardingTaste,
+                        allowsRecook: !isOnboardingTaste
+                            && viewModel.isModelAvailable(viewModel.selectedModel),
                         onRecook: { style in
                             viewModel.recookStyle(style)
                         }
@@ -531,6 +563,13 @@ struct ComposeSheetView: View {
                             .font(.footnote.weight(.medium))
                             .foregroundStyle(theme.muted)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let feedback = viewModel.usageFeedback {
+                        Text(feedback)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(theme.muted)
+                            .accessibilityLabel(feedback)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -648,9 +687,11 @@ struct ComposeSheetView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button("Retry", action: retryRefine)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(theme.ink)
+                if viewModel.composeErrorAllowsRetry {
+                    Button("Retry", action: retryRefine)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+                }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)

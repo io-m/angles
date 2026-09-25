@@ -37,6 +37,8 @@ struct ModelProfileView: View {
             onToggleFavorite: toggleFavorite,
             onSetPublic: setPublic,
             onRemoveFromBoard: removeFromBoard,
+            onReport: reportCard,
+            onBlock: blockAuthor,
             onOpenAuthor: onOpenAuthor,
             onOpenModel: onOpenModel,
             onToggleFollow: toggleFollow
@@ -95,6 +97,20 @@ struct ModelProfileView: View {
         if !card.isOwner {
             viewModel.removeFromBoard(card.id)
         }
+    }
+
+    private func reportCard(_ card: HomeCard, _ reason: ReportReason) {
+        guard !card.isOwner else { return }
+        viewModel.reportCard(card.id, reason: reason)
+    }
+
+    private func blockAuthor(_ card: HomeCard) {
+        guard !card.isOwner, let authorId = card.authorId else { return }
+        viewModel.blockAuthor(
+            authorId,
+            initials: card.authorInitials,
+            avatarPath: card.authorAvatarPath
+        )
     }
 }
 

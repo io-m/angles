@@ -17,6 +17,7 @@ import { getDb, closePool } from "../db/client.js";
 import { cardReframes, cardTags, cards, tags, users } from "../db/schema.js";
 import { titleCase } from "../lib/slugs.js";
 import type { CommunityFixture } from "./communityCopy.js";
+import { assertCommunitySeedAllowed } from "./seedCommunityGuard.js";
 
 function loadFixture(): CommunityFixture {
   const path = resolve(process.cwd(), "fixtures/community.json");
@@ -24,6 +25,7 @@ function loadFixture(): CommunityFixture {
 }
 
 async function main(): Promise<void> {
+  assertCommunitySeedAllowed();
   const fixture = loadFixture();
   if (fixture.users.some((user) => user.id === DEV_USER_ID)) {
     throw new Error("fixture includes DEV_USER_ID");

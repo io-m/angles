@@ -3,8 +3,15 @@ import Foundation
 enum APIError: Error, Equatable, Sendable {
     case invalidURL
     case network(String)
-    case httpStatus(Int, String?)
+    case httpStatus(Int, APIErrorPayload?, String?)
     case decoding(String)
+}
+
+extension APIError {
+    var serverCode: String? {
+        guard case .httpStatus(_, let payload, _) = self else { return nil }
+        return payload?.code
+    }
 }
 
 extension APIError: LocalizedError {
@@ -14,9 +21,12 @@ extension APIError: LocalizedError {
             return "The request URL was invalid."
         case .network(let message):
             return "Network error: \(message)"
-        case .httpStatus(let code, let body):
-            if let body, !body.isEmpty {
-                return "Server returned \(code): \(body)"
+        case .httpStatus(let code, let payload, let rawBody):
+            if let payload {
+                return payload.error
+            }
+            if let rawBody, !rawBody.isEmpty {
+                return "Server returned \(code): \(rawBody)"
             }
             return "Server returned status \(code)."
         case .decoding(let message):
@@ -52,15 +62,25 @@ final class APIClient: @unchecked Sendable {
     func post<Body: Encodable, Response: Decodable>(
         path: String,
         body: Body,
+        headers: [String: String] = [:],
         timeout: TimeInterval? = nil
     ) async throws -> Response {
-        try await decode(try await send(path: path, method: "POST", body: body, timeout: timeout))
+        try decode(
+            try await send(
+                path: path,
+                method: "POST",
+                body: body,
+                headers: headers,
+                timeout: timeout
+            )
+        )
     }
 
     func postCapturingHeader<Body: Encodable>(
         path: String,
         body: Body,
         header: String,
+        headers: [String: String] = [:],
         timeout: TimeInterval? = nil
     ) async throws -> (Data, String?) {
         let (data, response) = try await execute(
@@ -69,6 +89,7 @@ final class APIClient: @unchecked Sendable {
             queryItems: [],
             bodyData: try encoder.encode(body),
             contentType: "application/json",
+            headers: headers,
             timeout: timeout
         )
         return (data, response.value(forHTTPHeaderField: header))
@@ -76,13 +97,19 @@ final class APIClient: @unchecked Sendable {
 
     /// `bearer` overrides the shared session token, so a sign-out can still revoke the session
     /// it just cleared locally.
-    func postEmpty(path: String, bearer: String? = nil, timeout: TimeInterval? = nil) async throws {
+    func postEmpty(
+        path: String,
+        bearer: String? = nil,
+        headers: [String: String] = [:],
+        timeout: TimeInterval? = nil
+    ) async throws {
         _ = try await execute(
             path: path,
             method: "POST",
             queryItems: [],
             bodyData: Data("{}".utf8),
             contentType: "application/json",
+            headers: headers,
             timeout: timeout,
             bearer: bearer
         )
@@ -93,11 +120,11 @@ final class APIClient: @unchecked Sendable {
         queryItems: [URLQueryItem] = [],
         timeout: TimeInterval? = nil
     ) async throws -> Response {
-        try await decode(try await send(path: path, method: "GET", queryItems: queryItems, timeout: timeout))
+        try decode(try await send(path: path, method: "GET", queryItems: queryItems, timeout: timeout))
     }
 
     func put<Response: Decodable>(path: String, timeout: TimeInterval? = nil) async throws -> Response {
-        try await decode(try await send(path: path, method: "PUT", timeout: timeout))
+        try decode(try await send(path: path, method: "PUT", timeout: timeout))
     }
 
     func patch<Body: Encodable, Response: Decodable>(
@@ -105,7 +132,7 @@ final class APIClient: @unchecked Sendable {
         body: Body,
         timeout: TimeInterval? = nil
     ) async throws -> Response {
-        try await decode(try await send(path: path, method: "PATCH", body: body, timeout: timeout))
+        try decode(try await send(path: path, method: "PATCH", body: body, timeout: timeout))
     }
 
     func delete(path: String, timeout: TimeInterval? = nil) async throws {
@@ -113,7 +140,7 @@ final class APIClient: @unchecked Sendable {
     }
 
     func deleteJSON<Response: Decodable>(path: String, timeout: TimeInterval? = nil) async throws -> Response {
-        try await decode(try await send(path: path, method: "DELETE", timeout: timeout))
+        try decode(try await send(path: path, method: "DELETE", timeout: timeout))
     }
 
     func putData<Response: Decodable>(
@@ -122,7 +149,7 @@ final class APIClient: @unchecked Sendable {
         contentType: String,
         timeout: TimeInterval? = nil
     ) async throws -> Response {
-        try await decode(
+        try decode(
             try await perform(
                 path: path,
                 method: "PUT",
@@ -156,6 +183,7 @@ final class APIClient: @unchecked Sendable {
         method: String,
         queryItems: [URLQueryItem] = [],
         body: Body,
+        headers: [String: String] = [:],
         timeout: TimeInterval? = nil
     ) async throws -> Data {
         try await perform(
@@ -164,6 +192,7 @@ final class APIClient: @unchecked Sendable {
             queryItems: queryItems,
             bodyData: try encoder.encode(body),
             contentType: "application/json",
+            headers: headers,
             timeout: timeout
         )
     }
@@ -174,6 +203,7 @@ final class APIClient: @unchecked Sendable {
         queryItems: [URLQueryItem],
         bodyData: Data?,
         contentType: String?,
+        headers: [String: String] = [:],
         timeout: TimeInterval?
     ) async throws -> Data {
         try await execute(
@@ -182,6 +212,7 @@ final class APIClient: @unchecked Sendable {
             queryItems: queryItems,
             bodyData: bodyData,
             contentType: contentType,
+            headers: headers,
             timeout: timeout
         ).0
     }
@@ -192,6 +223,7 @@ final class APIClient: @unchecked Sendable {
         queryItems: [URLQueryItem],
         bodyData: Data?,
         contentType: String?,
+        headers: [String: String] = [:],
         timeout: TimeInterval?,
         bearer: String? = nil
     ) async throws -> (Data, HTTPURLResponse) {
@@ -203,6 +235,9 @@ final class APIClient: @unchecked Sendable {
         request.httpMethod = method
         if let timeout {
             request.timeoutInterval = timeout
+        }
+        for (name, value) in headers {
+            request.setValue(value, forHTTPHeaderField: name)
         }
         if let origin = originHeader(for: url) {
             request.setValue(origin, forHTTPHeaderField: "Origin")
@@ -239,8 +274,9 @@ final class APIClient: @unchecked Sendable {
                AuthCredentials.shared.clear(ifMatching: sentToken) {
                 NotificationCenter.default.post(name: .anglesSessionInvalidated, object: sentToken)
             }
-            let message = String(data: data, encoding: .utf8)
-            throw APIError.httpStatus(http.statusCode, message)
+            let rawBody = String(data: data, encoding: .utf8)
+            let payload = try? decoder.decode(APIErrorPayload.self, from: data)
+            throw APIError.httpStatus(http.statusCode, payload, rawBody)
         }
 
         return (data, http)

@@ -182,10 +182,19 @@ struct AppRoot: View {
                 .zIndex(18)
             }
 
-            WriteErrorBanner(message: viewModel.writeError) {
-                viewModel.dismissWriteError()
+            WriteErrorBanner(message: viewModel.writeError ?? viewModel.usageBanner ?? serverSyncMessage) {
+                if viewModel.writeError != nil {
+                    viewModel.dismissWriteError()
+                } else if viewModel.usageBanner != nil {
+                    viewModel.dismissUsageBanner()
+                } else {
+                    Task { await storeKitManager.retryServerSync() }
+                }
             }
-            .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86), value: viewModel.writeError)
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86),
+                value: viewModel.writeError ?? viewModel.usageBanner ?? serverSyncMessage
+            )
 
             if destination == .paywall {
                 PaywallView(
@@ -245,12 +254,24 @@ struct AppRoot: View {
         .task {
             await launch()
         }
+        .task(id: sessionStore.session?.id) {
+            viewModel.configureUsageAccount(userID: sessionStore.session?.id)
+            guard sessionStore.isSignedIn else {
+                return
+            }
+            await viewModel.loadUsageIfNeeded()
+        }
         .onChange(of: destination) { old, new in
             handleDestinationChange(from: old, to: new)
         }
         .onChange(of: sessionStore.session?.id) { _, _ in
             if let session = sessionStore.session {
+                storeKitManager.configureAccount(userID: session.id)
+                viewModel.configureUsageAccount(userID: session.id)
                 identityStore.applySession(session)
+            } else {
+                storeKitManager.configureAccount(userID: nil)
+                viewModel.configureUsageAccount(userID: nil)
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -358,6 +379,10 @@ struct AppRoot: View {
         isHomeRevealed && selectedTab == .profile
     }
 
+    private var serverSyncMessage: String? {
+        storeKitManager.serverSyncPending ? storeKitManager.errorMessage : nil
+    }
+
     private func withoutAnimations(_ updates: () -> Void) {
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -367,16 +392,19 @@ struct AppRoot: View {
     private func launch() async {
         removeLegacyTasteFlags()
         let store = storeKitManager
-        sessionStore.prepareAccountAccess = {
+        sessionStore.prepareAccountAccess = { session in
+            store.configureAccount(userID: session.id)
             await store.resumeAfterAccountSignIn()
         }
         async let sessionRestore: Void = sessionStore.restore()
         async let productLoad: Void = storeKitManager.loadProducts()
         _ = await (sessionRestore, productLoad)
+        storeKitManager.configureAccount(userID: sessionStore.session?.id)
+        viewModel.configureUsageAccount(userID: sessionStore.session?.id)
         await storeKitManager.prepare(hasAccountSession: sessionStore.isSignedIn)
     }
 
-    /// The server's `tasteCompletedAt` is the only taste flag since Auth.
+    /// The server's consumed/completed timestamps are the only taste flags since Auth.
     private func removeLegacyTasteFlags() {
         UserDefaults.standard.removeObject(forKey: "hasCompletedOnboardingTaste")
         UserDefaults.standard.removeObject(forKey: "hasEnteredPaywallFlow")
@@ -541,6 +569,7 @@ struct AppRoot: View {
         withoutAnimations {
             sessionStore.endLocalSession(revokeOnServer: reason == .logOut)
             storeKitManager.signOut()
+            viewModel.configureUsageAccount(userID: nil)
             membershipRequested = false
             paywallShowsCelebration = false
             paywallHeroCard = nil
@@ -782,7 +811,7 @@ struct WriteErrorBanner: View {
                 .padding(.horizontal, 16)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .accessibilityLabel(message)
-                .accessibilityHint("Dismisses this message")
+                .accessibilityHint("Dismisses the message or retries the failed sync")
             }
 
             Spacer(minLength: 0)

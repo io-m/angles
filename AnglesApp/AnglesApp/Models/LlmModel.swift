@@ -18,6 +18,17 @@ enum LlmModel: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
         }
     }
 
+    var creditCost: Int {
+        switch self {
+        case .mistral:
+            return 1
+        case .deepseek:
+            return 2
+        case .gemini:
+            return 6
+        }
+    }
+
     var assetName: String {
         switch self {
         case .mistral:

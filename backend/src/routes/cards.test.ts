@@ -27,17 +27,34 @@ vi.mock("../db/cards.js", () => ({
   createCard: vi.fn(),
   listCards: vi.fn(),
   getCard: vi.fn(),
+  hasPublicationReportLock: vi.fn(async () => false),
   patchCard: vi.fn(),
   deleteCard: vi.fn(),
 }));
 
+vi.mock("../db/communitySafety.js", () => ({
+  reportCard: vi.fn(),
+  blockUser: vi.fn(),
+  unblockUser: vi.fn(),
+  usersAreBlocked: vi.fn(async () => false),
+  listBlockedUsers: vi.fn(),
+}));
+
+vi.mock("../lib/publicModeration.js", () => ({
+  moderatePublicCard: vi.fn(async () => true),
+}));
+
 const { createApp } = await import("../app.js");
-const { createCard, deleteCard, getCard, listCards, patchCard } = await import("../db/cards.js");
+const { createCard, deleteCard, getCard, hasPublicationReportLock, listCards, patchCard } =
+  await import("../db/cards.js");
+const { reportCard } = await import("../db/communitySafety.js");
+const { moderatePublicCard } = await import("../lib/publicModeration.js");
 
 const app = createApp();
 const CARD_ID = "11111111-1111-4111-8111-111111111111";
 
 const cookThought = "I bombed my interview and I keep replaying every shaky answer.";
+const cookModel = "mistral-small-latest" as const;
 const cookMeta = {
   category: "work" as const,
   tags: ["job_interview", "shame"],
@@ -54,14 +71,14 @@ const cookBody = {
   results: STYLES.map((style) => ({
     style,
     reframe: `A ${style} take.`,
-    signature: signResult(cookThought, style, `A ${style} take.`),
+    signature: signResult(cookThought, style, `A ${style} take.`, cookModel),
   })),
   meta: {
     ...cookMeta,
     matching: { category: "work" as const, tags: ["ignored"], intensityBand: "low" as const },
   },
-  signature: signCook({ thought: cookThought, meta: cookMeta }),
-  model: "mistral-small-latest" as const,
+  signature: signCook({ thought: cookThought, model: cookModel, meta: cookMeta }),
+  model: cookModel,
   spotlightStyle: "stoic" as const,
 };
 
@@ -108,6 +125,8 @@ function jsonRequest(path: string, method: string, body?: unknown): Request {
 describe("POST /cards", () => {
   beforeEach(() => {
     vi.mocked(createCard).mockReset();
+    vi.mocked(moderatePublicCard).mockReset();
+    vi.mocked(moderatePublicCard).mockResolvedValue(true);
   });
 
   it("creates a card and returns 201", async () => {
@@ -138,6 +157,7 @@ describe("POST /cards", () => {
 
   it.each([
     ["thought", { thought: "Something the server never cooked." }],
+    ["model", { model: "deepseek-flash" }],
     ["meta", { meta: { ...cookBody.meta, category: "money" } }],
     ["safety", { meta: { ...cookBody.meta, safety: "self_harm" } }],
     [
@@ -161,7 +181,7 @@ describe("POST /cards", () => {
       jsonRequest("/cards", "POST", {
         ...cookBody,
         meta: flaggedMeta,
-        signature: signCook({ thought: cookThought, meta: flaggedMeta }),
+        signature: signCook({ thought: cookThought, model: cookModel, meta: flaggedMeta }),
       }),
     );
     expect(response.status).toBe(400);
@@ -176,6 +196,20 @@ describe("POST /cards", () => {
     expect(response.status).toBe(201);
   });
 
+  it("rejects results signed for a different model", async () => {
+    const results = cookBody.results.map(({ style, reframe }) => ({
+      style,
+      reframe,
+      signature: signResult(cookThought, style, reframe, "deepseek-flash"),
+    }));
+    const response = await app.request(
+      jsonRequest("/cards", "POST", { ...cookBody, results }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(createCard).not.toHaveBeenCalled();
+  });
+
   it("forwards isPublic on create", async () => {
     vi.mocked(createCard).mockResolvedValue(storedCard({ isPublic: true }));
 
@@ -185,6 +219,32 @@ describe("POST /cards", () => {
     expect(response.status).toBe(201);
     const payload = vi.mocked(createCard).mock.calls[0]?.[0] as CreateCardInput;
     expect(payload.isPublic).toBe(true);
+    expect(moderatePublicCard).toHaveBeenCalledWith({
+      thought: cookThought,
+      reframes: cookBody.results.map((result) => result.reframe),
+    });
+  });
+
+  it("rejects public content disallowed by moderation", async () => {
+    vi.mocked(moderatePublicCard).mockResolvedValue(false);
+    const response = await app.request(
+      jsonRequest("/cards", "POST", { ...cookBody, isPublic: true }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "PUBLIC_CONTENT_NOT_ALLOWED" });
+    expect(createCard).not.toHaveBeenCalled();
+  });
+
+  it("fails public creation closed when moderation is unavailable", async () => {
+    vi.mocked(moderatePublicCard).mockRejectedValue(new Error("provider unavailable"));
+    const response = await app.request(
+      jsonRequest("/cards", "POST", { ...cookBody, isPublic: true }),
+    );
+    expect(response.status).toBe(503);
+    await expect(jsonOf(response)).resolves.toMatchObject({
+      code: "PUBLIC_MODERATION_UNAVAILABLE",
+    });
+    expect(createCard).not.toHaveBeenCalled();
   });
 
   it("omits isPublic when the client does not send it", async () => {
@@ -221,8 +281,16 @@ describe("POST /cards", () => {
       jsonRequest("/cards", "POST", {
         ...cookBody,
         results: [
-          { style: "stoic", reframe: "one", signature: signResult(cookThought, "stoic", "one") },
-          { style: "stoic", reframe: "two", signature: signResult(cookThought, "stoic", "two") },
+          {
+            style: "stoic",
+            reframe: "one",
+            signature: signResult(cookThought, "stoic", "one", cookModel),
+          },
+          {
+            style: "stoic",
+            reframe: "two",
+            signature: signResult(cookThought, "stoic", "two", cookModel),
+          },
         ],
       }),
     );
@@ -294,6 +362,12 @@ describe("GET /cards/:id", () => {
 describe("PATCH /cards/:id", () => {
   beforeEach(() => {
     vi.mocked(patchCard).mockReset();
+    vi.mocked(getCard).mockReset();
+    vi.mocked(getCard).mockResolvedValue(storedCard());
+    vi.mocked(hasPublicationReportLock).mockReset();
+    vi.mocked(hasPublicationReportLock).mockResolvedValue(false);
+    vi.mocked(moderatePublicCard).mockReset();
+    vi.mocked(moderatePublicCard).mockResolvedValue(true);
   });
 
   it("sets a per-style favorite", async () => {
@@ -326,6 +400,49 @@ describe("PATCH /cards/:id", () => {
     );
     expect(response.status).toBe(200);
     expect(patchCard).toHaveBeenCalledWith(CARD_ID, expect.objectContaining({ isPublic: true }));
+  });
+
+  it("keeps private patches available when moderation is unavailable", async () => {
+    vi.mocked(patchCard).mockResolvedValue({ ok: true, card: storedCard({ isPublic: false }) });
+    vi.mocked(moderatePublicCard).mockRejectedValue(new Error("provider unavailable"));
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPublic: false }),
+    );
+    expect(response.status).toBe(200);
+    expect(moderatePublicCard).not.toHaveBeenCalled();
+  });
+
+  it("rejects a public patch disallowed by moderation", async () => {
+    vi.mocked(moderatePublicCard).mockResolvedValue(false);
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPublic: true }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "PUBLIC_CONTENT_NOT_ALLOWED" });
+    expect(patchCard).not.toHaveBeenCalled();
+  });
+
+  it("fails a public patch closed when moderation is unavailable", async () => {
+    vi.mocked(moderatePublicCard).mockRejectedValue(new Error("provider unavailable"));
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPublic: true }),
+    );
+    expect(response.status).toBe(503);
+    await expect(jsonOf(response)).resolves.toMatchObject({
+      code: "PUBLIC_MODERATION_UNAVAILABLE",
+    });
+    expect(patchCard).not.toHaveBeenCalled();
+  });
+
+  it("prevents republishing a card locked by reports", async () => {
+    vi.mocked(hasPublicationReportLock).mockResolvedValue(true);
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPublic: true }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "PUBLIC_CONTENT_NOT_ALLOWED" });
+    expect(moderatePublicCard).not.toHaveBeenCalled();
+    expect(patchCard).not.toHaveBeenCalled();
   });
 
   it("rejects a pin patch now that pins are gone", async () => {
@@ -369,6 +486,39 @@ describe("PATCH /cards/:id", () => {
     );
     expect(response.status).toBe(404);
     await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });
+  });
+});
+
+describe("POST /cards/:id/report", () => {
+  beforeEach(() => {
+    vi.mocked(reportCard).mockReset();
+  });
+
+  it("reports a public card idempotently", async () => {
+    vi.mocked(reportCard).mockResolvedValue({ ok: true, created: false });
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}/report`, "POST", { reason: "harassment" }),
+    );
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toEqual({ reported: true });
+    expect(reportCard).toHaveBeenCalledWith(CARD_ID, "harassment");
+  });
+
+  it("rejects reporting an own or private card", async () => {
+    vi.mocked(reportCard).mockResolvedValue({ ok: false, reason: "own_card" });
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}/report`, "POST", { reason: "spam" }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("rejects an unknown report reason", async () => {
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}/report`, "POST", { reason: "dislike" }),
+    );
+    expect(response.status).toBe(400);
+    expect(reportCard).not.toHaveBeenCalled();
   });
 });
 

@@ -419,6 +419,16 @@ private struct ModelFeed {
     var isRefreshing = false
 }
 
+private struct BlockAuthorSnapshot {
+    let libraryEntries: [(index: Int, card: HomeCard)]
+    let feedEntries: [(index: Int, card: HomeCard)]
+    let feedAnchors: [UUID: HomeCard]
+    let followedEntry: (index: Int, person: FollowedPerson)?
+    let blockedEntry: (index: Int, person: BlockedPerson)?
+    let authorFeeds: [UUID: AuthorFeed]
+    let modelFeeds: [LlmModel: ModelFeed]
+}
+
 @MainActor
 @Observable
 final class HomeViewModel {
@@ -434,6 +444,10 @@ final class HomeViewModel {
     private(set) var recookingStyle: Style?
     /// Set when a recook comes back as `continue` (that style no longer fits).
     private(set) var recookNotice: String?
+    private(set) var usageSummary: UsageSummary?
+    private(set) var usageBanner: String?
+    private(set) var usageFeedback: String?
+    private(set) var composeErrorAllowsRetry = true
     var profileGridFilter: ProfileGridFilter = .favorites {
         didSet {
             if profileGridFilter != oldValue {
@@ -473,6 +487,8 @@ final class HomeViewModel {
     private(set) var writeError: String?
     private(set) var followedPeople: [FollowedPerson] = []
     private(set) var followingLoadState: LibraryLoadState = .loading
+    private(set) var blockedPeople: [BlockedPerson] = []
+    private(set) var blocksLoadState: LibraryLoadState = .loading
 
     private let reframeService: ReframeService
     private let cardsService: CardsService
@@ -493,17 +509,37 @@ final class HomeViewModel {
     private var libraryHasMore = false
     private var isLibraryRefreshing = false
     private var favoriteTasks: [String: Task<Void, Never>] = [:]
+    private var favoriteGeneration: [String: Int] = [:]
     private var followTasks: [UUID: Task<Void, Never>] = [:]
     private var followGeneration: [UUID: Int] = [:]
     private var publicTasks: [UUID: Task<Void, Never>] = [:]
+    private var publicGeneration: [UUID: Int] = [:]
     private var deleteTasks: [UUID: Task<Void, Never>] = [:]
+    private var deleteGeneration: [UUID: Int] = [:]
     private var boardTasks: [UUID: Task<Void, Never>] = [:]
+    private var boardGeneration: [UUID: Int] = [:]
+    private var reportTasks: [UUID: Task<Void, Never>] = [:]
+    private var reportGeneration: [UUID: Int] = [:]
+    private var blockTasks: [UUID: Task<Void, Never>] = [:]
+    private var blockGeneration: [UUID: Int] = [:]
+    private var blocksGeneration = 0
+    private var writeSessionGeneration = 0
     private var authorFeeds: [UUID: AuthorFeed] = [:]
     private var modelFeeds: [LlmModel: ModelFeed] = [:]
     private var writeErrorTask: Task<Void, Never>?
     private var shineTask: Task<Void, Never>?
+    private var usageBannerTask: Task<Void, Never>?
+    private var isLoadingUsage = false
+    private var hasLoadedUsage = false
+    private var usageAccountID: String?
+    private var usageGeneration = 0
+    private var refineGeneration = 0
+    private var pendingRefineRequestID: UUID?
+    private var pendingRecookRequestID: UUID?
+    private var pendingRecookStyle: Style?
 
     private static let modelDefaultsKey = "angles.llmModel"
+    private static let lowWarningPeriodKeyPrefix = "angles.lowCreditWarningPeriod"
     private static let writeErrorDuration: Duration = .seconds(3)
     private static let initialLoadRetryDelays: [Duration] = [
         .milliseconds(400),
@@ -533,6 +569,35 @@ final class HomeViewModel {
 
     var isModelLocked: Bool {
         isCooking || recookingStyle != nil
+    }
+
+    func isModelAvailable(_ model: LlmModel) -> Bool {
+        guard let usageSummary else {
+            // Local development may run against a backend without `/profile/usage`.
+            return true
+        }
+        return usageSummary.allowedModels.contains(model.rawValue)
+    }
+
+    func creditCost(for model: LlmModel) -> Int {
+        usageSummary?.creditCost[model.rawValue] ?? model.creditCost
+    }
+
+    var usagePickerStatus: String? {
+        guard let usageSummary else {
+            return nil
+        }
+        switch usageSummary.warning {
+        case .empty:
+            if let resetDate = usageSummary.resetDate {
+                return "You’re out of credits until \(resetDate.formatted(date: .abbreviated, time: .omitted))."
+            }
+            return "You’re out of credits."
+        case .critical:
+            return "\(usageSummary.creditsRemaining) credits remaining · Almost out."
+        case .normal, .low:
+            return "\(usageSummary.creditsRemaining) credits remaining"
+        }
     }
 
     static let feedPageSize = 24
@@ -623,6 +688,7 @@ final class HomeViewModel {
     var canSubmit: Bool {
         isComposerVisible
             && !composeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && isModelAvailable(selectedModel)
     }
 
     var canPublish: Bool {
@@ -713,15 +779,19 @@ final class HomeViewModel {
             statement = "\(statement)\n\n\(text)"
         }
 
-        startRefine()
+        let requestID = UUID()
+        pendingRefineRequestID = requestID
+        startRefine(requestID: requestID)
     }
 
     func retryRefine() {
-        guard case .error = phase, !statement.isEmpty else {
+        guard case .error = phase, !statement.isEmpty, composeErrorAllowsRetry else {
             return
         }
 
-        startRefine()
+        let requestID = pendingRefineRequestID ?? UUID()
+        pendingRefineRequestID = requestID
+        startRefine(requestID: requestID)
     }
 
     /// `forcePrivate` is the onboarding taste: that save is private whatever the toggle says.
@@ -766,7 +836,8 @@ final class HomeViewModel {
                 guard !Task.isCancelled, !Self.isCancellation(error) else {
                     return nil
                 }
-                saveError = "Couldn't save this card. Try again."
+                saveError = Self.publicModerationMessage(for: error)
+                    ?? "Couldn't save this card. Try again."
                 return nil
             }
         }
@@ -821,6 +892,47 @@ final class HomeViewModel {
                 return
             }
             shiningCardID = nil
+        }
+    }
+
+    /// One account-scoped summary is shared by Home, Profile, and compose.
+    func configureUsageAccount(userID: String?) {
+        guard usageAccountID != userID else {
+            return
+        }
+        usageGeneration &+= 1
+        usageAccountID = userID
+        usageSummary = nil
+        usageFeedback = nil
+        dismissUsageBanner()
+        isLoadingUsage = false
+        hasLoadedUsage = false
+    }
+
+    func loadUsageIfNeeded() async {
+        guard usageAccountID != nil, !hasLoadedUsage, !isLoadingUsage else {
+            return
+        }
+        let generation = usageGeneration
+        isLoadingUsage = true
+        defer {
+            if generation == usageGeneration {
+                isLoadingUsage = false
+            }
+        }
+
+        do {
+            let summary = try await profileService.usage()
+            guard !Task.isCancelled, generation == usageGeneration else {
+                return
+            }
+            hasLoadedUsage = true
+            if usageSummary == nil {
+                applyUsage(summary)
+            }
+        } catch {
+            // Older/local backends may not expose usage yet. `nil` deliberately leaves every
+            // picker row enabled until an authoritative summary or reframe response arrives.
         }
     }
 
@@ -917,7 +1029,7 @@ final class HomeViewModel {
                 }
                 let known = Set(cards.map(\.id))
                 cards.append(contentsOf: response.cards.compactMap(HomeCard.init(stored:)).filter {
-                    !known.contains($0.id)
+                    !known.contains($0.id) && !isLocallyBlocked($0)
                 })
                 libraryBefore = response.page.nextCursor ?? libraryBefore
                 libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
@@ -955,6 +1067,8 @@ final class HomeViewModel {
     /// Log out starts over on this iPhone: nothing the last session loaded stays in memory, and
     /// the next unlock loads Home and the library from scratch.
     func resetForSignOut() {
+        writeSessionGeneration &+= 1
+        refineGeneration &+= 1
         feedTask?.cancel()
         feedTask = nil
         libraryTask?.cancel()
@@ -966,14 +1080,24 @@ final class HomeViewModel {
         for task in publicTasks.values { task.cancel() }
         for task in deleteTasks.values { task.cancel() }
         for task in boardTasks.values { task.cancel() }
+        for task in reportTasks.values { task.cancel() }
+        for task in blockTasks.values { task.cancel() }
         for feed in authorFeeds.values { feed.task?.cancel() }
         for feed in modelFeeds.values { feed.task?.cancel() }
         favoriteTasks = [:]
+        favoriteGeneration = [:]
         followTasks = [:]
         followGeneration = [:]
         publicTasks = [:]
+        publicGeneration = [:]
         deleteTasks = [:]
+        deleteGeneration = [:]
         boardTasks = [:]
+        boardGeneration = [:]
+        reportTasks = [:]
+        reportGeneration = [:]
+        blockTasks = [:]
+        blockGeneration = [:]
         authorFeeds = [:]
         modelFeeds = [:]
 
@@ -999,6 +1123,10 @@ final class HomeViewModel {
 
         followedPeople = []
         followingLoadState = .loading
+        blockedPeople = []
+        blocksLoadState = .loading
+        blocksGeneration &+= 1
+        configureUsageAccount(userID: nil)
         saveLanding = nil
         dismissWriteError()
         clearShiningCard()
@@ -1203,6 +1331,9 @@ final class HomeViewModel {
                         guard let card = HomeCard(stored: item) else {
                             continue
                         }
+                        guard !isLocallyBlocked(card) else {
+                            continue
+                        }
                         feedAnchors[card.id] = nil
                         guard feedCardIDs.insert(card.id).inserted else {
                             continue
@@ -1248,6 +1379,11 @@ final class HomeViewModel {
             guard let id = UUID(uuidString: item.id) else {
                 continue
             }
+            if !item.isOwner,
+               let authorId = UUID(uuidString: item.author.id),
+               blockedPeople.contains(where: { $0.id == authorId }) {
+                continue
+            }
             if var existing = pool[id] {
                 let authorId = existing.authorId
                 let keepFollow = authorId.map { followTasks[$0] != nil } ?? false
@@ -1263,6 +1399,13 @@ final class HomeViewModel {
         }
 
         return next
+    }
+
+    private func isLocallyBlocked(_ card: HomeCard) -> Bool {
+        guard !card.isOwner, let authorId = card.authorId else {
+            return false
+        }
+        return blockedPeople.contains { $0.id == authorId }
     }
 
     private func matchesFeedFilter(_ card: HomeCard, _ filter: HomeFeedFilter) -> Bool {
@@ -1514,12 +1657,22 @@ final class HomeViewModel {
         removeFromModelFeeds(id)
 
         deleteTasks[id]?.cancel()
+        let generation = (deleteGeneration[id] ?? 0) + 1
+        deleteGeneration[id] = generation
+        let sessionGeneration = writeSessionGeneration
         deleteTasks[id] = Task { @MainActor in
-            defer { deleteTasks[id] = nil }
+            defer {
+                if deleteGeneration[id] == generation,
+                   writeSessionGeneration == sessionGeneration {
+                    deleteTasks[id] = nil
+                }
+            }
             do {
                 try await cardsService.delete(id: id.uuidString.lowercased())
             } catch {
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled,
+                      deleteGeneration[id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 if let libraryIndex, !cards.contains(where: { $0.id == id }) {
@@ -1552,11 +1705,21 @@ final class HomeViewModel {
         }
 
         boardTasks[id]?.cancel()
+        let generation = (boardGeneration[id] ?? 0) + 1
+        boardGeneration[id] = generation
+        let sessionGeneration = writeSessionGeneration
         boardTasks[id] = Task { @MainActor in
-            defer { boardTasks[id] = nil }
+            defer {
+                if boardGeneration[id] == generation,
+                   writeSessionGeneration == sessionGeneration {
+                    boardTasks[id] = nil
+                }
+            }
             do {
                 try await cardsService.removeFromBoard(id: id.uuidString.lowercased())
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled,
+                      boardGeneration[id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 applyLocal(id: id) { card in
@@ -1569,7 +1732,9 @@ final class HomeViewModel {
                     syncSavedOtherIntoLibrary(current)
                 }
             } catch {
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled,
+                      boardGeneration[id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 if Self.isNotFound(error) {
@@ -1587,10 +1752,24 @@ final class HomeViewModel {
     private static let unavailableCardMessage = "That card isn't available anymore."
 
     private static func isNotFound(_ error: Error) -> Bool {
-        if case APIError.httpStatus(404, _) = error {
+        if case APIError.httpStatus(404, _, _) = error {
             return true
         }
         return false
+    }
+
+    private static func publicModerationMessage(for error: Error) -> String? {
+        guard let apiError = error as? APIError else {
+            return nil
+        }
+        switch apiError.serverCode {
+        case "PUBLIC_CONTENT_NOT_ALLOWED":
+            return "This card can't be posted publicly. Save it privately instead."
+        case "PUBLIC_MODERATION_UNAVAILABLE":
+            return "Posting is temporarily unavailable. Save privately or try again."
+        default:
+            return nil
+        }
     }
 
     /// Someone else's card that was deleted or made private leaves every list at once.
@@ -1602,6 +1781,132 @@ final class HomeViewModel {
         removeFromFeed(id)
         removeFromAuthorFeeds(id)
         removeFromModelFeeds(id)
+    }
+
+    private func blockAuthorSnapshot(_ authorId: UUID) -> BlockAuthorSnapshot {
+        let libraryEntries = cards.enumerated().compactMap { index, card in
+            card.authorId == authorId && !card.isOwner
+                ? (index: index, card: card)
+                : nil
+        }
+        let feedEntries = feedCards.enumerated().compactMap { index, card in
+            card.authorId == authorId && !card.isOwner
+                ? (index: index, card: card)
+                : nil
+        }
+        let affectedIDs = Set((libraryEntries + feedEntries).map { $0.card.id })
+        let anchors = feedAnchors.filter { affectedIDs.contains($0.key) }
+        let followedEntry = followedPeople.firstIndex(where: { $0.id == authorId }).map {
+            (index: $0, person: followedPeople[$0])
+        }
+        let blockedEntry = blockedPeople.firstIndex(where: { $0.id == authorId }).map {
+            (index: $0, person: blockedPeople[$0])
+        }
+        let affectedAuthorFeeds = authorFeeds.filter { id, feed in
+            id == authorId || feed.cards.contains { $0.authorId == authorId && !$0.isOwner }
+        }
+        let affectedModelFeeds = modelFeeds.filter { _, feed in
+            feed.cards.contains { $0.authorId == authorId && !$0.isOwner }
+        }
+
+        return BlockAuthorSnapshot(
+            libraryEntries: libraryEntries,
+            feedEntries: feedEntries,
+            feedAnchors: anchors,
+            followedEntry: followedEntry,
+            blockedEntry: blockedEntry,
+            authorFeeds: affectedAuthorFeeds,
+            modelFeeds: affectedModelFeeds
+        )
+    }
+
+    private func restoreBlockedAuthor(_ snapshot: BlockAuthorSnapshot, authorId: UUID) {
+        for entry in snapshot.libraryEntries.sorted(by: { $0.index < $1.index })
+        where !cards.contains(where: { $0.id == entry.card.id }) {
+            cards.insert(entry.card, at: min(entry.index, cards.count))
+        }
+        for entry in snapshot.feedEntries.sorted(by: { $0.index < $1.index })
+        where !feedCards.contains(where: { $0.id == entry.card.id }) {
+            feedCards.insert(entry.card, at: min(entry.index, feedCards.count))
+            feedCardIDs.insert(entry.card.id)
+        }
+        for (id, anchor) in snapshot.feedAnchors {
+            feedAnchors[id] = anchor
+        }
+        if let entry = snapshot.followedEntry,
+           !followedPeople.contains(where: { $0.id == authorId }) {
+            followedPeople.insert(entry.person, at: min(entry.index, followedPeople.count))
+        }
+        blockedPeople.removeAll { $0.id == authorId }
+        if let entry = snapshot.blockedEntry {
+            blockedPeople.insert(entry.person, at: min(entry.index, blockedPeople.count))
+        }
+
+        for (id, var feed) in snapshot.authorFeeds {
+            feed.task = nil
+            if feed.footerState == .loading {
+                feed.footerState = .idle
+            }
+            feed.isRefreshing = false
+            authorFeeds[id] = feed
+        }
+        for (model, var feed) in snapshot.modelFeeds {
+            feed.task = nil
+            if feed.footerState == .loading {
+                feed.footerState = .idle
+            }
+            feed.isRefreshing = false
+            modelFeeds[model] = feed
+        }
+    }
+
+    private func removeAuthorLocally(_ authorId: UUID) {
+        let removedIDs = Set(
+            (cards + feedCards)
+                .filter { $0.authorId == authorId && !$0.isOwner }
+                .map(\.id)
+        )
+
+        cards.removeAll { $0.authorId == authorId && !$0.isOwner }
+        feedCards.removeAll { $0.authorId == authorId && !$0.isOwner }
+        feedCardIDs.subtract(removedIDs)
+        for id in removedIDs {
+            feedAnchors[id] = nil
+        }
+        followedPeople.removeAll { $0.id == authorId }
+
+        for id in Array(authorFeeds.keys)
+        where id == authorId
+            || authorFeeds[id]?.cards.contains(where: { $0.authorId == authorId && !$0.isOwner }) == true {
+            mutateAuthor(id) { feed in
+                feed.task?.cancel()
+                feed.task = nil
+                feed.generation &+= 1
+                feed.cards.removeAll { $0.authorId == authorId && !$0.isOwner }
+                feed.cardIDs = Set(feed.cards.map(\.id))
+                feed.footerState = .idle
+                feed.isRefreshing = false
+                if id == authorId {
+                    feed.following = false
+                    feed.hasMore = false
+                    feed.before = nil
+                    feed.hasLoaded = true
+                    feed.loadState = .loaded
+                }
+            }
+        }
+        for model in Array(modelFeeds.keys)
+        where modelFeeds[model]?.cards.contains(where: { $0.authorId == authorId && !$0.isOwner }) == true {
+            mutateModel(model) { feed in
+                feed.task?.cancel()
+                feed.task = nil
+                feed.generation &+= 1
+                feed.cards.removeAll { $0.authorId == authorId && !$0.isOwner }
+                feed.cardIDs = Set(feed.cards.map(\.id))
+                feed.footerState = .idle
+                feed.isRefreshing = false
+            }
+        }
     }
 
     func toggleFavorite(_ id: UUID, style: Style) {
@@ -1626,9 +1931,25 @@ final class HomeViewModel {
         }
 
         let key = Self.favoriteTaskKey(id: id, style: style)
-        favoriteTasks[key]?.cancel()
+        let previousTask = favoriteTasks[key]
+        let generation = (favoriteGeneration[key] ?? 0) + 1
+        favoriteGeneration[key] = generation
+        let sessionGeneration = writeSessionGeneration
         favoriteTasks[key] = Task { @MainActor in
-            defer { favoriteTasks[key] = nil }
+            // Preserve request order. Cancelling an in-flight URL request cannot prove the
+            // server did not commit it, so a later tap waits for its response before writing.
+            await previousTask?.value
+            guard !Task.isCancelled,
+                  favoriteGeneration[key] == generation,
+                  writeSessionGeneration == sessionGeneration else {
+                return
+            }
+            defer {
+                if favoriteGeneration[key] == generation,
+                   writeSessionGeneration == sessionGeneration {
+                    favoriteTasks[key] = nil
+                }
+            }
             do {
                 let stored: StoredCard
                 if snapshot.isOwner {
@@ -1641,12 +1962,16 @@ final class HomeViewModel {
                 } else {
                     stored = try await cardsService.unsaveFeedAngle(id: id.uuidString.lowercased(), style: style)
                 }
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled,
+                      favoriteGeneration[key] == generation,
+                      writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 applyStored(stored)
             } catch {
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled,
+                      favoriteGeneration[key] == generation,
+                      writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 if !snapshot.isOwner, Self.isNotFound(error) {
@@ -1687,6 +2012,190 @@ final class HomeViewModel {
         }
     }
 
+    func loadBlocks() async {
+        blocksGeneration &+= 1
+        let generation = blocksGeneration
+        if blockedPeople.isEmpty {
+            blocksLoadState = .loading
+        }
+        do {
+            let response = try await profileService.blocks()
+            guard !Task.isCancelled, generation == blocksGeneration else {
+                return
+            }
+            blockedPeople = response.users.compactMap(BlockedPerson.init)
+            blocksLoadState = .loaded
+        } catch {
+            guard generation == blocksGeneration, !Self.isCancellation(error) else {
+                return
+            }
+            if blockedPeople.isEmpty {
+                blocksLoadState = .failed("Couldn't load blocked people.")
+            }
+        }
+    }
+
+    func reportCard(_ id: UUID, reason: ReportReason) {
+        guard reportTasks[id] == nil,
+              let target = card(id: id),
+              !target.isOwner
+        else {
+            return
+        }
+
+        let libraryIndex = cards.firstIndex { $0.id == id }
+        let feedIndex = feedCards.firstIndex { $0.id == id }
+        let previousAuthorIndexes = authorCardIndexes(id)
+        let previousModelIndexes = modelCardIndexes(id)
+        let feedAnchor = feedAnchors[id]
+        dropUnavailableCard(id)
+        let generation = (reportGeneration[id] ?? 0) + 1
+        reportGeneration[id] = generation
+        let sessionGeneration = writeSessionGeneration
+        reportTasks[id] = Task { @MainActor in
+            defer {
+                if reportGeneration[id] == generation,
+                   writeSessionGeneration == sessionGeneration {
+                    reportTasks[id] = nil
+                }
+            }
+            do {
+                let state = try await cardsService.report(
+                    id: id.uuidString.lowercased(),
+                    reason: reason
+                )
+                guard !Task.isCancelled,
+                      reportGeneration[id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
+                    return
+                }
+                guard state.reported else {
+                    throw APIError.decoding("The report was not accepted.")
+                }
+            } catch {
+                guard !Task.isCancelled,
+                      reportGeneration[id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
+                    return
+                }
+                if let libraryIndex, !cards.contains(where: { $0.id == id }) {
+                    cards.insert(target, at: min(libraryIndex, cards.count))
+                }
+                if let feedIndex, !feedCards.contains(where: { $0.id == id }) {
+                    feedCards.insert(target, at: min(feedIndex, feedCards.count))
+                    feedCardIDs.insert(id)
+                }
+                if let feedAnchor {
+                    feedAnchors[id] = feedAnchor
+                }
+                restoreAuthorCards(target, at: previousAuthorIndexes)
+                restoreModelCards(target, at: previousModelIndexes)
+                reportWriteFailure(error, "Couldn't report that card. Check your connection.")
+            }
+        }
+    }
+
+    func blockAuthor(
+        _ authorId: UUID,
+        initials: String,
+        avatarPath: String?
+    ) {
+        guard !isOwnAuthor(authorId), blockTasks[authorId] == nil else {
+            return
+        }
+
+        let snapshot = blockAuthorSnapshot(authorId)
+        let person = BlockedPerson(id: authorId, initials: initials, avatarPath: avatarPath)
+        removeAuthorLocally(authorId)
+        if !blockedPeople.contains(where: { $0.id == authorId }) {
+            blockedPeople.insert(person, at: 0)
+        }
+
+        followTasks[authorId]?.cancel()
+        followTasks[authorId] = nil
+        followGeneration[authorId, default: 0] &+= 1
+
+        blocksGeneration &+= 1
+        let generation = (blockGeneration[authorId] ?? 0) + 1
+        blockGeneration[authorId] = generation
+        let sessionGeneration = writeSessionGeneration
+        blockTasks[authorId] = Task { @MainActor in
+            defer {
+                if blockGeneration[authorId] == generation,
+                   writeSessionGeneration == sessionGeneration {
+                    blockTasks[authorId] = nil
+                }
+            }
+            do {
+                let state = try await profileService.block(id: authorId.uuidString.lowercased())
+                guard !Task.isCancelled,
+                      blockGeneration[authorId] == generation,
+                      writeSessionGeneration == sessionGeneration else {
+                    return
+                }
+                guard state.blocked else {
+                    throw APIError.decoding("The block was not accepted.")
+                }
+                if !blockedPeople.contains(where: { $0.id == authorId }) {
+                    blockedPeople.insert(person, at: 0)
+                }
+                blocksGeneration &+= 1
+            } catch {
+                guard !Task.isCancelled,
+                      blockGeneration[authorId] == generation,
+                      writeSessionGeneration == sessionGeneration else {
+                    return
+                }
+                restoreBlockedAuthor(snapshot, authorId: authorId)
+                reportWriteFailure(error, "Couldn't block that person. Check your connection.")
+            }
+        }
+    }
+
+    func unblock(_ person: BlockedPerson) {
+        guard blockTasks[person.id] == nil else {
+            return
+        }
+        let index = blockedPeople.firstIndex(where: { $0.id == person.id }) ?? 0
+        blockedPeople.removeAll { $0.id == person.id }
+
+        blocksGeneration &+= 1
+        let generation = (blockGeneration[person.id] ?? 0) + 1
+        blockGeneration[person.id] = generation
+        let sessionGeneration = writeSessionGeneration
+        blockTasks[person.id] = Task { @MainActor in
+            defer {
+                if blockGeneration[person.id] == generation,
+                   writeSessionGeneration == sessionGeneration {
+                    blockTasks[person.id] = nil
+                }
+            }
+            do {
+                let state = try await profileService.unblock(id: person.id.uuidString.lowercased())
+                guard !Task.isCancelled,
+                      blockGeneration[person.id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
+                    return
+                }
+                guard !state.blocked else {
+                    throw APIError.decoding("The unblock was not accepted.")
+                }
+                blockedPeople.removeAll { $0.id == person.id }
+                blocksGeneration &+= 1
+            } catch {
+                guard !Task.isCancelled,
+                      blockGeneration[person.id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
+                    return
+                }
+                if !blockedPeople.contains(where: { $0.id == person.id }) {
+                    blockedPeople.insert(person, at: min(index, blockedPeople.count))
+                }
+                reportWriteFailure(error, "Couldn't unblock that person. Check your connection.")
+            }
+        }
+    }
+
     func unfollow(_ person: FollowedPerson) {
         guard !isOwnAuthor(person.id) else {
             return
@@ -1716,10 +2225,12 @@ final class HomeViewModel {
         setFollowing(authorId, following: next)
         let generation = (followGeneration[authorId] ?? 0) + 1
         followGeneration[authorId] = generation
+        let sessionGeneration = writeSessionGeneration
         followTasks[authorId]?.cancel()
         followTasks[authorId] = Task { @MainActor in
             defer {
-                if self.followGeneration[authorId] == generation {
+                if self.followGeneration[authorId] == generation,
+                   self.writeSessionGeneration == sessionGeneration {
                     self.followTasks[authorId] = nil
                 }
             }
@@ -1728,12 +2239,16 @@ final class HomeViewModel {
                     next
                     ? try await cardsService.follow(id: authorId.uuidString.lowercased())
                     : try await cardsService.unfollow(id: authorId.uuidString.lowercased())
-                guard !Task.isCancelled, self.followGeneration[authorId] == generation else {
+                guard !Task.isCancelled,
+                      self.followGeneration[authorId] == generation,
+                      self.writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 setFollowing(authorId, following: state.following)
             } catch {
-                guard !Task.isCancelled, self.followGeneration[authorId] == generation else {
+                guard !Task.isCancelled,
+                      self.followGeneration[authorId] == generation,
+                      self.writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 setFollowing(authorId, following: !next)
@@ -1770,15 +2285,33 @@ final class HomeViewModel {
             removeFromModelFeeds(id)
         }
 
-        publicTasks[id]?.cancel()
+        let previousTask = publicTasks[id]
+        let generation = (publicGeneration[id] ?? 0) + 1
+        publicGeneration[id] = generation
+        let sessionGeneration = writeSessionGeneration
         publicTasks[id] = Task { @MainActor in
-            defer { publicTasks[id] = nil }
+            // Serialize privacy writes for this card. A cancelled transport can still commit,
+            // so overlapping PATCH requests could otherwise leave the server in tap-old order.
+            await previousTask?.value
+            guard !Task.isCancelled,
+                  publicGeneration[id] == generation,
+                  writeSessionGeneration == sessionGeneration else {
+                return
+            }
+            defer {
+                if publicGeneration[id] == generation,
+                   writeSessionGeneration == sessionGeneration {
+                    publicTasks[id] = nil
+                }
+            }
             do {
                 let stored = try await cardsService.patch(
                     id: id.uuidString.lowercased(),
                     PatchCardRequest(isPublic: isPublic)
                 )
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled,
+                      publicGeneration[id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 if let current = cards.firstIndex(where: { $0.id == id }) {
@@ -1813,7 +2346,9 @@ final class HomeViewModel {
                     removeFromModelFeeds(id)
                 }
             } catch {
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled,
+                      publicGeneration[id] == generation,
+                      writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 applyLocal(id: id) { card in
@@ -1838,7 +2373,11 @@ final class HomeViewModel {
                     removeFromAuthorFeeds(id)
                     removeFromModelFeeds(id)
                 }
-                reportWriteFailure(error, "Couldn't change who can see this. Check your connection.")
+                reportWriteFailure(
+                    error,
+                    Self.publicModerationMessage(for: error)
+                        ?? "Couldn't change who can see this. Check your connection."
+                )
             }
         }
     }
@@ -1878,6 +2417,174 @@ final class HomeViewModel {
                 return
             }
             writeError = nil
+        }
+    }
+
+    func dismissUsageBanner() {
+        usageBannerTask?.cancel()
+        usageBannerTask = nil
+        usageBanner = nil
+    }
+
+    private func showUsageBanner(_ message: String) {
+        usageBanner = message
+        usageBannerTask?.cancel()
+        usageBannerTask = Task { @MainActor in
+            defer { usageBannerTask = nil }
+            try? await Task.sleep(for: Self.writeErrorDuration)
+            guard !Task.isCancelled else {
+                return
+            }
+            usageBanner = nil
+        }
+    }
+
+    private func applyUsage(
+        _ summary: UsageSummary,
+        requestModel: LlmModel? = nil,
+        creditsUsed: Int = 0
+    ) {
+        hasLoadedUsage = true
+        usageSummary = summary
+
+        let previousModel = selectedModel
+        var switchMessage: String?
+        if !summary.allowedModels.contains(previousModel.rawValue),
+           let fallback = [LlmModel.mistral, .deepseek, .gemini].first(where: {
+               summary.allowedModels.contains($0.rawValue)
+           }) {
+            selectedModel = fallback
+            switchMessage = "\(previousModel.displayName) is paused. Switched to \(fallback.displayName) until your credits reset."
+        }
+
+        if creditsUsed > 0, let requestModel {
+            usageFeedback = "\(creditsUsed) \(creditsUsed == 1 ? "credit" : "credits") used · \(requestModel.displayName)"
+        }
+
+        if let switchMessage {
+            showUsageBanner(switchMessage)
+        } else {
+            showLowCreditWarningIfNeeded(summary)
+        }
+    }
+
+    private func applyUsage(_ usage: ReframeUsage, requestModel: LlmModel) {
+        var costs = usageSummary?.creditCost
+            ?? Dictionary(uniqueKeysWithValues: LlmModel.allCases.map { ($0.rawValue, $0.creditCost) })
+        costs[requestModel.rawValue] = usage.creditCost
+        let previous = usageSummary
+        applyUsage(
+            UsageSummary(
+                creditsGranted: usage.granted,
+                creditsRemaining: usage.remaining,
+                periodStart: previous?.periodStart,
+                periodEnd: previous?.periodEnd,
+                resetsAt: usage.resetsAt,
+                warning: usage.warning,
+                allowedModels: usage.allowedModels,
+                creditCost: costs
+            ),
+            requestModel: requestModel,
+            creditsUsed: usage.creditsUsed
+        )
+    }
+
+    private func applyUsage(from payload: APIErrorPayload) {
+        guard let creditsRemaining = payload.creditsRemaining,
+              let creditsGranted = payload.creditsGranted,
+              let allowedModels = payload.allowedModels else {
+            return
+        }
+        let previous = usageSummary
+        applyUsage(
+            UsageSummary(
+                creditsGranted: creditsGranted,
+                creditsRemaining: creditsRemaining,
+                periodStart: previous?.periodStart,
+                periodEnd: previous?.periodEnd,
+                resetsAt: payload.resetsAt,
+                warning: Self.usageWarning(remaining: creditsRemaining),
+                allowedModels: allowedModels,
+                creditCost: previous?.creditCost
+                    ?? Dictionary(
+                        uniqueKeysWithValues: LlmModel.allCases.map { ($0.rawValue, $0.creditCost) }
+                    )
+            )
+        )
+    }
+
+    private func showLowCreditWarningIfNeeded(_ summary: UsageSummary) {
+        guard summary.warning == .low, let usageAccountID else {
+            return
+        }
+        let period = summary.periodStart ?? summary.resetsAt ?? "granted-\(summary.creditsGranted)"
+        let key = Self.lowWarningDefaultsKey(userID: usageAccountID)
+        guard UserDefaults.standard.string(forKey: key) != period else {
+            return
+        }
+        UserDefaults.standard.set(period, forKey: key)
+        showUsageBanner("Credits are getting low")
+    }
+
+    static func lowWarningDefaultsKey(userID: String) -> String {
+        "\(lowWarningPeriodKeyPrefix).\(userID.lowercased())"
+    }
+
+    private static func usageWarning(remaining: Int) -> UsageWarning {
+        if remaining <= 0 {
+            return .empty
+        }
+        if remaining <= 60 {
+            return .critical
+        }
+        if remaining <= 120 {
+            return .low
+        }
+        return .normal
+    }
+
+    private func composeFailure(
+        for error: Error,
+        model: LlmModel
+    ) -> (message: String, allowsRetry: Bool) {
+        guard case APIError.httpStatus(_, let payload?, _) = error else {
+            return ("Couldn't generate a reframe. Try again.", true)
+        }
+        applyUsage(from: payload)
+        let reset = payload.resetsAt
+            .flatMap(ISO8601Dates.date(from:))
+            .map { " until \($0.formatted(date: .abbreviated, time: .omitted))" }
+            ?? ""
+
+        switch payload.code {
+        case "SUBSCRIPTION_REQUIRED":
+            return ("Membership is required. Open Profile → Settings → Subscription.", false)
+        case "INSUFFICIENT_CREDITS":
+            return ("Not enough credits for \(model.displayName). Choose an available model or wait\(reset).", true)
+        case "MODEL_NOT_AVAILABLE":
+            return ("\(model.displayName) isn't available right now. Choose another model.", true)
+        case "TASTE_RECOOK_UNAVAILABLE":
+            return ("New answers aren't available during your free taste.", false)
+        case "TASTE_LIMIT_REACHED":
+            return ("Your free taste is finished. View membership to keep cooking.", false)
+        case "DAILY_OPERATION_LIMIT":
+            return ("You've reached today's cooking limit. Try again tomorrow.", true)
+        case "OPERATION_RATE_LIMIT":
+            return ("You're cooking too quickly. Wait a moment and try again.", true)
+        case "PROVIDER_CALL_LIMIT":
+            return ("Today's AI call limit is reached. Try again tomorrow.", true)
+        case "IDEMPOTENCY_KEY_REQUIRED", "INVALID_IDEMPOTENCY_KEY":
+            return ("This request couldn't be started safely. Try again.", true)
+        case "IDEMPOTENCY_CONFLICT":
+            return ("This request changed before it completed. Send it again.", true)
+        case "OPERATION_RUNNING":
+            return ("This request is still running. Wait a moment before trying again.", true)
+        case "REQUEST_ALREADY_COMPLETED":
+            return ("That request already finished, but its result can't be recovered. Start a new thought.", false)
+        case "OPERATION_EXPIRED":
+            return ("That request expired before it finished. Try again.", true)
+        default:
+            return ("Couldn't generate a reframe. Try again.", true)
         }
     }
 
@@ -1985,6 +2692,7 @@ final class HomeViewModel {
     func recookStyle(_ style: Style) {
         guard case .ready(let cook) = phase,
               recookingStyle == nil,
+              isModelAvailable(cook.model),
               cook.results.contains(where: { $0.style == style })
         else {
             return
@@ -1992,34 +2700,50 @@ final class HomeViewModel {
 
         recookingStyle = style
         recookNotice = nil
+        usageFeedback = nil
         // Recook works from the cleaned English thought, not the raw paste.
         let text = cook.thought
-        let model = selectedModel
+        let model = cook.model
+        let requestID: UUID
+        if pendingRecookStyle == style, let pendingRecookRequestID {
+            requestID = pendingRecookRequestID
+        } else {
+            requestID = UUID()
+            pendingRecookRequestID = requestID
+            pendingRecookStyle = style
+        }
 
         refineTask?.cancel()
+        refineGeneration &+= 1
+        let generation = refineGeneration
         refineTask = Task { @MainActor in
             defer {
-                if recookingStyle == style {
+                if refineGeneration == generation, recookingStyle == style {
                     recookingStyle = nil
+                    refineTask = nil
                 }
-                refineTask = nil
             }
 
             do {
                 let response = try await reframeService.refine(
                     text: text,
                     styles: [style],
-                    model: model
+                    model: model,
+                    requestID: requestID
                 )
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled, refineGeneration == generation else {
                     return
                 }
+                pendingRecookRequestID = nil
+                pendingRecookStyle = nil
 
                 switch response {
-                case .continueTurn(let message, _, _):
+                case .continueTurn(let message, _, _, let usage):
+                    applyUsage(usage, requestModel: model)
                     // That style no longer fits this thought; keep what we have.
                     recookNotice = message
-                case .ready(_, _, let incoming, _, _):
+                case .ready(_, _, let incoming, _, _, let usage):
+                    applyUsage(usage, requestModel: model)
                     guard let replacement = incoming.first(where: { $0.style == style }),
                           case .ready(var current) = phase,
                           let index = current.results.firstIndex(where: { $0.style == style })
@@ -2032,15 +2756,22 @@ final class HomeViewModel {
                     cookHaptic += 1
                 }
             } catch {
-                guard !Task.isCancelled, !Self.isCancellation(error) else {
+                guard !Task.isCancelled,
+                      refineGeneration == generation,
+                      !Self.isCancellation(error) else {
                     return
                 }
-                recookNotice = "Couldn't get a new take. Try again."
+                if !Self.isAmbiguousReframeFailure(error) {
+                    pendingRecookRequestID = nil
+                    pendingRecookStyle = nil
+                }
+                recookNotice = composeFailure(for: error, model: model).message
             }
         }
     }
 
     func resetCompose() {
+        refineGeneration &+= 1
         refineTask?.cancel()
         refineTask = nil
         saveTask?.cancel()
@@ -2050,16 +2781,27 @@ final class HomeViewModel {
         turns = []
         recookingStyle = nil
         recookNotice = nil
+        pendingRefineRequestID = nil
+        pendingRecookRequestID = nil
+        pendingRecookStyle = nil
+        usageFeedback = nil
+        composeErrorAllowsRetry = true
         saveError = nil
         isSaving = false
         composeIsPublic = true
         phase = .composing
     }
 
-    private func startRefine() {
+    private func startRefine(requestID: UUID) {
         refineTask?.cancel()
+        refineGeneration &+= 1
+        let generation = refineGeneration
         recookingStyle = nil
         recookNotice = nil
+        pendingRecookRequestID = nil
+        pendingRecookStyle = nil
+        usageFeedback = nil
+        composeErrorAllowsRetry = true
         phase = .cooking
         let text = statement
         let followUps = answeredFollowUps
@@ -2070,14 +2812,17 @@ final class HomeViewModel {
                 let response = try await reframeService.refine(
                     text: text,
                     followUps: followUps,
-                    model: model
+                    model: model,
+                    requestID: requestID
                 )
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled, refineGeneration == generation else {
                     return
                 }
+                pendingRefineRequestID = nil
 
                 switch response {
-                case .continueTurn(let message, let options, let safety):
+                case .continueTurn(let message, let options, let safety, let usage):
+                    applyUsage(usage, requestModel: model)
                     turns.append(
                         RefineTurn(
                             id: UUID(),
@@ -2087,7 +2832,15 @@ final class HomeViewModel {
                         )
                     )
                     phase = .awaitingReply
-                case .ready(let thought, let thoughtOriginal, let results, let meta, let signature):
+                case .ready(
+                    let thought,
+                    let thoughtOriginal,
+                    let results,
+                    let meta,
+                    let signature,
+                    let usage
+                ):
+                    applyUsage(usage, requestModel: model)
                     phase = .ready(
                         ReadyCook(
                             thought: thought,
@@ -2101,13 +2854,22 @@ final class HomeViewModel {
                 }
                 cookHaptic += 1
             } catch {
-                guard !Task.isCancelled, !Self.isCancellation(error) else {
+                guard !Task.isCancelled,
+                      refineGeneration == generation,
+                      !Self.isCancellation(error) else {
                     return
                 }
 
-                phase = .error("Couldn't generate a reframe. Try again.")
+                if !Self.isAmbiguousReframeFailure(error) {
+                    pendingRefineRequestID = nil
+                }
+                let failure = composeFailure(for: error, model: model)
+                composeErrorAllowsRetry = failure.allowsRetry
+                phase = .error(failure.message)
             }
-            refineTask = nil
+            if refineGeneration == generation {
+                refineTask = nil
+            }
         }
     }
 
@@ -2306,6 +3068,9 @@ final class HomeViewModel {
                             guard let card = HomeCard(stored: item) else {
                                 continue
                             }
+                            guard !isLocallyBlocked(card) else {
+                                continue
+                            }
                             guard feed.cardIDs.insert(card.id).inserted else {
                                 continue
                             }
@@ -2338,7 +3103,7 @@ final class HomeViewModel {
                 return
             }
             mutateAuthor(id) { feed in
-                if case APIError.httpStatus(let status, _) = error, status == 404 {
+                if case APIError.httpStatus(let status, _, _) = error, status == 404 {
                     feed.loadState = .failed("That profile isn't available.")
                     feed.footerState = .idle
                     feed.hasMore = false
@@ -2570,6 +3335,9 @@ final class HomeViewModel {
                             guard let card = HomeCard(stored: item) else {
                                 continue
                             }
+                            guard !isLocallyBlocked(card) else {
+                                continue
+                            }
                             guard feed.cardIDs.insert(card.id).inserted else {
                                 continue
                             }
@@ -2618,5 +3386,19 @@ final class HomeViewModel {
             return true
         }
         return false
+    }
+
+    /// A request may have reached the server when transport failed or a successful body could
+    /// not be decoded. Replaying the same key is the only retry that cannot spend twice.
+    private static func isAmbiguousReframeFailure(_ error: Error) -> Bool {
+        guard let apiError = error as? APIError else {
+            return false
+        }
+        switch apiError {
+        case .network, .decoding:
+            return true
+        case .invalidURL, .httpStatus:
+            return false
+        }
     }
 }

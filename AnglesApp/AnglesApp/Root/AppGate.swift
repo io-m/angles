@@ -28,7 +28,7 @@ struct AppGateInputs: Equatable {
     /// Apple's current answer for this account: never the launch cache before StoreKit is
     /// ready, never while the local session is signed out.
     var isEntitled: Bool
-    /// Server `users.tasteCompletedAt`. There is no install-local taste flag.
+    /// Server taste consumed-or-completed state. There is no install-local taste flag.
     var serverTasteCompleted: Bool
     /// Taste "Renew membership" opened the paywall before the taste was saved.
     var membershipRequested: Bool

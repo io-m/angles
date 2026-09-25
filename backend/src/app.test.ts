@@ -12,6 +12,53 @@ vi.mock("./lib/llmClient.js", async (importOriginal) => {
   };
 });
 
+vi.mock("./db/metering.js", () => {
+  class MeteringError extends Error {
+    readonly status: 400 | 402 | 409 | 429;
+    readonly code: string;
+    constructor(message: string, code: string, status: 400 | 402 | 409 | 429) {
+      super(message);
+      this.name = "MeteringError";
+      this.status = status;
+      this.code = code;
+    }
+  }
+  const summary = {
+    creditsGranted: 600,
+    creditsRemaining: 599,
+    periodStart: "2026-09-01T00:00:00.000Z",
+    periodEnd: "2026-10-01T00:00:00.000Z",
+    resetsAt: "2026-10-01T00:00:00.000Z",
+    warning: "normal" as const,
+    allowedModels: ["mistral-small-latest", "deepseek-flash", "gemini-3.8-flash"] as const,
+    creditCost: {
+      "mistral-small-latest": 1,
+      "deepseek-flash": 2,
+      "gemini-3.8-flash": 6,
+    },
+  };
+  return {
+    MeteringError,
+    startMeterOperation: vi.fn(async (input: {
+      ownerId: string;
+      model: string;
+      clientRequestId: string;
+      requestFingerprint: string;
+    }) => ({
+      operationId: "00000000-0000-4000-8000-000000000777",
+      ownerId: input.ownerId,
+      model: input.model,
+      taste: false,
+      usage: summary,
+    })),
+    beginProviderCall: vi.fn(async () => undefined),
+    beginStandaloneProviderCall: vi.fn(async () => undefined),
+    finishMeterOperation: vi.fn(async () => summary),
+    getUsageSummary: vi.fn(async () => summary),
+    recordStandaloneLlmUsage: vi.fn(async () => undefined),
+  };
+});
+
 class DbError extends Error {
   readonly code?: string;
   constructor(message: string, code?: string) {
@@ -34,6 +81,7 @@ vi.mock("./db/client.js", () => ({
 const { app } = await import("./app.js");
 const { generateJson, generateReframe, STYLE_BATCH_MAX_OUTPUT_TOKENS } = await import("./lib/llmClient.js");
 const { probeDatabase } = await import("./db/client.js");
+const { finishMeterOperation, startMeterOperation } = await import("./db/metering.js");
 
 const SHORT_TEXT = "I bombed my job interview today.";
 const LONG_TEXT =
@@ -163,13 +211,29 @@ async function jsonOf(response: Response): Promise<unknown> {
   return response.json();
 }
 
-type ContinueBody = { kind: string; message: string; options: string[]; safety: string };
+type ResponseUsage = {
+  creditsUsed: number;
+  remaining: number;
+  granted: number;
+  resetsAt: string | null;
+  warning: string;
+  allowedModels: string[];
+  creditCost: number;
+};
+type ContinueBody = {
+  kind: string;
+  message: string;
+  options: string[];
+  safety: string;
+  usage: ResponseUsage;
+};
 type ReadyBody = {
   kind: string;
   thought: string;
   thoughtOriginal?: string;
   results: { style: Style; reframe: string; signature: string }[];
   signature: string;
+  usage: ResponseUsage;
   meta: {
     category: string;
     proposedCategory?: string;
@@ -221,8 +285,10 @@ describe("GET /health", () => {
 
 describe("POST /reframe", () => {
   beforeEach(() => {
+    delete process.env.USAGE_ENFORCEMENT;
     vi.mocked(generateJson).mockReset();
     vi.mocked(generateReframe).mockReset();
+    vi.mocked(startMeterOperation).mockClear();
     batchQueue = undefined;
     stubReframes();
   });
@@ -246,13 +312,19 @@ describe("POST /reframe", () => {
 
     expect(response.status).toBe(200);
     const body = (await jsonOf(response)) as ContinueBody;
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       kind: "continue",
       message: "You said the interview went badly — what part are you still replaying?",
       options: ["A question I fumbled", "How I came across"],
       safety: "none",
     });
     expect(generateReframe).not.toHaveBeenCalled();
+    expect(body.usage).toMatchObject({
+      creditsUsed: 0,
+      remaining: 599,
+      granted: 600,
+      creditCost: 1,
+    });
   });
 
   it("repairs a generic bounce continue on a thought that was already clear", async () => {
@@ -356,6 +428,12 @@ describe("POST /reframe", () => {
     expect(words).toBeLessThanOrEqual(THOUGHT_MAX_WORDS);
     expect(body.thought.length).toBeLessThanOrEqual(THOUGHT_MAX_CHARS);
     expect(body.thoughtOriginal).toBeUndefined();
+    expect(body.usage).toMatchObject({
+      creditsUsed: 1,
+      remaining: 599,
+      granted: 600,
+      creditCost: 1,
+    });
     expect(body.results.map((item) => item.style)).toEqual([...STYLES]);
     expect(body.meta.matching).toEqual({
       category: "work",
@@ -458,22 +536,14 @@ describe("POST /reframe", () => {
     expect(generateJson).toHaveBeenCalledTimes(3);
   });
 
-  it("retries a style once when the reframe is way too long", async () => {
+  it("trims a long batch reframe without another provider call", async () => {
     stubDecision(readyDecision({ styles: ["stoic"], skipped_styles: [] }));
     stubStyleBatch(styleBatch({ stoic: "word ".repeat(120) }));
-    vi.mocked(generateReframe).mockImplementation(async ({ systemPrompt }) =>
-      systemPrompt.includes("too long for the card")
-        ? "You cannot control the panel, only how you show up next time."
-        : "word ".repeat(120),
-    );
-
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
 
     expect(generateJson).toHaveBeenCalledTimes(2);
-    expect(generateReframe).toHaveBeenCalledTimes(1);
-    expect(body.results).toMatchObject([
-      { style: "stoic", reframe: "You cannot control the panel, only how you show up next time." },
-    ]);
+    expect(generateReframe).not.toHaveBeenCalled();
+    expect(body.results[0]?.reframe.length).toBeLessThanOrEqual(REFRAME_HARD_MAX_CHARS);
   });
 
   it("trims at a sentence boundary when the retry is still too long", async () => {
@@ -499,7 +569,12 @@ describe("POST /reframe", () => {
       {
         style: "humorous",
         reframe: "humorous reframe",
-        signature: signResult(LONG_TEXT, "humorous", "humorous reframe"),
+        signature: signResult(
+          LONG_TEXT,
+          "humorous",
+          "humorous reframe",
+          "mistral-small-latest",
+        ),
       },
     ]);
     expect(generateReframe).toHaveBeenCalledTimes(1);
@@ -513,6 +588,7 @@ describe("POST /reframe", () => {
     const cook = {
       thought: body.thought,
       thoughtOriginal: body.thoughtOriginal,
+      model: "mistral-small-latest",
       meta: meta as SignableMeta,
       signature: body.signature,
       results: body.results,
@@ -543,7 +619,7 @@ describe("POST /reframe", () => {
       await post({ text: LONG_TEXT, styles: ["humorous"] }),
     )) as ContinueBody;
 
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       kind: "continue",
       message: "A joke would land wrong on a loss this fresh.",
       options: [],
@@ -619,12 +695,12 @@ describe("POST /reframe", () => {
     );
   });
 
-  it("omits model when the body has none", async () => {
+  it("passes the selected default model when the body has none", async () => {
     stubDecision(readyDecision());
 
     await post({ text: LONG_TEXT });
 
-    expect(vi.mocked(generateJson).mock.calls[0]?.[0].model).toBeUndefined();
+    expect(vi.mocked(generateJson).mock.calls[0]?.[0].model).toBe("mistral-small-latest");
     expect(generateReframe).not.toHaveBeenCalled();
   });
 
@@ -668,6 +744,59 @@ describe("POST /reframe", () => {
       code: "UNAUTHENTICATED",
     });
     expect(generateJson).not.toHaveBeenCalled();
+  });
+
+  it("requires a UUID idempotency key when usage enforcement is required", async () => {
+    process.env.USAGE_ENFORCEMENT = "required";
+    const missing = await app.request("/reframe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: SHORT_TEXT }),
+    });
+    expect(missing.status).toBe(400);
+    expect(await jsonOf(missing)).toMatchObject({ code: "IDEMPOTENCY_KEY_REQUIRED" });
+
+    const invalid = await app.request("/reframe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": "not-a-uuid",
+      },
+      body: JSON.stringify({ text: SHORT_TEXT }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(await jsonOf(invalid)).toMatchObject({ code: "INVALID_IDEMPOTENCY_KEY" });
+    expect(generateJson).not.toHaveBeenCalled();
+  });
+
+  it("assigns distinct random request IDs to identical enforcement-off requests", async () => {
+    stubDecision(continueDecision(), continueDecision());
+
+    expect((await post({ text: SHORT_TEXT })).status).toBe(200);
+    expect((await post({ text: SHORT_TEXT })).status).toBe(200);
+
+    const firstId = vi.mocked(startMeterOperation).mock.calls[0]?.[0].clientRequestId;
+    const secondId = vi.mocked(startMeterOperation).mock.calls[1]?.[0].clientRequestId;
+    expect(firstId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(secondId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(firstId).not.toBe(secondId);
+    expect(
+      vi.mocked(startMeterOperation).mock.calls[0]?.[0].requestFingerprint,
+    ).toBe(
+      vi.mocked(startMeterOperation).mock.calls[1]?.[0].requestFingerprint,
+    );
+  });
+
+  it("does not let failed metering cleanup mask the provider error response", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(generateJson).mockRejectedValueOnce(new Error("provider failed"));
+    vi.mocked(finishMeterOperation).mockRejectedValueOnce(new Error("cleanup failed"));
+
+    const response = await post({ text: SHORT_TEXT });
+
+    expect(response.status).toBe(500);
+    expect(await jsonOf(response)).toMatchObject({ code: "LLM_ERROR" });
+    errorLog.mockRestore();
   });
 
   it("rejects more than six follow-ups", async () => {
@@ -714,23 +843,20 @@ describe("POST /reframe", () => {
     });
   });
 
-  it("retries only the missing style from a batch", async () => {
+  it("repairs an incomplete batch as one whole batch", async () => {
     stubDecision(readyDecision());
-    stubStyleBatch(styleBatch({ humorous: undefined }));
+    stubStyleBatch(styleBatch({ humorous: undefined }), styleBatch());
 
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
 
-    expect(generateReframe).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(generateReframe).mock.calls[0]?.[0].systemPrompt).toContain("Humorous");
+    expect(generateJson).toHaveBeenCalledTimes(3);
+    expect(generateReframe).not.toHaveBeenCalled();
     expect(body.results.map((item) => item.style)).toEqual([...STYLES]);
   });
 
-  it("fails the whole request when a style retry fails", async () => {
+  it("fails the whole request when the batch repair fails", async () => {
     stubDecision(readyDecision());
     stubStyleBatch(styleBatch({ humorous: undefined }));
-    vi.mocked(generateReframe).mockImplementation(async () => {
-      throw new Error("provider exploded");
-    });
 
     const response = await post({ text: LONG_TEXT });
 

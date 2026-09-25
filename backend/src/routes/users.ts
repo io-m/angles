@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
+import { blockUser, unblockUser, usersAreBlocked } from "../db/communitySafety.js";
 import { listPublicCardsForUser } from "../db/feed.js";
 import { followedAuthorIds, followUser, unfollowUser } from "../db/follows.js";
 import { authorOf } from "../db/mapCard.js";
@@ -39,6 +40,10 @@ usersRoute.get(
   async (c) => {
     const { id } = c.req.valid("param");
     const query = c.req.valid("query");
+    const viewerId = getOwnerUserId();
+    if (await usersAreBlocked(viewerId, id)) {
+      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+    }
     const user = await getUserById(id);
     if (!user) {
       return c.json(errorBody("Not found", "NOT_FOUND"), 404);
@@ -49,7 +54,6 @@ usersRoute.get(
       limit: query.limit,
       before: query.before,
     });
-    const viewerId = getOwnerUserId();
     const following =
       id !== viewerId &&
       (cards[0]?.author.following ?? (await followedAuthorIds(viewerId, [id])).has(id));
@@ -81,6 +85,9 @@ usersRoute.put(
     if (result === "self") {
       return c.json(errorBody("You cannot follow yourself", "VALIDATION_ERROR"), 400);
     }
+    if (result === "blocked") {
+      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+    }
     const body: FollowStateResponse = { following: true };
     return c.json(body);
   },
@@ -106,7 +113,52 @@ usersRoute.delete(
     if (result === "self") {
       return c.json(errorBody("You cannot follow yourself", "VALIDATION_ERROR"), 400);
     }
+    if (result === "blocked") {
+      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+    }
     const body: FollowStateResponse = { following: false };
     return c.json(body);
+  },
+);
+
+usersRoute.put(
+  "/:id/block",
+  requireAuth,
+  zValidator("param", paramsSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const result = await blockUser(id);
+    if (result === "self") {
+      return c.json(errorBody("You cannot block yourself", "VALIDATION_ERROR"), 400);
+    }
+    if (result === "not_found") {
+      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+    }
+    return c.json({ blocked: true });
+  },
+);
+
+usersRoute.delete(
+  "/:id/block",
+  requireAuth,
+  zValidator("param", paramsSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const result = await unblockUser(id);
+    if (result === "self") {
+      return c.json(errorBody("You cannot block yourself", "VALIDATION_ERROR"), 400);
+    }
+    if (result === "not_found") {
+      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+    }
+    return c.json({ blocked: false });
   },
 );

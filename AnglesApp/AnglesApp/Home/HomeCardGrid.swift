@@ -12,6 +12,8 @@ struct HomeCardGrid: View, Equatable {
     var onToggleFavorite: (HomeCard, Style) -> Void = { _, _ in }
     var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
+    var onReport: (HomeCard, ReportReason) -> Void = { _, _ in }
+    var onBlock: (HomeCard) -> Void = { _ in }
     var onOpenAuthor: ((HomeCard) -> Void)? = nil
     var onToggleFollow: (HomeCard) -> Void = { _ in }
     /// Fires before the end is visible, so a server-paged grid can append off screen.
@@ -40,6 +42,8 @@ struct HomeCardGrid: View, Equatable {
                     onToggleFavorite: { style in onToggleFavorite(card, style) },
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
                     onRemoveFromBoard: { onRemoveFromBoard(card) },
+                    onReport: { reason in onReport(card, reason) },
+                    onBlock: { onBlock(card) },
                     onOpenAuthor: openAuthorAction(for: card),
                     onToggleFollow: followAction(for: card),
                     offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
@@ -106,6 +110,8 @@ struct TallHomeCardGrid: View, Equatable {
     var onToggleFavorite: (HomeCard, Style) -> Void = { _, _ in }
     var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
+    var onReport: (HomeCard, ReportReason) -> Void = { _, _ in }
+    var onBlock: (HomeCard) -> Void = { _ in }
     var shiningCardID: UUID? = nil
     var onOpenAuthor: ((HomeCard) -> Void)? = nil
     var onOpenModel: ((HomeCard) -> Void)? = nil
@@ -140,6 +146,8 @@ struct TallHomeCardGrid: View, Equatable {
                     onToggleFavorite: { style in onToggleFavorite(card, style) },
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
                     onRemoveFromBoard: { onRemoveFromBoard(card) },
+                    onReport: { reason in onReport(card, reason) },
+                    onBlock: { onBlock(card) },
                     onOpenAuthor: openAuthorAction(for: card),
                     onOpenModel: openModelAction(for: card),
                     onToggleFollow: followAction(for: card),

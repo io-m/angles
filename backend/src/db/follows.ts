@@ -3,8 +3,8 @@ import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
 import type { StoredCardAuthor } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
+import { lockUserPair, notBlockedBetween, usersAreBlocked } from "./communitySafety.js";
 import { follows, users } from "./schema.js";
-import { getUserById } from "./users.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 
@@ -22,7 +22,13 @@ export async function followedAuthorIds(
     const rows = await db
       .select({ followeeId: follows.followeeId })
       .from(follows)
-      .where(and(eq(follows.followerId, viewerId), inArray(follows.followeeId, ids)));
+      .where(
+        and(
+          eq(follows.followerId, viewerId),
+          inArray(follows.followeeId, ids),
+          notBlockedBetween(viewerId, follows.followeeId),
+        ),
+      );
     return new Set(rows.map((row) => row.followeeId));
   } catch (error) {
     if (error instanceof DbError) {
@@ -44,7 +50,7 @@ export async function listFollowing(): Promise<StoredCardAuthor[]> {
       })
       .from(follows)
       .innerJoin(users, eq(users.id, follows.followeeId))
-      .where(eq(follows.followerId, viewerId))
+      .where(and(eq(follows.followerId, viewerId), notBlockedBetween(viewerId, follows.followeeId)))
       .orderBy(desc(follows.createdAt), desc(users.id));
     return rows.map((row) => {
       const author: StoredCardAuthor = { id: row.id, initials: row.initials, following: true };
@@ -62,7 +68,7 @@ export async function listFollowing(): Promise<StoredCardAuthor[]> {
   }
 }
 
-export type FollowWriteResult = "ok" | "not_found" | "self";
+export type FollowWriteResult = "ok" | "not_found" | "self" | "blocked";
 
 export async function followUser(followeeId: string): Promise<FollowWriteResult> {
   const followerId = getOwnerUserId();
@@ -70,12 +76,21 @@ export async function followUser(followeeId: string): Promise<FollowWriteResult>
     return "self";
   }
   try {
-    const user = await getUserById(followeeId);
-    if (!user) {
-      return "not_found";
-    }
-    await getDb().insert(follows).values({ followerId, followeeId }).onConflictDoNothing();
-    return "ok";
+    return await getDb().transaction(async (tx) => {
+      await lockUserPair(tx, followerId, followeeId);
+      const user = await tx.query.users.findFirst({
+        where: eq(users.id, followeeId),
+        columns: { id: true },
+      });
+      if (!user) {
+        return "not_found";
+      }
+      if (await usersAreBlocked(followerId, followeeId, tx)) {
+        return "blocked";
+      }
+      await tx.insert(follows).values({ followerId, followeeId }).onConflictDoNothing();
+      return "ok";
+    });
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
@@ -90,14 +105,23 @@ export async function unfollowUser(followeeId: string): Promise<FollowWriteResul
     return "self";
   }
   try {
-    const user = await getUserById(followeeId);
-    if (!user) {
-      return "not_found";
-    }
-    await getDb()
-      .delete(follows)
-      .where(and(eq(follows.followerId, followerId), eq(follows.followeeId, followeeId)));
-    return "ok";
+    return await getDb().transaction(async (tx) => {
+      await lockUserPair(tx, followerId, followeeId);
+      const user = await tx.query.users.findFirst({
+        where: eq(users.id, followeeId),
+        columns: { id: true },
+      });
+      if (!user) {
+        return "not_found";
+      }
+      if (await usersAreBlocked(followerId, followeeId, tx)) {
+        return "blocked";
+      }
+      await tx
+        .delete(follows)
+        .where(and(eq(follows.followerId, followerId), eq(follows.followeeId, followeeId)));
+      return "ok";
+    });
   } catch (error) {
     if (error instanceof DbError) {
       throw error;

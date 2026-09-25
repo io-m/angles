@@ -7,13 +7,22 @@ struct SettingsView: View {
 
     @EnvironmentObject private var themeStore: ThemeStore
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
 
     var onLogOut: (() -> Void)? = nil
     /// Returns whether the server deleted the account. The sheet stays up until it answers.
     var onDeleteAccount: (() async -> Bool)? = nil
+    var blockedPeople: [BlockedPerson] = []
+    var blocksLoadState: LibraryLoadState = .loading
+    var onLoadBlocks: () async -> Void = {}
+    var onRetryBlocks: () -> Void = {}
+    var onUnblock: (BlockedPerson) -> Void = { _ in }
+    var writeError: String? = nil
+    var onDismissWriteError: () -> Void = {}
 
     @State private var showAppearance = false
     @State private var showSubscription = false
+    @State private var showBlockedPeople = false
     @State private var showDeleteAccount = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
@@ -44,9 +53,57 @@ struct SettingsView: View {
                             .presentationCompactAdaptation(.popover)
                             .modifier(UserAppearance(store: themeStore))
                     }
+
+                    rowDivider
+
+                    cardRow(
+                        symbol: "hand.raised",
+                        title: "Blocked people",
+                        subtitle: "Community safety"
+                    ) {
+                        showBlockedPeople = true
+                    } trailing: {
+                        EmptyView()
+                    }
                 }
                 .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .padding(.bottom, 24)
+
+                if showsLegalSection {
+                    VStack(spacing: 0) {
+                        if showsPrivacyPolicy {
+                            externalRow(
+                                symbol: "lock.shield",
+                                title: "Privacy policy",
+                                destination: AppConfig.privacyPolicyURL
+                            )
+                        }
+
+                        if showsTermsOfService {
+                            if showsPrivacyPolicy {
+                                rowDivider
+                            }
+                            externalRow(
+                                symbol: "doc.text",
+                                title: "Terms of service",
+                                destination: AppConfig.termsOfServiceURL
+                            )
+                        }
+
+                        if showsSupport {
+                            if showsPrivacyPolicy || showsTermsOfService {
+                                rowDivider
+                            }
+                            externalRow(
+                                symbol: "questionmark.bubble",
+                                title: "Support",
+                                destination: AppConfig.supportContactURL
+                            )
+                        }
+                    }
+                    .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .padding(.bottom, 24)
+                }
 
                 VStack(spacing: 0) {
                     cardRow(
@@ -103,6 +160,21 @@ struct SettingsView: View {
                 .presentationBackground(theme.grey)
                 .modifier(UserAppearance(store: themeStore))
         }
+        .sheet(isPresented: $showBlockedPeople) {
+            BlockedPeopleSheet(
+                people: blockedPeople,
+                loadState: blocksLoadState,
+                onRetry: onRetryBlocks,
+                onUnblock: onUnblock,
+                writeError: writeError,
+                onDismissError: onDismissWriteError
+            )
+            .task { await onLoadBlocks() }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.grey)
+            .modifier(UserAppearance(store: themeStore))
+        }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task { await loadPhoto(from: item) }
@@ -130,6 +202,22 @@ struct SettingsView: View {
         return deleteAccountError ?? "Removes your Angles account and cards. Does not cancel Apple."
     }
 
+    private var showsPrivacyPolicy: Bool {
+        AppConfig.privacyPolicyURL != nil || !AppConfig.isSubmissionBuild
+    }
+
+    private var showsTermsOfService: Bool {
+        AppConfig.termsOfServiceURL != nil || !AppConfig.isSubmissionBuild
+    }
+
+    private var showsSupport: Bool {
+        AppConfig.supportContactURL != nil || !AppConfig.isSubmissionBuild
+    }
+
+    private var showsLegalSection: Bool {
+        showsPrivacyPolicy || showsTermsOfService || showsSupport
+    }
+
     private func deleteAccount() async {
         guard !isDeletingAccount, let onDeleteAccount else {
             return
@@ -146,6 +234,8 @@ struct SettingsView: View {
     private var headerBlock: some View {
         VStack(spacing: 12) {
             if let identityStore {
+                let isUploadingPhoto = identityStore.isUploadingPhoto
+                let photoSync = identityStore.photoSync
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     ProfileAvatar(
                         identityStore: identityStore,
@@ -154,7 +244,7 @@ struct SettingsView: View {
                         symbol: theme.paper
                     )
                     .overlay {
-                        if identityStore.isUploadingPhoto {
+                        if isUploadingPhoto {
                             Circle()
                                 .fill(theme.ink.opacity(0.45))
                             ProgressView()
@@ -162,7 +252,7 @@ struct SettingsView: View {
                         }
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if case .saved = identityStore.photoSync {
+                        if case .saved = photoSync {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 22, weight: .semibold))
                                 .foregroundStyle(theme.paper, theme.ink)
@@ -177,7 +267,7 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .disabled(identityStore.isUploadingPhoto)
+                .disabled(isUploadingPhoto)
                 .accessibilityLabel("Profile photo")
 
                 TextField(
@@ -268,6 +358,20 @@ struct SettingsView: View {
             .fill(theme.line)
             .frame(height: 1)
             .padding(.leading, 70)
+    }
+
+    private func externalRow(symbol: String, title: String, destination: URL?) -> some View {
+        cardRow(
+            symbol: symbol,
+            title: title,
+            subtitle: destination == nil ? "Unavailable in this build" : "Opens outside Angles"
+        ) {
+            guard let destination else { return }
+            openURL(destination)
+        } trailing: {
+            EmptyView()
+        }
+        .disabled(destination == nil)
     }
 
     private func cardRow<Trailing: View>(

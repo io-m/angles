@@ -1,6 +1,6 @@
 # Angles — agent notes
 
-Paid-only reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then returns 1–3 sentences in all 4 styles. The server stores a card private unless the save says otherwise; compose Save defaults to **Post** (public) with a Save privately toggle, and the onboarding taste always saves privately. Publishing a card puts it on Home for everyone, including the author. Onboarding: Continue with Apple, then one free taste if `tasteCompletedAt` is empty, then a hard paywall.
+Paid-only reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then returns 1–3 sentences in all 4 styles. The server stores a card private unless the save says otherwise; compose Save defaults to **Post** (public) with a Save privately toggle, and the onboarding taste always saves privately. Publishing a card puts it on Home for everyone, including the author. Onboarding: Continue with Apple, then one free taste while both `tasteConsumedAt` and `tasteCompletedAt` are empty, then a hard paywall.
 
 ## Stack (this repo)
 
@@ -22,17 +22,26 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/routes/cards.ts` — `POST/GET/PATCH/DELETE /cards`; `POST` only stores a signed cook
 - `backend/src/routes/feed.ts` — flat `GET /feed` (paged; multi-category/mood facets), viewer heart saves
 - `backend/src/routes/users.ts` — `GET /users/:id/cards` (an author's public posts), `PUT/DELETE /users/:id/follow`
+- `backend/src/routes/appStoreNotifications.ts` — verified, idempotent App Store Server Notifications V2 receiver
 - `backend/src/auth.ts` — Better Auth (Sign in with Apple, bearer plugin)
 - `backend/src/lib/authStub.ts` — `requireAuth` + `getOwnerUserId()`
-- `backend/src/routes/profile.ts` — `PATCH /profile` (name → initials), `GET /profile/session`, `DELETE /profile`, `GET /profile/following`, avatar upload/delete, public `GET /avatars/:userId`
+- `backend/src/routes/profile.ts` — profile/session/delete/following/blocked/avatar plus subscription sync/diagnostics and usage summary
 - `backend/src/routes/health.ts` — `GET /health` (includes a DB probe)
 - `backend/src/db/schema.ts` — Drizzle tables
 - `backend/src/db/cards.ts` — SQL seam for the library (own cards plus hearted cards that are still public)
 - `backend/src/db/feed.ts`, `backend/src/db/follows.ts` — Home, author lists, hearts on others' cards, follow graph
+- `backend/src/db/communitySafety.ts` — reports, bidirectional block filtering, unblock list, automatic private threshold
+- `backend/src/db/subscriptions.ts` — account-bound StoreKit entitlement and notification state
+- `backend/src/db/metering.ts` — credit periods, operation leases/idempotency, abuse counters, provider-attempt ledger
+- `backend/src/db/productionMigrations.ts` — packaged startup migrations
 - `backend/src/db/cursor.ts`, `backend/src/lib/cursor.ts` — the shared `createdAt|id` page cursor (row comparison, index-seekable)
 - `backend/src/lib/cookSignature.ts` — HMAC over a cook (`COOK_SIGNING_KEY`); `/reframe` signs, `POST /cards` verifies
 - `backend/src/lib/decision.ts` — the structured decision call: continue vs ready, cleaned thought, styles, metadata
 - `backend/src/lib/llmClient.ts` — **only** file to change when picking an LLM provider (`generateReframe`, `generateJson`)
+- `backend/src/lib/llmUsage.ts`, `backend/src/lib/meteringPolicy.ts` — provider-token COGS and fixed 600-credit user tariff
+- `backend/src/lib/appStoreVerifier.ts`, `backend/src/lib/subscriptionGate.ts` — Apple JWS verification and paid/taste gate
+- `backend/src/lib/publicModeration.ts`, `backend/src/lib/communitySafetyTypes.ts` — fail-closed publishing classifier and report contract
+- `backend/src/lib/productionConfig.ts` — production environment fail-fast validation
 - `backend/src/lib/prompts.ts` — `DECISION_PROMPT`, `STYLE_BATCH_PROMPT`, `SYSTEM_PROMPTS`, length budgets
 - `backend/src/types/index.ts` — `Style`, request/response types
 - `AnglesApp/project.yml` — XcodeGen source of truth; run `xcodegen generate` after structural file changes
@@ -47,9 +56,13 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Home/FollowingSheet.swift` — who the viewer follows; unfollow, open, its own write banner
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — one card per row (`LazyVStack`)
 - `AnglesApp/AnglesApp/Home/ReframeCardView.swift` — stacked thought + selected answer everywhere except equal-height flipping Favorite angles; per-style chips/hearts and shared tap/long-press actions; globe on the author's public cards
+- `AnglesApp/AnglesApp/Home/BlockedPeopleSheet.swift` — Settings block list and unblock actions
 - `AnglesApp/AnglesApp/Home/AvatarImage.swift` — ImageIO downsampling and the in-memory author photo cache
 - `AnglesApp/AnglesApp/Networking/` — `APIClient`, `ReframeService`, `CardsService`
 - `AnglesApp/AnglesApp/Auth/` — login, Keychain session, Sign in with Apple
+- `AnglesApp/AnglesApp/StoreKit/StoreKitManager.swift` — purchases, restore, account-token transaction sync, entitlement routing
+- `AnglesApp/AnglesApp/Settings/SubscriptionView.swift` — plan/manage/restore plus server credit balance and reset
+- `AnglesApp/AnglesApp/Config/AppConfig.swift` — optional Release API, legal, and support destinations
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
 - `BUILD.md` — **screen/feature order**. Update it in the same change as every new screen or feature.
 
@@ -66,7 +79,7 @@ Every `POST /reframe` runs the decision call first — there is no local clarify
 
 `meta` is `{ category, proposedCategory?, proposedLabel?, tags, intensity, timeframe, emotions, safety, inputLanguage, skippedStyles, matching }`. Categories are a closed set; anything else becomes `other` plus a proposal. Never reframe a thought flagged for safety. `followUps` caps at 6 and the decision is forced to land from the third.
 
-Save writes that cook to `POST /cards` with both signatures echoed back unchanged. The cook `signature` covers `thought`, `thoughtOriginal`, and `meta` minus `matching`; each result signature covers the thought it answers plus its style and text. A recook signs its one result against the request `text`, which must be the cook's cleaned `thought`. `POST /cards` rejects any missing or mismatched signature, and any `meta.safety` other than `none`, with 400 `VALIDATION_ERROR`. Hearts are per style on `card_reframes` (or `saved_angles` for someone else's card); `isPublic` (default false) sits on the card. A hearted card leaves the viewer's library when its author makes it private. There are no pins. `POST /reframe` never writes.
+Save writes that cook to `POST /cards` with both signatures echoed back unchanged. The cook `signature` covers `thought`, `thoughtOriginal`, and `meta` minus `matching`; each result signature covers the thought it answers plus its style and text. A recook signs its one result against the request `text`, which must be the cook's cleaned `thought`. `POST /cards` rejects any missing or mismatched signature, and any `meta.safety` other than `none`, with 400 `VALIDATION_ERROR`. Hearts are per style on `card_reframes` (or `saved_angles` for someone else's card); `isPublic` (default false) sits on the card. A hearted card leaves the viewer's library when its author makes it private. There are no pins. `POST /reframe` never stores cards or thought text; it writes only text-free metering/idempotency state and provider token/cost records.
 
 ## Type sync
 

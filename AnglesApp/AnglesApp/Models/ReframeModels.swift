@@ -233,6 +233,50 @@ struct FollowUpAnswer: Codable, Equatable, Sendable {
     let answer: String
 }
 
+enum UsageWarning: String, Codable, Equatable, Sendable {
+    case normal
+    case low
+    case critical
+    case empty
+}
+
+struct UsageSummary: Codable, Equatable, Sendable {
+    let creditsGranted: Int
+    let creditsRemaining: Int
+    let periodStart: String?
+    let periodEnd: String?
+    let resetsAt: String?
+    let warning: UsageWarning
+    /// Raw IDs stay server-authoritative. The current UI only recognizes `LlmModel.allCases`.
+    let allowedModels: [String]
+    let creditCost: [String: Int]
+
+    var resetDate: Date? {
+        resetsAt.flatMap(ISO8601Dates.date(from:))
+    }
+}
+
+struct ReframeUsage: Codable, Equatable, Sendable {
+    let creditsUsed: Int
+    let remaining: Int
+    let granted: Int
+    let resetsAt: String?
+    let warning: UsageWarning
+    /// Raw IDs stay server-authoritative. Unknown future models are safely ignored by this build.
+    let allowedModels: [String]
+    /// Cost of the model selected for this request.
+    let creditCost: Int
+}
+
+struct APIErrorPayload: Decodable, Equatable, Sendable {
+    let error: String
+    let code: String
+    let creditsRemaining: Int?
+    let creditsGranted: Int?
+    let resetsAt: String?
+    let allowedModels: [String]?
+}
+
 struct ReframeRequest: Codable, Equatable, Sendable {
     let text: String
     let followUps: [FollowUpAnswer]
@@ -297,14 +341,15 @@ struct StoredReframeResult: Decodable, Equatable, Sendable {
 
 enum ReframeResponse: Decodable, Equatable, Sendable {
     /// Not ready to cook: the composer stays up and the user can answer or say more.
-    case continueTurn(message: String, options: [String], safety: SafetyFlag)
+    case continueTurn(message: String, options: [String], safety: SafetyFlag, usage: ReframeUsage)
     /// `signature` covers the thought and meta; each result carries its own.
     case ready(
         thought: String,
         thoughtOriginal: String?,
         results: [SignedReframeResult],
         meta: ReframeMeta,
-        signature: String
+        signature: String,
+        usage: ReframeUsage
     )
 
     private enum CodingKeys: String, CodingKey {
@@ -317,6 +362,7 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
         case results
         case meta
         case signature
+        case usage
     }
 
     init(from decoder: Decoder) throws {
@@ -327,7 +373,8 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
             self = .continueTurn(
                 message: try container.decode(String.self, forKey: .message),
                 options: try container.decodeIfPresent([String].self, forKey: .options) ?? [],
-                safety: try container.decodeIfPresent(SafetyFlag.self, forKey: .safety) ?? .none
+                safety: try container.decodeIfPresent(SafetyFlag.self, forKey: .safety) ?? .none,
+                usage: try container.decode(ReframeUsage.self, forKey: .usage)
             )
         case "ready":
             self = .ready(
@@ -335,7 +382,8 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
                 thoughtOriginal: try container.decodeIfPresent(String.self, forKey: .thoughtOriginal),
                 results: try container.decode([SignedReframeResult].self, forKey: .results),
                 meta: try container.decode(ReframeMeta.self, forKey: .meta),
-                signature: try container.decode(String.self, forKey: .signature)
+                signature: try container.decode(String.self, forKey: .signature),
+                usage: try container.decode(ReframeUsage.self, forKey: .usage)
             )
         default:
             throw DecodingError.dataCorruptedError(
@@ -393,6 +441,36 @@ struct FollowStateResponse: Decodable, Equatable, Sendable {
     let following: Bool
 }
 
+struct BlockStateResponse: Decodable, Equatable, Sendable {
+    let blocked: Bool
+}
+
+struct ReportStateResponse: Decodable, Equatable, Sendable {
+    let reported: Bool
+}
+
+enum ReportReason: String, Codable, CaseIterable, Sendable {
+    case spam
+    case harassment
+    case hate
+    case sexual
+    case illegal
+    case personalData = "personal_data"
+    case other
+
+    var displayName: String {
+        switch self {
+        case .spam: return "Spam"
+        case .harassment: return "Harassment or bullying"
+        case .hate: return "Hate speech"
+        case .sexual: return "Sexual content"
+        case .illegal: return "Illegal activity"
+        case .personalData: return "Personal information"
+        case .other: return "Something else"
+        }
+    }
+}
+
 struct FollowingListResponse: Decodable, Equatable, Sendable {
     let users: [StoredCardAuthor]
 }
@@ -402,10 +480,48 @@ struct SessionBody: Decodable, Equatable, Sendable {
     let initials: String
     let name: String
     let tasteCompletedAt: String?
+    let tasteConsumedAt: String?
     let avatarUrl: String?
+
+    var hasUsedTaste: Bool {
+        [tasteConsumedAt, tasteCompletedAt].contains { value in
+            guard let value else { return false }
+            return !value.isEmpty
+        }
+    }
+}
+
+struct SubscriptionBody: Decodable, Equatable, Sendable {
+    let isEntitled: Bool
+    let status: String?
+    let productId: String?
+    let environment: String?
+    let paidThrough: String?
+    let revokedAt: String?
+    let quotaAnchor: String?
+    let updatedAt: String?
 }
 
 struct FollowedPerson: Identifiable, Equatable, Hashable, Sendable {
+    let id: UUID
+    let initials: String
+    let avatarPath: String?
+
+    init(id: UUID, initials: String, avatarPath: String?) {
+        self.id = id
+        self.initials = initials
+        self.avatarPath = avatarPath
+    }
+
+    init?(author: StoredCardAuthor) {
+        guard let id = UUID(uuidString: author.id) else {
+            return nil
+        }
+        self.init(id: id, initials: author.initials, avatarPath: author.avatarUrl)
+    }
+}
+
+struct BlockedPerson: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID
     let initials: String
     let avatarPath: String?

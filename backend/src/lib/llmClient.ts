@@ -4,6 +4,17 @@
  */
 
 import { loadLocalEnvFile } from "./loadEnv.js";
+import {
+  LLM_RATE_VERSION,
+  companyCostNanoUsd,
+  estimateUsage,
+  parseDeepSeekUsage,
+  parseGeminiUsage,
+  parseMistralUsage,
+  type LlmCallKind,
+  type LlmUsageEvent,
+  type NormalizedLlmUsage,
+} from "./llmUsage.js";
 
 loadLocalEnvFile({ skipWhenVitest: true });
 
@@ -48,6 +59,10 @@ const CHAT_COMPLETIONS_URL: Record<Exclude<LlmProvider, "gemini">, string> = {
 export type LlmCallOptions = {
   timeoutMs?: number;
   abortSignal?: AbortSignal;
+  callKind?: LlmCallKind;
+  attempt?: number;
+  beforeProviderCall?: () => Promise<void>;
+  usageSink?: (event: LlmUsageEvent) => void;
 };
 
 export type GenerateReframeInput = {
@@ -64,6 +79,16 @@ type ProviderCallInput = GenerateReframeInput & {
   maxOutputTokens: number;
   json: boolean;
 };
+
+type ProviderCallResult = {
+  content: string;
+  returnedModel: string;
+  providerRequestId?: string;
+  usage: NormalizedLlmUsage | null;
+};
+
+const MISSING_USAGE_LIMIT = 3;
+const consecutiveMissingUsage = new Map<LlmModelId, number>();
 
 let inFlight = 0;
 const waiters: Array<() => void> = [];
@@ -117,6 +142,10 @@ export async function generateJson(input: GenerateJsonInput): Promise<string> {
     model: input.model,
     timeoutMs: input.timeoutMs,
     abortSignal: input.abortSignal,
+    callKind: input.callKind,
+    attempt: input.attempt,
+    beforeProviderCall: input.beforeProviderCall,
+    usageSink: input.usageSink,
     maxOutputTokens: input.maxOutputTokens ?? DECISION_MAX_OUTPUT_TOKENS,
     json: true,
   });
@@ -136,13 +165,51 @@ async function runWithTimeout(input: ProviderCallInput): Promise<string> {
         ? timeoutController.signal
         : AbortSignal.any([timeoutController.signal, clientSignal]);
 
+    const model = resolveEffectiveModel(input.model);
+    const provider = LLM_MODELS[model].provider;
+    let providerAttempted = false;
     try {
       if (clientSignal?.aborted) {
         throw new LlmError("LLM request aborted");
       }
-      return await callProvider(input, signal);
+      const apiKey = apiKeyFor(provider);
+      await input.beforeProviderCall?.();
+      providerAttempted = true;
+      const result = await callProvider(input, signal, model, provider, apiKey);
+      const usage = result.usage ?? estimateUsage(
+        input.text.length + input.systemPrompt.length,
+        input.maxOutputTokens,
+      );
+      const usageSource = result.usage ? "reported" : "estimated";
+      input.usageSink?.(
+        usageEvent(input, model, result.returnedModel, "succeeded", usageSource, usage, result.providerRequestId),
+      );
+
+      if (result.usage) {
+        consecutiveMissingUsage.set(model, 0);
+      } else {
+        const missing = (consecutiveMissingUsage.get(model) ?? 0) + 1;
+        consecutiveMissingUsage.set(model, missing);
+        console.error("usage_missing", { model });
+        if (missing >= MISSING_USAGE_LIMIT) {
+          throw new LlmError("LLM model unavailable");
+        }
+      }
+      return result.content;
     } catch (error) {
+      if (providerAttempted && !(error instanceof LlmError && error.message === "LLM model unavailable")) {
+        const usage = estimateUsage(
+          input.text.length + input.systemPrompt.length,
+          input.maxOutputTokens,
+        );
+        input.usageSink?.(
+          usageEvent(input, model, model, "failed", "estimated", usage),
+        );
+      }
       if (error instanceof LlmError) {
+        throw error;
+      }
+      if (error instanceof Error && error.name === "MeteringError") {
         throw error;
       }
       if (clientSignal?.aborted) {
@@ -158,11 +225,34 @@ async function runWithTimeout(input: ProviderCallInput): Promise<string> {
   });
 }
 
+function usageEvent(
+  input: ProviderCallInput,
+  requestedModel: LlmModelId,
+  returnedModel: string,
+  status: "succeeded" | "failed",
+  usageSource: "reported" | "estimated",
+  usage: NormalizedLlmUsage,
+  providerRequestId?: string,
+): LlmUsageEvent {
+  return {
+    callKind: input.callKind ?? "reframe",
+    attempt: input.attempt ?? 1,
+    requestedModel,
+    returnedModel,
+    ...(providerRequestId ? { providerRequestId } : {}),
+    status,
+    ...usage,
+    usageSource,
+    rateVersion: LLM_RATE_VERSION,
+    companyCostNanoUsd: companyCostNanoUsd(requestedModel, usage),
+  };
+}
+
 function isLlmModelId(value: string): value is LlmModelId {
   return (LLM_MODEL_IDS as readonly string[]).includes(value);
 }
 
-function resolveModel(requested?: LlmModelId): LlmModelId {
+export function resolveEffectiveModel(requested?: LlmModelId): LlmModelId {
   if (requested) {
     return requested;
   }
@@ -186,7 +276,10 @@ function apiKeyFor(provider: LlmProvider): string {
 async function callProvider(
   input: ProviderCallInput,
   signal: AbortSignal,
-): Promise<string> {
+  model: LlmModelId,
+  provider: LlmProvider,
+  apiKey: string,
+): Promise<ProviderCallResult> {
   if (signal.aborted) {
     throw new LlmError("LLM request aborted");
   }
@@ -195,10 +288,6 @@ async function callProvider(
   if (trimmed.length === 0) {
     throw new LlmError("Cannot reframe empty text");
   }
-
-  const model = resolveModel(input.model);
-  const provider = LLM_MODELS[model].provider;
-  const apiKey = apiKeyFor(provider);
 
   if (provider === "gemini") {
     return requestGemini({
@@ -236,6 +325,9 @@ type ChatMessageContent =
   | undefined;
 
 type ChatCompletionResponse = {
+  id?: string;
+  model?: string;
+  usage?: unknown;
   choices?: Array<{
     message?: {
       content?: ChatMessageContent;
@@ -249,6 +341,9 @@ type GeminiPart = {
 };
 
 type GeminiGenerateResponse = {
+  responseId?: string;
+  modelVersion?: string;
+  usageMetadata?: unknown;
   candidates?: Array<{
     content?: {
       parts?: GeminiPart[];
@@ -265,7 +360,7 @@ async function requestChatCompletions(options: {
   signal: AbortSignal;
   maxOutputTokens: number;
   extraBody: Record<string, unknown>;
-}): Promise<string> {
+}): Promise<ProviderCallResult> {
   const response = await fetch(options.url, {
     method: "POST",
     headers: {
@@ -293,7 +388,17 @@ async function requestChatCompletions(options: {
   if (content.length === 0) {
     throw new LlmError("LLM returned an empty reframe");
   }
-  return content;
+  const requestedModel = options.model as LlmModelId;
+  const provider = LLM_MODELS[requestedModel].provider;
+  return {
+    content,
+    returnedModel: payload.model ?? options.model,
+    ...(payload.id ? { providerRequestId: payload.id } : {}),
+    usage:
+      provider === "mistral"
+        ? parseMistralUsage(payload.usage)
+        : parseDeepSeekUsage(payload.usage),
+  };
 }
 
 async function requestGemini(options: {
@@ -304,7 +409,7 @@ async function requestGemini(options: {
   signal: AbortSignal;
   maxOutputTokens: number;
   json: boolean;
-}): Promise<string> {
+}): Promise<ProviderCallResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.model}:generateContent`;
   const response = await fetch(url, {
     method: "POST",
@@ -337,7 +442,12 @@ async function requestGemini(options: {
   if (content.length === 0) {
     throw new LlmError("LLM returned an empty reframe");
   }
-  return content;
+  return {
+    content,
+    returnedModel: payload.modelVersion ?? options.model,
+    ...(payload.responseId ? { providerRequestId: payload.responseId } : {}),
+    usage: parseGeminiUsage(payload.usageMetadata),
+  };
 }
 
 function extractChatContent(content: ChatMessageContent): string {
@@ -365,5 +475,11 @@ function extractGeminiText(parts: GeminiPart[] | undefined): string {
     .map((part) => part.text ?? "")
     .join("")
     .trim();
+}
+
+export function resetMissingUsageCircuitForTests(): void {
+  if (process.env.VITEST === "true") {
+    consecutiveMissingUsage.clear();
+  }
 }
 

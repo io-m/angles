@@ -1,105 +1,70 @@
-# Onboarding & Signup Architecture
+# Onboarding and signup flow
 
-How Angles handles first-run onboarding, subscription gating, and authentication, adapted from the pattern used in Bite & Stride.
+Current shipped flow for authentication, the onboarding taste, subscription gating, and credits.
 
----
+## Principles
 
-## 1. Core Principles
+- **Sign in first.** Continue with Apple is the only account entry point. There is no email/password or anonymous account mode.
+- **One taste per Angles account.** The backend stamps `users.tasteConsumedAt` when the first taste reaches a ready result; reinstalling the app or changing devices does not create another taste for the same account.
+- **The taste is real and private.** It runs the normal server reframe flow. Saving the active result succeeds as a private card and separately stamps `tasteCompletedAt` in the same server transaction.
+- **The paywall follows the saved taste.** The taste cannot be dismissed or recooked. A successful private save transitions to the annual/monthly paywall.
+- **Entitlement and credits are server-owned.** StoreKit supplies signed purchase data; the backend verifies and binds the subscription to the signed-in Angles account. Paid accounts receive 600 credits per monthly membership period.
 
-1. **Zero Profiling Survey**: Unlike health/fitness apps that require personal profiling (e.g. weight, height, activity level), reframing thoughts needs no demographic questions. The user enters directly into the core experience.
-2. **Immediate "Taste" (Beat 1 & 2)**: The user experiences the product's value (all 4 reframed angles) on their own thought or a curated starter prompt within 30 seconds of install.
-3. **Lazy Account Registration at Paywall (Beat 3)**: Authentication does not happen on launch. It is triggered only when the user decides to subscribe or save their reframe into their permanent library.
-4. **No Email + Password in Production**: 100% native **Sign in with Apple** on iOS. No passwords, no password reset emails, no email verification friction.
-5. **Apple App Store Review Immunity**: Because the app is not locked behind a login gate at launch, Apple reviewers never require demo credentials.
-
----
-
-## 2. The Three-Beat Onboarding Flow
+## Gate order
 
 ```mermaid
 flowchart TD
-    Launch["1. App Launch (First Install)\nAnonymous / Local Device Session"] --> Beat1
-    
-    subgraph Beat1 ["Beat 1 & 2: Native Compose / Chat Taste"]
-        Hero["'Break the spiral.'\nSubtitle: Cognitive distance when looping\n3 Tactile Starter Prompt Chips"]
-        Composer["Real Glowing Composer Dock\n'Tell me what's on your mind...'"]
-        Cook["Real AI Refine: POST /reframe\nCycling progress lines"]
-        Card["Interactive Multi-Style Ready Card\n(Stoic, Optimistic, Humorous, Tough Love, etc.)"]
-    end
-
-    Beat1 -->|"Tap chip or type & send"| Cook
-    Cook --> Card
-    Card -->|"Tap 'Save to Library' or dismiss"| Beat3
-
-    subgraph Beat3 ["Beat 3: Paywall & Account Upgrade"]
-        PaywallScreen["Paywall: Unlock Angles\n$4.99/mo or $39.99/yr"]
-        AppleAuth["Tap 'Subscribe' → Native Sign in with Apple\n(Face ID / Touch ID)"]
-        ClaimHandoff["Guest Claim: Taste card transferred to permanent account"]
-        StoreKit["StoreKit 2 Purchase Completion"]
-        EnterApp["Enter Full App (Home / Profile / Unlimited Compose)"]
-    end
-
-    PaywallScreen --> AppleAuth
-    AppleAuth --> ClaimHandoff
-    ClaimHandoff --> StoreKit
-    StoreKit --> EnterApp
+    Launch[Launch] --> Restore[Restore Keychain session]
+    Restore -->|No session| Login[Continue with Apple]
+    Login --> Session[Load server profile and Apple entitlement]
+    Restore -->|Session found| Session
+    Session -->|Active entitlement| Home[Home and Profile]
+    Session -->|No entitlement and taste unused| Taste[One private onboarding taste]
+    Session -->|No entitlement and taste consumed or saved| Paywall[Membership paywall]
+    Taste -->|Successful private save| Mark[Server stamps tasteCompletedAt]
+    Mark --> Paywall
+    Paywall -->|Verified purchase or restore| Sync[Sync signed transaction to server]
+    Sync --> Home
 ```
 
-### Beat 1: The Hook & Chat Interface
-- **Look & Feel**: 100% native Compose sheet matching the real paying app (charcoal frosted glass, glowing composer bar).
-- **Header**:
-  - Sparkle emblem with accent tint.
-  - Title: *"Break the spiral."*
-  - Subtitle: *"When your mind gets stuck looping on a thought, Angles reframes it from unexpected perspectives so you can unhook and move forward."*
-- **Action Elements**:
-  - Three tactile starter prompt chips for instant zero-typing testing:
-    1. *"I am constantly falling behind."*
-    2. *"I can't stop overthinking that conversation."*
-    3. *"What if all this effort leads nowhere?"*
-  - Glowing composer bar docked at the bottom with speech-bubble input and send button.
+The app waits for both session restoration and StoreKit state before publishing a destination, so login, taste, paywall, and Home do not flash through each other.
 
-### Beat 2: The Taste (Instant Core Loop)
-- Tapping a chip or submitting text immediately invokes `POST /reframe`.
-- Seamlessly uses the native `ComposeSheetView` chat flow: user bubble appears, cycling progress lines animate ("Finding the sting...", "Almost there..."), arriving at the ready card.
-- User can tap between style chips, inspect the reframes, and experience the core value proposition without paying first.
+## First account
 
-### Beat 3: Paywall + Account Upgrade
-- When the user taps **Save to private library**, attempts a second cook, or dismisses the ready card, the app marks the taste complete and presents the Paywall (Row 7).
-- When the user taps **Subscribe**, the app runs the **Permanent Account Upgrade**:
-  1. Prompts native **Sign in with Apple** (Face ID / Touch ID).
-  2. The guest/anonymous device ID claims the taste card so it is preserved in the user's new Postgres account.
-  3. Executes the StoreKit 2 subscription purchase.
-  4. Transitions the user into the unlocked main app (`Home` / `Profile`).
+1. Launch shows **Continue with Apple**.
+2. The app sends the Apple identity token to Better Auth, stores the bearer token in Keychain, and loads `GET /profile/session`.
+3. StoreKit checks live entitlements for that account.
+4. If the account is not entitled and both taste timestamps are empty, the app opens the normal compose experience as the onboarding taste.
+5. The taste may include decision follow-ups. Only Mistral is available, and server abuse limits bound the number of taste turns.
+6. The ready card's Save is forced private. `POST /cards` stores it for the signed-in user and stamps `tasteCompletedAt`.
+7. The app presents the paywall. Annual is `$39.99/year`; monthly is `$4.99/month`; there is no free trial.
+8. A verified purchase is created with the Angles account UUID as `appAccountToken`, synced to the backend, and then opens Home.
 
----
+If the app is killed after the server returned a ready taste but before the card saves, `tasteConsumedAt` still routes the next launch to the paywall. The already-visible in-memory ready card remains saveable until that app session ends.
 
-## 3. Apple App Review & Testing Strategy
+## Returning accounts
 
-### Why Apple Rejects Auth-First Apps (Guideline 2.1)
-Apple Guideline 2.1 (*App Completeness*) requires developers to provide working demo credentials in App Store Connect whenever an app requires sign-in. Reviewers:
-- Refuse to create their own accounts.
-- Cannot use third-party OAuth (e.g. Google or Facebook).
-- Frequently reject apps that only have a mandatory Sign in with Apple screen on launch because they cannot bypass it.
+- Active Apple entitlement: sync/refresh and enter Home.
+- Taste completed but no active entitlement: show the paywall.
+- Taste incomplete and no active entitlement: show the taste.
+- Restore purchases checks Apple, verifies the signed transaction, and binds it to the current Angles account. A transaction already owned by another Angles account is rejected.
+- Expired membership stays at Renew/Switch. Cancellation leaves access active until Apple's paid-through date.
+- Logging out clears the local session and returns to Continue with Apple; it does not cancel the Apple subscription.
+- Deleting the account removes the Angles account and its server data; it does not cancel the Apple subscription.
 
-### Why the Zero-Auth Taste Model Passes Smoothly
-1. **App Store Connect Configuration**:
-   - Check **Sign-in required: NO**.
-   - In *Notes for Reviewer*, enter:
-     > *"Angles offers a free onboarding taste and in-app purchase without requiring an account. Apple reviewers can test the full core experience and StoreKit subscriptions using standard Apple sandbox accounts."*
-2. **Guideline 5.1.1(v) Compliance**:
-   - Guideline 5.1.1(v) states: *"If your app doesn’t include significant account-based features, let people use it without a login."*
-   - Guideline 3.1.2 states: *"Apps cannot require user registration prior to allowing access to app content and features."*
-   - By letting users experience the taste before subscribing, Angles complies with both rules.
-3. **Guideline 4.8 Compliance**:
-   - Guideline 4.8 requires Sign in with Apple only if other third-party social logins (Google, Facebook) are used.
-   - Production Angles uses Sign in with Apple as the sole auth provider. No email/password system is required.
+## Paid usage
 
----
+Both monthly and annual subscriptions grant **600 credits for each monthly membership period**:
 
-## 4. Implementation Stages
+- Mistral ready result: 1 credit
+- DeepSeek ready result: 2 credits
+- Gemini ready result: 6 credits
+- Continue, safety response, or failed operation: 0 user credits
 
-| Stage | BUILD.md Row | Scope |
-| --- | --- | --- |
-| **1. Onboarding Taste** | **Row 6** (Current) | Native `ComposeSheetView` welcome hero ("Break the spiral" + starter prompt chips), auto-launch on first install, 1 free taste tracked in `UserDefaults`. |
-| **2. Paywall** | **Row 7** | StoreKit 2 sheet, product catalog ($4.99/mo, $39.99/yr), restore purchases, replace Settings subscription stub. |
-| **3. Auth & Guest Claim** | **Row 8** | Better Auth + Sign in with Apple on backend, guest claim transfer (taste card -> permanent account), replace `authStub.ts` DEV user. |
+The backend reserves the selected model's tariff before provider work and charges only a ready result. The app keeps all three models visible, disables unavailable choices, and moves an unaffordable selection to the cheapest allowed model. Credits do not roll over and there are no packs or overages.
+
+## App Review
+
+The core experience requires Sign in with Apple because the taste limit, private card ownership, subscription entitlement, credits, reporting/blocking, and account deletion are account-scoped server features. This is not an anonymous trial.
+
+Do not supply shared demo credentials and do not tell reviewers that sign-in is optional. The reviewer should use **Continue with Apple** and an Apple sandbox purchase. The exact path is in `docs/app-review-notes.md`.

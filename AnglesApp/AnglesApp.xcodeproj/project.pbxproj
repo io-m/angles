@@ -50,10 +50,12 @@
 		BFB32DC8E79F7A90F9203F19 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */; };
 		C20D7F03983C11800E9C8E9A /* AuthorProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */; };
 		C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564F37666F47FDFD54D03D2D /* HomeView.swift */; };
+		D84491053B0BC68DBF6F314F /* BlockedPeopleSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7366F06DED44B5C9EFBFDF /* BlockedPeopleSheet.swift */; };
 		DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */; };
 		E2DC973B158B0229CB1C3AD1 /* StyleTabPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA854E5DFB79BE265F1D553D /* StyleTabPager.swift */; };
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
 		E893FFE90BB36CD6A2D17F5C /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */; };
+		EE449FD94B007E40F14F28AF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 74967E0B0593CCC6912B35AE /* PrivacyInfo.xcprivacy */; };
 		F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551EA9251B494B0E82C36D47 /* ColorTokens.swift */; };
 		FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0F4006AE6DACF0D19171814 /* ProfileService.swift */; };
 		FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */; };
@@ -71,7 +73,6 @@
 
 /* Begin PBXFileReference section */
 		01BEA95023B9310D87B3474C /* AppGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGate.swift; sourceTree = "<group>"; };
-		03485114E1C729FE4BB7383D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderChrome.swift; sourceTree = "<group>"; };
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
 		1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorProfileView.swift; sourceTree = "<group>"; };
@@ -85,6 +86,7 @@
 		4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthCredentials.swift; sourceTree = "<group>"; };
 		4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModalScreen.swift; sourceTree = "<group>"; };
 		4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowingSheet.swift; sourceTree = "<group>"; };
+		4C7366F06DED44B5C9EFBFDF /* BlockedPeopleSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedPeopleSheet.swift; sourceTree = "<group>"; };
 		4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
 		54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
@@ -93,6 +95,7 @@
 		62650FD62250B7B2A3695C5D /* AnglesAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AnglesAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		657231FF50708210A4AA9FDD /* UserAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAppearance.swift; sourceTree = "<group>"; };
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
+		74967E0B0593CCC6912B35AE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		7498958071766D66B285676C /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
 		7B056E3708A9AE432904A684 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCardGrid.swift; sourceTree = "<group>"; };
@@ -259,6 +262,7 @@
 			children = (
 				1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */,
 				95069BD81A4DA98625DFD6FE /* AvatarImage.swift */,
+				4C7366F06DED44B5C9EFBFDF /* BlockedPeopleSheet.swift */,
 				338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */,
 				6A473004998C2F650FCA971D /* DrawerStubView.swift */,
 				4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */,
@@ -284,7 +288,7 @@
 				277F500C2565CC7DF5621C5A /* Angles.icon */,
 				B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */,
 				B13ED3B345E39F024359E6C0 /* Assets.xcassets */,
-				03485114E1C729FE4BB7383D /* Info.plist */,
+				74967E0B0593CCC6912B35AE /* PrivacyInfo.xcprivacy */,
 				55885B68E6C816ED0A1419B9 /* Auth */,
 				012C5054BE598FCD6B7B32D6 /* Config */,
 				D295652A17D76C4EDC80DF36 /* Home */,
@@ -398,6 +402,7 @@
 			files = (
 				2EB391598577F25425C75DFF /* Angles.icon in Resources */,
 				A72468A7C749E204738C1D2C /* Assets.xcassets in Resources */,
+				EE449FD94B007E40F14F28AF /* PrivacyInfo.xcprivacy in Resources */,
 				241F7BC96BA7F87308C06C49 /* celebration-checkmark.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -428,6 +433,7 @@
 				B9938F536C7B31B2B2AB7059 /* AuthService.swift in Sources */,
 				C20D7F03983C11800E9C8E9A /* AuthorProfileView.swift in Sources */,
 				97F14BFA6DDA6699C4DD5EB2 /* AvatarImage.swift in Sources */,
+				D84491053B0BC68DBF6F314F /* BlockedPeopleSheet.swift in Sources */,
 				17CBFD4C422D6640341241AA /* CardsService.swift in Sources */,
 				475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */,
 				F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */,
@@ -639,19 +645,23 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ANGLES_API_BASE_URL = "http://192.168.0.39:8787";
+				ANGLES_PRIVACY_POLICY_URL = "";
+				ANGLES_SUPPORT_EMAIL = "";
+				ANGLES_SUPPORT_URL = "";
+				ANGLES_TERMS_OF_SERVICE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Angles;
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = AnglesApp/Info.plist;
+				INFOPLIST_FILE = "AnglesApp/Info-Debug.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.angles.ios;
 				PRODUCT_NAME = Angles;
 				SDKROOT = iphoneos;
@@ -663,11 +673,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ANGLES_API_BASE_URL = "";
+				ANGLES_PRIVACY_POLICY_URL = "";
+				ANGLES_SUPPORT_EMAIL = "";
+				ANGLES_SUPPORT_URL = "";
+				ANGLES_TERMS_OF_SERVICE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Angles;
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesApp/Info.plist;
@@ -675,7 +689,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.angles.ios;
 				PRODUCT_NAME = Angles;
 				SDKROOT = iphoneos;

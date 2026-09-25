@@ -1,12 +1,22 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
-import { createCard, deleteCard, getCard, listCards, patchCard } from "../db/cards.js";
+import { reportCard } from "../db/communitySafety.js";
+import {
+  createCard,
+  deleteCard,
+  getCard,
+  hasPublicationReportLock,
+  listCards,
+  patchCard,
+} from "../db/cards.js";
 import { requireAuth } from "../lib/authStub.js";
 import { verifyCook } from "../lib/cookSignature.js";
 import { cardCursorSchema } from "../lib/cursor.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { LLM_MODEL_IDS } from "../lib/llmClient.js";
+import { REPORT_REASONS } from "../lib/communitySafetyTypes.js";
+import { moderatePublicCard } from "../lib/publicModeration.js";
 import {
   CATEGORIES,
   EMOTIONS,
@@ -104,6 +114,12 @@ const patchCardSchema = z
     message: "style is required when setting isFavorite",
   });
 
+const reportCardSchema = z
+  .object({
+    reason: z.enum(REPORT_REASONS),
+  })
+  .strict();
+
 export const cardsRoute = new Hono();
 
 cardsRoute.post(
@@ -118,6 +134,26 @@ cardsRoute.post(
     const { signature, results, ...rest } = c.req.valid("json");
     if (rest.meta.safety !== "none" || !verifyCook({ ...rest, signature, results })) {
       return c.json(errorBody("card does not match a reframe from this server", "VALIDATION_ERROR"), 400);
+    }
+    if (rest.isPublic === true) {
+      let allowed: boolean;
+      try {
+        allowed = await moderatePublicCard({
+          thought: rest.thought,
+          reframes: results.map((result) => result.reframe),
+        });
+      } catch {
+        return c.json(
+          errorBody("Public content moderation is unavailable", "PUBLIC_MODERATION_UNAVAILABLE"),
+          503,
+        );
+      }
+      if (!allowed) {
+        return c.json(
+          errorBody("This card cannot be published", "PUBLIC_CONTENT_NOT_ALLOWED"),
+          400,
+        );
+      }
     }
     const card = await createCard({
       ...rest,
@@ -182,14 +218,81 @@ cardsRoute.patch(
   async (c) => {
     const { id } = c.req.valid("param");
     const patch = c.req.valid("json");
+    if (patch.isPublic === true) {
+      const card = await getCard(id);
+      if (!card) {
+        return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+      }
+      if (await hasPublicationReportLock(id)) {
+        return c.json(
+          errorBody("This card cannot be published", "PUBLIC_CONTENT_NOT_ALLOWED"),
+          400,
+        );
+      }
+      let allowed: boolean;
+      try {
+        allowed = await moderatePublicCard({
+          thought: card.thought,
+          reframes: card.results.map((result) => result.reframe),
+        });
+      } catch {
+        return c.json(
+          errorBody("Public content moderation is unavailable", "PUBLIC_MODERATION_UNAVAILABLE"),
+          503,
+        );
+      }
+      if (!allowed) {
+        return c.json(
+          errorBody("This card cannot be published", "PUBLIC_CONTENT_NOT_ALLOWED"),
+          400,
+        );
+      }
+    }
     const result = await patchCard(id, patch);
     if (!result.ok) {
       if (result.reason === "not_found") {
         return c.json(errorBody("Not found", "NOT_FOUND"), 404);
       }
+      if (result.reason === "publication_blocked") {
+        return c.json(
+          errorBody("This card cannot be published", "PUBLIC_CONTENT_NOT_ALLOWED"),
+          400,
+        );
+      }
       return c.json(errorBody("style must be one of the card results", "VALIDATION_ERROR"), 400);
     }
     return c.json(result.card);
+  },
+);
+
+cardsRoute.post(
+  "/:id/report",
+  requireAuth,
+  zValidator("param", idParamSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  zValidator("json", reportCardSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const { reason } = c.req.valid("json");
+    const result = await reportCard(id, reason);
+    if (!result.ok) {
+      if (result.reason === "not_found") {
+        return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+      }
+      const message =
+        result.reason === "own_card"
+          ? "You cannot report your own card"
+          : "Private cards cannot be reported";
+      return c.json(errorBody(message, "VALIDATION_ERROR"), 400);
+    }
+    return c.json({ reported: true });
   },
 );
 

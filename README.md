@@ -6,7 +6,7 @@ What to build next lives in [`BUILD.md`](BUILD.md) — update that file whenever
 
 ## Layout
 
-```
+```text
 backend/     Hono API (Node) — Railway-ready
 AnglesApp/   SwiftUI iOS 17+ app (XcodeGen)
 ```
@@ -23,7 +23,7 @@ pnpm db:migrate
 
 Postgres listens on host port **5433** (`angles` / `angles_test`). `DATABASE_URL` and `DATABASE_URL_TEST` are in `backend/.env.example`.
 
-Other DB scripts: `pnpm db:generate`, `pnpm db:studio`. The API does not auto-migrate; if the schema is behind it fails on boot.
+Other DB scripts: `pnpm db:generate`, `pnpm db:studio`. API startup applies the packaged Drizzle migrations, then verifies that the schema is current.
 
 ## Backend (local)
 
@@ -39,12 +39,14 @@ pnpm dev
 API listens on `http://localhost:8787` (bind `0.0.0.0`). A physical device must use the Mac LAN IP, not localhost. Product routes require a Better Auth session (`Authorization: Bearer`).
 
 - `GET /health` → `{ "status": "ok", "db": "ok" }` (503 when Postgres is down)
-- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[], "styles"?: Style[], "model"? }` → `{ "kind": "continue", ... }` or `{ "kind": "ready", "thought", "results", "meta", "signature" }`. Never writes a card.
+- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[], "styles"?: Style[], "model"? }` → `{ "kind": "continue", ... }` or `{ "kind": "ready", "thought", "results", "meta", "signature" }`. It never stores a card or thought text, but it does write text-free metering, idempotency, provider-usage, and company-cost metadata.
 - `POST /cards` → save a kept cook, echoing the `/reframe` signatures; anything the server did not sign is rejected. `GET /cards` is the Profile library.
+- `GET /profile/usage` → the server-owned 600-credit membership period. Ready results cost Mistral 1, DeepSeek 2, or Gemini 6 credits; continues and failed operations cost 0.
+- `POST /profile/subscription/sync` verifies a signed StoreKit transaction. `POST /app-store/notifications` receives App Store Server Notifications V2.
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm build`.
 
-The LLM lives behind `backend/src/lib/llmClient.ts` (`generateReframe`). Default `LLM_MODEL` is `mistral-small-latest`. Also wired: `gemini-3.8-flash`, `deepseek-flash`, `deepseek-v4-pro`. The iOS app must never call an LLM with a client-side key.
+The LLM lives behind `backend/src/lib/llmClient.ts` (`generateReframe` / `generateJson`). The three public metered models are `mistral-small-latest`, `gemini-3.8-flash`, and `deepseek-flash`; `deepseek-v4-pro` remains catalog-only. The iOS app must never call an LLM with a client-side key.
 
 Native `URLSession` does not use browser CORS. This API does not send CORS headers.
 
@@ -54,9 +56,9 @@ The overlay cooks through `ReframeService` / `POST /reframe`. Save uses `CardsSe
 
 `AppConfig.baseURL` comes from the `ANGLES_API_BASE_URL` build setting in `AnglesApp/project.yml`: the Mac LAN IP on port 8787 for Debug (devices cannot use localhost), empty for Release until a production host exists. `NSAllowsLocalNetworking` is enabled; do not turn on `NSAllowsArbitraryLoads`.
 
-Bundle ID placeholder: `app.angles.ios`. Attach your Apple team in Xcode before device runs.
+Bundle ID: `app.angles.ios`. Attach the correct Apple team in Xcode before device runs.
 
-## Railway (later)
+## Production deployment
 
 Do not add `railway.json` / `railway.toml` (Config as Code is deprecated for new services). When you create the project:
 
@@ -64,8 +66,11 @@ Do not add `railway.json` / `railway.toml` (Config as Code is deprecated for new
 - Use the `backend/Dockerfile`, or Railpack with `pnpm build` / `pnpm start`
 - Health check path: `/health`
 - Bind `PORT` (the server already reads `process.env.PORT`)
-- Better Auth is Sign in with Apple. Set `BETTER_AUTH_SECRET` (32+ chars), `BETTER_AUTH_URL`, and `APPLE_CLIENT_SECRET`.
+- Startup applies packaged migrations before serving and fails fast on incomplete production configuration.
+- Better Auth is Sign in with Apple. Set every production variable documented in `backend/.env.example`, including Apple verification, subscription/usage enforcement, all three provider keys, and avatar-bucket credentials.
 - Project-level IaC, when you need it, is `.railway/railway.ts` via the Railway CLI
+
+Release status and external submission work are tracked in [`docs/app-store-readiness.md`](docs/app-store-readiness.md) and [`docs/release-checklist.md`](docs/release-checklist.md).
 
 ## Constraints
 

@@ -47,12 +47,19 @@ final class StoreKitManager {
             }
         }
     }
+    private(set) var serverSyncPending = false
     private var isProbingSubscription = false
     private var hasSignedOutSession = false
+    @ObservationIgnored private var accountToken: UUID?
+    @ObservationIgnored private var accountGeneration: UInt64 = 0
     @ObservationIgnored private var activeEnvironment: String?
+    @ObservationIgnored private var pendingSignedTransactions: [String] = []
+    @ObservationIgnored private let profileService = ProfileService()
 
     private var transactionListener: Task<Void, Never>?
     private var unfinishedListener: Task<Void, Never>?
+    @ObservationIgnored private var unfinishedProcessingTask: Task<Void, Never>?
+    @ObservationIgnored private var offerProbeTask: Task<Void, Never>?
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
 
     init() {
@@ -108,6 +115,13 @@ final class StoreKitManager {
         return product(for: activeProductID)
     }
 
+    static func activeUntilLine(for expiresAt: Date?) -> String {
+        guard let expiresAt else {
+            return "Active subscription"
+        }
+        return "Active until \(expiresAt.formatted(date: .abbreviated, time: .omitted))"
+    }
+
     var monthlyProduct: Product? {
         product(for: Self.monthlyProductID)
     }
@@ -140,16 +154,53 @@ final class StoreKitManager {
         products.first { $0.id == productID }
     }
 
+    func configureAccount(userID: String?) {
+        guard let userID else {
+            guard accountToken != nil else { return }
+            invalidateAccountWork()
+            accountToken = nil
+            return
+        }
+        guard let token = UUID(uuidString: userID) else {
+            invalidateAccountWork()
+            accountToken = nil
+            errorMessage = "Your account could not be linked to App Store purchases. Sign in again."
+            return
+        }
+        let changed = accountToken != token
+        guard changed else {
+            return
+        }
+        invalidateAccountWork()
+        accountToken = token
+        unfinishedProcessingTask = Task { [weak self] in
+            await self?.processUnfinishedTransactionsOnce()
+        }
+    }
+
     /// Launch. Call after `loadProducts()` and the Keychain session restore, so the refresh can
     /// read subscription status and a live account session is never read as signed out.
     func prepare(hasAccountSession: Bool) async {
         if hasAccountSession, isSignedOut {
             signIn()
         }
-        await refreshEntitlements()
+        let context = currentAccountContext
+        if context != nil {
+            unfinishedProcessingTask?.cancel()
+            unfinishedProcessingTask = Task { [weak self] in
+                await self?.processUnfinishedTransactionsOnce()
+            }
+        }
+        await refreshEntitlements(lockWhenEmpty: true, context: context)
+        guard context == currentAccountContext else {
+            return
+        }
         entitlementsReady = true
         // Detached: the launch gate must not wait on a history read to pick a destination.
-        Task { await probeSubscriptionOffer() }
+        offerProbeTask?.cancel()
+        offerProbeTask = Task { [weak self] in
+            await self?.probeSubscriptionOffer()
+        }
     }
 
     /// Whether the gate may treat this device as paid right now.
@@ -200,28 +251,41 @@ final class StoreKitManager {
         guard Self.productIDs.contains(product.id), !isBusy else {
             return false
         }
+        guard let context = currentAccountContext else {
+            errorMessage = "Sign in again before subscribing."
+            return false
+        }
 
         errorMessage = nil
         holdCheckoutUntilHome()
         isPurchasing = true
         signIn()
         defer {
-            isPurchasing = false
-            if !hasUnlockedFullApp {
-                releaseCheckoutLock()
+            if isCurrent(context) {
+                isPurchasing = false
+                if !hasUnlockedFullApp {
+                    releaseCheckoutLock()
+                }
             }
         }
 
-        await refreshEntitlements()
+        await refreshEntitlements(lockWhenEmpty: true, context: context)
+        guard isCurrent(context) else { return false }
         if hasUnlockedFullApp {
             return true
         }
 
         do {
-            let result = try await product.purchase()
+            let result = try await product.purchase(options: [.appAccountToken(context.token)])
+            guard isCurrent(context) else { return false }
             switch result {
             case .success(let verification):
-                try await applyVerifiedTransaction(verification, isFreshPurchase: true)
+                try await applyVerifiedTransaction(
+                    verification,
+                    isFreshPurchase: true,
+                    context: context
+                )
+                guard isCurrent(context) else { return false }
                 if !hasUnlockedFullApp {
                     errorMessage = Self.purchaseConfirmationError
                 }
@@ -230,16 +294,19 @@ final class StoreKitManager {
                 errorMessage = "Your purchase is pending approval."
                 return false
             case .userCancelled:
-                await refreshEntitlements()
+                await refreshEntitlements(lockWhenEmpty: true, context: context)
+                guard isCurrent(context) else { return false }
                 return hasUnlockedFullApp
             @unknown default:
                 errorMessage = "The purchase could not be completed."
                 return false
             }
         } catch is StoreKitVerificationError {
+            guard isCurrent(context) else { return false }
             errorMessage = "This purchase could not be verified. Try again."
             return false
         } catch {
+            guard isCurrent(context) else { return false }
             errorMessage = "The purchase could not be completed. Try again."
             return false
         }
@@ -250,9 +317,14 @@ final class StoreKitManager {
         guard Self.productIDs.contains(productID), !isBusy else {
             return false
         }
+        guard let context = currentAccountContext else {
+            errorMessage = "Sign in again before subscribing."
+            return false
+        }
 
         if product(for: productID) == nil {
             await loadProducts()
+            guard isCurrent(context) else { return false }
         }
         guard let product = product(for: productID) else {
             errorMessage = Self.missingProductError
@@ -266,19 +338,26 @@ final class StoreKitManager {
         guard !isBusy else {
             return false
         }
+        guard let context = currentAccountContext else {
+            errorMessage = "Sign in again before restoring purchases."
+            return false
+        }
 
         isRestoring = true
         errorMessage = nil
         holdCheckoutUntilHome()
         signIn()
         defer {
-            isRestoring = false
-            if !hasUnlockedFullApp {
-                releaseCheckoutLock()
+            if isCurrent(context) {
+                isRestoring = false
+                if !hasUnlockedFullApp {
+                    releaseCheckoutLock()
+                }
             }
         }
 
-        await refreshEntitlements()
+        await refreshEntitlements(lockWhenEmpty: true, context: context)
+        guard isCurrent(context) else { return false }
         if hasUnlockedFullApp {
             errorMessage = nil
             return true
@@ -287,12 +366,15 @@ final class StoreKitManager {
         var syncError: Error?
         do {
             try await AppStore.sync()
+            guard isCurrent(context) else { return false }
         } catch {
+            guard isCurrent(context) else { return false }
             syncError = error
             Self.debugLog("AppStore.sync failed: \(error.localizedDescription)")
         }
 
-        await refreshEntitlements()
+        await refreshEntitlements(lockWhenEmpty: true, context: context)
+        guard isCurrent(context) else { return false }
         if hasUnlockedFullApp {
             errorMessage = nil
             return true
@@ -302,9 +384,12 @@ final class StoreKitManager {
             return false
         }
 
-        switch await membershipHistoryProbe() {
+        let history = await membershipHistoryProbe(context: context)
+        guard isCurrent(context) else { return false }
+        switch history {
         case .active:
-            await refreshEntitlements(lockWhenEmpty: false)
+            await refreshEntitlements(lockWhenEmpty: false, context: context)
+            guard isCurrent(context) else { return false }
             if hasUnlockedFullApp {
                 errorMessage = nil
                 return true
@@ -327,25 +412,29 @@ final class StoreKitManager {
     /// Fast local probe. Reads Apple's status and `currentEntitlements` only — never
     /// `AppStore.sync()`, so it cannot raise a password sheet.
     func probeSubscriptionOffer() async {
-        guard !isSignedOut, !isProbingSubscription, !hasUnlockedFullApp else {
+        guard let context = currentAccountContext,
+              !isProbingSubscription,
+              !hasUnlockedFullApp else {
             return
         }
 
         isProbingSubscription = true
-        defer { isProbingSubscription = false }
+        defer {
+            if isCurrent(context) {
+                isProbingSubscription = false
+            }
+        }
 
-        let history = await membershipHistoryProbe()
-        guard !isSignedOut else {
-            priorMembershipProductID = nil
-            hasUnlockedFullApp = false
-            Self.debugLog("history probe kept local signed-out session locked")
+        let history = await membershipHistoryProbe(context: context)
+        guard isCurrent(context) else {
             return
         }
 
         switch history {
         case .active:
             priorMembershipProductID = nil
-            await refreshEntitlements(lockWhenEmpty: false)
+            await refreshEntitlements(lockWhenEmpty: false, context: context)
+            guard isCurrent(context) else { return }
         case .ended(let productID):
             presentEndedMembership(productID: productID)
         case .none:
@@ -360,24 +449,36 @@ final class StoreKitManager {
     }
 
     func refreshEntitlements() async {
-        await refreshEntitlements(lockWhenEmpty: true)
+        await refreshEntitlements(lockWhenEmpty: true, context: currentAccountContext)
     }
 
     /// Local session only. Does not cancel the Apple subscription.
     func signOut() {
+        invalidateAccountWork()
         errorMessage = nil
         priorMembershipProductID = nil
-        activeProductID = nil
-        activeExpiresAt = nil
-        activeEnvironment = nil
-        releaseCheckoutLock()
+        accountToken = nil
         isSignedOut = true
-        hasUnlockedFullApp = false
         Self.debugLog("local session signed out")
     }
 
     func clearError() {
         errorMessage = nil
+    }
+
+    func retryServerSync() async {
+        guard let context = currentAccountContext else {
+            errorMessage = "Sign in again to sync your subscription."
+            return
+        }
+        let pending = pendingSignedTransactions
+        for signedTransaction in pending {
+            _ = await syncWithServer(signedTransaction, context: context)
+            guard isCurrent(context) else {
+                return
+            }
+        }
+        await refreshEntitlements(lockWhenEmpty: true, context: context)
     }
 
     /// Observable mirror of the persisted flag so the gate re-reads it in the same frame.
@@ -393,10 +494,23 @@ final class StoreKitManager {
     /// A still-live subscription goes straight Home; that is paid access, not a skipped paywall.
     func resumeAfterAccountSignIn() async {
         signIn()
-        await refreshEntitlements()
+        guard let context = currentAccountContext else {
+            return
+        }
+        unfinishedProcessingTask?.cancel()
+        unfinishedProcessingTask = Task { [weak self] in
+            await self?.processUnfinishedTransactionsOnce()
+        }
+        await refreshEntitlements(lockWhenEmpty: true, context: context)
+        guard isCurrent(context) else {
+            return
+        }
         entitlementsReady = true
         if !hasUnlockedFullApp {
-            Task { await probeSubscriptionOffer() }
+            offerProbeTask?.cancel()
+            offerProbeTask = Task { [weak self] in
+                await self?.probeSubscriptionOffer()
+            }
         }
     }
 
@@ -437,8 +551,12 @@ final class StoreKitManager {
     }
 
     private func handleIncomingTransaction(_ result: VerificationResult<Transaction>) async {
+        guard let context = currentAccountContext else {
+            Self.debugLog("deferred transaction until an Angles account is configured")
+            return
+        }
         do {
-            try await applyVerifiedTransaction(result)
+            try await applyVerifiedTransaction(result, context: context)
         } catch {
             Self.debugLog("verification failed for incoming transaction")
         }
@@ -446,28 +564,76 @@ final class StoreKitManager {
 
     private func applyVerifiedTransaction(
         _ result: VerificationResult<Transaction>,
-        isFreshPurchase: Bool = false
+        isFreshPurchase: Bool = false,
+        context: AccountContext
     ) async throws {
         let transaction = try verified(result)
         Self.logTransaction(isFreshPurchase ? "purchased" : "incoming", transaction)
+        guard isCurrent(context) else { return }
+        guard isForConfiguredAccount(transaction, context: context) else {
+            errorMessage = "This purchase is linked to another Angles account."
+            return
+        }
+
+        let serverResult = await syncWithServer(result.jwsRepresentation, context: context)
+        guard isCurrent(context) else {
+            // A confirmed request used the captured account's bearer. Finishing is safe and
+            // prevents a completed transaction from looping, but no new account state changes.
+            if case .confirmed = serverResult {
+                await transaction.finish()
+            }
+            return
+        }
+        if case .rejected = serverResult {
+            return
+        }
 
         let unlockedFromThisTransaction: Bool
         if isFreshPurchase {
-            unlockedFromThisTransaction = unlockIfEntitled(transaction, isFreshPurchase: true)
+            unlockedFromThisTransaction = unlockIfEntitled(
+                transaction,
+                isFreshPurchase: true,
+                context: context
+            )
         } else {
             unlockedFromThisTransaction = false
         }
         await transaction.finish()
+        guard isCurrent(context) else { return }
         // A just-verified Angles purchase is entitled even when `currentEntitlements`
         // has not listed it yet. Do not overwrite that unlock with an empty refresh, and do
         // not let an unfinished transaction pulse unlock on then off mid-checkout. Outside a
         // purchase the refresh is authoritative: an expiry or revocation must lock.
-        await refreshEntitlements(lockWhenEmpty: !isPurchasing && !unlockedFromThisTransaction)
+        await refreshEntitlements(
+            lockWhenEmpty: !isPurchasing && !unlockedFromThisTransaction,
+            context: context
+        )
+    }
+
+    private func processUnfinishedTransactionsOnce() async {
+        guard let context = currentAccountContext else {
+            return
+        }
+        for await result in Transaction.unfinished {
+            guard !Task.isCancelled, isCurrent(context) else {
+                return
+            }
+            do {
+                try await applyVerifiedTransaction(result, context: context)
+            } catch {
+                Self.debugLog("verification failed for unfinished transaction")
+            }
+            guard isCurrent(context) else { return }
+        }
     }
 
     @discardableResult
-    private func unlockIfEntitled(_ transaction: Transaction, isFreshPurchase: Bool) -> Bool {
-        guard !isSignedOut else {
+    private func unlockIfEntitled(
+        _ transaction: Transaction,
+        isFreshPurchase: Bool,
+        context: AccountContext
+    ) -> Bool {
+        guard isCurrent(context) else {
             return false
         }
         guard isAppStoreBacked(transaction) else {
@@ -493,25 +659,30 @@ final class StoreKitManager {
         return false
     }
 
-    private func refreshEntitlements(lockWhenEmpty: Bool) async {
-        if isSignedOut {
-            clearActiveEntitlement()
+    private func refreshEntitlements(
+        lockWhenEmpty: Bool,
+        context: AccountContext?
+    ) async {
+        guard let context else {
+            if currentAccountContext == nil {
+                clearActiveEntitlement()
+            }
             return
         }
-
-        let detail = await activeSubscriptionDetail(statuses: await groupStatuses())
-        guard !isSignedOut else {
-            clearActiveEntitlement()
-            Self.debugLog("entitlement refresh kept local signed-out session locked")
-            return
-        }
+        guard isCurrent(context) else { return }
+        let statuses = await groupStatuses(context: context)
+        guard isCurrent(context) else { return }
+        let detail = await activeSubscriptionDetail(statuses: statuses, context: context)
+        guard isCurrent(context) else { return }
         if let detail {
             activeProductID = detail.productID
             activeExpiresAt = detail.expiresAt
             activeEnvironment = detail.environment
             priorMembershipProductID = nil
             hasUnlockedFullApp = true
-            errorMessage = nil
+            if !serverSyncPending {
+                errorMessage = nil
+            }
         } else if lockWhenEmpty {
             clearActiveEntitlement()
         }
@@ -535,6 +706,9 @@ final class StoreKitManager {
         guard let expiresAt = activeExpiresAt else {
             return
         }
+        guard let context = currentAccountContext else {
+            return
+        }
         expiryTask = Task { [weak self] in
             let wait = max(expiresAt.timeIntervalSinceNow, 0) + Self.expiryRefreshSlack
             do {
@@ -542,18 +716,19 @@ final class StoreKitManager {
             } catch {
                 return
             }
-            while let self, self.isBusy {
+            while let self, self.isBusy, self.isCurrent(context) {
                 do {
                     try await Task.sleep(for: .seconds(5))
                 } catch {
                     return
                 }
             }
-            guard let self, !Task.isCancelled else {
+            guard let self, !Task.isCancelled, self.isCurrent(context) else {
                 return
             }
             Self.debugLog("expiry watchdog refresh")
-            await self.refreshEntitlements()
+            await self.refreshEntitlements(lockWhenEmpty: true, context: context)
+            guard self.isCurrent(context) else { return }
             if !self.hasUnlockedFullApp {
                 await self.probeSubscriptionOffer()
             }
@@ -568,16 +743,18 @@ final class StoreKitManager {
 
     /// One status read per subscription group. Either product returns every status in the group,
     /// so reading both only doubled the time a stalled sandbox read could hold login or launch.
-    private func groupStatuses() async -> [Product.SubscriptionInfo.Status] {
+    private func groupStatuses(context: AccountContext) async -> [Product.SubscriptionInfo.Status] {
         var seenGroups = Set<String>()
         var statuses: [Product.SubscriptionInfo.Status] = []
         for product in products {
+            guard isCurrent(context) else { return [] }
             guard Self.productIDs.contains(product.id),
                   let subscription = product.subscription,
                   seenGroups.insert(subscription.subscriptionGroupID).inserted else {
                 continue
             }
             statuses += await subscriptionStatuses(for: subscription, productID: product.id)
+            guard isCurrent(context) else { return [] }
         }
         return statuses
     }
@@ -586,19 +763,30 @@ final class StoreKitManager {
     /// unexpired verified `currentEntitlements` transaction. `Transaction.latest` is deliberately
     /// absent: a leftover receipt for an expired subscription must never unlock Home.
     private func activeSubscriptionDetail(
-        statuses: [Product.SubscriptionInfo.Status]
+        statuses: [Product.SubscriptionInfo.Status],
+        context: AccountContext
     ) async -> ActiveSubscription? {
         for status in statuses {
+            guard isCurrent(context) else { return nil }
             Self.debugLog("subscription status: \(String(describing: status.state))")
             switch status.state {
             case .subscribed, .inGracePeriod, .inBillingRetryPeriod:
                 guard let transaction = try? verified(status.transaction),
                       Self.productIDs.contains(transaction.productID),
-                      isAppStoreBacked(transaction) else {
+                      isAppStoreBacked(transaction),
+                      isForConfiguredAccount(transaction, context: context) else {
                     Self.debugLog("ignored non-App Store status")
                     continue
                 }
                 Self.logTransaction("status", transaction)
+                let syncResult = await syncWithServer(
+                    status.transaction.jwsRepresentation,
+                    context: context
+                )
+                guard isCurrent(context) else { return nil }
+                if case .rejected = syncResult {
+                    continue
+                }
                 return ActiveSubscription(
                     productID: transaction.productID,
                     expiresAt: transaction.expirationDate,
@@ -612,12 +800,19 @@ final class StoreKitManager {
         let now = Date()
         var candidates: [ActiveSubscription] = []
         for await result in Transaction.currentEntitlements {
+            guard isCurrent(context) else { return nil }
             guard case .verified(let transaction) = result else {
                 Self.debugLog("verification failed for current entitlement")
                 continue
             }
             Self.logTransaction("current entitlement", transaction)
-            guard isActiveAnglesEntitlement(transaction, now: now) else {
+            guard isActiveAnglesEntitlement(transaction, now: now),
+                  isForConfiguredAccount(transaction, context: context) else {
+                continue
+            }
+            let syncResult = await syncWithServer(result.jwsRepresentation, context: context)
+            guard isCurrent(context) else { return nil }
+            if case .rejected = syncResult {
                 continue
             }
             candidates.append(
@@ -664,22 +859,28 @@ final class StoreKitManager {
     /// unexpired latest receipt is neither active nor ended here, and only live status or
     /// `currentEntitlements` can report `.active`. The live group check comes first so an
     /// expired Annual cannot beat a live Monthly.
-    private func membershipHistoryProbe() async -> MembershipHistoryProbe {
-        let statuses = await groupStatuses()
-        if await activeSubscriptionDetail(statuses: statuses) != nil {
+    private func membershipHistoryProbe(context: AccountContext) async -> MembershipHistoryProbe {
+        let statuses = await groupStatuses(context: context)
+        guard isCurrent(context) else { return .none }
+        if await activeSubscriptionDetail(statuses: statuses, context: context) != nil {
+            guard isCurrent(context) else { return .none }
             return .active
         }
 
         let now = Date()
         var candidates: [EndedMembershipCandidate] = []
         for productID in Self.productIDs {
-            guard let result = await Transaction.latest(for: productID),
+            guard isCurrent(context) else { return .none }
+            let latest = await Transaction.latest(for: productID)
+            guard isCurrent(context) else { return .none }
+            guard let result = latest,
                   case .verified(let transaction) = result,
                   Self.productIDs.contains(transaction.productID) else {
                 continue
             }
             Self.logTransaction("latest", transaction)
-            guard isAppStoreBacked(transaction) else {
+            guard isAppStoreBacked(transaction),
+                  isForConfiguredAccount(transaction, context: context) else {
                 continue
             }
             if isActiveAnglesEntitlement(transaction, now: now) {
@@ -691,7 +892,8 @@ final class StoreKitManager {
         for status in statuses {
             guard let transaction = try? verified(status.transaction),
                   Self.productIDs.contains(transaction.productID),
-                  isAppStoreBacked(transaction) else {
+                  isAppStoreBacked(transaction),
+                  isForConfiguredAccount(transaction, context: context) else {
                 continue
             }
             switch status.state {
@@ -732,6 +934,89 @@ final class StoreKitManager {
             return false
         }
         return true
+    }
+
+    private func isForConfiguredAccount(
+        _ transaction: Transaction,
+        context: AccountContext
+    ) -> Bool {
+        guard isCurrent(context) else { return false }
+        guard let transactionToken = transaction.appAccountToken else {
+            // Legacy StoreKit transactions can be claimed once by the backend.
+            return true
+        }
+        return transactionToken == context.token
+    }
+
+    private func syncWithServer(
+        _ signedTransactionInfo: String,
+        context: AccountContext
+    ) async -> ServerSyncResult {
+        guard isCurrent(context) else { return .stale }
+        do {
+            let body = try await profileService.syncSubscription(
+                signedTransactionInfo: signedTransactionInfo
+            )
+            guard isCurrent(context) else {
+                return .confirmed(body)
+            }
+            pendingSignedTransactions.removeAll { $0 == signedTransactionInfo }
+            serverSyncPending = !pendingSignedTransactions.isEmpty
+            if !serverSyncPending, errorMessage == Self.serverSyncError {
+                errorMessage = nil
+            }
+            return .confirmed(body)
+        } catch let APIError.httpStatus(code, payload, rawBody) where code == 409 {
+            guard isCurrent(context) else { return .stale }
+            pendingSignedTransactions.removeAll { $0 == signedTransactionInfo }
+            serverSyncPending = !pendingSignedTransactions.isEmpty
+            Self.debugLog(
+                "server rejected subscription ownership: \(payload?.code ?? rawBody ?? "conflict")"
+            )
+            errorMessage = "This subscription is linked to another Angles account."
+            return .rejected
+        } catch {
+            guard isCurrent(context) else { return .stale }
+            if !pendingSignedTransactions.contains(signedTransactionInfo) {
+                pendingSignedTransactions.append(signedTransactionInfo)
+            }
+            serverSyncPending = true
+            errorMessage = Self.serverSyncError
+            Self.debugLog("server subscription sync failed: \(error.localizedDescription)")
+            return .retryable
+        }
+    }
+
+    private var currentAccountContext: AccountContext? {
+        guard let accountToken, !isSignedOut else {
+            return nil
+        }
+        return AccountContext(token: accountToken, generation: accountGeneration)
+    }
+
+    private func isCurrent(_ context: AccountContext) -> Bool {
+        currentAccountContext == context
+    }
+
+    /// Invalidates every continuation that captured the old account. Known child tasks are
+    /// cancelled, while unstructured callers become harmless at their next generation check.
+    private func invalidateAccountWork() {
+        accountGeneration &+= 1
+        unfinishedProcessingTask?.cancel()
+        unfinishedProcessingTask = nil
+        offerProbeTask?.cancel()
+        offerProbeTask = nil
+        expiryTask?.cancel()
+        expiryTask = nil
+        pendingSignedTransactions = []
+        serverSyncPending = false
+        isProbingSubscription = false
+        isPurchasing = false
+        isRestoring = false
+        releaseCheckoutLock()
+        priorMembershipProductID = nil
+        errorMessage = nil
+        clearActiveEntitlement()
     }
 
     private static func logTransaction(_ source: String, _ transaction: Transaction) {
@@ -798,6 +1083,7 @@ final class StoreKitManager {
     private static let missingProductError = "Couldn’t load this subscription. Check your connection and tap Retry."
     private static let purchaseConfirmationError = "Apple didn’t confirm an active Angles subscription. Try again or restore purchases."
     private static let restoreNetworkError = "Need a connection to check your subscription."
+    private static let serverSyncError = "Apple confirmed your membership, but Angles couldn’t sync it for cooking. Tap to retry."
     private static let statusTimeout: Duration = .seconds(6)
     private static let expiryRefreshSlack: TimeInterval = 2
 }
@@ -805,6 +1091,11 @@ final class StoreKitManager {
 private struct EndedMembershipCandidate {
     let productID: String
     let endedAt: Date
+}
+
+private struct AccountContext: Equatable {
+    let token: UUID
+    let generation: UInt64
 }
 
 private enum MembershipHistoryProbe {
@@ -815,4 +1106,11 @@ private enum MembershipHistoryProbe {
 
 private enum StoreKitVerificationError: Error {
     case failed
+}
+
+private enum ServerSyncResult {
+    case confirmed(SubscriptionBody)
+    case retryable
+    case rejected
+    case stale
 }

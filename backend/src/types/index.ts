@@ -93,6 +93,17 @@ export type ContinueResponse = {
   message: string;
   options: string[];
   safety: SafetyFlag;
+  usage: ReframeUsage;
+};
+
+export type ReframeUsage = {
+  creditsUsed: number;
+  remaining: number;
+  granted: number;
+  resetsAt: string | null;
+  warning: "normal" | "low" | "critical" | "empty";
+  allowedModels: Array<"mistral-small-latest" | "deepseek-flash" | "gemini-3.8-flash">;
+  creditCost: number;
 };
 
 /** A reframe the server produced. `POST /cards` only accepts results it signed. */
@@ -108,6 +119,18 @@ export type ReadyResponse = {
   meta: ReframeMeta;
   /** Signs `thought`, `thoughtOriginal`, and `meta` (minus `matching`). */
   signature: string;
+  usage: ReframeUsage;
+};
+
+export type ProfileUsageBody = {
+  creditsGranted: number;
+  creditsRemaining: number;
+  periodStart: string | null;
+  periodEnd: string | null;
+  resetsAt: string | null;
+  warning: ReframeUsage["warning"];
+  allowedModels: ReframeUsage["allowedModels"];
+  creditCost: Record<ReframeUsage["allowedModels"][number], number>;
 };
 
 export type ReframeResponse = ContinueResponse | ReadyResponse;
@@ -157,7 +180,19 @@ export type SessionBody = {
   initials: string;
   name: string;
   tasteCompletedAt: string | null;
+  tasteConsumedAt: string | null;
   avatarUrl?: string;
+};
+
+export type SubscriptionBody = {
+  isEntitled: boolean;
+  status: "active" | "grace" | "billing_retry" | "expired" | "revoked" | null;
+  productId: "app.angles.ios.annual" | "app.angles.ios.monthly" | null;
+  environment: "sandbox" | "production" | null;
+  paidThrough: string | null;
+  revokedAt: string | null;
+  quotaAnchor: string | null;
+  updatedAt: string | null;
 };
 
 export type StoredReframeResult = {

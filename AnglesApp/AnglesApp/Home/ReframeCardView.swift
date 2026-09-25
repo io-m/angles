@@ -66,6 +66,8 @@ struct ReframeCardView: View, Equatable {
     var onToggleFavorite: (Style) -> Void = { _ in }
     var onSetPublic: (Bool) -> Void = { _ in }
     var onRemoveFromBoard: () -> Void = {}
+    var onReport: (ReportReason) -> Void = { _ in }
+    var onBlock: () -> Void = {}
     var onOpenAuthor: (() -> Void)? = nil
     var onOpenModel: (() -> Void)? = nil
     var onToggleFollow: (() -> Void)? = nil
@@ -88,6 +90,8 @@ struct ReframeCardView: View, Equatable {
     @State private var heartScale: CGFloat = 1
     @State private var isFavoriteFlipped = false
     @State private var showDeleteConfirm = false
+    @State private var showReportReasons = false
+    @State private var showBlockConfirm = false
     /// Uncapped height of the tall card, measured off-screen. Drives the reply scroll.
     @State private var tallIdealHeight: CGFloat = 0
 
@@ -148,12 +152,7 @@ struct ReframeCardView: View, Equatable {
     }
 
     private var showsMenu: Bool {
-        switch menuRole {
-        case .owner, .savedFromFeed:
-            return true
-        case .feed:
-            return hasOriginal
-        }
+        true
     }
 
     var body: some View {
@@ -186,6 +185,28 @@ struct ReframeCardView: View, Equatable {
             ) {
                 Button("Delete", role: .destructive, action: onDelete)
                 Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog(
+                "Why are you reporting this card?",
+                isPresented: $showReportReasons,
+                titleVisibility: .visible
+            ) {
+                ForEach(ReportReason.allCases, id: \.self) { reason in
+                    Button(reason.displayName, role: .destructive) {
+                        onReport(reason)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog(
+                "Block \(displayAuthorInitials)?",
+                isPresented: $showBlockConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Block", role: .destructive, action: onBlock)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Their posts will disappear, and you won't be able to follow each other.")
             }
     }
 
@@ -721,8 +742,10 @@ struct ReframeCardView: View, Equatable {
 
         switch menuRole {
         case .feed:
-            EmptyView()
+            communitySafetyMenuItems
         case .savedFromFeed:
+            communitySafetyMenuItems
+
             cardDestructiveMenuButton(
                 "Remove from board",
                 systemImage: "rectangle.badge.minus",
@@ -742,6 +765,21 @@ struct ReframeCardView: View, Equatable {
                 showDeleteConfirm = true
             }
         }
+    }
+
+    @ViewBuilder
+    private var communitySafetyMenuItems: some View {
+        cardDestructiveMenuButton("Report", systemImage: "exclamationmark.bubble") {
+            showReportReasons = true
+        }
+        cardDestructiveMenuButton("Block \(displayAuthorInitials)", systemImage: "hand.raised") {
+            showBlockConfirm = true
+        }
+    }
+
+    private var displayAuthorInitials: String {
+        let trimmed = card.authorInitials.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "this person" : trimmed
     }
 
     private func cardDestructiveMenuButton(

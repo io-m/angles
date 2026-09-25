@@ -16,6 +16,7 @@ struct AuthorProfileView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @State private var showBlockConfirm = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -48,6 +49,8 @@ struct AuthorProfileView: View {
             onToggleFavorite: toggleFavorite,
             onSetPublic: setPublic,
             onRemoveFromBoard: removeFromBoard,
+            onReport: reportCard,
+            onBlock: blockAuthor,
             onOpenAuthor: onOpenAuthor,
             onOpenModel: onOpenModel,
             onToggleFollow: toggleFollow
@@ -59,7 +62,8 @@ struct AuthorProfileView: View {
                 header: header,
                 onBack: dismiss.callAsFunction,
                 onSelectTab: onSelectTab,
-                onToggleFollow: { viewModel.toggleFollow(route.id) }
+                onToggleFollow: { viewModel.toggleFollow(route.id) },
+                onRequestBlock: { showBlockConfirm = true }
             )
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -69,6 +73,16 @@ struct AuthorProfileView: View {
         }
         .task(id: route.id) {
             await viewModel.loadAuthorIfNeeded(route)
+        }
+        .confirmationDialog(
+            "Block \(displayInitials)?",
+            isPresented: $showBlockConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Block", role: .destructive, action: blockRouteAuthor)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Their posts will disappear, and you won't be able to follow each other.")
         }
     }
 
@@ -101,6 +115,34 @@ struct AuthorProfileView: View {
             viewModel.removeFromBoard(card.id)
         }
     }
+
+    private func reportCard(_ card: HomeCard, _ reason: ReportReason) {
+        guard !card.isOwner else { return }
+        viewModel.reportCard(card.id, reason: reason)
+    }
+
+    private func blockAuthor(_ card: HomeCard) {
+        guard !card.isOwner, let authorId = card.authorId else { return }
+        viewModel.blockAuthor(
+            authorId,
+            initials: card.authorInitials,
+            avatarPath: card.authorAvatarPath
+        )
+    }
+
+    private func blockRouteAuthor() {
+        guard !header.isSelf else { return }
+        viewModel.blockAuthor(
+            route.id,
+            initials: header.initials,
+            avatarPath: header.avatarPath
+        )
+    }
+
+    private var displayInitials: String {
+        let trimmed = header.initials.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "this person" : trimmed
+    }
 }
 
 private struct AuthorChrome: View {
@@ -111,6 +153,7 @@ private struct AuthorChrome: View {
     let onBack: () -> Void
     let onSelectTab: (HomeFeedTab) -> Void
     let onToggleFollow: () -> Void
+    let onRequestBlock: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -148,17 +191,21 @@ private struct AuthorChrome: View {
                 .frame(maxWidth: .infinity)
 
                 ZStack(alignment: .bottomTrailing) {
-                    AuthorMark(
-                        initials: header.initials,
-                        avatarPath: header.avatarPath,
-                        prefersLocalPhoto: header.isSelf,
-                        side: CircleIcon.Size.normal.side,
-                        fill: theme.ink,
-                        symbol: theme.paper
-                    )
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Posts by \(header.initials)")
-                    .accessibilityAddTraits(.isHeader)
+                    if header.isSelf {
+                        authorMark
+                    } else {
+                        Menu {
+                            Button(role: .destructive, action: onRequestBlock) {
+                                Label("Block", systemImage: "hand.raised")
+                            }
+                        } label: {
+                            authorMark
+                        }
+                        .menuStyle(.borderlessButton)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Author actions")
+                        .accessibilityHint("Includes block")
+                    }
 
                     if !header.isSelf {
                         FollowBadge(
@@ -184,5 +231,19 @@ private struct AuthorChrome: View {
             StyleTabChromeBackground(pagerState: pagerState)
                 .ignoresSafeArea(edges: .top)
         }
+    }
+
+    private var authorMark: some View {
+        AuthorMark(
+            initials: header.initials,
+            avatarPath: header.avatarPath,
+            prefersLocalPhoto: header.isSelf,
+            side: CircleIcon.Size.normal.side,
+            fill: theme.ink,
+            symbol: theme.paper
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Posts by \(header.initials)")
+        .accessibilityAddTraits(.isHeader)
     }
 }

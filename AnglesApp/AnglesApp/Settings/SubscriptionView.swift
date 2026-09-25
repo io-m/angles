@@ -10,9 +10,13 @@ struct SubscriptionView: View {
 
     @State private var isOpeningManage = false
     @State private var manageError: String?
+    @State private var usage: UsageSummary?
+    @State private var isLoadingUsage = false
+    @State private var usageError: String?
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var isSubscribed: Bool { storeKitManager.subscriptionStatus == .subscribed }
+    private let profileService = ProfileService()
 
     /// Yearly wears the amber wash, monthly the slate-blue one. Same families as style cards.
     private var planInk: Color {
@@ -33,6 +37,8 @@ struct SubscriptionView: View {
             VStack(alignment: .leading, spacing: 16) {
                 statusCard
 
+                usageCard
+
                 if isSubscribed {
                     actionRow(
                         symbol: "arrow.left.arrow.right",
@@ -46,7 +52,7 @@ struct SubscriptionView: View {
                     actionRow(
                         symbol: "xmark",
                         title: "Cancel",
-                        subtitle: "Stays active until the renewal date",
+                        subtitle: "Manage renewal in the App Store",
                         ink: CardStyleAppearance(style: .toughLove).ink
                     ) {
                         Task { await openManageSubscriptions() }
@@ -78,15 +84,30 @@ struct SubscriptionView: View {
                 }
 
                 if let message = manageError ?? storeKitManager.errorMessage, !message.isEmpty {
-                    Text(message)
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(theme.muted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                        .accessibilityLabel(message)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(message)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(theme.muted)
+                            .accessibilityLabel(message)
+
+                        if storeKitManager.serverSyncPending {
+                            Button("Retry membership sync") {
+                                Task { await storeKitManager.retryServerSync() }
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.ink)
+                            .disabled(storeKitManager.isBusy)
+                            .accessibilityHint("Retries syncing your Apple subscription with Angles")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
                 }
             }
             .padding(.horizontal, 20)
+        }
+        .task {
+            await loadUsage()
         }
     }
 
@@ -163,11 +184,95 @@ struct SubscriptionView: View {
         storeKitManager.activeProductID == StoreKitManager.annualProductID ? "per year" : "per month"
     }
 
-    private var renewalLine: String {
-        guard let renews = storeKitManager.activeExpiresAt else {
-            return "Renews automatically until you cancel"
+    @ViewBuilder
+    private var usageCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Credits")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(theme.ink)
+
+                Spacer(minLength: 8)
+
+                if isLoadingUsage {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(planInk)
+                        .accessibilityLabel("Loading credits")
+                }
+            }
+
+            if let usage {
+                Text("\(usage.creditsRemaining) of \(usage.creditsGranted) credits")
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(theme.ink)
+                    .contentTransition(.numericText())
+
+                ProgressView(
+                    value: Double(max(0, usage.creditsRemaining)),
+                    total: Double(max(1, usage.creditsGranted))
+                )
+                .tint(planInk)
+                .accessibilityLabel("Credits remaining")
+                .accessibilityValue("\(usage.creditsRemaining) of \(usage.creditsGranted)")
+
+                Text(usageResetLine(usage))
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(theme.muted)
+            } else if let usageError {
+                Text(usageError)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Retry") {
+                    Task { await loadUsage() }
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.ink)
+                .disabled(isLoadingUsage)
+                .accessibilityHint("Reloads your credit balance")
+            } else {
+                Text("Loading your credit balance…")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(theme.muted)
+            }
         }
-        return "Renews \(renews.formatted(date: .abbreviated, time: .omitted))"
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(theme.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(theme.cardHairline, lineWidth: 1)
+        }
+    }
+
+    private func usageResetLine(_ usage: UsageSummary) -> String {
+        guard let resetDate = usage.resetDate else {
+            return "Credits reset with your membership period"
+        }
+        return "Resets \(resetDate.formatted(date: .abbreviated, time: .omitted))"
+    }
+
+    @MainActor
+    private func loadUsage() async {
+        guard !isLoadingUsage else {
+            return
+        }
+        isLoadingUsage = true
+        usageError = nil
+        defer { isLoadingUsage = false }
+        do {
+            usage = try await profileService.usage()
+        } catch is CancellationError {
+            return
+        } catch {
+            usageError = "Couldn't load your credits. Check your connection and try again."
+        }
+    }
+
+    private var renewalLine: String {
+        StoreKitManager.activeUntilLine(for: storeKitManager.activeExpiresAt)
     }
 
     private func actionRow(

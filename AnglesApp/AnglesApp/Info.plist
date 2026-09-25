@@ -4,6 +4,14 @@
 <dict>
 	<key>AnglesAPIBaseURL</key>
 	<string>$(ANGLES_API_BASE_URL)</string>
+	<key>AnglesPrivacyPolicyURL</key>
+	<string>$(ANGLES_PRIVACY_POLICY_URL)</string>
+	<key>AnglesSupportEmail</key>
+	<string>$(ANGLES_SUPPORT_EMAIL)</string>
+	<key>AnglesSupportURL</key>
+	<string>$(ANGLES_SUPPORT_URL)</string>
+	<key>AnglesTermsOfServiceURL</key>
+	<string>$(ANGLES_TERMS_OF_SERVICE_URL)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -22,15 +30,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Angles talks to the API on your Mac while developing.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

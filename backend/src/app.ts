@@ -5,6 +5,7 @@ import { logger } from "hono/logger";
 import { DbError } from "./db/client.js";
 import { getAuth } from "./auth.js";
 import { errorBody } from "./lib/http.js";
+import { appStoreNotificationsRoute } from "./routes/appStoreNotifications.js";
 import { cardsRoute } from "./routes/cards.js";
 import { feedRoute } from "./routes/feed.js";
 import { healthRoute } from "./routes/health.js";
@@ -14,9 +15,15 @@ import { reframeRoute } from "./routes/reframe.js";
 import { usersRoute } from "./routes/users.js";
 
 const MAX_BODY_BYTES = 8 * 1024;
+const MAX_APP_STORE_BODY_BYTES = 32 * 1024;
 
 const jsonBodyLimit = bodyLimit({
   maxSize: MAX_BODY_BYTES,
+  onError: (c) => c.json(errorBody("Request body too large", "PAYLOAD_TOO_LARGE"), 413),
+});
+
+const appStoreBodyLimit = bodyLimit({
+  maxSize: MAX_APP_STORE_BODY_BYTES,
   onError: (c) => c.json(errorBody("Request body too large", "PAYLOAD_TOO_LARGE"), 413),
 });
 
@@ -25,6 +32,14 @@ export function createApp(): Hono {
 
   app.use("*", logger());
   app.use("*", async (c, next) => {
+    if (
+      c.req.method === "POST" &&
+      (c.req.path === "/app-store/notifications" ||
+        c.req.path === "/profile/subscription/sync")
+    ) {
+      await appStoreBodyLimit(c, next);
+      return;
+    }
     if (c.req.method === "PUT" && c.req.path === "/profile/avatar") {
       await next();
       return;
@@ -33,6 +48,7 @@ export function createApp(): Hono {
   });
 
   app.route("/health", healthRoute);
+  app.route("/app-store/notifications", appStoreNotificationsRoute);
   app.on(["POST", "GET"], "/api/auth/*", (c) => getAuth().handler(c.req.raw));
   app.on(["POST", "GET"], "/api/auth/*/*", (c) => getAuth().handler(c.req.raw));
   app.route("/reframe", reframeRoute);

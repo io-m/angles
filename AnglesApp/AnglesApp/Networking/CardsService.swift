@@ -109,4 +109,16 @@ struct CardsService: Sendable {
     func removeFromBoard(id: String) async throws {
         try await client.delete(path: "feed/cards/\(id)/saves", timeout: Self.writeTimeout)
     }
+
+    func report(id: String, reason: ReportReason) async throws -> ReportStateResponse {
+        try await client.post(
+            path: "cards/\(id)/report",
+            body: ReportCardRequest(reason: reason),
+            timeout: Self.writeTimeout
+        )
+    }
+}
+
+private struct ReportCardRequest: Encodable {
+    let reason: ReportReason
 }

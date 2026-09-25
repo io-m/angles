@@ -52,6 +52,8 @@ struct HomeView: View {
             onToggleFavorite: toggleFavorite,
             onSetPublic: setPublic,
             onRemoveFromBoard: removeFromBoard,
+            onReport: reportCard,
+            onBlock: blockAuthor,
             onOpenAuthor: onOpenAuthor,
             onOpenModel: onOpenModel,
             onToggleFollow: toggleFollow
@@ -127,6 +129,20 @@ struct HomeView: View {
             viewModel.removeFromBoard(card.id)
         }
     }
+
+    private func reportCard(_ card: HomeCard, _ reason: ReportReason) {
+        guard !card.isOwner else { return }
+        viewModel.reportCard(card.id, reason: reason)
+    }
+
+    private func blockAuthor(_ card: HomeCard) {
+        guard !card.isOwner, let authorId = card.authorId else { return }
+        viewModel.blockAuthor(
+            authorId,
+            initials: card.authorInitials,
+            avatarPath: card.authorAvatarPath
+        )
+    }
 }
 
 struct HomeFeedPager<Chrome: View>: View {
@@ -152,6 +168,8 @@ struct HomeFeedPager<Chrome: View>: View {
     let onToggleFavorite: (HomeCard, Style) -> Void
     let onSetPublic: (HomeCard, Bool) -> Void
     let onRemoveFromBoard: (HomeCard) -> Void
+    let onReport: (HomeCard, ReportReason) -> Void
+    let onBlock: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
     let onOpenModel: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
@@ -190,6 +208,8 @@ struct HomeFeedPager<Chrome: View>: View {
         onToggleFavorite: @escaping (HomeCard, Style) -> Void,
         onSetPublic: @escaping (HomeCard, Bool) -> Void,
         onRemoveFromBoard: @escaping (HomeCard) -> Void,
+        onReport: @escaping (HomeCard, ReportReason) -> Void,
+        onBlock: @escaping (HomeCard) -> Void,
         onOpenAuthor: @escaping (HomeCard) -> Void,
         onOpenModel: @escaping (HomeCard) -> Void,
         onToggleFollow: @escaping (HomeCard) -> Void,
@@ -221,6 +241,8 @@ struct HomeFeedPager<Chrome: View>: View {
         self.onToggleFavorite = onToggleFavorite
         self.onSetPublic = onSetPublic
         self.onRemoveFromBoard = onRemoveFromBoard
+        self.onReport = onReport
+        self.onBlock = onBlock
         self.onOpenAuthor = onOpenAuthor
         self.onOpenModel = onOpenModel
         self.onToggleFollow = onToggleFollow
@@ -284,6 +306,8 @@ struct HomeFeedPager<Chrome: View>: View {
                                 onToggleFavorite: onToggleFavorite,
                                 onSetPublic: onSetPublic,
                                 onRemoveFromBoard: onRemoveFromBoard,
+                                onReport: onReport,
+                                onBlock: onBlock,
                                 onOpenAuthor: onOpenAuthor,
                                 onOpenModel: onOpenModel,
                                 onToggleFollow: onToggleFollow,
@@ -448,6 +472,8 @@ struct HomeFeedTabPage: View {
     let onToggleFavorite: (HomeCard, Style) -> Void
     let onSetPublic: (HomeCard, Bool) -> Void
     let onRemoveFromBoard: (HomeCard) -> Void
+    let onReport: (HomeCard, ReportReason) -> Void
+    let onBlock: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
     let onOpenModel: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
@@ -580,6 +606,8 @@ struct HomeFeedTabPage: View {
                         onToggleFavorite: onToggleFavorite,
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
+                        onReport: onReport,
+                        onBlock: onBlock,
                         shiningCardID: shiningCardID,
                         onOpenAuthor: onOpenAuthor,
                         onOpenModel: onOpenModel,

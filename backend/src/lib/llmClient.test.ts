@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { generateJson, generateReframe, LLM_MAX_OUTPUT_TOKENS, LlmError, MIN_LLM_CALL_MS, STYLE_BATCH_MAX_OUTPUT_TOKENS, timeoutMsUntil } from "./llmClient.js";
+import { generateJson, generateReframe, LLM_MAX_OUTPUT_TOKENS, LlmError, MIN_LLM_CALL_MS, resetMissingUsageCircuitForTests, STYLE_BATCH_MAX_OUTPUT_TOKENS, timeoutMsUntil } from "./llmClient.js";
 
 const INPUT = {
   text: "I bombed my job interview today and cannot stop replaying every pause.",
@@ -31,6 +31,7 @@ function lastRequest(fetchMock: ReturnType<typeof vi.fn>): {
 
 describe("generateReframe", () => {
   beforeEach(() => {
+    resetMissingUsageCircuitForTests();
     vi.stubEnv("LLM_MODEL", "mistral-small-latest");
     vi.stubEnv("MISTRAL_API_KEY", "mistral-test");
     vi.stubEnv("GEMINI_API_KEY", "gemini-test");
@@ -40,6 +41,7 @@ describe("generateReframe", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("calls Mistral with reasoning off", async () => {
@@ -199,10 +201,81 @@ describe("generateReframe", () => {
 
   it("maps HTTP failures without including the user text", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ error: INPUT.text }, 500)));
+    const usageSink = vi.fn();
+    const request = generateReframe({ ...INPUT, usageSink });
 
-    await expect(generateReframe(INPUT)).rejects.toThrow("LLM HTTP 500");
-    await expect(generateReframe(INPUT)).rejects.toThrow(
+    await expect(request).rejects.toThrow("LLM HTTP 500");
+    await expect(request).rejects.toThrow(
       expect.not.stringContaining("bombed my job interview"),
+    );
+    expect(usageSink).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", usageSource: "estimated" }),
+    );
+  });
+
+  it("emits normalized reported usage and provider metadata", async () => {
+    const usageSink = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          id: "req_123",
+          model: "mistral-small-2506",
+          choices: [{ message: { content: "Take the next controllable step." } }],
+          usage: {
+            prompt_tokens: 50,
+            completion_tokens: 10,
+            prompt_tokens_details: { cached_tokens: 20 },
+          },
+        }),
+      ),
+    );
+
+    await generateReframe({
+      ...INPUT,
+      callKind: "reframe",
+      attempt: 2,
+      usageSink,
+    });
+
+    expect(usageSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callKind: "reframe",
+        attempt: 2,
+        requestedModel: "mistral-small-latest",
+        returnedModel: "mistral-small-2506",
+        providerRequestId: "req_123",
+        promptTokens: 30,
+        cachedTokens: 20,
+        completionTokens: 10,
+        usageSource: "reported",
+        companyCostNanoUsd: 13_500n,
+      }),
+    );
+  });
+
+  it("opens the per-model circuit after consecutive missing usage", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({ choices: [{ message: { content: "Keep going." } }] }),
+      ),
+    );
+
+    await expect(generateReframe(INPUT)).resolves.toBe("Keep going.");
+    await expect(generateReframe(INPUT)).resolves.toBe("Keep going.");
+    const usageSink = vi.fn();
+    await expect(generateReframe({ ...INPUT, usageSink })).rejects.toThrow(
+      "LLM model unavailable",
+    );
+    expect(usageSink).toHaveBeenCalledOnce();
+    expect(usageSink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "succeeded",
+        usageSource: "estimated",
+        companyCostNanoUsd: expect.any(BigInt),
+      }),
     );
   });
 });
@@ -219,6 +292,7 @@ describe("timeoutMsUntil", () => {
 
 describe("generateJson", () => {
   beforeEach(() => {
+    resetMissingUsageCircuitForTests();
     vi.stubEnv("LLM_MODEL", "mistral-small-latest");
     vi.stubEnv("MISTRAL_API_KEY", "mistral-test");
   });
@@ -226,6 +300,7 @@ describe("generateJson", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("sends a tight max_tokens for a style batch", async () => {

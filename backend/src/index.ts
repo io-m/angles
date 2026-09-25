@@ -4,6 +4,9 @@ import { assertSchemaCurrent, closePool } from "./db/client.js";
 import { app } from "./app.js";
 import { assertCookSigningKey } from "./lib/cookSignature.js";
 import { assertBetterAuthSecret } from "./auth.js";
+import { assertMeteringConfiguration } from "./lib/meteringPolicy.js";
+import { assertProductionConfiguration } from "./lib/productionConfig.js";
+import { runProductionMigrations } from "./db/productionMigrations.js";
 
 loadLocalEnvFile();
 
@@ -16,8 +19,11 @@ function parsePort(raw: string | undefined): number {
 }
 
 async function main(): Promise<void> {
+  assertProductionConfiguration();
   assertCookSigningKey();
   assertBetterAuthSecret();
+  assertMeteringConfiguration();
+  await runProductionMigrations();
   await assertSchemaCurrent();
 
   const port = parsePort(process.env.PORT);

@@ -13,6 +13,7 @@ Paid reframe app. The library is private; community Home shipped, and a card app
 - Screen/feature order is `BUILD.md`. Build only the current item. Update that file in the same change as every new screen or feature.
 - Do not add SwiftData until that row in `BUILD.md` is next (or the user asked for that task). StoreKit, Drizzle, and Auth have shipped.
 - `POST /cards` only stores a cook signed by `/reframe` (`backend/src/lib/cookSignature.ts`); never loosen that to trust client content.
+- `POST /reframe` never stores cards or thought text; it may write only text-free metering/idempotency metadata and provider token/cost records.
 - Keep `backend/src/types/index.ts` and `ReframeModels.swift` JSON-identical.
 - Do not log user thought text. Do not add browser CORS.
 - Auth is Better Auth (Sign in with Apple). Owner seam is `requireAuth` / `getOwnerUserId()` in `authStub.ts`. DB is Postgres + Drizzle (`postgres` driver).

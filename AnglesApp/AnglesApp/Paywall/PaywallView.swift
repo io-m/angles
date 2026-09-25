@@ -339,13 +339,25 @@ struct PaywallView: View {
     private var purchaseModule: some View {
         VStack(spacing: 22) {
             if let errorMessage = storeKitManager.errorMessage {
-                Text(errorMessage)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(theme.ink)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityLabel(errorMessage)
+                VStack(spacing: 8) {
+                    Text(errorMessage)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(theme.ink)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel(errorMessage)
+
+                    if storeKitManager.serverSyncPending {
+                        Button("Retry membership sync") {
+                            Task { await storeKitManager.retryServerSync() }
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+                        .disabled(storeKitManager.isBusy)
+                        .accessibilityHint("Retries syncing your Apple subscription with Angles")
+                    }
+                }
             }
 
             priceType
@@ -584,14 +596,26 @@ struct PaywallView: View {
 
     @ViewBuilder
     private var legalLinks: some View {
-        Link(
-            "Terms of Service",
-            destination: URL(string: "https://angles.app/terms")!
-        )
-        Link(
-            "Privacy Policy",
-            destination: URL(string: "https://angles.app/privacy")!
-        )
+        if let termsURL = AppConfig.termsOfServiceURL {
+            Link("Terms of Service", destination: termsURL)
+        } else if !AppConfig.isSubmissionBuild {
+            Text("Terms unavailable in this build")
+                .foregroundStyle(theme.faint)
+        }
+
+        if let privacyURL = AppConfig.privacyPolicyURL {
+            Link("Privacy Policy", destination: privacyURL)
+        } else if !AppConfig.isSubmissionBuild {
+            Text("Privacy unavailable in this build")
+                .foregroundStyle(theme.faint)
+        }
+
+        if let supportURL = AppConfig.supportContactURL {
+            Link("Support", destination: supportURL)
+        } else if !AppConfig.isSubmissionBuild {
+            Text("Support unavailable in this build")
+                .foregroundStyle(theme.faint)
+        }
     }
 
     private var selectedProduct: Product? {
