@@ -175,72 +175,35 @@ struct PaywallView: View {
         .accessibilityLabel("Saved privately")
     }
 
-    /// One locked screen: four-angle specimen on paper, commerce spread in the floor.
-    /// The specimen scrolls only for compact height or larger Dynamic Type.
+    /// One locked screen: specimen marquee on paper, commerce overlaid so cards
+    /// travel behind the sheet’s rounded corners.
+    /// The purchase module scrolls only for compact height or larger Dynamic Type.
     private var membershipStage: some View {
-        Group {
+        ZStack(alignment: .bottom) {
+            PaywallCardMarquee(savedCard: savedCard)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(edges: .top)
+
             if usesScrollableMembershipContent {
                 ScrollView {
-                    membershipContent(fillsAvailableHeight: false)
+                    purchaseModule
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
             } else {
-                membershipContent(fillsAvailableHeight: true)
+                purchaseModule
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(restoreFeedbackAnimation, value: storeKitManager.priorMembershipProductID)
         .animation(restoreFeedbackAnimation, value: storeKitManager.errorMessage)
         .animation(planSwitchAnimation, value: selectedPlan)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            purchaseModule
-        }
         .sheet(isPresented: $showsInfoSheet) {
             paywallInfoSheet
                 .onAppear { infoSheetDetent = .large }
         }
         .allowsHitTesting(!storeKitManager.isBusy || showsInfoSheet)
         .accessibilityHidden(storeKitManager.isBusy && !showsInfoSheet)
-    }
-
-    private func membershipContent(
-        fillsAvailableHeight: Bool
-    ) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer(minLength: 0)
-                infoButton
-            }
-            .padding(.horizontal, 8)
-
-            VStack(spacing: 16) {
-                Spacer(minLength: 8)
-
-                Text("One thought. Four ways out.")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .tracking(-0.6)
-                    .foregroundStyle(theme.ink)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-
-                PaywallAngleGrid()
-
-                Text("Without this, the next thought has nowhere to go.")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(theme.muted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 4)
-
-                Spacer(minLength: 8)
-            }
-            .padding(.horizontal, 20)
-            .frame(maxWidth: 560)
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: fillsAvailableHeight ? .infinity : nil
-            )
-        }
     }
 
     private var infoButton: some View {
@@ -395,6 +358,11 @@ struct PaywallView: View {
         .padding(.top, 26)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .topTrailing) {
+            infoButton
+                .padding(.top, 6)
+                .padding(.trailing, 8)
+        }
         .background {
             moduleBackground
         }
@@ -791,221 +759,6 @@ struct PaywallView: View {
         withAnimation(.spring(response: 0.68, dampingFraction: 0.84)) {
             stage = .membership
         }
-    }
-}
-
-private struct PaywallAngleGrid: View {
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
-
-    var body: some View {
-        LazyVGrid(columns: columns, spacing: 12) {
-            ForEach(Style.allCases, id: \.self) { style in
-                PaywallAngleTile(style: style)
-            }
-        }
-    }
-}
-
-private struct PaywallAngleTile: View {
-    let style: Style
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-    private var appearance: CardStyleAppearance { CardStyleAppearance(style: style) }
-    private var tileShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: appearance.systemImage)
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(appearance.ink)
-
-                Text(style.displayName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.ink)
-                    .lineLimit(1)
-            }
-
-            Text(benefit)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(theme.muted)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-        .background {
-            tileFill
-        }
-        .clipShape(tileShape)
-        .overlay {
-            tileShape.strokeBorder(tileEdge, lineWidth: 1)
-        }
-        .shadow(color: tileShadow, radius: theme.isDark ? 10 : 12, y: theme.isDark ? 0 : 2)
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(style.displayName). \(benefit)")
-    }
-
-    /// Midway: light tiles read as color without shouting. Dark is unchanged.
-    private var tileFill: some View {
-        let stops: (top: Double, mid: Double, bottom: Double) = theme.isDark
-            ? (0.025, 0.06, 0.12)
-            : (0.05, 0.11, 0.20)
-        return theme.surface.overlay(
-            LinearGradient(
-                stops: [
-                    .init(color: appearance.ink.opacity(stops.top), location: 0),
-                    .init(color: appearance.ink.opacity(stops.mid), location: 0.55),
-                    .init(color: appearance.ink.opacity(stops.bottom), location: 1)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-    }
-
-    private var tileEdge: Color {
-        theme.isDark ? theme.cardHairline : appearance.ink.opacity(0.08)
-    }
-
-    private var tileShadow: Color {
-        theme.isDark ? theme.cardAmbientShadow : Color.black.opacity(0.05)
-    }
-
-    private var benefit: String {
-        switch style {
-        case .stoic:
-            return "What’s yours to carry, and what isn’t"
-        case .optimistic:
-            return "What could still go right"
-        case .humorous:
-            return "It doesn’t have to be this heavy"
-        case .toughLove:
-            return "Stop spinning. Next step."
-        }
-    }
-}
-
-private struct PaywallHeroCard: View {
-    let card: HomeCard
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-    private var cardShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
-    }
-
-    private var spotlightSlide: HomeCardSlide? {
-        card.slides.first(where: { $0.result.style == card.spotlightStyle }) ?? card.slides.first
-    }
-
-    private var appearance: CardStyleAppearance {
-        CardStyleAppearance(style: spotlightSlide?.result.style ?? card.spotlightStyle)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(card.thought)
-                .font(ReframeCardMetrics.thoughtFont)
-                .foregroundStyle(theme.muted)
-                .multilineTextAlignment(.leading)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
-
-            Rectangle()
-                .fill(theme.cardHairline)
-                .frame(height: 1)
-                .padding(.horizontal, 16)
-
-            if let answer = spotlightSlide?.result.reframe {
-                Text(answer)
-                    .font(ReframeCardMetrics.answerFont)
-                    .foregroundStyle(appearance.responseInk)
-                    .lineSpacing(2)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-            }
-
-            staticChips
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
-        }
-        .background {
-            appearance.washFill(over: theme.surface)
-        }
-        .clipShape(cardShape)
-        .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityCopy)
-    }
-
-    private var staticChips: some View {
-        HStack(spacing: 8) {
-            ForEach(card.slides.map(\.result.style), id: \.self) { style in
-                staticChip(style)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func staticChip(_ style: Style) -> some View {
-        let chipAppearance = CardStyleAppearance(style: style)
-        let isSelected = style == appearance.style
-
-        return HStack(spacing: 6) {
-            Image(systemName: chipAppearance.systemImage)
-                .symbolRenderingMode(.hierarchical)
-                .font(.system(size: 12, weight: .semibold))
-
-            if isSelected {
-                Text(style.displayName)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-        }
-        .foregroundStyle(
-            isSelected
-                ? chipAppearance.ink
-                : chipAppearance.ink.opacity(chipAppearance.chipUnselectedInkOpacity(for: colorScheme))
-        )
-        .padding(.horizontal, isSelected ? 10 : 0)
-        .frame(width: isSelected ? nil : 30, height: 30, alignment: .center)
-        .background {
-            Capsule(style: .continuous)
-                .fill(
-                    chipAppearance.ink.opacity(
-                        isSelected
-                            ? chipAppearance.chipFillOpacity(for: colorScheme)
-                            : chipAppearance.chipUnselectedFillOpacity(for: colorScheme)
-                    )
-                )
-        }
-        .accessibilityHidden(true)
-    }
-
-    private var accessibilityCopy: String {
-        let thought = card.thought
-        let answer = spotlightSlide?.result.reframe ?? ""
-        let style = appearance.style.displayName
-        return "\(thought). \(style): \(answer)"
     }
 }
 

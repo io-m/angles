@@ -54,6 +54,7 @@ Loading and error are **states on Results**, not their own screens.
 | 7f | Taste header + membership | polish | done | `ComposeSheetView.swift`; `PaywallView.swift`; `StoreKitManager.swift`; `AnglesApp.swift` | Taste restore sits in the model-button row; ended membership opens the same two-plan paywall, preselects the prior plan, and purchases the selected SKU. |
 | 7g | Paywall positive capture | polish | done | `PaywallView.swift`; `AnglesApp.swift` | Paper sells four angles as a 2x2 of style tiles; purchase module is spread commerce (44pt price, both plans, CTA); (i) holds library/Home, restore, legal. |
 | 7h | Sandbox-only checkout | polish | done | `project.yml`; `StoreKitManager.swift`; `AnglesApp.swift`; `PaywallView.swift`; `HomeView.swift`; `ProfileView.swift`; `HomeViewModel.swift` | No local StoreKit file; prior-plan-aware renewal; neutral checkout copy; one serialized checkout/feed/frost handoff; first loads wait for entitlement readiness. |
+| 7i | Paywall specimen marquee | polish | done | `PaywallCardMarquee.swift`; `PaywallView.swift` | Paper is a tilted 3-row marquee of specimen cards that bleeds behind the purchase sheet’s rounded corners; (i) sits on the module. |
 | 9 | Public opt-in / community Home | screen | done | `HomeView.swift`; `feed.ts`; `schema.ts`; `CardsService.swift` | Public-others feed by Recent, category, and emotion; viewer pin/heart saves; `pnpm db:seed-community`. |
 | 9b | Home perf, header, card gestures | polish | done | `HomeView.swift`; `HeaderChrome.swift`; `ReframeCardView.swift`; `FeedSubsetView.swift`; `homeFeed.ts`; `feed.ts` | Lazy shelves + grouped `GET /feed/home`; one collapsing header; three-band cards; domain/mood zipper. |
 | 9c | Style chips, flip chevron, no pins | polish | done | `ReframeCardView.swift`; `HomeCardGrid.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `APIClient.swift`; `feed.ts`; `cards.ts` | Chips replace the in-card pager; heart top-right, flip chevron bottom-right; pins gone; failed writes say so. |
@@ -368,6 +369,10 @@ Not a new screen. Debug on device talks only to App Store sandbox — no `.store
 
 **Logout race regression:** Apple status/history calls already in flight when Log out is tapped must re-check `hasSignedOutSession` after every await. They may finish and clean up transactions, but only an explicit purchase or Restore can sign the local session back in; passive refresh/probe work cannot leave Home visible while Settings reports Inactive.
 
+### 7i. Paywall specimen marquee
+
+Not a new screen. Polish on 7g. Replaces the 2×2 style-benefit tiles with a full-bleed tilted 3-row marquee of thought/reframe specimens (canned community copy, plus the saved taste card when present). Cards bleed under the status bar and behind the Yearly/Monthly sheet’s rounded corners. There is no headline or miss line. The (i) sits on the trailing edge of the purchase module. Celebration and StoreKit are unchanged. Reduce Motion shows a static clipped collage. Compact height and large Dynamic Type scroll the purchase module over the marquee.
+
 ## Postponed (do not start)
 
 | # | Item | Kind | Status | Why later |
@@ -385,6 +390,14 @@ Account / auth settings wait until auth exists. Appearance already shipped in 2a
 
 ## Shipped log
 
+- 2026-09-25 — Paywall’s two main marquee rows always show Stoic, Optimistic, Humorous, and Tough Love together.
+- 2026-09-25 — Paywall marquee uses four rows so the collage fills from the top fade down behind the sheet.
+- 2026-09-25 — Paywall marquee lifts a third card row into the top fade.
+- 2026-09-25 — Paywall marquee runs behind the purchase sheet so rounded corners sit on cards, not a hard paper cut.
+- 2026-09-25 — Paywall (i) sits on the trailing edge of the purchase module; marquee has no headline and matching top/bottom fades.
+- 2026-09-25 — Paywall marquee has no headline; top and bottom paper fades match so cards dissolve softly into checkout.
+- 2026-09-25 — Paywall marquee bleeds under the headline and fades into checkout; specimen tiles are larger and the miss line is gone.
+- 2026-09-25 — Paywall paper is a tilted 3-row marquee of specimen cards; Yearly/Monthly checkout, headline, and (i) sheet are unchanged.
 - 2026-09-24 — The model page globe opens the same privacy menu as Home; Make private removes the card with one smooth list transaction.
 - 2026-09-24 — Owner globes open the same privacy menu on both Profile card layouts.
 - 2026-09-24 — Profile privacy actions now apply directly without a second confirmation dialog.

@@ -21,6 +21,7 @@
 		2EB391598577F25425C75DFF /* Angles.icon in Resources */ = {isa = PBXBuildFile; fileRef = 277F500C2565CC7DF5621C5A /* Angles.icon */; };
 		327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05847EC66A8A1B53179B539 /* ReframeCardView.swift */; };
 		3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D55F6643C769B38928FD8B /* ReframeModels.swift */; };
+		3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */; };
 		475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */; };
 		48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */; };
 		6B24BAA80221DF85876BB30A /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EBC59EB491832949278518 /* APIClient.swift */; };
@@ -55,6 +56,7 @@
 		0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderChrome.swift; sourceTree = "<group>"; };
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
 		1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorProfileView.swift; sourceTree = "<group>"; };
+		22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallCardMarquee.swift; sourceTree = "<group>"; };
 		277F500C2565CC7DF5621C5A /* Angles.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Angles.icon; sourceTree = "<group>"; };
 		338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
 		3726E6089528365BA6EC3BA8 /* AnglesApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnglesApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -158,6 +160,7 @@
 		3C7A6CC9AC2A38D2B0970D56 /* Paywall */ = {
 			isa = PBXGroup;
 			children = (
+				22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */,
 				0D63A3C056314A252917F965 /* PaywallView.swift */,
 			);
 			path = Paywall;
@@ -352,6 +355,7 @@
 				01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
 				8A83FB23A4CA28CC1AC7971C /* ModelProfileView.swift in Sources */,
+				3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */,
 				1C5A8915F3447627232F0B0D /* PaywallView.swift in Sources */,
 				A524721420264A194D882278 /* ProfileIdentityStore.swift in Sources */,
 				FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */,
