@@ -10,7 +10,96 @@
   ],
   "groups" : [
     {
-      "hidden" : false,
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "srgb:0.12984,0.12985,0.12984,1.00000",
+                  "srgb:0.00000,0.00000,0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0,
+                    "y" : -0.14235333501001182
+                  },
+                  "stop" : {
+                    "x" : 1.0401522310397404,
+                    "y" : 1.1169351418772637
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "srgb:0.92143,0.92145,0.92144,1.00000",
+                  "srgb:1.00000,1.00000,1.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5,
+                    "y" : 1
+                  },
+                  "stop" : {
+                    "x" : 0.3742254428094898,
+                    "y" : 0.07028059019254808
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "linear-gradient" : [
+                  "srgb:0.92143,0.92145,0.92144,1.00000",
+                  "srgb:1.00000,1.00000,1.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5,
+                    "y" : 1
+                  },
+                  "stop" : {
+                    "x" : 0.3942834785995576,
+                    "y" : 0
+                  }
+                }
+              }
+            }
+          ],
+          "glass-specializations" : [
+            {
+              "value" : false
+            },
+            {
+              "appearance" : "tinted",
+              "value" : false
+            }
+          ],
+          "image-name" : "solar_emoji-funny-square-bold.svg",
+          "name" : "solar_emoji-funny-square-bold",
+          "opacity-specializations" : [
+            {
+              "appearance" : "tinted",
+              "value" : 0.9
+            }
+          ]
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "hidden" : true,
       "layers" : [
         {
           "fill-specializations" : [
@@ -85,262 +174,6 @@
             "translation-in-points" : [
               15.664441122278049,
               -1.445601361231752
-            ]
-          }
-        }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.3
-      }
-    },
-    {
-      "hidden" : true,
-      "layers" : [
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "automatic-gradient" : "srgb:0.12984,0.12985,0.12984,1.00000"
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "automatic-gradient" : "srgb:0.83742,0.83744,0.83743,1.00000"
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "automatic-gradient" : "srgb:0.92143,0.92145,0.92144,1.00000"
-              }
-            }
-          ],
-          "glass" : false,
-          "image-name" : "Vector-5 2.svg",
-          "name" : "Vector-5 2",
-          "position" : {
-            "scale" : 0.92,
-            "translation-in-points" : [
-              26.08906516520358,
-              -32.743720526231584
-            ]
-          }
-        },
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "automatic-gradient" : "srgb:0.12984,0.12985,0.12984,1.00000"
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "automatic-gradient" : "srgb:0.83742,0.83744,0.83743,1.00000"
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "automatic-gradient" : "srgb:0.92143,0.92145,0.92144,1.00000"
-              }
-            }
-          ],
-          "glass" : false,
-          "image-name" : "Vector-4 2.svg",
-          "name" : "Vector-4 2",
-          "position" : {
-            "scale" : 0.92,
-            "translation-in-points" : [
-              71,
-              47.84200898285394
-            ]
-          }
-        },
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "automatic-gradient" : "srgb:0.12984,0.12985,0.12984,1.00000"
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "automatic-gradient" : "srgb:0.83742,0.83744,0.83743,1.00000"
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "automatic-gradient" : "srgb:0.92143,0.92145,0.92144,1.00000"
-              }
-            }
-          ],
-          "glass" : false,
-          "image-name" : "Vector-3 2.svg",
-          "name" : "Vector-3 2",
-          "position" : {
-            "scale" : 0.92,
-            "translation-in-points" : [
-              116.1320475862102,
-              123.82449098265192
-            ]
-          }
-        },
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.75407,0.75409,0.75408,1.00000",
-                  "srgb:0.92143,0.92145,0.92144,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.5,
-                    "y" : 1
-                  },
-                  "stop" : {
-                    "x" : 0.5,
-                    "y" : 0
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.12984,0.12985,0.12984,1.00000",
-                  "srgb:0.26052,0.26052,0.26052,1.00000"
-                ]
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.12984,0.12985,0.12984,1.00000",
-                  "srgb:0.37056,0.37056,0.37056,1.00000"
-                ]
-              }
-            }
-          ],
-          "glass" : false,
-          "image-name" : "Vector 2.svg",
-          "name" : "Vector 2",
-          "position" : {
-            "scale" : 0.92,
-            "translation-in-points" : [
-              89.7904299338303,
-              128.04691454395618
-            ]
-          }
-        },
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.75407,0.75409,0.75408,1.00000",
-                  "srgb:0.92143,0.92145,0.92144,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.5,
-                    "y" : 1
-                  },
-                  "stop" : {
-                    "x" : 0.5,
-                    "y" : 0
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.12984,0.12985,0.12984,1.00000",
-                  "srgb:0.26052,0.26052,0.26052,1.00000"
-                ]
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.12984,0.12985,0.12984,1.00000",
-                  "srgb:0.37056,0.37056,0.37056,1.00000"
-                ]
-              }
-            }
-          ],
-          "glass" : false,
-          "image-name" : "Vector-1 2.svg",
-          "name" : "Vector-1 2",
-          "position" : {
-            "scale" : 0.92,
-            "translation-in-points" : [
-              44.95646318667684,
-              54.74332000000015
-            ]
-          }
-        },
-        {
-          "fill-specializations" : [
-            {
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.75407,0.75409,0.75408,1.00000",
-                  "srgb:0.92143,0.92145,0.92144,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.5,
-                    "y" : 1
-                  },
-                  "stop" : {
-                    "x" : 0.5,
-                    "y" : 0
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.12984,0.12985,0.12984,1.00000",
-                  "srgb:0.26052,0.26052,0.26052,1.00000"
-                ]
-              }
-            },
-            {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
-                  "srgb:0.12984,0.12985,0.12984,1.00000",
-                  "srgb:0.37056,0.37056,0.37056,1.00000"
-                ]
-              }
-            }
-          ],
-          "glass" : false,
-          "image-name" : "Vector-2 2.svg",
-          "name" : "Vector-2 2",
-          "position" : {
-            "scale" : 0.92,
-            "translation-in-points" : [
-              -0.003241707662027693,
-              -14
             ]
           }
         }
