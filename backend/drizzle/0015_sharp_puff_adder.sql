@@ -1,0 +1,1 @@
+CREATE INDEX "saved_angles_card_idx" ON "saved_angles" USING btree ("card_id");

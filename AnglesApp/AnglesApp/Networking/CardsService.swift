@@ -35,9 +35,13 @@ struct CardsService: Sendable {
         try await client.delete(path: "cards/\(id)", timeout: Self.writeTimeout)
     }
 
+    /// `before` is whatever cursor the last page handed back, opaque on purpose: the
+    /// server may be paging chronologically or by rank. `after` asks the opposite
+    /// question — what has been posted since this cursor — and is always chronological.
     func listFeed(
         limit: Int,
         before: String? = nil,
+        after: String? = nil,
         categories: Set<ThoughtCategory> = [],
         emotions: Set<Emotion> = [],
         style: Style? = nil
@@ -45,6 +49,9 @@ struct CardsService: Sendable {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {
             queryItems.append(URLQueryItem(name: "before", value: before))
+        }
+        if let after {
+            queryItems.append(URLQueryItem(name: "after", value: after))
         }
         let orderedCategories = ThoughtCategory.allCases.filter(categories.contains)
         if !orderedCategories.isEmpty {

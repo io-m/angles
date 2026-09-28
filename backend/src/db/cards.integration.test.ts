@@ -10,6 +10,7 @@ import {
   type Category,
   type CreateCardInput,
   type Emotion,
+  type Style,
 } from "../types/index.js";
 import { DEV_USER_ID } from "../lib/authStub.js";
 import type {
@@ -74,7 +75,7 @@ const {
   getUsageSummary,
   startMeterOperation,
 } = await import("./metering.js");
-const { clearFeedSaves, listFeed, saveFeedAngle } = await import("./feed.js");
+const { clearFeedSaves, listFeed, listRankedFeed, saveFeedAngle } = await import("./feed.js");
 const { followUser, unfollowUser } = await import("./follows.js");
 const { createApp } = await import("../app.js");
 const {
@@ -1351,6 +1352,59 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(after.some((card) => card.id === publicOther)).toBe(false);
   });
 
+  it("shows heart counts to the author and to nobody else", async () => {
+    const mine = await createCard({ ...baseInput, isPublic: true });
+    const theirs = await insertOtherCard({
+      thought: "Someone else's public card whose numbers stay their own.",
+      isPublic: true,
+    });
+
+    // Two strangers on one angle, one of them on two angles: people, not angles.
+    const fan = "00000000-0000-4000-8000-000000000097";
+    await getDb()
+      .insert(users)
+      .values({
+        id: fan,
+        initials: "FA",
+        name: "FA",
+        email: `seed-${fan}@angles.invalid`,
+      })
+      .onConflictDoNothing();
+    await getDb().insert(savedAngles).values([
+      { userId: OTHER_USER_ID, cardId: mine.id, style: "stoic" },
+      { userId: OTHER_USER_ID, cardId: mine.id, style: "humorous" },
+      { userId: fan, cardId: mine.id, style: "stoic" },
+    ]);
+    await saveFeedAngle(theirs, "optimistic");
+
+    const feed = await listFeed({ limit: 50 });
+    const own = feed.find((card) => card.id === mine.id);
+    expect(own?.isOwner).toBe(true);
+    expect(own?.results.find((item) => item.style === "stoic")?.heartCount).toBe(2);
+    expect(own?.results.find((item) => item.style === "humorous")?.heartCount).toBe(1);
+    // Absent, not zero: a 0 on a post about your worst day is worse than no number.
+    expect(own?.results.find((item) => item.style === "optimistic")?.heartCount).toBeUndefined();
+
+    const other = feed.find((card) => card.id === theirs);
+    expect(other?.isOwner).toBe(false);
+    expect(other?.results.every((item) => item.heartCount === undefined)).toBe(true);
+
+    // The count survives the author toggling their own favorite, which answers from `loadCard`.
+    const patched = await patchCard(mine.id, { style: "stoic", isFavorite: true });
+    expect(patched.ok).toBe(true);
+    if (patched.ok) {
+      expect(patched.card.results.find((item) => item.style === "stoic")?.heartCount).toBe(2);
+    }
+
+    // A private card has no audience, so it reports no numbers.
+    await getDb().update(cards).set({ isPublic: false }).where(eq(cards.id, mine.id));
+    const library = await listCards({ limit: 50 });
+    const hidden = library.find((card) => card.id === mine.id);
+    expect(hidden?.results.every((item) => item.heartCount === undefined)).toBe(true);
+
+    await getDb().delete(users).where(eq(users.id, fan));
+  });
+
   it("drops a hearted card from the library once its author makes it private", async () => {
     const hearted = await insertOtherCard({
       thought: "I keep checking my phone for a message that is not coming.",
@@ -1370,6 +1424,210 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
     await getDb().update(cards).set({ isPublic: true }).where(eq(cards.id, hearted));
     expect((await listCards({ limit: 50 })).some((card) => card.id === hearted)).toBe(false);
+  });
+
+  describe("resonance ranking", () => {
+    const session = (overrides: { offset?: number; seed?: string } = {}) => ({
+      seed: overrides.seed ?? "seed-integration",
+      startedAt: new Date(),
+      offset: overrides.offset ?? 0,
+    });
+
+    async function heart(cardId: string, userId: string, style: Style = "stoic"): Promise<void> {
+      await getDb()
+        .insert(users)
+        .values({
+          id: userId,
+          initials: "HT",
+          name: "HT",
+          email: `seed-${userId}@angles.invalid`,
+        })
+        .onConflictDoNothing();
+      await getDb().insert(savedAngles).values({ userId, cardId, style }).onConflictDoNothing();
+    }
+
+    it("ranks a card strangers hearted above an equally fresh one nobody did", async () => {
+      const createdAt = new Date(Date.now() - 3_600_000);
+      const plain = await insertOtherCard({
+        thought: "Nobody has hearted this one yet and it sits in the same hour.",
+        isPublic: true,
+        createdAt,
+      });
+      const loved = await insertOtherCard({
+        thought: "Three people found something they needed in this one.",
+        isPublic: true,
+        createdAt,
+      });
+      for (const [index, fan] of [
+        "00000000-0000-4000-8000-0000000000a1",
+        "00000000-0000-4000-8000-0000000000a2",
+        "00000000-0000-4000-8000-0000000000a3",
+      ].entries()) {
+        await heart(loved, fan, index === 0 ? "stoic" : "optimistic");
+      }
+
+      const ranked = await listRankedFeed({ limit: 24, session: session() });
+      const ids = ranked.map((card) => card.id);
+      expect(ids.indexOf(loved)).toBeLessThan(ids.indexOf(plain));
+    });
+
+    it("ranks the viewer's own subject above a subject they never write about", async () => {
+      // The viewer's library is what affinity reads: work, shame and fear.
+      await createCard(baseInput);
+      const createdAt = new Date(Date.now() - 7_200_000);
+      const stranger = await insertOtherCard({
+        thought: "A money worry this viewer has never once written about.",
+        isPublic: true,
+        category: "money",
+        emotions: ["envy"],
+        createdAt,
+      });
+      const mirror = await insertOtherCard({
+        thought: "Work leaves me ashamed and afraid I am falling behind.",
+        isPublic: true,
+        category: "work",
+        emotions: ["shame", "fear"],
+        createdAt,
+      });
+
+      const ranked = await listRankedFeed({ limit: 24, session: session() });
+      const ids = ranked.map((card) => card.id);
+      expect(ids.indexOf(mirror)).toBeLessThan(ids.indexOf(stranger));
+    });
+
+    it("pages a frozen candidate set without repeating or dropping a card", async () => {
+      const ids = new Set<string>();
+      for (let index = 0; index < 7; index += 1) {
+        ids.add(
+          await insertOtherCard({
+            thought: `A public thought number ${index} for the ranked pager.`,
+            isPublic: true,
+            createdAt: new Date(Date.now() - index * 60_000),
+          }),
+        );
+      }
+
+      const seeded = session();
+      const first = await listRankedFeed({ limit: 3, session: seeded });
+      const second = await listRankedFeed({ limit: 3, session: { ...seeded, offset: 3 } });
+      const third = await listRankedFeed({ limit: 3, session: { ...seeded, offset: 6 } });
+
+      const paged = [...first, ...second, ...third].map((card) => card.id);
+      expect(paged).toHaveLength(7);
+      expect(new Set(paged)).toEqual(ids);
+    });
+
+    it("keeps one seed stable and gives another a different order", async () => {
+      for (let index = 0; index < 12; index += 1) {
+        await insertOtherCard({
+          thought: `Another public thought ${index} to shuffle between visits.`,
+          isPublic: true,
+          createdAt: new Date(Date.now() - index * 3_600_000),
+        });
+      }
+
+      const startedAt = new Date();
+      const one = await listRankedFeed({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
+      const again = await listRankedFeed({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
+      const other = await listRankedFeed({ limit: 12, session: { seed: "seed-two", startedAt, offset: 0 } });
+
+      expect(again.map((card) => card.id)).toEqual(one.map((card) => card.id));
+      expect(other.map((card) => card.id)).not.toEqual(one.map((card) => card.id));
+    });
+
+    it("honours the facets, privacy, blocks and reports that chronological order honours", async () => {
+      const work = await insertOtherCard({
+        thought: "A work thought that matches the facet under test.",
+        isPublic: true,
+        category: "work",
+        emotions: ["fear"],
+      });
+      const money = await insertOtherCard({
+        thought: "A money thought that the facet should exclude.",
+        isPublic: true,
+        category: "money",
+        emotions: ["envy"],
+      });
+      const priv = await insertOtherCard({
+        thought: "A private thought that belongs to nobody's feed.",
+        isPublic: false,
+        category: "work",
+      });
+
+      const filtered = await listRankedFeed({
+        limit: 24,
+        categories: ["work"],
+        emotions: ["fear"],
+        session: session(),
+      });
+      const ids = filtered.map((card) => card.id);
+      expect(ids).toContain(work);
+      expect(ids).not.toContain(money);
+      expect(ids).not.toContain(priv);
+
+      await reportCard(work, "other");
+      expect((await listRankedFeed({ limit: 24, session: session() })).map((card) => card.id)).not.toContain(
+        work,
+      );
+
+      expect(await blockUser(OTHER_USER_ID)).toBe("ok");
+      expect(await listRankedFeed({ limit: 24, session: session() })).toEqual([]);
+      await unblockUser(OTHER_USER_ID);
+    });
+
+    it("opens other people's cards on the angle the viewer keeps hearting", async () => {
+      const ids: string[] = [];
+      for (let index = 0; index < 30; index += 1) {
+        ids.push(
+          await insertOtherCard({
+            thought: `A public thought ${index} whose cover the viewer may never have chosen.`,
+            isPublic: true,
+            createdAt: new Date(Date.now() - index * 60_000),
+          }),
+        );
+      }
+      // Every fixture card covers "humorous", so a lean has to be visible to be real.
+      const before = await listFeed({ limit: 50 });
+      expect(before.every((card) => card.spotlightStyle === "humorous")).toBe(true);
+
+      const target = ids[0];
+      if (!target) {
+        throw new Error("no fixture card");
+      }
+      expect((await saveFeedAngle(target, "tough_love")).ok).toBe(true);
+
+      const after = await listFeed({ limit: 50 });
+      const leaning = after.filter((card) => card.spotlightStyle === "tough_love");
+      expect(leaning.length).toBeGreaterThan(0);
+      // A lean, not a takeover: Home's All tab is meant to show mixed covers.
+      expect(leaning.length).toBeLessThan(after.length);
+
+      // Their own card keeps the cover they saved it with.
+      const own = await createCard({ ...baseInput, isPublic: true, spotlightStyle: "stoic" });
+      const withOwn = await listFeed({ limit: 50 });
+      expect(withOwn.find((card) => card.id === own.id)?.spotlightStyle).toBe("stoic");
+    });
+
+    it("leaves a post newer than the session out, so arrivals stay the other half", async () => {
+      const startedAt = new Date(Date.now() - 60_000);
+      const late = await insertOtherCard({
+        thought: "Posted after the viewer opened Home, so it is an arrival.",
+        isPublic: true,
+        createdAt: new Date(),
+      });
+
+      const ranked = await listRankedFeed({
+        limit: 24,
+        session: { seed: "seed-frozen", startedAt, offset: 0 },
+      });
+      expect(ranked.map((card) => card.id)).not.toContain(late);
+
+      const arrivals = await listFeed({
+        limit: 8,
+        after: { createdAt: startedAt, id: "00000000-0000-4000-8000-000000000000" },
+      });
+      expect(arrivals.map((card) => card.id)).toContain(late);
+    });
   });
 
   it("follows and unfollows another user without changing feed order", async () => {

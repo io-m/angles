@@ -200,6 +200,11 @@ export type StoredReframeResult = {
   reframe: string;
   isFavorite: boolean;
   favoritedAt?: string;
+  /**
+   * How many other people hearted this angle. Present only on the author's own
+   * public cards, so nobody can read another author's numbers. Omitted at zero.
+   */
+  heartCount?: number;
 };
 
 export type StoredCard = {
@@ -250,10 +255,29 @@ export type CardListQuery = {
 export type FeedListQuery = {
   limit: number;
   before?: FeedCursor;
+  /** Ranked page pointer. Mutually exclusive with `before`. */
+  session?: FeedSessionCursor;
+  /** Cards strictly newer than this, newest first. The arrivals half of a refresh. */
+  after?: FeedCursor;
   categories?: Category[];
   emotions?: Emotion[];
   /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
   style?: Style;
+};
+
+export type FeedSessionCursor = {
+  seed: string;
+  startedAt: Date;
+  offset: number;
+};
+
+export type FeedListResponse = {
+  cards: StoredCard[];
+  /**
+   * Present when the server owns the page pointer, which a ranked order does because
+   * it cannot be derived from the cards. Clients echo it back opaquely.
+   */
+  page?: { nextCursor: string };
 };
 
 export type FeedCursor = {

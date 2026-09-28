@@ -10,6 +10,7 @@
 		01A8AEC059C1A4D61340EAB5 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */; };
 		01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B6CE33C2217655B2170B5F3 /* LlmModel.swift */; };
 		02995E8655495BCA8665D82E /* HeaderChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */; };
+		057F225336671B92CC069930 /* FeedRefreshPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */; };
 		17CBFD4C422D6640341241AA /* CardsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91621A647BBA93B4181D3EB3 /* CardsService.swift */; };
 		1C5A8915F3447627232F0B0D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D63A3C056314A252917F965 /* PaywallView.swift */; };
 		1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3956722F5CD9FC2607E738A /* RootTabBar.swift */; };
@@ -46,6 +47,7 @@
 		A822B18D9B139FF8129822CC /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7E4784E528CDE420C415B939 /* Lottie */; };
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
 		B9938F536C7B31B2B2AB7059 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB09EE79B4A27D757AD2944A /* AuthService.swift */; };
+		BBDCFC5DAA64296BE09CD43A /* FeedRefreshPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */; };
 		BD5651910EFAA74B0C7C11AD /* HomeFeedPullRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926E1968DC6C213D5BAAAF2E /* HomeFeedPullRefresh.swift */; };
 		BFB32DC8E79F7A90F9203F19 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */; };
 		C20D7F03983C11800E9C8E9A /* AuthorProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */; };
@@ -77,12 +79,14 @@
 		01BEA95023B9310D87B3474C /* AppGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGate.swift; sourceTree = "<group>"; };
 		0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderChrome.swift; sourceTree = "<group>"; };
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
+		152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshPlan.swift; sourceTree = "<group>"; };
 		1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorProfileView.swift; sourceTree = "<group>"; };
 		22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallCardMarquee.swift; sourceTree = "<group>"; };
 		245774EE58FAD79304953B8A /* AuthNonce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthNonce.swift; sourceTree = "<group>"; };
 		277F500C2565CC7DF5621C5A /* Angles.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Angles.icon; sourceTree = "<group>"; };
 		338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
 		3726E6089528365BA6EC3BA8 /* AnglesApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnglesApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshPlanTests.swift; sourceTree = "<group>"; };
 		391AB20557C346784058025E /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		40B602E536EA39A5C8524CE6 /* ReframeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeService.swift; sourceTree = "<group>"; };
 		4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthCredentials.swift; sourceTree = "<group>"; };
@@ -268,6 +272,7 @@
 				338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */,
 				6A473004998C2F650FCA971D /* DrawerStubView.swift */,
 				01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */,
+				152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */,
 				4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */,
 				0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */,
 				81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */,
@@ -311,6 +316,7 @@
 			isa = PBXGroup;
 			children = (
 				9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */,
+				38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */,
 			);
 			path = AnglesAppTests;
 			sourceTree = "<group>";
@@ -418,6 +424,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */,
+				BBDCFC5DAA64296BE09CD43A /* FeedRefreshPlanTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -443,6 +450,7 @@
 				729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */,
 				A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */,
 				EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */,
+				057F225336671B92CC069930 /* FeedRefreshPlan.swift in Sources */,
 				DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */,
 				02995E8655495BCA8665D82E /* HeaderChrome.swift in Sources */,
 				2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */,

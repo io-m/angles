@@ -8,6 +8,8 @@ struct HomeCardSlide: Identifiable, Equatable {
     var result: ReframeResult
     var isFavorite: Bool
     var favoritedAt: Date?
+    /// Strangers who hearted this angle. Only your own public cards carry it.
+    var heartCount: Int?
 }
 
 struct HomeCard: Identifiable, Equatable {
@@ -75,7 +77,8 @@ struct HomeCard: Identifiable, Equatable {
                 thought: stored.thought,
                 result: ReframeResult(style: result.style, reframe: result.reframe),
                 isFavorite: result.isFavorite,
-                favoritedAt: result.favoritedAt.flatMap { ISO8601Dates.date(from: $0) }
+                favoritedAt: result.favoritedAt.flatMap { ISO8601Dates.date(from: $0) },
+                heartCount: result.heartCount
             )
         }
         guard !slides.isEmpty else {
@@ -139,6 +142,12 @@ struct HomeCard: Identifiable, Equatable {
         slides.first(where: { $0.result.style == style })?.isFavorite ?? false
     }
 
+    /// Other people who hearted this angle. Only your own public cards carry a number,
+    /// and never a zero, so nil means there is nothing to show.
+    func strangerHearts(for style: Style) -> Int? {
+        slides.first(where: { $0.result.style == style })?.heartCount
+    }
+
     mutating func apply(_ stored: StoredCard) {
         isPublic = stored.isPublic
         thoughtOriginal = stored.thoughtOriginal
@@ -157,6 +166,7 @@ struct HomeCard: Identifiable, Equatable {
             slides[index].result = ReframeResult(style: match.style, reframe: match.reframe)
             slides[index].isFavorite = match.isFavorite
             slides[index].favoritedAt = match.favoritedAt.flatMap { ISO8601Dates.date(from: $0) }
+            slides[index].heartCount = match.heartCount
         }
     }
 }
@@ -508,6 +518,14 @@ final class HomeViewModel {
     private var feedGeneration = 0
     private var feedBefore: String?
     private var feedCardIDs: Set<UUID> = []
+    /// Newest card this visit has loaded, so a pull can tell a real arrival from
+    /// the top of the feed it already walked past.
+    private var feedHighWater: FeedCardMark?
+    /// Every card this visit has loaded. `feedCardIDs` is only the page on screen,
+    /// which a rotation replaces, so it cannot answer "did I already show this".
+    private var feedSeenIDs: Set<UUID> = []
+    /// True once a pull moved off the newest page.
+    private var feedIsRotated = false
     /// Public cards inserted locally that a replacing feed page must not drop.
     private var feedAnchors: [UUID: HomeCard] = [:]
     private var hasLoadedLibrary = false
@@ -608,6 +626,9 @@ final class HomeViewModel {
     }
 
     static let feedPageSize = 24
+    /// A refresh only asks the head for arrivals, which are rare. A full page there
+    /// would be wasted bytes on every pull.
+    static let feedHeadLimit = 8
     static let libraryPageSize = 200
     /// Cards a style tab should show before it stops pulling more pages on its own.
     private static let tabFillMinimum = 6
@@ -1128,6 +1149,9 @@ final class HomeViewModel {
         feedGeneration &+= 1
         feedCards = []
         feedCardIDs = []
+        feedHighWater = nil
+        feedSeenIDs = []
+        feedIsRotated = false
         feedAnchors = [:]
         feedBefore = nil
         feedHasMore = true
@@ -1220,7 +1244,9 @@ final class HomeViewModel {
         startFeedTask(replacing: true)
     }
 
-    /// Pull-to-refresh: reload page one without blanking visible cards.
+    /// Pull-to-refresh. Home is strictly newest-first, so reloading page one is a dead
+    /// gesture whenever nothing newer exists. Instead: arrivals if there are any, else
+    /// the next batch this visit has not shown, else start the rotation over.
     func refreshFeed() async {
         guard !isFeedRefreshing else {
             return
@@ -1232,8 +1258,9 @@ final class HomeViewModel {
         feedTask = nil
         feedGeneration &+= 1
         let generation = feedGeneration
+        let filter = appliedFilter
 
-        // The cursor stays until page one lands, so a failed or cancelled refresh can still page.
+        // The cursor stays until a page lands, so a failed or cancelled refresh can still page.
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -1241,22 +1268,163 @@ final class HomeViewModel {
             feedLoadState = feedCards.isEmpty ? .loading : .loaded
         }
 
-        let known = feedCardIDs
-        let result = await fetchFeedPage(replacing: true, generation: generation)
-        isFeedRefreshing = false
-        if generation == feedGeneration {
-            let added = feedCards.filter { !known.contains($0.id) }.count
-            switch result {
-            case .success:
-                feedRefreshOutcome = added > 0 ? .newItems(added) : .upToDate
-                feedRefreshToken &+= 1
-            case .failure:
-                feedRefreshOutcome = .failed
-                feedRefreshToken &+= 1
-            case .discarded:
-                break
+        // `after` makes the head strictly arrivals. Without it the server would answer
+        // with the top of the feed, which under ranking need not contain the newest posts.
+        async let headFetch = fetchFeedCards(
+            limit: Self.feedHeadLimit,
+            after: feedHighWater?.cursor,
+            filter: filter,
+            generation: generation
+        )
+        async let tailFetch = fetchFeedTail(filter: filter, generation: generation)
+        let head = await headFetch
+        let tail = await tailFetch
+
+        guard generation == feedGeneration else {
+            return
+        }
+        if case .discarded = head {
+            return
+        }
+        if case .discarded = tail {
+            return
+        }
+
+        await applyRefresh(head: head, tail: tail, filter: filter, generation: generation)
+    }
+
+    private func fetchFeedTail(
+        filter: HomeFeedFilter,
+        generation: Int
+    ) async -> FeedPageOutcome {
+        guard feedHasMore, let before = feedBefore else {
+            return .exhausted
+        }
+        return await fetchFeedCards(
+            limit: Self.feedPageSize,
+            before: before,
+            filter: filter,
+            generation: generation
+        )
+    }
+
+    private func applyRefresh(
+        head: FeedPageOutcome,
+        tail: FeedPageOutcome,
+        filter: HomeFeedFilter,
+        generation: Int
+    ) async {
+        // Both halves gone means the pull achieved nothing; the cards and the cursor stay.
+        if case .failed = head, case .failed = tail {
+            publishFeedRefresh(.failed)
+            return
+        }
+
+        let headCards = head.stored.map { merged(feedCards, with: $0) }
+        let plan = FeedRefreshPlanner.plan(
+            head: headCards,
+            headLimit: Self.feedHeadLimit,
+            tail: tail.stored.map { merged(feedCards, with: $0) } ?? [],
+            highWater: feedHighWater,
+            seenIDs: feedSeenIDs,
+            pageSize: Self.feedPageSize,
+            isRotated: feedIsRotated
+        )
+
+        switch plan {
+        case let .prepend(arrivals):
+            prependFeedCards(arrivals, filter: filter)
+            publishFeedRefresh(.newItems(arrivals.count))
+        case let .catchUp(newCount):
+            await reloadNewestFeedPage(generation: generation)
+            publishFeedRefresh(.newItems(newCount))
+        case let .rotate(rotation):
+            replaceFeedPage(
+                rotation.page,
+                // Where the server pages itself, its cursor already accounts for what it
+                // handed out; the planner's is the chronological fallback.
+                before: tail.serverCursor ?? rotation.nextBefore,
+                hasMore: rotation.consumedWholeTail ? tail.hasMore : true,
+                filter: filter
+            )
+            feedIsRotated = true
+            publishFeedRefresh(.rotated)
+        case .restart:
+            await reloadNewestFeedPage(generation: generation)
+            publishFeedRefresh(.restarted)
+        case .unchanged:
+            // A tail that never arrived cannot honestly report being caught up.
+            publishFeedRefresh(tail.didFail ? .failed : .upToDate)
+        }
+    }
+
+    /// Announces the outcome, unless the committed style tab came out empty and
+    /// `ensureCurrentTabFilled` is still fetching: a count over an empty tab reads as a bug.
+    private func publishFeedRefresh(_ outcome: FeedRefreshOutcome) {
+        ensureCurrentTabFilled()
+        if let style = homeFeedTab.matchingStyle,
+           !feedCards.contains(where: { $0.hasStyle(style) }),
+           outcome != .failed {
+            return
+        }
+        feedRefreshOutcome = outcome
+        feedRefreshToken &+= 1
+    }
+
+    private func prependFeedCards(_ arrivals: [HomeCard], filter: HomeFeedFilter) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            let fresh = arrivals.filter { !feedCardIDs.contains($0.id) }
+            feedCards.insert(contentsOf: fresh, at: 0)
+            feedCardIDs.formUnion(fresh.map(\.id))
+            noteFeedCardsLoaded(fresh)
+            feedLoadState = .loaded
+            hasLoadedFeed = true
+        }
+    }
+
+    /// A rotation swaps the whole page, so the cursor moves to the last tail card it
+    /// consumed — never past a card the page cap left behind.
+    private func replaceFeedPage(
+        _ page: [HomeCard],
+        before: String,
+        hasMore: Bool,
+        filter: HomeFeedFilter
+    ) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            feedCards = mergingFeedAnchors(into: page, filter: filter)
+            feedCardIDs = Set(feedCards.map(\.id))
+            noteFeedCardsLoaded(feedCards)
+            feedBefore = before
+            feedHasMore = hasMore
+            feedFooterState = .idle
+            feedLoadState = .loaded
+            hasLoadedFeed = true
+        }
+    }
+
+    /// Back to the top of the rotation: the newest page, with this visit's history cleared.
+    private func reloadNewestFeedPage(generation: Int) async {
+        feedSeenIDs = []
+        feedIsRotated = false
+        await fetchFeedPage(replacing: true, generation: generation)
+    }
+
+    /// `feedHighWater` is the newest card loaded from any page, so an older page can
+    /// never lower it and a card already walked past can never read as an arrival.
+    private func noteFeedCardsLoaded(_ cards: [HomeCard]) {
+        for card in cards {
+            feedSeenIDs.insert(card.id)
+            if let mark = feedHighWater {
+                if FeedOrder.isNewer(card, than: mark) {
+                    feedHighWater = FeedCardMark(card)
+                }
+            } else {
+                feedHighWater = FeedCardMark(card)
             }
-            ensureCurrentTabFilled()
         }
     }
 
@@ -1306,6 +1474,9 @@ final class HomeViewModel {
             appliedFilter = filter
             feedCards = []
             feedCardIDs = []
+            feedHighWater = nil
+            feedSeenIDs = []
+            feedIsRotated = false
             feedBefore = nil
             feedHasMore = true
             feedFooterState = .idle
@@ -1362,6 +1533,7 @@ final class HomeViewModel {
                     let page = mergingFeedAnchors(into: merged([], with: stored), filter: filter)
                     feedCards = page
                     feedCardIDs = Set(feedCards.map(\.id))
+                    noteFeedCardsLoaded(feedCards)
                 } else {
                     feedCards.reserveCapacity(feedCards.count + stored.count)
                     for item in stored {
@@ -1376,6 +1548,7 @@ final class HomeViewModel {
                             continue
                         }
                         feedCards.append(card)
+                        noteFeedCardsLoaded([card])
                     }
                 }
 
@@ -1410,6 +1583,78 @@ final class HomeViewModel {
         case success
         case failure
         case discarded
+    }
+
+    /// One read-only `GET /feed` page. A refresh fetches two of these and decides what
+    /// to do with them before any state moves, so a half-failed pull stays coherent.
+    enum FeedPageOutcome {
+        case loaded(cards: [StoredCard], hasMore: Bool, serverCursor: String?)
+        /// Nothing older to ask for, so the tail was never requested.
+        case exhausted
+        case failed
+        case discarded
+
+        var stored: [StoredCard]? {
+            if case let .loaded(cards, _, _) = self {
+                return cards
+            }
+            return nil
+        }
+
+        var hasMore: Bool {
+            if case let .loaded(_, hasMore, _) = self {
+                return hasMore
+            }
+            return false
+        }
+
+        /// Present only when the server pages this feed itself, as a ranked order does.
+        var serverCursor: String? {
+            if case let .loaded(_, _, cursor) = self {
+                return cursor
+            }
+            return nil
+        }
+
+        var didFail: Bool {
+            if case .failed = self {
+                return true
+            }
+            return false
+        }
+    }
+
+    /// Fetches a feed page without touching state, so the refresh planner sees both
+    /// halves of a pull before either is applied.
+    private func fetchFeedCards(
+        limit: Int,
+        before: String? = nil,
+        after: String? = nil,
+        filter: HomeFeedFilter,
+        generation: Int
+    ) async -> FeedPageOutcome {
+        do {
+            let response = try await cardsService.listFeed(
+                limit: limit,
+                before: before,
+                after: after,
+                categories: filter.categories,
+                emotions: filter.emotions
+            )
+            guard !Task.isCancelled, generation == feedGeneration else {
+                return .discarded
+            }
+            return .loaded(
+                cards: response.cards,
+                hasMore: response.page.hasMore(pageSize: limit),
+                serverCursor: response.page.serverCursor
+            )
+        } catch {
+            guard !Task.isCancelled, generation == feedGeneration, !Self.isCancellation(error) else {
+                return .discarded
+            }
+            return .failed
+        }
     }
 
     /// Updates cards in place so per-card style selection remains stable across writes.
@@ -1483,6 +1728,9 @@ final class HomeViewModel {
         // them in place, and `feedAnchors` keeps the card that was just posted.
         feedBefore = nil
         feedHasMore = true
+        feedHighWater = nil
+        feedSeenIDs = []
+        feedIsRotated = false
         feedFooterState = .idle
         startFeedTask(replacing: true, reportsFailure: true)
     }
@@ -1494,6 +1742,8 @@ final class HomeViewModel {
         feedCards.insert(card, at: 0)
         feedCardIDs.insert(card.id)
         feedAnchors[card.id] = card
+        // Your own fresh post must not come back as an arrival on the next pull.
+        noteFeedCardsLoaded([card])
         if feedLoadState != .loaded {
             feedLoadState = .loaded
         }
@@ -1650,10 +1900,7 @@ final class HomeViewModel {
 
     /// True when `card` belongs above `other` in the newest-first feed.
     private func feedSortIsBefore(_ card: HomeCard, _ other: HomeCard) -> Bool {
-        if card.createdAt != other.createdAt {
-            return card.createdAt > other.createdAt
-        }
-        return card.id.uuidString.lowercased() > other.id.uuidString.lowercased()
+        FeedOrder.isBefore(card, other)
     }
 
     private func ownerCard(id: UUID) -> HomeCard? {

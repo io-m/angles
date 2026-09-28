@@ -1,6 +1,15 @@
-import { and, arrayOverlaps, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, arrayOverlaps, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
-import type { FeedCursor, FeedListQuery, StoredCard, Style } from "../types/index.js";
+import { rankCards, spreadRanked, type ViewerAffinity } from "../lib/feedRanking.js";
+import type {
+  Category,
+  Emotion,
+  FeedCursor,
+  FeedListQuery,
+  FeedSessionCursor,
+  StoredCard,
+  Style,
+} from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
 import {
   lockUserPair,
@@ -8,7 +17,9 @@ import {
   notReportedBy,
   usersAreBlocked,
 } from "./communitySafety.js";
-import { olderThanCursor } from "./cursor.js";
+import { newerThanCursor, olderThanCursor } from "./cursor.js";
+import { followedAuthorIds } from "./follows.js";
+import { loadCardHeartTotals } from "./hearts.js";
 import { storedCardsForViewer, type CardLoaded } from "./mapCard.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
 
@@ -45,27 +56,40 @@ function styleExistsFilter(db: ReturnType<typeof getDb>, style: Style) {
   );
 }
 
+/** Everything but paging: public, visible to this viewer, and inside the facets. */
+function feedFilters(
+  db: ReturnType<typeof getDb>,
+  viewerId: string,
+  query: FeedListQuery,
+): SQL[] {
+  // A literal, not a bound parameter, so even a generic plan can prove the partial index applies.
+  const filters: SQL[] = [
+    sql`${cards.isPublic} = true`,
+    notBlockedBetween(viewerId, cards.userId),
+    notReportedBy(viewerId, cards.id),
+  ];
+  if (query.categories?.length) {
+    filters.push(inArray(cards.category, query.categories) as SQL);
+  }
+  if (query.emotions?.length) {
+    filters.push(arrayOverlaps(cards.emotions, query.emotions) as SQL);
+  }
+  if (query.style) {
+    filters.push(styleExistsFilter(db, query.style) as SQL);
+  }
+  return filters;
+}
+
 export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
-    // A literal, not a bound parameter, so even a generic plan can prove the partial index applies.
-    const filters = [
-      sql`${cards.isPublic} = true`,
-      notBlockedBetween(viewerId, cards.userId),
-      notReportedBy(viewerId, cards.id),
-    ];
-    if (query.categories?.length) {
-      filters.push(inArray(cards.category, query.categories));
-    }
-    if (query.emotions?.length) {
-      filters.push(arrayOverlaps(cards.emotions, query.emotions));
-    }
-    if (query.style) {
-      filters.push(styleExistsFilter(db, query.style));
-    }
+    const filters = feedFilters(db, viewerId, query);
     if (query.before) {
       filters.push(olderThanCursor(query.before));
+    }
+    if (query.after) {
+      filters.push(newerThanCursor(query.after));
     }
 
     const rows = await db.query.cards.findMany({
@@ -86,6 +110,153 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
     }
     throw wrapDbError(error, "listFeed");
   }
+}
+
+/** Cards scored before paging. Bounded so one request cannot rank the whole catalog. */
+const RANKING_CANDIDATE_CAP = 1000;
+
+/**
+ * Resonance-ranked page.
+ *
+ * The candidate set is frozen at `session.startedAt`, which is what makes offset paging
+ * exact: nothing can join the set mid-scroll, so a page can neither repeat a card nor
+ * skip one. Posts newer than that are arrivals and come back through `after` instead.
+ *
+ * Above `RANKING_CANDIDATE_CAP` the oldest cards stop being reachable by ranking. Add a
+ * sampled tail to the candidate query before the public catalog gets that large.
+ */
+export async function listRankedFeed(
+  query: FeedListQuery & { session: FeedSessionCursor },
+): Promise<StoredCard[]> {
+  try {
+    const viewerId = getOwnerUserId();
+    const db = getDb();
+    const filters = feedFilters(db, viewerId, query);
+    filters.push(sql`${cards.createdAt} <= ${query.session.startedAt.toISOString()}::timestamptz`);
+
+    const candidates = await db
+      .select({
+        id: cards.id,
+        authorId: cards.userId,
+        createdAt: cards.createdAt,
+        category: cards.category,
+        emotions: cards.emotions,
+        intensity: cards.intensity,
+        spotlightStyle: cards.spotlightStyle,
+      })
+      .from(cards)
+      .where(and(...filters))
+      .orderBy(desc(cards.createdAt), desc(cards.id))
+      .limit(RANKING_CANDIDATE_CAP);
+
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const ids = candidates.map((row) => row.id);
+    const [hearts, followed, affinity] = await Promise.all([
+      loadCardHeartTotals(ids, db),
+      followedAuthorIds(
+        viewerId,
+        candidates.map((row) => row.authorId),
+        db,
+      ),
+      loadViewerAffinity(viewerId, db),
+    ]);
+
+    const now = new Date();
+    const ranked = rankCards(
+      candidates.map((row) => ({
+        id: row.id,
+        authorId: row.authorId,
+        createdAt: row.createdAt,
+        category: row.category,
+        emotions: row.emotions,
+        hearts: hearts.get(row.id) ?? 0,
+        followed: followed.has(row.authorId),
+      })),
+      { now, seed: query.session.seed, affinity },
+    );
+
+    const byId = new Map(candidates.map((row) => [row.id, row]));
+    const spread = spreadRanked(
+      ranked.flatMap((scored) => {
+        const row = byId.get(scored.id);
+        return row ? [row] : [];
+      }),
+      query.limit,
+    );
+
+    const pageIds = spread
+      .slice(query.session.offset, query.session.offset + query.limit)
+      .map((row) => row.id);
+    if (pageIds.length === 0) {
+      return [];
+    }
+
+    const rows = await db.query.cards.findMany({
+      where: inArray(cards.id, pageIds),
+      with: {
+        user: true,
+        reframes: { orderBy: [asc(cardReframes.position)] },
+        cardTags: { with: { tag: true } },
+      },
+    });
+    const loaded = new Map(rows.map((row) => [row.id, row]));
+    const ordered = pageIds.flatMap((id) => {
+      const row = loaded.get(id);
+      return row ? [row] : [];
+    });
+
+    return storedCardsForViewer(ordered, viewerId);
+  } catch (error) {
+    if (error instanceof DbError) {
+      throw error;
+    }
+    throw wrapDbError(error, "listRankedFeed");
+  }
+}
+
+/**
+ * What the viewer has been writing about lately, from their own cards. This is the
+ * recognition term: the reason their feed should not read like a stranger's.
+ */
+async function loadViewerAffinity(
+  viewerId: string,
+  db: ReturnType<typeof getDb>,
+): Promise<ViewerAffinity> {
+  const recent = await db
+    .select({ category: cards.category, emotions: cards.emotions })
+    .from(cards)
+    .where(eq(cards.userId, viewerId))
+    .orderBy(desc(cards.createdAt), desc(cards.id))
+    .limit(AFFINITY_SAMPLE);
+
+  const categoryCounts = new Map<Category, number>();
+  const emotionCounts = new Map<Emotion, number>();
+  for (const row of recent) {
+    categoryCounts.set(row.category, (categoryCounts.get(row.category) ?? 0) + 1);
+    for (const emotion of row.emotions) {
+      emotionCounts.set(emotion, (emotionCounts.get(emotion) ?? 0) + 1);
+    }
+  }
+
+  return {
+    categories: new Set(topKeys(categoryCounts, AFFINITY_CATEGORIES)),
+    emotions: new Set(topKeys(emotionCounts, AFFINITY_EMOTIONS)),
+  };
+}
+
+/** Own cards read for affinity, and how many of each facet survive. */
+const AFFINITY_SAMPLE = 30;
+const AFFINITY_CATEGORIES = 3;
+const AFFINITY_EMOTIONS = 5;
+
+function topKeys<T>(counts: Map<T, number>, keep: number): T[] {
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, keep)
+    .map(([key]) => key);
 }
 
 /** One author's published cards. Private cards stay out, including their own. */

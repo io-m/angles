@@ -322,12 +322,16 @@ struct StoredReframeResult: Decodable, Equatable, Sendable {
     let reframe: String
     let isFavorite: Bool
     let favoritedAt: String?
+    /// How many other people hearted this angle. The server sends it only on your own
+    /// public cards, and only above zero, so nil means "no number to show".
+    let heartCount: Int?
 
     private enum CodingKeys: String, CodingKey {
         case style
         case reframe
         case isFavorite
         case favoritedAt
+        case heartCount
     }
 
     init(from decoder: Decoder) throws {
@@ -336,6 +340,7 @@ struct StoredReframeResult: Decodable, Equatable, Sendable {
         reframe = try container.decode(String.self, forKey: .reframe)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         favoritedAt = try container.decodeIfPresent(String.self, forKey: .favoritedAt)
+        heartCount = try container.decodeIfPresent(Int.self, forKey: .heartCount)
     }
 }
 
@@ -747,21 +752,37 @@ struct CardListResponse: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case cards
+        case page
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
         cards = raw.compactMap(\.value)
-        page = try CardPage(container: container, key: .cards)
+        page = try CardPage(
+            container: container,
+            key: .cards,
+            serverCursor: try container
+                .decodeIfPresent(ServerPageCursor.self, forKey: .page)?
+                .nextCursor
+        )
     }
+}
+
+/// A page pointer the server owns. A ranked order cannot be derived from the cards, so
+/// when this arrives it wins; the client only echoes it back.
+private struct ServerPageCursor: Decodable, Equatable, Sendable {
+    let nextCursor: String?
 }
 
 /// What the server sent, before cards this build cannot decode are dropped. Paging reads this,
 /// so one unreadable card neither ends the list early nor moves the cursor off the server's order.
 struct CardPage: Equatable, Sendable {
     let receivedCount: Int
-    /// `createdAt|id` of the last card the server sent.
+    /// Set when the server owns paging, which a ranked order requires because its
+    /// cursor cannot be derived from the cards. Authoritative wherever it is present.
+    let serverCursor: String?
+    /// The server's own cursor when it sent one, else `createdAt|id` of its last card.
     let nextCursor: String?
 
     private struct Key: Decodable {
@@ -769,10 +790,16 @@ struct CardPage: Equatable, Sendable {
         let createdAt: String
     }
 
-    init<K: CodingKey>(container: KeyedDecodingContainer<K>, key: K) throws {
+    init<K: CodingKey>(
+        container: KeyedDecodingContainer<K>,
+        key: K,
+        serverCursor: String? = nil
+    ) throws {
         let keys = try container.decodeIfPresent([Failable<Key>].self, forKey: key) ?? []
         receivedCount = keys.count
-        nextCursor = keys.last?.value.map { "\($0.createdAt)|\($0.id.lowercased())" }
+        self.serverCursor = serverCursor
+        nextCursor = serverCursor
+            ?? keys.last?.value.map { "\($0.createdAt)|\($0.id.lowercased())" }
     }
 
     func hasMore(pageSize: Int) -> Bool {

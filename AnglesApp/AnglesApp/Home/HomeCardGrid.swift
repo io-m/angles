@@ -206,38 +206,64 @@ struct TallHomeCardGrid: View, Equatable {
     }
 }
 
-/// A traveling border spark. Home uses the full lap and shadow; chat uses a quieter pass.
-struct CardArrivalGlow: View {
+/// A traveling border spark. Home uses the full lap and shadow; chat uses a quieter pass;
+/// the refresh pill uses one fast lap around its capsule.
+struct CardArrivalGlow<S: Shape>: View {
     enum Prominence {
         case home
         case subtle
+        /// One quick lap on the pull-to-refresh pill. Thin stroke, little bloom.
+        case pill
     }
 
     let tint: Color
     var prominence: Prominence = .home
+    let shape: S
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var level: CGFloat = 0
     @State private var rotation: Double = -90 // Start at top
 
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
+    private var strokeWidth: CGFloat {
+        switch prominence {
+        case .home: 2
+        case .subtle: 1.25
+        case .pill: 1.5
+        }
     }
 
-    private var isSubtle: Bool { prominence == .subtle }
+    private var lapDuration: Double {
+        switch prominence {
+        case .home: 2
+        case .subtle: 1.6
+        case .pill: 0.7
+        }
+    }
 
-    private var strokeWidth: CGFloat { isSubtle ? 1.25 : 2 }
-
-    private var lapDuration: Double { isSubtle ? 1.6 : 2 }
-
-    private var fadeInDuration: Double { isSubtle ? 0.3 : 0.4 }
+    private var fadeInDuration: Double {
+        switch prominence {
+        case .home: 0.4
+        case .subtle: 0.3
+        case .pill: 0.15
+        }
+    }
 
     private var holdBeforeFade: Duration {
-        .milliseconds(isSubtle ? 900 : 1200)
+        switch prominence {
+        case .home: .milliseconds(1200)
+        case .subtle: .milliseconds(900)
+        case .pill: .milliseconds(650)
+        }
     }
 
-    private var fadeOutDuration: Double { isSubtle ? 0.5 : 0.6 }
+    private var fadeOutDuration: Double {
+        switch prominence {
+        case .home: 0.6
+        case .subtle: 0.5
+        case .pill: 0.3
+        }
+    }
 
     var body: some View {
         if reduceMotion {
@@ -292,40 +318,64 @@ struct CardArrivalGlow: View {
             .fill(Color.clear)
             .shadow(
                 color: tint.opacity(tintShadowOpacity * level),
-                radius: isSubtle ? 12 : 24,
+                radius: shadowRadius.tint,
                 x: 0,
-                y: isSubtle ? 4 : 8
+                y: shadowOffset
             )
             .shadow(
                 color: Color.black.opacity(blackShadowOpacity * level),
-                radius: isSubtle ? 8 : 16,
+                radius: shadowRadius.black,
                 x: 0,
-                y: isSubtle ? 3 : 6
+                y: shadowOffset * 0.75
             )
+    }
+
+    private var shadowRadius: (tint: CGFloat, black: CGFloat) {
+        switch prominence {
+        case .home: (24, 16)
+        case .subtle: (12, 8)
+        case .pill: (6, 4)
+        }
+    }
+
+    private var shadowOffset: CGFloat {
+        switch prominence {
+        case .home: 8
+        case .subtle: 4
+        case .pill: 1
+        }
     }
 
     private var tintShadowOpacity: Double {
         let dark = colorScheme == .dark
-        if isSubtle {
+        switch prominence {
+        case .home:
+            return dark ? 0.4 : 0.2
+        case .subtle:
             return dark ? 0.18 : 0.1
+        case .pill:
+            return dark ? 0.14 : 0.08
         }
-        return dark ? 0.4 : 0.2
     }
 
     private var blackShadowOpacity: Double {
         let dark = colorScheme == .dark
-        if isSubtle {
+        switch prominence {
+        case .home:
+            return dark ? 0.3 : 0.1
+        case .subtle:
             return dark ? 0.12 : 0.04
+        case .pill:
+            return dark ? 0.08 : 0.03
         }
-        return dark ? 0.3 : 0.1
     }
 
     private var sparkStops: [Gradient.Stop] {
         let dark = colorScheme == .dark
-        let scale: Double = isSubtle ? 0.5 : 1
+        let scale: Double = prominence == .subtle ? 0.5 : 1
         let head: Color = dark
             ? tint.opacity(0.9 * scale)
-            : (isSubtle ? Color.white.opacity(0.5) : .white)
+            : (prominence == .subtle ? Color.white.opacity(0.5) : .white)
         return [
             .init(color: .clear, location: 0.0),
             .init(color: .clear, location: 0.50),
@@ -334,6 +384,17 @@ struct CardArrivalGlow: View {
             .init(color: head, location: 0.99),
             .init(color: .clear, location: 1.0),
         ]
+    }
+}
+
+extension CardArrivalGlow where S == RoundedRectangle {
+    /// The card outline. Call sites that omit a shape keep this rounded rect.
+    init(tint: Color, prominence: Prominence = .home) {
+        self.init(
+            tint: tint,
+            prominence: prominence,
+            shape: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
     }
 }
 

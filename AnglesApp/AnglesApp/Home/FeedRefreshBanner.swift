@@ -1,13 +1,19 @@
 import SwiftUI
 
-/// What a pull-to-refresh actually did. Home and the library are strictly
-/// newest-first, so a refresh with nothing newer legitimately returns the same
-/// page. The outcome has to be stated, or a correct refresh reads as a dead
-/// gesture — and a failed one reads the same as a successful one.
+/// What a pull-to-refresh actually did. The outcome has to be stated, or a
+/// refresh that found nothing new reads as a dead gesture — and a failed one
+/// reads the same as a successful one.
+///
+/// Home rotates through the catalog, so it uses all five. The library is a
+/// private log and stays newest-first, so it only ever reports the first three.
 enum FeedRefreshOutcome: Equatable {
     case newItems(Int)
     case upToDate
     case failed
+    /// Nothing new, so Home moved on to a batch this visit had not shown.
+    case rotated
+    /// Home ran out of unseen posts and began the rotation again.
+    case restarted
 }
 
 /// Brief pill under the fixed chrome, announcing the refresh outcome.
@@ -51,8 +57,8 @@ struct FeedRefreshBanner: View {
                 return
             }
             shown = outcome
-            // Long enough to read, short enough to stay out of the way.
-            try? await Task.sleep(for: .seconds(1.8))
+            // Long enough to read one line; the border spark finishes inside this window.
+            try? await Task.sleep(for: .seconds(1))
             shown = nil
         }
     }
@@ -75,6 +81,9 @@ struct FeedRefreshBanner: View {
         .overlay(
             Capsule().strokeBorder(theme.faint, lineWidth: 0.5)
         )
+        .overlay {
+            CardArrivalGlow(tint: theme.ink, prominence: .pill, shape: Capsule())
+        }
         .shadow(color: .black.opacity(0.10), radius: 8, y: 2)
         .accessibilityLabel(label(outcome))
     }
@@ -87,6 +96,10 @@ struct FeedRefreshBanner: View {
             "checkmark.circle.fill"
         case .failed:
             "exclamationmark.triangle.fill"
+        case .rotated:
+            "arrow.triangle.2.circlepath"
+        case .restarted:
+            "arrow.up.circle.fill"
         }
     }
 
@@ -98,6 +111,10 @@ struct FeedRefreshBanner: View {
             "You're all caught up"
         case .failed:
             "Couldn't refresh"
+        case .rotated:
+            "Fresh angles"
+        case .restarted:
+            "Full circle"
         }
     }
 }

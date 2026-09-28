@@ -6,3 +6,8 @@ import { cards } from "./schema.js";
 export function olderThanCursor(before: FeedCursor) {
   return sql`(${cards.createdAt}, ${cards.id}) < (${before.createdAt.toISOString()}::timestamptz, ${before.id}::uuid)`;
 }
+
+/** The same seek in the other direction: what has arrived since the client last looked. */
+export function newerThanCursor(after: FeedCursor) {
+  return sql`(${cards.createdAt}, ${cards.id}) > (${after.createdAt.toISOString()}::timestamptz, ${after.id}::uuid)`;
+}

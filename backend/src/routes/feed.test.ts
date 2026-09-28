@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STYLES, type StoredCard } from "../types/index.js";
 
 vi.mock("../db/client.js", () => {
@@ -32,6 +32,7 @@ vi.mock("../db/cards.js", () => ({
 
 vi.mock("../db/feed.js", () => ({
   listFeed: vi.fn(),
+  listRankedFeed: vi.fn(),
   listPublicCardsForUser: vi.fn(),
   listPublicCardsForModel: vi.fn(),
   saveFeedAngle: vi.fn(),
@@ -40,7 +41,8 @@ vi.mock("../db/feed.js", () => ({
 }));
 
 const { createApp } = await import("../app.js");
-const { listFeed, saveFeedAngle, clearFeedSaves } = await import("../db/feed.js");
+const { listFeed, listRankedFeed, saveFeedAngle, clearFeedSaves } = await import("../db/feed.js");
+const { decodeFeedSession, encodeFeedSession } = await import("../lib/feedRanking.js");
 
 const app = createApp();
 const CARD_ID = "22222222-2222-4222-8222-222222222222";
@@ -161,11 +163,28 @@ describe("GET /feed", () => {
     });
   });
 
+  it("asks for arrivals with the composite cursor", async () => {
+    vi.mocked(listFeed).mockResolvedValue([]);
+    const after = `2026-09-10T12:00:00.000Z|${CARD_ID}`;
+    const response = await app.request(`/feed?after=${encodeURIComponent(after)}&limit=8`);
+    expect(response.status).toBe(200);
+    expect(listFeed).toHaveBeenCalledWith({
+      limit: 8,
+      before: undefined,
+      after: { createdAt: new Date("2026-09-10T12:00:00.000Z"), id: CARD_ID },
+      categories: undefined,
+      emotions: undefined,
+      style: undefined,
+    });
+  });
+
   it.each([
     "/feed?categories=work,unknown",
     "/feed?categories=work,",
     "/feed?emotions=fear,calm",
     "/feed?before=not-a-cursor",
+    "/feed?after=not-a-cursor",
+    `/feed?before=2026-09-10T12:00:00.000Z|${CARD_ID}&after=2026-09-10T12:00:00.000Z|${CARD_ID}`,
     "/feed?style=unknown",
     "/feed?category=work",
     "/feed?emotion=fear",
@@ -179,6 +198,79 @@ describe("GET /feed", () => {
   it("404s the retired grouped Home route", async () => {
     const response = await app.request("/feed/home");
     expect(response.status).toBe(404);
+  });
+});
+
+describe("GET /feed with resonance ranking", () => {
+  beforeEach(() => {
+    vi.mocked(listFeed).mockReset();
+    vi.mocked(listRankedFeed).mockReset();
+    process.env.FEED_RANKING = "resonance";
+  });
+
+  afterEach(() => {
+    delete process.env.FEED_RANKING;
+  });
+
+  it("mints a session and hands back its cursor", async () => {
+    vi.mocked(listRankedFeed).mockResolvedValue([feedCard()]);
+    const before = new Date();
+    const response = await app.request("/feed?limit=24");
+    expect(response.status).toBe(200);
+
+    const body = (await jsonOf(response)) as { cards: unknown[]; page: { nextCursor: string } };
+    expect(body.cards).toHaveLength(1);
+    expect(listFeed).not.toHaveBeenCalled();
+
+    const minted = vi.mocked(listRankedFeed).mock.calls[0]?.[0].session;
+    expect(minted?.offset).toBe(0);
+    expect(minted?.seed).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+    expect(minted?.startedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+
+    // The next page starts where this one ended, on the same frozen candidate set.
+    const next = decodeFeedSession(body.page.nextCursor);
+    expect(next).toEqual({ seed: minted?.seed, startedAt: minted?.startedAt, offset: 1 });
+  });
+
+  it("continues the session the client echoes back", async () => {
+    vi.mocked(listRankedFeed).mockResolvedValue([]);
+    const session = {
+      seed: "seed-abcdefgh",
+      startedAt: new Date("2026-09-28T09:00:00.000Z"),
+      offset: 24,
+    };
+    const response = await app.request(
+      `/feed?limit=24&before=${encodeURIComponent(encodeFeedSession(session))}`,
+    );
+    expect(response.status).toBe(200);
+    expect(listRankedFeed).toHaveBeenCalledWith(expect.objectContaining({ session }));
+  });
+
+  it("keeps arrivals chronological so a new post cannot rank out of sight", async () => {
+    vi.mocked(listFeed).mockResolvedValue([]);
+    const after = `2026-09-10T12:00:00.000Z|${CARD_ID}`;
+    const response = await app.request(`/feed?after=${encodeURIComponent(after)}&limit=8`);
+    expect(response.status).toBe(200);
+    expect(listRankedFeed).not.toHaveBeenCalled();
+    expect(listFeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        after: { createdAt: new Date("2026-09-10T12:00:00.000Z"), id: CARD_ID },
+      }),
+    );
+    await expect(jsonOf(response)).resolves.toEqual({ cards: [] });
+  });
+
+  it("still accepts a chronological cursor, so a client mid-page is not stranded", async () => {
+    vi.mocked(listFeed).mockResolvedValue([]);
+    const before = `2026-09-10T12:00:00.000Z|${CARD_ID}`;
+    const response = await app.request(`/feed?before=${encodeURIComponent(before)}`);
+    expect(response.status).toBe(200);
+    expect(listRankedFeed).not.toHaveBeenCalled();
+    expect(listFeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        before: { createdAt: new Date("2026-09-10T12:00:00.000Z"), id: CARD_ID },
+      }),
+    );
   });
 });
 

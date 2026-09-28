@@ -479,6 +479,9 @@ export const savedAngles = pgTable(
   (table) => [
     primaryKey({ columns: [table.userId, table.cardId, table.style] }),
     index("saved_angles_user_favorited_idx").on(table.userId, table.favoritedAt.desc()),
+    // The primary key leads with the user, so counting the hearts *on* a card needs
+    // its own index: the feed ranks by them and an author sees them on their own posts.
+    index("saved_angles_card_idx").on(table.cardId),
   ],
 );
 

@@ -587,6 +587,7 @@ struct ReframeCardView: View, Equatable {
             Spacer(minLength: 8)
 
             if let style = activeStyle {
+                strangerHeartCount(for: style, tint: theme.muted)
                 favoriteButton(for: style)
             }
         }
@@ -602,6 +603,7 @@ struct ReframeCardView: View, Equatable {
             Spacer(minLength: 8)
 
             if let style = activeStyle {
+                strangerHeartCount(for: style, tint: activeAppearance.ink)
                 tallFavoriteButton(for: style, tint: activeAppearance.ink)
             }
         }
@@ -648,6 +650,21 @@ struct ReframeCardView: View, Equatable {
             }
         } else {
             stylePill(appearance)
+        }
+    }
+
+    /// How many other people hearted this angle. Only the author's own public cards
+    /// carry a number, and the server omits zero, so a fresh post shows nothing at all.
+    @ViewBuilder
+    private func strangerHeartCount(for style: Style, tint: Color) -> some View {
+        if let count = card.strangerHearts(for: style) {
+            Text(count.formatted())
+                .font(.system(size: 13, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(tint.opacity(0.75))
+                .accessibilityLabel(
+                    "\(count) \(count == 1 ? "person" : "people") hearted this angle"
+                )
         }
     }
 

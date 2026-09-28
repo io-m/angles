@@ -1,9 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
+import { openingStyle } from "../lib/feedRanking.js";
 import { intensityBand, type StoredCard, type StoredReframeResult, type Style } from "../types/index.js";
 import { getDb } from "./client.js";
 import { followedAuthorIds } from "./follows.js";
+import { loadStyleHeartCounts, loadViewerStyleTaste } from "./hearts.js";
 import { savedAngles, type CardReframeRow, type CardRow, type TagRow } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
@@ -74,7 +76,18 @@ export async function storedCardsForViewer(
     rows.map((row) => row.userId),
     db,
   );
-  return rows.map((row) => toStoredCard(row, saves, viewerId, followed));
+  // Only ever queried for the viewer's own published cards, so there is nothing to
+  // leak even if a later caller forgets the owner check below.
+  const hearts = await loadStyleHeartCounts(
+    rows.filter((row) => row.userId === viewerId && row.isPublic).map((row) => row.id),
+    db,
+  );
+  const taste = rows.some((row) => row.userId !== viewerId)
+    ? await loadViewerStyleTaste(viewerId, db)
+    : null;
+  return rows.map((row) =>
+    toStoredCard(row, saves, viewerId, followed, hearts.get(row.id), taste),
+  );
 }
 
 export function toStoredCard(
@@ -82,6 +95,10 @@ export function toStoredCard(
   saves: ViewerSaves,
   viewerId: string = getOwnerUserId(),
   followedIds: ReadonlySet<string> = new Set(),
+  /** Strangers' hearts per style. Passed only for the author's own public card. */
+  styleHearts?: ReadonlyMap<Style, number>,
+  /** The angle this viewer keeps hearting, when they have one. */
+  preferredStyle?: Style | null,
 ): StoredCard {
   const isOwner = row.userId === viewerId;
   const savedStyles = saves.angles.get(row.id);
@@ -100,6 +117,12 @@ export function toStoredCard(
         };
         if (item.favoritedAt) {
           stored.favoritedAt = item.favoritedAt.toISOString();
+        }
+        // Absent at zero: a 0 on a post you just published about your worst day is
+        // worse than no number at all.
+        const hearts = row.isPublic ? styleHearts?.get(item.style) : undefined;
+        if (hearts !== undefined && hearts > 0) {
+          stored.heartCount = hearts;
         }
         return stored;
       }
@@ -135,7 +158,17 @@ export function toStoredCard(
     },
     results,
     model: row.model,
-    spotlightStyle: row.spotlightStyle,
+    // Your own card keeps the cover you saved it with; someone else's can open on the
+    // angle you keep hearting, some of the time.
+    spotlightStyle: isOwner
+      ? row.spotlightStyle
+      : openingStyle({
+          cardId: row.id,
+          viewerId,
+          cover: row.spotlightStyle,
+          available: results.map((item) => item.style),
+          preferred: preferredStyle ?? null,
+        }),
     isPublic: row.isPublic,
     createdAt: row.createdAt.toISOString(),
     isOwner,

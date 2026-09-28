@@ -11,6 +11,7 @@ import {
 import { getDb, wrapDbError, DbError } from "./client.js";
 import { notBlockedBetween, notReportedBy } from "./communitySafety.js";
 import { olderThanCursor } from "./cursor.js";
+import { loadStyleHeartCounts } from "./hearts.js";
 import { storedCardsForViewer, toStoredCard } from "./mapCard.js";
 import {
   cardReframes,
@@ -25,7 +26,10 @@ import {
 
 type Queryable = { query: ReturnType<typeof getDb>["query"] };
 
-async function loadCard(db: Queryable, id: string): Promise<StoredCard | null> {
+async function loadCard(
+  db: Queryable & Pick<ReturnType<typeof getDb>, "select">,
+  id: string,
+): Promise<StoredCard | null> {
   const row = await db.query.cards.findFirst({
     where: and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())),
     with: {
@@ -37,7 +41,10 @@ async function loadCard(db: Queryable, id: string): Promise<StoredCard | null> {
   if (!row) {
     return null;
   }
-  return toStoredCard(row, { angles: new Map() });
+  // Always the owner's own card. Without this, publishing or hearting an angle would
+  // answer with the counts stripped and the numerals would vanish from the card.
+  const hearts = row.isPublic ? await loadStyleHeartCounts([row.id], db) : undefined;
+  return toStoredCard(row, { angles: new Map() }, undefined, undefined, hearts?.get(row.id));
 }
 
 export async function createCard(input: CreateCardInput): Promise<StoredCard> {
