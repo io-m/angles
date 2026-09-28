@@ -616,6 +616,9 @@ struct ComposeSheetView: View {
                 in: RoundedRectangle(cornerRadius: 24, style: .continuous)
             )
             .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+            .overlay {
+                CardArrivalGlow(tint: theme.ink, prominence: .subtle)
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(turn.message)

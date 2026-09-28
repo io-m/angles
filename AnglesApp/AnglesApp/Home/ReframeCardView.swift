@@ -795,7 +795,9 @@ struct ReframeCardView: View, Equatable {
     }
 
     private func toggleOriginalLanguage() {
-        showingOriginal.toggle()
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.32)) {
+            showingOriginal.toggle()
+        }
         if presentation == .favoriteAngles {
             showFavoriteThought()
         }
@@ -927,6 +929,9 @@ struct OverlayProposalCard: View {
         }
         .clipShape(cardShape)
         .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
+        .overlay {
+            CardArrivalGlow(tint: activeAppearance.ink, prominence: .subtle)
+        }
         .onAppear {
             if selectedStyle == nil {
                 setSelectedStyleWithoutAnimation(results.first?.style)
@@ -1139,6 +1144,7 @@ private struct ReframeCopyStack: View {
                 .padding(.horizontal, chromeInset)
                 .padding(.top, sectionSpacing)
                 .padding(.bottom, sectionSpacing)
+                .contentTransition(.opacity)
 
             Rectangle()
                 .fill(theme.cardHairline)
@@ -1246,9 +1252,9 @@ private struct OriginalToggle: View {
             action()
         } label: {
             Image(systemName: showingOriginal ? "character.bubble.fill" : "character.bubble")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ink)
-                .frame(width: ReframeCardMetrics.controlSize, height: ReframeCardMetrics.controlSize)
+                .frame(width: 32, height: 32)
                 .background(ink.opacity(0.10), in: Circle())
                 .contentShape(Circle())
         }

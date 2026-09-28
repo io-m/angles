@@ -206,9 +206,15 @@ struct TallHomeCardGrid: View, Equatable {
     }
 }
 
-/// A premium, Google-style smooth traveling border spark with a deepened ambient shadow.
-private struct CardArrivalGlow: View {
+/// A traveling border spark. Home uses the full lap and shadow; chat uses a quieter pass.
+struct CardArrivalGlow: View {
+    enum Prominence {
+        case home
+        case subtle
+    }
+
     let tint: Color
+    var prominence: Prominence = .home
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -219,51 +225,42 @@ private struct CardArrivalGlow: View {
         RoundedRectangle(cornerRadius: 24, style: .continuous)
     }
 
+    private var isSubtle: Bool { prominence == .subtle }
+
+    private var strokeWidth: CGFloat { isSubtle ? 1.25 : 2 }
+
+    private var lapDuration: Double { isSubtle ? 1.6 : 2 }
+
+    private var fadeInDuration: Double { isSubtle ? 0.3 : 0.4 }
+
+    private var holdBeforeFade: Duration {
+        .milliseconds(isSubtle ? 900 : 1200)
+    }
+
+    private var fadeOutDuration: Double { isSubtle ? 0.5 : 0.6 }
+
     var body: some View {
         if reduceMotion {
             EmptyView()
         } else {
             ZStack {
-                // 1. Increased card shadow (deep and soft)
-                shape
-                    .fill(Color.clear)
-                    .shadow(
-                        color: tint.opacity((colorScheme == .dark ? 0.4 : 0.2) * level),
-                        radius: 24,
-                        x: 0,
-                        y: 8
-                    )
-                    .shadow(
-                        color: Color.black.opacity((colorScheme == .dark ? 0.3 : 0.1) * level),
-                        radius: 16,
-                        x: 0,
-                        y: 6
-                    )
+                arrivalShadow
 
-                // 2. Smooth, jitter-free traveling spark using a rotating masked layer
                 Color.clear
                     .overlay {
                         Rectangle()
                             .fill(
                                 AngularGradient(
-                                    stops: [
-                                        .init(color: .clear, location: 0.0),
-                                        .init(color: .clear, location: 0.50), // Long clear area
-                                        .init(color: tint.opacity(colorScheme == .dark ? 0.15 : 0.3), location: 0.75), // Soft tail start
-                                        .init(color: tint.opacity(colorScheme == .dark ? 0.5 : 0.8), location: 0.95), // Strong body
-                                        .init(color: colorScheme == .dark ? tint.opacity(0.9) : .white, location: 0.99), // Bright head
-                                        .init(color: .clear, location: 1.0) // Sharp cutoff
-                                    ],
+                                    stops: sparkStops,
                                     center: .center,
-                                    angle: .degrees(0) // Static gradient, we rotate the view instead
+                                    angle: .degrees(0)
                                 )
                             )
-                            .frame(width: 1200, height: 1200) // Much larger to ensure it covers the card during rotation
+                            .frame(width: 1200, height: 1200)
                             .rotationEffect(.degrees(rotation))
                     }
                     .mask {
-                        // The mask takes the size of Color.clear (the card's size), not the 1200x1200 overlay
-                        shape.stroke(lineWidth: 2.0)
+                        shape.stroke(lineWidth: strokeWidth)
                     }
                     .blendMode(.plusLighter)
                     .opacity(level)
@@ -271,28 +268,72 @@ private struct CardArrivalGlow: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
             .onAppear {
-                // Fade in the shadow and spark
-                withAnimation(.easeOut(duration: 0.4)) {
+                withAnimation(.easeOut(duration: fadeInDuration)) {
                     level = 1
                 }
-                // Hardware-accelerated rotation for perfect smoothness
-                // Travels 1 lap (360 degrees) over 2.0 seconds
-                withAnimation(.linear(duration: 2.0)) {
+                withAnimation(.linear(duration: lapDuration)) {
                     rotation = 360
                 }
             }
             .task {
-                // Wait for 1.2 seconds before starting the fade out
-                try? await Task.sleep(for: .milliseconds(1200))
+                try? await Task.sleep(for: holdBeforeFade)
                 guard !Task.isCancelled else {
                     return
                 }
-                // Smooth fade out over 0.6s while it is STILL moving
-                withAnimation(.easeOut(duration: 0.6)) {
+                withAnimation(.easeOut(duration: fadeOutDuration)) {
                     level = 0
                 }
             }
         }
+    }
+
+    private var arrivalShadow: some View {
+        shape
+            .fill(Color.clear)
+            .shadow(
+                color: tint.opacity(tintShadowOpacity * level),
+                radius: isSubtle ? 12 : 24,
+                x: 0,
+                y: isSubtle ? 4 : 8
+            )
+            .shadow(
+                color: Color.black.opacity(blackShadowOpacity * level),
+                radius: isSubtle ? 8 : 16,
+                x: 0,
+                y: isSubtle ? 3 : 6
+            )
+    }
+
+    private var tintShadowOpacity: Double {
+        let dark = colorScheme == .dark
+        if isSubtle {
+            return dark ? 0.18 : 0.1
+        }
+        return dark ? 0.4 : 0.2
+    }
+
+    private var blackShadowOpacity: Double {
+        let dark = colorScheme == .dark
+        if isSubtle {
+            return dark ? 0.12 : 0.04
+        }
+        return dark ? 0.3 : 0.1
+    }
+
+    private var sparkStops: [Gradient.Stop] {
+        let dark = colorScheme == .dark
+        let scale: Double = isSubtle ? 0.5 : 1
+        let head: Color = dark
+            ? tint.opacity(0.9 * scale)
+            : (isSubtle ? Color.white.opacity(0.5) : .white)
+        return [
+            .init(color: .clear, location: 0.0),
+            .init(color: .clear, location: 0.50),
+            .init(color: tint.opacity((dark ? 0.15 : 0.3) * scale), location: 0.75),
+            .init(color: tint.opacity((dark ? 0.5 : 0.8) * scale), location: 0.95),
+            .init(color: head, location: 0.99),
+            .init(color: .clear, location: 1.0),
+        ]
     }
 }
 
