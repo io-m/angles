@@ -40,7 +40,7 @@ These are deployment, operator, Apple, provider, and submission tasks; they are 
 
 ### Apple production configuration
 
-- Download and configure the required Apple root certificates in `APPLE_ROOT_CERTIFICATES_BASE64`.
+- Put the public Apple root certificates in production `APPLE_ROOT_CERTIFICATES_BASE64`. The local `backend/.env` already has them, so sandbox receipt sync works on this machine. That file is not in git, so a new machine or the production host still needs the same value.
 - Set the numeric App Store Connect `APPLE_APP_ID`.
 - Create the production Sign in with Apple and App Store configuration, including a valid `APPLE_CLIENT_SECRET`, product/subscription-group availability, agreements, tax, banking, and any App Store Server API issuer/key/private-key setup used by release operations.
 - Configure App Store Server Notifications V2 for the production API endpoint `POST /app-store/notifications` and send/verify Apple's test notification.

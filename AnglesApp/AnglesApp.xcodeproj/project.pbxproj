@@ -56,6 +56,7 @@
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
 		E893FFE90BB36CD6A2D17F5C /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */; };
 		EE449FD94B007E40F14F28AF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 74967E0B0593CCC6912B35AE /* PrivacyInfo.xcprivacy */; };
+		EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */; };
 		F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551EA9251B494B0E82C36D47 /* ColorTokens.swift */; };
 		FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0F4006AE6DACF0D19171814 /* ProfileService.swift */; };
 		FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */; };
@@ -72,6 +73,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshBanner.swift; sourceTree = "<group>"; };
 		01BEA95023B9310D87B3474C /* AppGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGate.swift; sourceTree = "<group>"; };
 		0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderChrome.swift; sourceTree = "<group>"; };
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
@@ -265,6 +267,7 @@
 				4C7366F06DED44B5C9EFBFDF /* BlockedPeopleSheet.swift */,
 				338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */,
 				6A473004998C2F650FCA971D /* DrawerStubView.swift */,
+				01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */,
 				4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */,
 				0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */,
 				81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */,
@@ -439,6 +442,7 @@
 				F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */,
 				729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */,
 				A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */,
+				EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */,
 				DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */,
 				02995E8655495BCA8665D82E /* HeaderChrome.swift in Sources */,
 				2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */,

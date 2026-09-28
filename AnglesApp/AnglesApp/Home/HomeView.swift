@@ -40,6 +40,8 @@ struct HomeView: View {
             shiningCardID: viewModel.shiningCardID,
             isScrollDisabled: isGlimpseActive,
             canPullToRefresh: canLoadFullAppContent && !isGlimpseActive,
+            refreshOutcome: viewModel.feedRefreshOutcome,
+            refreshToken: viewModel.feedRefreshToken,
             offersOwnerPrivacyMenu: true,
             externalSelectionTab: viewModel.saveLanding == .home ? .all : nil,
             externalSelectionToken: viewModel.saveLandingToken,
@@ -156,6 +158,9 @@ struct HomeFeedPager<Chrome: View>: View {
     let shiningCardID: UUID?
     let isScrollDisabled: Bool
     let canPullToRefresh: Bool
+    /// Nil on surfaces that do not announce their refresh outcome.
+    let refreshOutcome: FeedRefreshOutcome?
+    let refreshToken: Int
     let offersOwnerPrivacyMenu: Bool
     let externalSelectionTab: HomeFeedTab?
     let externalSelectionToken: Int
@@ -196,6 +201,8 @@ struct HomeFeedPager<Chrome: View>: View {
         shiningCardID: UUID? = nil,
         isScrollDisabled: Bool = false,
         canPullToRefresh: Bool = true,
+        refreshOutcome: FeedRefreshOutcome? = nil,
+        refreshToken: Int = 0,
         offersOwnerPrivacyMenu: Bool = false,
         externalSelectionTab: HomeFeedTab? = nil,
         externalSelectionToken: Int = 0,
@@ -229,6 +236,8 @@ struct HomeFeedPager<Chrome: View>: View {
         self.shiningCardID = shiningCardID
         self.isScrollDisabled = isScrollDisabled
         self.canPullToRefresh = canPullToRefresh
+        self.refreshOutcome = refreshOutcome
+        self.refreshToken = refreshToken
         self.offersOwnerPrivacyMenu = offersOwnerPrivacyMenu
         self.externalSelectionTab = externalSelectionTab
         self.externalSelectionToken = externalSelectionToken
@@ -263,6 +272,14 @@ struct HomeFeedPager<Chrome: View>: View {
 
             chrome(pagerState, committedTab, selectTab)
                 .ignoresSafeArea(edges: .top)
+
+            FeedRefreshBanner(
+                outcome: refreshOutcome,
+                token: refreshToken,
+                noun: "post"
+            )
+            .padding(.top, chromeHeight + 8)
+            .ignoresSafeArea(edges: .top)
 
             StyleTabBottomFade(
                 pagerState: pagerState,
@@ -500,16 +517,21 @@ struct HomeFeedTabPage: View {
                             .frame(height: 0)
                             .id("home-tab-top")
 
-                        Color.clear
-                            .frame(height: chromeHeight)
-
                         tabContent(cardMaxHeight: tallCardMaxHeight)
                             .padding(.bottom, 20)
                     }
                     .frame(
-                        minHeight: proxy.size.height,
+                        minHeight: viewportBelowChrome,
                         alignment: .top
                     )
+                }
+                // A real top inset rather than a spacer inside the content:
+                // cards still scroll up behind the frosted header, but the
+                // native refresh control emerges below the style tabs
+                // instead of behind them.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    Color.clear
+                        .frame(height: chromeHeight)
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.always)

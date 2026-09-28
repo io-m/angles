@@ -99,6 +99,14 @@ struct ProfileView: View {
             )
             .ignoresSafeArea(edges: .top)
 
+            FeedRefreshBanner(
+                outcome: viewModel.libraryRefreshOutcome,
+                token: viewModel.libraryRefreshToken,
+                noun: "card"
+            )
+            .padding(.top, fixedChromeHeight + 8)
+            .ignoresSafeArea(edges: .top)
+
             StyleTabBottomFade(pagerState: pagerState, safeBottom: safeAreaInsets.bottom)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .ignoresSafeArea(.container, edges: .bottom)
@@ -558,21 +566,29 @@ private struct ProfileTabPage: View {
                             .frame(height: 0)
                             .id("profile-tab-top")
 
-                        Color.clear
-                            .frame(height: chromeHeight)
-
                         tabContent(tallCardMaxHeight: tallCardMaxHeight)
                             .padding(.bottom, 20)
                     }
                     .frame(
-                        minHeight: proxy.size.height,
+                        minHeight: viewportBelowChrome,
                         alignment: .top
                     )
                 }
-                .scrollIndicators(.hidden)
-                .refreshable {
-                    await onRefresh()
+                // A real top inset rather than a spacer inside the content:
+                // cards still scroll up behind the glass header, but the
+                // native refresh control emerges below it.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    Color.clear
+                        .frame(height: chromeHeight)
                 }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.always)
+                .modifier(
+                    HomeFeedNativeRefresh(
+                        enabled: true,
+                        onRefresh: onRefresh
+                    )
+                )
                 .onChange(of: scrollToTopToken) { _, token in
                     guard token > 0 else {
                         return

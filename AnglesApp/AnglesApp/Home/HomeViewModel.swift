@@ -434,6 +434,13 @@ private struct BlockAuthorSnapshot {
 final class HomeViewModel {
     private(set) var cards: [HomeCard]
 
+    /// Outcome of the last pull-to-refresh, with a token so the banner can
+    /// re-announce an identical outcome on a second pull.
+    private(set) var feedRefreshOutcome: FeedRefreshOutcome?
+    private(set) var feedRefreshToken = 0
+    private(set) var libraryRefreshOutcome: FeedRefreshOutcome?
+    private(set) var libraryRefreshToken = 0
+
     var composeText = ""
     /// Compose Save defaults public; Start again and a new overlay reset this.
     var composeIsPublic = true
@@ -961,14 +968,15 @@ final class HomeViewModel {
         }
     }
 
-    func loadLibrary(showsLoading: Bool = true, reportsFailure: Bool = true) async {
+    @discardableResult
+    func loadLibrary(showsLoading: Bool = true, reportsFailure: Bool = true) async -> PageFetchResult {
         if showsLoading, cards.isEmpty {
             libraryLoadState = .loading
         }
         do {
             let response = try await cardsService.list(limit: Self.libraryPageSize)
             guard !Task.isCancelled else {
-                return
+                return .discarded
             }
             cards = merged(cards, with: response.cards)
             libraryBefore = response.page.nextCursor
@@ -977,13 +985,15 @@ final class HomeViewModel {
             hasLoadedLibrary = true
             libraryLoadState = .loaded
             ensureProfileTabFilled()
+            return .success
         } catch {
-            guard !Task.isCancelled else {
-                return
+            guard !Task.isCancelled, !Self.isCancellation(error) else {
+                return .discarded
             }
             if reportsFailure, cards.isEmpty {
                 libraryLoadState = .failed("Couldn't load your cards.")
             }
+            return .failure
         }
     }
 
@@ -1005,8 +1015,22 @@ final class HomeViewModel {
             libraryFooterState = .idle
         }
         isLibraryRefreshing = true
-        await loadLibrary(showsLoading: false)
-        isLibraryRefreshing = false
+        // Cleared on every exit: a stuck flag would silently block paging.
+        defer { isLibraryRefreshing = false }
+
+        let known = Set(cards.map(\.id))
+        let result = await loadLibrary(showsLoading: false)
+        let added = cards.filter { !known.contains($0.id) }.count
+        switch result {
+        case .success:
+            libraryRefreshOutcome = added > 0 ? .newItems(added) : .upToDate
+            libraryRefreshToken &+= 1
+        case .failure:
+            libraryRefreshOutcome = .failed
+            libraryRefreshToken &+= 1
+        case .discarded:
+            break
+        }
     }
 
     func loadMoreLibrary() {
@@ -1217,9 +1241,21 @@ final class HomeViewModel {
             feedLoadState = feedCards.isEmpty ? .loading : .loaded
         }
 
-        await fetchFeedPage(replacing: true, generation: generation)
+        let known = feedCardIDs
+        let result = await fetchFeedPage(replacing: true, generation: generation)
         isFeedRefreshing = false
         if generation == feedGeneration {
+            let added = feedCards.filter { !known.contains($0.id) }.count
+            switch result {
+            case .success:
+                feedRefreshOutcome = added > 0 ? .newItems(added) : .upToDate
+                feedRefreshToken &+= 1
+            case .failure:
+                feedRefreshOutcome = .failed
+                feedRefreshToken &+= 1
+            case .discarded:
+                break
+            }
             ensureCurrentTabFilled()
         }
     }
@@ -1298,11 +1334,12 @@ final class HomeViewModel {
         }
     }
 
+    @discardableResult
     private func fetchFeedPage(
         replacing: Bool,
         generation: Int,
         reportsFailure: Bool = true
-    ) async {
+    ) async -> PageFetchResult {
         let filter = appliedFilter
         let before = replacing ? nil : feedBefore
 
@@ -1315,7 +1352,7 @@ final class HomeViewModel {
             )
             let stored = response.cards
             guard !Task.isCancelled, generation == feedGeneration else {
-                return
+                return .discarded
             }
 
             var transaction = Transaction(animation: nil)
@@ -1352,9 +1389,10 @@ final class HomeViewModel {
                 feedLoadState = .loaded
                 hasLoadedFeed = true
             }
+            return .success
         } catch {
             guard !Task.isCancelled, generation == feedGeneration, !Self.isCancellation(error) else {
-                return
+                return .discarded
             }
 
             if reportsFailure, replacing, feedCards.isEmpty {
@@ -1362,7 +1400,16 @@ final class HomeViewModel {
             } else if reportsFailure {
                 feedFooterState = .failed
             }
+            return .failure
         }
+    }
+
+    /// Why a page fetch ended. `discarded` means it was cancelled or
+    /// superseded, so it must not report an outcome either way.
+    enum PageFetchResult {
+        case success
+        case failure
+        case discarded
     }
 
     /// Updates cards in place so per-card style selection remains stable across writes.

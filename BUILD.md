@@ -17,7 +17,9 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**None listed.** Do not invent extras.
+**No product work is queued.** Rows 9w through 13 are done. Do not invent screens or features.
+
+What is left is launch setup outside the app: a real server address, published privacy and support pages, Apple production settings, and the App Store listing. The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
 
 ## Core loop
 
@@ -231,8 +233,10 @@ Not a new screen. Replaces the scrolling **Home** title from 9f/9h with Profile-
 Not a new screen. Corrective polish on 9q.
 
 - **Native motion.** Each tab uses SwiftUI `.refreshable`; there is no added drag recognizer, synthetic threshold, layout hold, or refresh-time scroll lock.
-- **Indicator placement.** The vertical scroll viewport begins below the fixed Home chrome instead of behind the safe area. Its system spinner therefore emerges directly below the style tabs without UIKit positioning overrides.
+- **Indicator placement.** The scroll view carries a top `safeAreaInset` of the chrome height rather than a clear spacer inside its content. Cards still scroll up behind the frosted header, and because the inset is real, the system spinner emerges directly below the style tabs instead of behind them — no UIKit positioning overrides. Do not replace that inset with in-content padding: that is what hid the indicator between 2026-09-23 and 2026-09-28.
 - **Shared refresh.** The native async action awaits `HomeViewModel.refreshFeed()`. Existing cards stay visible and all tabs continue filtering the same in-memory feed.
+- **Stated outcome.** Home and the library are strictly newest-first, so a correct refresh with nothing newer returns the identical page and reads as a dead gesture. `FeedRefreshBanner` announces the result under the chrome for 1.8s: `N new posts`, `You're all caught up`, or `Couldn't refresh`. The last one matters because a failed refresh with cards already on screen otherwise showed nothing at all. A cancelled or superseded fetch stays silent (`PageFetchResult.discarded`).
+- **Testing new arrivals.** `pnpm db:seed-recent [count]` appends public cards dated now without deleting anything, so a pull while the app is open genuinely finds newer posts. `pnpm db:seed-community` cannot show this: it re-inserts the same fixture rows with the same historical timestamps.
 
 ### 9u. Following list
 
