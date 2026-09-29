@@ -19,7 +19,7 @@ import {
 } from "./communitySafety.js";
 import { newerThanCursor, olderThanCursor } from "./cursor.js";
 import { followedAuthorIds } from "./follows.js";
-import { loadCardHeartTotals } from "./hearts.js";
+import { loadCardHeartTotals, loadStyleHeartTotals } from "./hearts.js";
 import { storedCardsForViewer, type CardLoaded } from "./mapCard.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
 
@@ -154,7 +154,7 @@ export async function listRankedFeed(
     }
 
     const ids = candidates.map((row) => row.id);
-    const [hearts, followed, affinity] = await Promise.all([
+    const [hearts, followed, affinity, styleHearts, styleShelf] = await Promise.all([
       loadCardHeartTotals(ids, db),
       followedAuthorIds(
         viewerId,
@@ -162,6 +162,8 @@ export async function listRankedFeed(
         db,
       ),
       loadViewerAffinity(viewerId, db),
+      query.style ? loadStyleHeartTotals(ids, query.style, db) : Promise.resolve(null),
+      query.style ? loadViewerStyleShelf(viewerId, query.style, db) : Promise.resolve(null),
     ]);
 
     const now = new Date();
@@ -174,8 +176,18 @@ export async function listRankedFeed(
         emotions: row.emotions,
         hearts: hearts.get(row.id) ?? 0,
         followed: followed.has(row.authorId),
+        angleHearts: styleHearts?.get(row.id) ?? 0,
+        coverStyle: row.spotlightStyle,
       })),
-      { now, seed: query.session.seed, affinity },
+      {
+        now,
+        seed: query.session.seed,
+        affinity,
+        style:
+          query.style && styleShelf
+            ? { style: query.style, affinity: styleShelf.affinity, hearts: styleShelf.hearts }
+            : undefined,
+      },
     );
 
     const byId = new Map(candidates.map((row) => [row.id, row]));
@@ -232,9 +244,51 @@ async function loadViewerAffinity(
     .orderBy(desc(cards.createdAt), desc(cards.id))
     .limit(AFFINITY_SAMPLE);
 
+  return affinityFromRows(recent);
+}
+
+/**
+ * Taste learned from the angles this viewer actually hearted in one style.
+ * `hearts` is the sample size, which is enough: confidence saturates at five.
+ */
+async function loadViewerStyleShelf(
+  viewerId: string,
+  style: Style,
+  db: ReturnType<typeof getDb>,
+): Promise<{ affinity: ViewerAffinity; hearts: number }> {
+  const [saved, own] = await Promise.all([
+    db
+      .select({ category: cards.category, emotions: cards.emotions })
+      .from(savedAngles)
+      .innerJoin(cards, eq(cards.id, savedAngles.cardId))
+      .where(and(eq(savedAngles.userId, viewerId), eq(savedAngles.style, style)))
+      .orderBy(desc(savedAngles.favoritedAt), desc(cards.id))
+      .limit(AFFINITY_SAMPLE),
+    db
+      .select({ category: cards.category, emotions: cards.emotions })
+      .from(cardReframes)
+      .innerJoin(cards, eq(cards.id, cardReframes.cardId))
+      .where(
+        and(
+          eq(cards.userId, viewerId),
+          eq(cardReframes.style, style),
+          eq(cardReframes.isFavorite, true),
+        ),
+      )
+      .orderBy(desc(cardReframes.favoritedAt), desc(cards.id))
+      .limit(AFFINITY_SAMPLE),
+  ]);
+
+  const rows = [...saved, ...own];
+  return { affinity: affinityFromRows(rows), hearts: rows.length };
+}
+
+function affinityFromRows(
+  rows: readonly { category: Category; emotions: readonly Emotion[] }[],
+): ViewerAffinity {
   const categoryCounts = new Map<Category, number>();
   const emotionCounts = new Map<Emotion, number>();
-  for (const row of recent) {
+  for (const row of rows) {
     categoryCounts.set(row.category, (categoryCounts.get(row.category) ?? 0) + 1);
     for (const emotion of row.emotions) {
       emotionCounts.set(emotion, (emotionCounts.get(emotion) ?? 0) + 1);

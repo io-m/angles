@@ -14,3 +14,4 @@ alwaysApply: false
 - Bind `0.0.0.0` and `process.env.PORT || 8787`. Health: `GET /health` (include a cheap DB probe).
 - Drizzle + `postgres` (postgres.js) live in `src/db/`. Do not add Better Auth until that task (`src/auth.ts`).
 - Tests use `app.request()` (Vitest). Do not start `serve()` in tests.
+- Home order lives in `src/lib/feedRanking.ts`. `FEED_RANKING=resonance` ranks All and each style shelf; unset is newest-first. Do not expose other people's per-style heart counts.

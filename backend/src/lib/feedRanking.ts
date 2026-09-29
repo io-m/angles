@@ -21,6 +21,18 @@ export const RANKING_WEIGHTS = {
   jitter: 0.15,
 } as const;
 
+/**
+ * Extra terms for a style shelf. Resonance is capped like the card-level term, and
+ * the cover is only a nudge: the author chose it, which is not evidence it helped.
+ */
+export const STYLE_RANKING_WEIGHTS = {
+  styleResonance: 0.55,
+  cover: 0.05,
+} as const;
+
+/** Hearts on this style before its affinity fully replaces the viewer's general taste. */
+export const STYLE_AFFINITY_FULL_HEARTS = 5;
+
 /** Freshness half-scale in hours. Four days, not a news cycle: a reframe from last
  * week is as useful as one from this morning. */
 const FRESHNESS_SCALE_HOURS = 96;
@@ -39,6 +51,10 @@ export type RankableCard = {
   emotions: readonly Emotion[];
   hearts: number;
   followed: boolean;
+  /** Hearts on one angle. Read only while ranking that style shelf. */
+  angleHearts?: number;
+  /** The cover the author saved. A weak shelf signal, never an All-tab input. */
+  coverStyle?: Style;
 };
 
 /** What the viewer has been writing about, from their own recent cards. */
@@ -84,6 +100,41 @@ export function affinityTerm(card: RankableCard, affinity: ViewerAffinity): numb
   return 0.6 * category + 0.4 * Math.min(1, shared / 2);
 }
 
+/** 0 with no hearts on this style, 1 once the viewer has hearted it five times. */
+export function styleAffinityConfidence(hearts: number): number {
+  if (!Number.isFinite(hearts) || hearts <= 0) {
+    return 0;
+  }
+  return Math.min(1, hearts / STYLE_AFFINITY_FULL_HEARTS);
+}
+
+/**
+ * General taste, replaced by taste learned from this style as evidence accumulates.
+ * One heart moves the term a fifth of the way. It cannot take the shelf over.
+ */
+export function blendedAffinityTerm(
+  card: RankableCard,
+  general: ViewerAffinity,
+  styleAffinity: ViewerAffinity,
+  hearts: number,
+): number {
+  const confidence = styleAffinityConfidence(hearts);
+  const base = affinityTerm(card, general);
+  const specific = affinityTerm(card, styleAffinity);
+  return (1 - confidence) * base + confidence * specific;
+}
+
+/** A style shelf's extra inputs. Absent on All, which keeps the base score alone. */
+export type StyleShelfContext = {
+  style: Style;
+  affinity: ViewerAffinity;
+  /** How many times this viewer has hearted this style. */
+  hearts: number;
+  /** Strangers' hearts on this card's copy of that style. */
+  angleHearts: number;
+  coverMatches: boolean;
+};
+
 /**
  * Exposure for a post nobody has found yet. In a community this small, an author whose
  * card gets no reads stops posting, so this is fairness rather than quality.
@@ -115,33 +166,68 @@ export function jitterTerm(cardId: string, seed: string): number {
 
 export function scoreCard(
   card: RankableCard,
-  options: { now: Date; seed: string; affinity?: ViewerAffinity },
+  options: { now: Date; seed: string; affinity?: ViewerAffinity; style?: StyleShelfContext },
 ): ScoredCard {
   const affinity = options.affinity ?? EMPTY_AFFINITY;
+  const style = options.style;
   const terms: RankingTerms = {
     freshness: freshnessTerm(card, options.now),
     resonance: resonanceTerm(card),
-    affinity: affinityTerm(card, affinity),
+    affinity: style
+      ? blendedAffinityTerm(card, affinity, style.affinity, style.hearts)
+      : affinityTerm(card, affinity),
     followed: card.followed ? 1 : 0,
     secondChance: secondChanceTerm(card, options.now),
-    jitter: jitterTerm(card.id, options.seed),
+    // A style salt keeps two shelves from tying into the same order. All omits it.
+    jitter: jitterTerm(card.id, style ? `${options.seed}:${style.style}` : options.seed),
   };
 
   let score = 0;
   for (const key of Object.keys(RANKING_WEIGHTS) as (keyof RankingTerms)[]) {
     score += RANKING_WEIGHTS[key] * terms[key];
   }
+  if (style) {
+    score +=
+      STYLE_RANKING_WEIGHTS.styleResonance *
+      resonanceTerm({ ...card, hearts: style.angleHearts });
+    score += STYLE_RANKING_WEIGHTS.cover * (style.coverMatches ? 1 : 0);
+  }
   return { id: card.id, score, terms };
 }
 
 /** Highest first, ties broken by id so one seed always produces one order. */
+export function compareRanked(left: ScoredCard, right: ScoredCard): number {
+  return right.score - left.score || (left.id < right.id ? 1 : -1);
+}
+
 export function rankCards(
   cards: readonly RankableCard[],
-  options: { now: Date; seed: string; affinity?: ViewerAffinity },
+  options: {
+    now: Date;
+    seed: string;
+    affinity?: ViewerAffinity;
+    /** Set on a style shelf. All leaves it unset and ignores angle hearts and covers. */
+    style?: { style: Style; affinity: ViewerAffinity; hearts: number };
+  },
 ): ScoredCard[] {
   return cards
-    .map((card) => scoreCard(card, options))
-    .sort((left, right) => right.score - left.score || (left.id < right.id ? 1 : -1));
+    .map((card) =>
+      scoreCard(card, {
+        now: options.now,
+        seed: options.seed,
+        affinity: options.affinity,
+        style: options.style
+          ? {
+              style: options.style.style,
+              affinity: options.style.affinity,
+              hearts: options.style.hearts,
+              angleHearts: card.angleHearts ?? 0,
+              coverMatches: card.coverStyle === options.style.style,
+            }
+          : undefined,
+      }),
+    )
+    .sort(compareRanked);
 }
 
 export const SPREAD_LIMITS = {

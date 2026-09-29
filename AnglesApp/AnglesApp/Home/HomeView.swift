@@ -30,8 +30,8 @@ struct HomeView: View {
         HomeFeedPager(
             safeAreaInsets: safeAreaInsets,
             cards: cards(for:),
-            loadState: viewModel.feedLoadState,
-            footerState: viewModel.feedFooterState,
+            loadState: viewModel.feedLoadState(for:),
+            footerState: viewModel.feedFooterState(for:),
             emptyCopy: viewModel.feedEmptyCopy(for:),
             glimpseCard: glimpseCard,
             scrollToTopToken: viewModel.saveLanding == .home
@@ -47,7 +47,7 @@ struct HomeView: View {
             externalSelectionToken: viewModel.saveLandingToken,
             onCommitPage: commitPage,
             onRetry: viewModel.retryLoadFeed,
-            onRefresh: { await viewModel.refreshFeed() },
+            onRefresh: { tab in await viewModel.refreshFeed(tab) },
             onLoadMore: viewModel.loadMoreFeed,
             onRetryLoadMore: viewModel.retryLoadMoreFeed,
             onDelete: deleteCard,
@@ -150,8 +150,8 @@ struct HomeView: View {
 struct HomeFeedPager<Chrome: View>: View {
     let safeAreaInsets: EdgeInsets
     let cards: (HomeFeedTab) -> [HomeCard]
-    let loadState: LibraryLoadState
-    let footerState: FeedFooterState
+    let loadState: (HomeFeedTab) -> LibraryLoadState
+    let footerState: (HomeFeedTab) -> FeedFooterState
     let emptyCopy: (HomeFeedTab) -> String
     let glimpseCard: HomeCard?
     let scrollToTopToken: Int
@@ -165,10 +165,10 @@ struct HomeFeedPager<Chrome: View>: View {
     let externalSelectionTab: HomeFeedTab?
     let externalSelectionToken: Int
     let onCommitPage: (HomeFeedTab) -> Void
-    let onRetry: () -> Void
-    let onRefresh: () async -> Void
-    let onLoadMore: () -> Void
-    let onRetryLoadMore: () -> Void
+    let onRetry: (HomeFeedTab) -> Void
+    let onRefresh: (HomeFeedTab) async -> Void
+    let onLoadMore: (HomeFeedTab) -> Void
+    let onRetryLoadMore: (HomeFeedTab) -> Void
     let onDelete: (HomeCard) -> Void
     let onToggleFavorite: (HomeCard, Style) -> Void
     let onSetPublic: (HomeCard, Bool) -> Void
@@ -193,8 +193,8 @@ struct HomeFeedPager<Chrome: View>: View {
     init(
         safeAreaInsets: EdgeInsets,
         cards: @escaping (HomeFeedTab) -> [HomeCard],
-        loadState: LibraryLoadState,
-        footerState: FeedFooterState,
+        loadState: @escaping (HomeFeedTab) -> LibraryLoadState,
+        footerState: @escaping (HomeFeedTab) -> FeedFooterState,
         emptyCopy: @escaping (HomeFeedTab) -> String,
         glimpseCard: HomeCard? = nil,
         scrollToTopToken: Int = 0,
@@ -207,10 +207,10 @@ struct HomeFeedPager<Chrome: View>: View {
         externalSelectionTab: HomeFeedTab? = nil,
         externalSelectionToken: Int = 0,
         onCommitPage: @escaping (HomeFeedTab) -> Void = { _ in },
-        onRetry: @escaping () -> Void,
-        onRefresh: @escaping () async -> Void,
-        onLoadMore: @escaping () -> Void,
-        onRetryLoadMore: @escaping () -> Void,
+        onRetry: @escaping (HomeFeedTab) -> Void,
+        onRefresh: @escaping (HomeFeedTab) async -> Void,
+        onLoadMore: @escaping (HomeFeedTab) -> Void,
+        onRetryLoadMore: @escaping (HomeFeedTab) -> Void,
         onDelete: @escaping (HomeCard) -> Void,
         onToggleFavorite: @escaping (HomeCard, Style) -> Void,
         onSetPublic: @escaping (HomeCard, Bool) -> Void,
@@ -301,8 +301,8 @@ struct HomeFeedPager<Chrome: View>: View {
                             HomeFeedTabPage(
                                 tab: tab,
                                 cards: cards(tab),
-                                loadState: loadState,
-                                footerState: footerState,
+                                loadState: loadState(tab),
+                                footerState: footerState(tab),
                                 emptyCopy: emptyCopy(tab),
                                 chromeHeight: chromeHeight,
                                 glimpseCard: tab == .all ? glimpseCard : nil,
@@ -315,10 +315,10 @@ struct HomeFeedPager<Chrome: View>: View {
                                 isScrollDisabled: isScrollDisabled,
                                 allowsPullToRefresh: canPullToRefresh
                                     && tab == committedTab,
-                                onRetry: onRetry,
-                                onRefresh: onRefresh,
-                                onLoadMore: onLoadMore,
-                                onRetryLoadMore: onRetryLoadMore,
+                                onRetry: { onRetry(tab) },
+                                onRefresh: { await onRefresh(tab) },
+                                onLoadMore: { onLoadMore(tab) },
+                                onRetryLoadMore: { onRetryLoadMore(tab) },
                                 onDelete: onDelete,
                                 onToggleFavorite: onToggleFavorite,
                                 onSetPublic: onSetPublic,

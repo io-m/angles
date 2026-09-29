@@ -36,15 +36,15 @@ struct AuthorProfileView: View {
             cards: { tab in
                 viewModel.authorCards(for: route.id, tab: tab)
             },
-            loadState: viewModel.authorLoadState(for: route.id),
-            footerState: viewModel.authorFooterState(for: route.id),
+            loadState: { _ in viewModel.authorLoadState(for: route.id) },
+            footerState: { _ in viewModel.authorFooterState(for: route.id) },
             emptyCopy: { tab in
                 tab.emptyCopy(appliedFilter: HomeFeedFilter())
             },
-            onRetry: { viewModel.retryLoadAuthor(route.id) },
-            onRefresh: { await viewModel.refreshAuthor(route.id) },
-            onLoadMore: { viewModel.loadMoreAuthor(route.id) },
-            onRetryLoadMore: { viewModel.retryLoadMoreAuthor(route.id) },
+            onRetry: { _ in viewModel.retryLoadAuthor(route.id) },
+            onRefresh: { _ in await viewModel.refreshAuthor(route.id) },
+            onLoadMore: { _ in viewModel.loadMoreAuthor(route.id) },
+            onRetryLoadMore: { _ in viewModel.retryLoadMoreAuthor(route.id) },
             onDelete: deleteCard,
             onToggleFavorite: toggleFavorite,
             onSetPublic: setPublic,

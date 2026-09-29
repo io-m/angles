@@ -232,6 +232,28 @@ describe("GET /feed with resonance ranking", () => {
     expect(next).toEqual({ seed: minted?.seed, startedAt: minted?.startedAt, offset: 1 });
   });
 
+  it("keeps a style on the ranked request and on the next page", async () => {
+    vi.mocked(listRankedFeed).mockResolvedValue([feedCard()]);
+    const first = await app.request("/feed?style=stoic&limit=24");
+    expect(first.status).toBe(200);
+    expect(listRankedFeed).toHaveBeenCalledWith(expect.objectContaining({ style: "stoic" }));
+
+    const body = (await jsonOf(first)) as { page: { nextCursor: string } };
+    const session = decodeFeedSession(body.page.nextCursor);
+    expect(session?.offset).toBe(1);
+
+    const second = await app.request(
+      `/feed?style=stoic&limit=24&before=${encodeURIComponent(body.page.nextCursor)}`,
+    );
+    expect(second.status).toBe(200);
+    expect(listRankedFeed).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        style: "stoic",
+        session: expect.objectContaining({ seed: session?.seed, offset: 1 }),
+      }),
+    );
+  });
+
   it("continues the session the client echoes back", async () => {
     vi.mocked(listRankedFeed).mockResolvedValue([]);
     const session = {

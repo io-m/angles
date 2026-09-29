@@ -431,7 +431,7 @@ private struct ModelFeed {
 
 private struct BlockAuthorSnapshot {
     let libraryEntries: [(index: Int, card: HomeCard)]
-    let feedEntries: [(index: Int, card: HomeCard)]
+    let shelfEntries: [(placement: HomeFeedPlacement, card: HomeCard)]
     let feedAnchors: [UUID: HomeCard]
     let followedEntry: (index: Int, person: FollowedPerson)?
     let blockedEntry: (index: Int, person: BlockedPerson)?
@@ -446,8 +446,6 @@ final class HomeViewModel {
 
     /// Outcome of the last pull-to-refresh, with a token so the banner can
     /// re-announce an identical outcome on a second pull.
-    private(set) var feedRefreshOutcome: FeedRefreshOutcome?
-    private(set) var feedRefreshToken = 0
     private(set) var libraryRefreshOutcome: FeedRefreshOutcome?
     private(set) var libraryRefreshToken = 0
 
@@ -475,7 +473,7 @@ final class HomeViewModel {
     var homeFeedTab: HomeFeedTab = .all {
         didSet {
             if homeFeedTab != oldValue {
-                ensureCurrentTabFilled()
+                loadShelfIfNeeded(homeFeedTab)
             }
         }
     }
@@ -487,11 +485,12 @@ final class HomeViewModel {
     }
     private(set) var libraryLoadState: LibraryLoadState
     private(set) var libraryFooterState: FeedFooterState = .idle
-    private(set) var feedCards: [HomeCard] = []
-    private(set) var feedLoadState: LibraryLoadState = .loading
-    private(set) var feedFooterState: FeedFooterState = .idle
-    private(set) var isFeedRefreshing = false
-    private(set) var feedHasMore = true
+    private(set) var feedBoard = HomeFeedBoard()
+    /// All's first load. Style shelves stay unloaded until their tab is opened.
+    var feedLoadState: LibraryLoadState { feedBoard.shelf(.all).loadState }
+    /// The banner for the shelf that was just pulled. Switching tabs must not replay it.
+    private(set) var feedRefreshOutcome: FeedRefreshOutcome?
+    private(set) var feedRefreshToken = 0
     private(set) var isSaving = false
     private(set) var saveError: String?
     /// Set when a non-taste save should already be on screen under the compose overlay.
@@ -513,21 +512,7 @@ final class HomeViewModel {
     private var refineTask: Task<Void, Never>?
     private var saveTask: Task<HomeCard?, Never>?
     private var libraryTask: Task<Void, Never>?
-    private var feedTask: Task<Void, Never>?
-    private var hasLoadedFeed = false
-    private var feedGeneration = 0
-    private var feedBefore: String?
-    private var feedCardIDs: Set<UUID> = []
-    /// Newest card this visit has loaded, so a pull can tell a real arrival from
-    /// the top of the feed it already walked past.
-    private var feedHighWater: FeedCardMark?
-    /// Every card this visit has loaded. `feedCardIDs` is only the page on screen,
-    /// which a rotation replaces, so it cannot answer "did I already show this".
-    private var feedSeenIDs: Set<UUID> = []
-    /// True once a pull moved off the newest page.
-    private var feedIsRotated = false
-    /// Public cards inserted locally that a replacing feed page must not drop.
-    private var feedAnchors: [UUID: HomeCard] = [:]
+    private var feedTasks: [HomeFeedTab: Task<Void, Never>] = [:]
     private var hasLoadedLibrary = false
     private var libraryPageTask: Task<Void, Never>?
     private var libraryBefore: String?
@@ -630,7 +615,7 @@ final class HomeViewModel {
     /// would be wasted bytes on every pull.
     static let feedHeadLimit = 8
     static let libraryPageSize = 200
-    /// Cards a style tab should show before it stops pulling more pages on its own.
+    /// Profile keeps paging a thin style tab until it has something to show.
     private static let tabFillMinimum = 6
 
     var ownedCards: [HomeCard] {
@@ -642,10 +627,7 @@ final class HomeViewModel {
             cards[index].authorInitials = initials
             cards[index].authorAvatarPath = avatarPath
         }
-        for index in feedCards.indices where feedCards[index].isOwner {
-            feedCards[index].authorInitials = initials
-            feedCards[index].authorAvatarPath = avatarPath
-        }
+        feedBoard.updateOwners(initials: initials, avatarPath: avatarPath)
         for authorId in Array(authorFeeds.keys) {
             mutateAuthor(authorId) { feed in
                 if feed.isSelf {
@@ -692,11 +674,15 @@ final class HomeViewModel {
     }
 
     func homeCards(for tab: HomeFeedTab) -> [HomeCard] {
-        guard let style = tab.matchingStyle else {
-            return feedCards
-        }
+        feedBoard.cards(on: tab)
+    }
 
-        return feedCards.filter { $0.hasStyle(style) }
+    func feedLoadState(for tab: HomeFeedTab) -> LibraryLoadState {
+        feedBoard.shelf(tab).loadState
+    }
+
+    func feedFooterState(for tab: HomeFeedTab) -> FeedFooterState {
+        feedBoard.shelf(tab).footerState
     }
 
     func feedEmptyCopy(for tab: HomeFeedTab) -> String {
@@ -1114,8 +1100,6 @@ final class HomeViewModel {
     func resetForSignOut() {
         writeSessionGeneration &+= 1
         refineGeneration &+= 1
-        feedTask?.cancel()
-        feedTask = nil
         libraryTask?.cancel()
         libraryTask = nil
         libraryPageTask?.cancel()
@@ -1127,6 +1111,7 @@ final class HomeViewModel {
         for task in boardTasks.values { task.cancel() }
         for task in reportTasks.values { task.cancel() }
         for task in blockTasks.values { task.cancel() }
+        for task in feedTasks.values { task.cancel() }
         for feed in authorFeeds.values { feed.task?.cancel() }
         for feed in modelFeeds.values { feed.task?.cancel() }
         favoriteTasks = [:]
@@ -1146,18 +1131,8 @@ final class HomeViewModel {
         authorFeeds = [:]
         modelFeeds = [:]
 
-        feedGeneration &+= 1
-        feedCards = []
-        feedCardIDs = []
-        feedHighWater = nil
-        feedSeenIDs = []
-        feedIsRotated = false
-        feedAnchors = [:]
-        feedBefore = nil
-        feedHasMore = true
-        feedFooterState = .idle
-        feedLoadState = .loading
-        hasLoadedFeed = false
+        feedTasks = [:]
+        feedBoard.reset()
         appliedFilter = HomeFeedFilter()
         homeFeedTab = .all
 
@@ -1181,47 +1156,52 @@ final class HomeViewModel {
     }
 
     /// Clears a stale failure before the root decides whether Home is ready to reveal.
+    /// Clears a stale failure before the root decides whether Home is ready to reveal.
     func prepareForFullAppAccess() {
-        guard !hasLoadedFeed, feedCards.isEmpty else {
+        let shelf = feedBoard.shelf(.all)
+        guard !shelf.hasLoaded, shelf.order.isEmpty else {
             return
         }
-        feedLoadState = .loading
+        feedBoard.markLoading(on: .all, replacing: true)
     }
 
     func loadFeedIfNeeded() async {
-        guard !hasLoadedFeed else {
+        let initial = feedBoard.shelf(.all)
+        guard !initial.hasLoaded else {
             return
         }
 
-        let generation = feedGeneration
+        let generation = initial.generation
         defer {
+            let shelf = feedBoard.shelf(.all)
             // A cancelled first load must not strand the arrival on Loading with nothing running.
-            if Task.isCancelled, generation == feedGeneration, !hasLoadedFeed,
-               feedTask == nil, feedCards.isEmpty, feedLoadState == .loading {
-                feedLoadState = .failed("Couldn't load Home.")
+            if Task.isCancelled, shelf.generation == generation, !shelf.hasLoaded,
+               feedTasks[.all] == nil, shelf.order.isEmpty, shelf.loadState == .loading {
+                _ = feedBoard.fail(
+                    on: .all,
+                    generation: generation,
+                    replacing: true,
+                    message: "Couldn't load Home."
+                )
             }
         }
 
         for attempt in 0 ... Self.initialLoadRetryDelays.count {
-            if let feedTask {
-                await feedTask.value
+            if let task = feedTasks[.all] {
+                await task.value
             } else {
-                if feedCards.isEmpty {
-                    feedLoadState = .loading
-                }
                 let reportsFailure = attempt == Self.initialLoadRetryDelays.count
-                startFeedTask(replacing: true, reportsFailure: reportsFailure)
-                await feedTask?.value
+                startFeedTask(on: .all, replacing: true, reportsFailure: reportsFailure)
+                await feedTasks[.all]?.value
             }
 
-            guard !hasLoadedFeed, !Task.isCancelled else {
+            guard !feedBoard.shelf(.all).hasLoaded, !Task.isCancelled else {
                 return
             }
             guard attempt < Self.initialLoadRetryDelays.count else {
                 return
             }
 
-            feedLoadState = .loading
             do {
                 try await Task.sleep(for: Self.initialLoadRetryDelays[attempt])
             } catch {
@@ -1235,52 +1215,46 @@ final class HomeViewModel {
             return
         }
 
-        resetFeed(filter: filter)
-        startFeedTask(replacing: true)
+        appliedFilter = filter
+        cancelFeedTasks()
+        feedBoard.invalidate(blank: true)
+        startFeedTask(on: homeFeedTab, replacing: true)
     }
 
-    func retryLoadFeed() {
-        resetFeed(filter: appliedFilter)
-        startFeedTask(replacing: true)
+    func retryLoadFeed(_ tab: HomeFeedTab = .all) {
+        cancelFeedTask(tab)
+        feedBoard.stopRefresh(on: tab)
+        _ = feedBoard.bump(tab)
+        feedBoard.markLoading(on: tab, replacing: true)
+        startFeedTask(on: tab, replacing: true)
     }
 
-    /// Pull-to-refresh. Home is strictly newest-first, so reloading page one is a dead
-    /// gesture whenever nothing newer exists. Instead: arrivals if there are any, else
-    /// the next batch this visit has not shown, else start the rotation over.
-    func refreshFeed() async {
-        guard !isFeedRefreshing else {
+    /// Pull-to-refresh for the shelf that was pulled. Each tab keeps its own cursor,
+    /// so a Stoic pull cannot rotate All, and the other way around.
+    func refreshFeed(_ tab: HomeFeedTab = .all) async {
+        guard let generation = feedBoard.beginRefresh(on: tab) else {
             return
         }
-        isFeedRefreshing = true
-        defer { isFeedRefreshing = false }
+        cancelFeedTask(tab)
+        defer { feedBoard.endRefresh(on: tab, generation: generation) }
 
-        feedTask?.cancel()
-        feedTask = nil
-        feedGeneration &+= 1
-        let generation = feedGeneration
         let filter = appliedFilter
-
-        // The cursor stays until a page lands, so a failed or cancelled refresh can still page.
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            feedFooterState = .idle
-            feedLoadState = feedCards.isEmpty ? .loading : .loaded
-        }
+        let shelf = feedBoard.shelf(tab)
 
         // `after` makes the head strictly arrivals. Without it the server would answer
         // with the top of the feed, which under ranking need not contain the newest posts.
         async let headFetch = fetchFeedCards(
+            on: tab,
             limit: Self.feedHeadLimit,
-            after: feedHighWater?.cursor,
+            after: shelf.highWater?.cursor,
             filter: filter,
             generation: generation
         )
-        async let tailFetch = fetchFeedTail(filter: filter, generation: generation)
+        async let tailFetch = fetchFeedTail(on: tab, filter: filter, generation: generation)
         let head = await headFetch
         let tail = await tailFetch
 
-        guard generation == feedGeneration else {
+        guard feedBoard.shelf(tab).generation == generation else {
             return
         }
         if case .discarded = head {
@@ -1290,17 +1264,20 @@ final class HomeViewModel {
             return
         }
 
-        await applyRefresh(head: head, tail: tail, filter: filter, generation: generation)
+        await applyRefresh(head: head, tail: tail, filter: filter, tab: tab, generation: generation)
     }
 
     private func fetchFeedTail(
+        on tab: HomeFeedTab,
         filter: HomeFeedFilter,
         generation: Int
     ) async -> FeedPageOutcome {
-        guard feedHasMore, let before = feedBefore else {
+        let shelf = feedBoard.shelf(tab)
+        guard shelf.hasMore, let before = shelf.before else {
             return .exhausted
         }
         return await fetchFeedCards(
+            on: tab,
             limit: Self.feedPageSize,
             before: before,
             filter: filter,
@@ -1312,266 +1289,207 @@ final class HomeViewModel {
         head: FeedPageOutcome,
         tail: FeedPageOutcome,
         filter: HomeFeedFilter,
+        tab: HomeFeedTab,
         generation: Int
     ) async {
-        // Both halves gone means the pull achieved nothing; the cards and the cursor stay.
         if case .failed = head, case .failed = tail {
-            publishFeedRefresh(.failed)
+            publishFeedRefresh(.failed, on: tab, generation: generation)
             return
         }
 
-        let headCards = head.stored.map { merged(feedCards, with: $0) }
+        let current = feedBoard.cards(on: tab)
+        let headCards = head.stored.map { merged(current, with: $0) }
         let plan = FeedRefreshPlanner.plan(
             head: headCards,
             headLimit: Self.feedHeadLimit,
-            tail: tail.stored.map { merged(feedCards, with: $0) } ?? [],
-            highWater: feedHighWater,
-            seenIDs: feedSeenIDs,
+            tail: tail.stored.map { merged(current, with: $0) } ?? [],
+            highWater: feedBoard.shelf(tab).highWater,
+            seenIDs: feedBoard.shelf(tab).seenIDs,
             pageSize: Self.feedPageSize,
-            isRotated: feedIsRotated
+            isRotated: feedBoard.shelf(tab).isRotated
         )
 
         switch plan {
         case let .prepend(arrivals):
-            prependFeedCards(arrivals, filter: filter)
-            publishFeedRefresh(.newItems(arrivals.count))
+            prependFeedCards(arrivals, on: tab, generation: generation)
+            publishFeedRefresh(.newItems(arrivals.count), on: tab, generation: generation)
         case let .catchUp(newCount):
-            await reloadNewestFeedPage(generation: generation)
-            publishFeedRefresh(.newItems(newCount))
+            await reloadNewestFeedPage(on: tab, generation: generation)
+            publishFeedRefresh(.newItems(newCount), on: tab, generation: generation)
         case let .rotate(rotation):
-            replaceFeedPage(
+            _ = feedBoard.rotate(
                 rotation.page,
-                // Where the server pages itself, its cursor already accounts for what it
-                // handed out; the planner's is the chronological fallback.
+                on: tab,
                 before: tail.serverCursor ?? rotation.nextBefore,
                 hasMore: rotation.consumedWholeTail ? tail.hasMore : true,
-                filter: filter
+                generation: generation,
+                filter: { matchesFeedFilter($0, filter) },
+                pageSize: Self.feedPageSize
             )
-            feedIsRotated = true
-            publishFeedRefresh(.rotated)
+            publishFeedRefresh(.rotated, on: tab, generation: generation)
         case .restart:
-            await reloadNewestFeedPage(generation: generation)
-            publishFeedRefresh(.restarted)
+            await reloadNewestFeedPage(on: tab, generation: generation)
+            publishFeedRefresh(.restarted, on: tab, generation: generation)
         case .unchanged:
-            // A tail that never arrived cannot honestly report being caught up.
-            publishFeedRefresh(tail.didFail ? .failed : .upToDate)
+            publishFeedRefresh(tail.didFail ? .failed : .upToDate, on: tab, generation: generation)
         }
     }
 
-    /// Announces the outcome, unless the committed style tab came out empty and
-    /// `ensureCurrentTabFilled` is still fetching: a count over an empty tab reads as a bug.
-    private func publishFeedRefresh(_ outcome: FeedRefreshOutcome) {
-        ensureCurrentTabFilled()
-        if let style = homeFeedTab.matchingStyle,
-           !feedCards.contains(where: { $0.hasStyle(style) }),
-           outcome != .failed {
+    private func publishFeedRefresh(
+        _ outcome: FeedRefreshOutcome,
+        on tab: HomeFeedTab,
+        generation: Int
+    ) {
+        guard feedBoard.publish(outcome, on: tab, generation: generation) == .applied else {
+            return
+        }
+        guard tab == homeFeedTab else {
             return
         }
         feedRefreshOutcome = outcome
         feedRefreshToken &+= 1
     }
 
-    private func prependFeedCards(_ arrivals: [HomeCard], filter: HomeFeedFilter) {
+    private func prependFeedCards(_ arrivals: [HomeCard], on tab: HomeFeedTab, generation: Int) {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            let fresh = arrivals.filter { !feedCardIDs.contains($0.id) }
-            feedCards.insert(contentsOf: fresh, at: 0)
-            feedCardIDs.formUnion(fresh.map(\.id))
-            noteFeedCardsLoaded(fresh)
-            feedLoadState = .loaded
-            hasLoadedFeed = true
+            _ = feedBoard.prepend(arrivals, on: tab, generation: generation)
         }
     }
 
-    /// A rotation swaps the whole page, so the cursor moves to the last tail card it
-    /// consumed — never past a card the page cap left behind.
-    private func replaceFeedPage(
-        _ page: [HomeCard],
-        before: String,
-        hasMore: Bool,
-        filter: HomeFeedFilter
-    ) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            feedCards = mergingFeedAnchors(into: page, filter: filter)
-            feedCardIDs = Set(feedCards.map(\.id))
-            noteFeedCardsLoaded(feedCards)
-            feedBefore = before
-            feedHasMore = hasMore
-            feedFooterState = .idle
-            feedLoadState = .loaded
-            hasLoadedFeed = true
+    /// Back to the top of this shelf's rotation: the newest page, with its visit history cleared.
+    private func reloadNewestFeedPage(on tab: HomeFeedTab, generation: Int) async {
+        guard feedBoard.clearVisitHistory(on: tab, generation: generation) == .applied else {
+            return
         }
+        await fetchFeedPage(on: tab, replacing: true, generation: generation)
     }
 
-    /// Back to the top of the rotation: the newest page, with this visit's history cleared.
-    private func reloadNewestFeedPage(generation: Int) async {
-        feedSeenIDs = []
-        feedIsRotated = false
-        await fetchFeedPage(replacing: true, generation: generation)
-    }
-
-    /// `feedHighWater` is the newest card loaded from any page, so an older page can
-    /// never lower it and a card already walked past can never read as an arrival.
-    private func noteFeedCardsLoaded(_ cards: [HomeCard]) {
-        for card in cards {
-            feedSeenIDs.insert(card.id)
-            if let mark = feedHighWater {
-                if FeedOrder.isNewer(card, than: mark) {
-                    feedHighWater = FeedCardMark(card)
-                }
-            } else {
-                feedHighWater = FeedCardMark(card)
-            }
-        }
-    }
-
-    func loadMoreFeed() {
-        guard feedHasMore,
-              feedBefore != nil,
-              feedFooterState == .idle,
-              feedTask == nil,
-              !isFeedRefreshing
+    func loadMoreFeed(_ tab: HomeFeedTab = .all) {
+        let shelf = feedBoard.shelf(tab)
+        guard shelf.hasMore,
+              shelf.before != nil,
+              shelf.footerState == .idle,
+              feedTasks[tab] == nil,
+              !shelf.isRefreshing
         else {
             return
         }
 
-        feedFooterState = .loading
-        startFeedTask(replacing: false)
+        feedBoard.setFooter(.loading, on: tab)
+        startFeedTask(on: tab, replacing: false)
     }
 
-    func retryLoadMoreFeed() {
-        guard feedFooterState == .failed, feedTask == nil, !isFeedRefreshing else {
+    func retryLoadMoreFeed(_ tab: HomeFeedTab = .all) {
+        let shelf = feedBoard.shelf(tab)
+        guard shelf.footerState == .failed, feedTasks[tab] == nil, !shelf.isRefreshing else {
             return
         }
 
-        feedFooterState = .loading
-        startFeedTask(replacing: feedBefore == nil)
+        feedBoard.setFooter(.loading, on: tab)
+        startFeedTask(on: tab, replacing: shelf.before == nil)
     }
 
-    /// A style tab only shows the loaded cards that carry its angle, so a thin tab keeps paging
-    /// until it has a screenful or the feed runs out.
-    private func ensureCurrentTabFilled() {
-        guard let style = homeFeedTab.matchingStyle,
-              feedLoadState == .loaded,
-              feedHasMore,
-              feedCards.lazy.filter({ $0.hasStyle(style) }).count < Self.tabFillMinimum
-        else {
+    private func loadShelfIfNeeded(_ tab: HomeFeedTab) {
+        let shelf = feedBoard.shelf(tab)
+        guard !shelf.hasLoaded, feedTasks[tab] == nil else {
             return
         }
-        loadMoreFeed()
+        startFeedTask(on: tab, replacing: true)
     }
 
-    private func resetFeed(filter: HomeFeedFilter) {
-        feedTask?.cancel()
-        feedTask = nil
-        feedGeneration &+= 1
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            appliedFilter = filter
-            feedCards = []
-            feedCardIDs = []
-            feedHighWater = nil
-            feedSeenIDs = []
-            feedIsRotated = false
-            feedBefore = nil
-            feedHasMore = true
-            feedFooterState = .idle
-            feedLoadState = .loading
-            hasLoadedFeed = false
-        }
-    }
-
-    private func startFeedTask(replacing: Bool, reportsFailure: Bool = true) {
-        guard feedTask == nil else {
+    private func startFeedTask(on tab: HomeFeedTab, replacing: Bool, reportsFailure: Bool = true) {
+        guard feedTasks[tab] == nil else {
             return
         }
 
-        let generation = feedGeneration
-        feedTask = Task { @MainActor in
+        let generation = feedBoard.shelf(tab).generation
+        feedTasks[tab] = Task { @MainActor in
             await fetchFeedPage(
+                on: tab,
                 replacing: replacing,
                 generation: generation,
                 reportsFailure: reportsFailure
             )
-            guard feedGeneration == generation else {
+            guard feedBoard.shelf(tab).generation == generation else {
                 return
             }
-            feedTask = nil
-            ensureCurrentTabFilled()
+            feedTasks[tab] = nil
+        }
+    }
+
+    private func cancelFeedTask(_ tab: HomeFeedTab) {
+        feedTasks[tab]?.cancel()
+        feedTasks[tab] = nil
+    }
+
+    private func cancelFeedTasks() {
+        for tab in HomeFeedTab.allCases {
+            cancelFeedTask(tab)
         }
     }
 
     @discardableResult
     private func fetchFeedPage(
+        on tab: HomeFeedTab,
         replacing: Bool,
         generation: Int,
         reportsFailure: Bool = true
     ) async -> PageFetchResult {
         let filter = appliedFilter
-        let before = replacing ? nil : feedBefore
+        let before = replacing ? nil : feedBoard.shelf(tab).before
 
         do {
             let response = try await cardsService.listFeed(
                 limit: Self.feedPageSize,
                 before: before,
                 categories: filter.categories,
-                emotions: filter.emotions
+                emotions: filter.emotions,
+                style: tab.matchingStyle
             )
-            let stored = response.cards
-            guard !Task.isCancelled, generation == feedGeneration else {
+            guard !Task.isCancelled, feedBoard.shelf(tab).generation == generation else {
                 return .discarded
             }
 
+            let stored = mergeFeed(response.cards)
+            var commit = HomeFeedBoard.Commit.stale
             var transaction = Transaction(animation: nil)
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 if replacing {
-                    let page = mergingFeedAnchors(into: merged([], with: stored), filter: filter)
-                    feedCards = page
-                    feedCardIDs = Set(feedCards.map(\.id))
-                    noteFeedCardsLoaded(feedCards)
+                    commit = feedBoard.replace(
+                        stored,
+                        on: tab,
+                        before: response.page.nextCursor,
+                        hasMore: response.page.hasMore(pageSize: Self.feedPageSize),
+                        generation: generation,
+                        filter: { matchesFeedFilter($0, filter) },
+                        pageSize: Self.feedPageSize
+                    )
                 } else {
-                    feedCards.reserveCapacity(feedCards.count + stored.count)
-                    for item in stored {
-                        guard let card = HomeCard(stored: item) else {
-                            continue
-                        }
-                        guard !isLocallyBlocked(card) else {
-                            continue
-                        }
-                        feedAnchors[card.id] = nil
-                        guard feedCardIDs.insert(card.id).inserted else {
-                            continue
-                        }
-                        feedCards.append(card)
-                        noteFeedCardsLoaded([card])
-                    }
+                    commit = feedBoard.append(
+                        stored,
+                        on: tab,
+                        before: response.page.nextCursor,
+                        hasMore: response.page.hasMore(pageSize: Self.feedPageSize),
+                        generation: generation
+                    )
                 }
-
-                if let cursor = response.page.nextCursor {
-                    feedBefore = cursor
-                } else if replacing {
-                    feedBefore = nil
-                }
-                feedHasMore = response.page.hasMore(pageSize: Self.feedPageSize)
-                feedFooterState = .idle
-                feedLoadState = .loaded
-                hasLoadedFeed = true
             }
-            return .success
+            return commit == .stale ? .discarded : .success
         } catch {
-            guard !Task.isCancelled, generation == feedGeneration, !Self.isCancellation(error) else {
+            guard !Task.isCancelled, feedBoard.shelf(tab).generation == generation, !Self.isCancellation(error) else {
                 return .discarded
             }
 
-            if reportsFailure, replacing, feedCards.isEmpty {
-                feedLoadState = .failed("Couldn't load Home.")
-            } else if reportsFailure {
-                feedFooterState = .failed
+            if reportsFailure {
+                _ = feedBoard.fail(
+                    on: tab,
+                    generation: generation,
+                    replacing: replacing,
+                    message: "Couldn't load Home."
+                )
             }
             return .failure
         }
@@ -1627,6 +1545,7 @@ final class HomeViewModel {
     /// Fetches a feed page without touching state, so the refresh planner sees both
     /// halves of a pull before either is applied.
     private func fetchFeedCards(
+        on tab: HomeFeedTab,
         limit: Int,
         before: String? = nil,
         after: String? = nil,
@@ -1639,9 +1558,10 @@ final class HomeViewModel {
                 before: before,
                 after: after,
                 categories: filter.categories,
-                emotions: filter.emotions
+                emotions: filter.emotions,
+                style: tab.matchingStyle
             )
-            guard !Task.isCancelled, generation == feedGeneration else {
+            guard !Task.isCancelled, feedBoard.shelf(tab).generation == generation else {
                 return .discarded
             }
             return .loaded(
@@ -1650,14 +1570,17 @@ final class HomeViewModel {
                 serverCursor: response.page.serverCursor
             )
         } catch {
-            guard !Task.isCancelled, generation == feedGeneration, !Self.isCancellation(error) else {
+            guard !Task.isCancelled, feedBoard.shelf(tab).generation == generation, !Self.isCancellation(error) else {
                 return .discarded
             }
             return .failed
         }
     }
 
-    /// Updates cards in place so per-card style selection remains stable across writes.
+    private func mergeFeed(_ stored: [StoredCard]) -> [HomeCard] {
+        merged(Array(feedBoard.records.values), with: stored)
+    }
+
     private func merged(_ current: [HomeCard], with stored: [StoredCard]) -> [HomeCard] {
         var pool: [UUID: HomeCard] = [:]
         pool.reserveCapacity(current.count)
@@ -1680,9 +1603,21 @@ final class HomeViewModel {
                 let authorId = existing.authorId
                 let keepFollow = authorId.map { followTasks[$0] != nil } ?? false
                 let previousFollow = existing.authorFollowing
+                let previousSlides = existing.slides
                 existing.apply(item)
                 if keepFollow, !existing.isOwner {
                     existing.authorFollowing = previousFollow
+                }
+                // A shelf page must not snap a heart back while that write is still in flight.
+                for index in existing.slides.indices {
+                    let style = existing.slides[index].result.style
+                    guard favoriteTasks[Self.favoriteTaskKey(id: id, style: style)] != nil,
+                          let previous = previousSlides.first(where: { $0.result.style == style })
+                    else {
+                        continue
+                    }
+                    existing.slides[index].isFavorite = previous.isFavorite
+                    existing.slides[index].favoritedAt = previous.favoritedAt
                 }
                 next.append(existing)
             } else if let created = HomeCard(stored: item) {
@@ -1720,51 +1655,28 @@ final class HomeViewModel {
             return
         }
 
-        feedTask?.cancel()
-        feedTask = nil
-        feedGeneration &+= 1
+        cancelFeedTasks()
         appliedFilter = HomeFeedFilter()
-        // The visible cards were the filtered subset; page one of the unfiltered feed replaces
-        // them in place, and `feedAnchors` keeps the card that was just posted.
-        feedBefore = nil
-        feedHasMore = true
-        feedHighWater = nil
-        feedSeenIDs = []
-        feedIsRotated = false
-        feedFooterState = .idle
-        startFeedTask(replacing: true, reportsFailure: true)
+        // All stays on screen until the unfiltered page arrives. The shelf you are
+        // looking at reloads now; the others reload on their next visit.
+        feedBoard.invalidate(blank: false)
+        startFeedTask(on: homeFeedTab, replacing: true, reportsFailure: true)
+        if homeFeedTab != .all {
+            startFeedTask(on: .all, replacing: true, reportsFailure: true)
+        }
     }
 
     private func insertFeedCardAtFront(_ card: HomeCard) {
-        if let index = feedCards.firstIndex(where: { $0.id == card.id }) {
-            feedCards.remove(at: index)
-        }
-        feedCards.insert(card, at: 0)
-        feedCardIDs.insert(card.id)
-        feedAnchors[card.id] = card
         // Your own fresh post must not come back as an arrival on the next pull.
-        noteFeedCardsLoaded([card])
-        if feedLoadState != .loaded {
-            feedLoadState = .loaded
-        }
+        feedBoard.insertPublishedAtFront(card)
     }
 
-    /// Newest-first position inside the cards already on screen.
+    /// Newest-first position on every loaded shelf that should show this card.
     private func insertPublicCardIntoLoadedFeed(_ card: HomeCard) {
-        guard card.isPublic, hasLoadedFeed, matchesFeedFilter(card, appliedFilter) else {
+        guard card.isPublic, feedBoard.shelf(.all).hasLoaded, matchesFeedFilter(card, appliedFilter) else {
             return
         }
-        if let index = feedCards.firstIndex(where: { $0.id == card.id }) {
-            feedCards[index].isPublic = true
-            return
-        }
-        if feedHasMore, let last = feedCards.last, !feedSortIsBefore(card, last) {
-            return
-        }
-        let index = feedCards.firstIndex { feedSortIsBefore(card, $0) } ?? feedCards.endIndex
-        feedCards.insert(card, at: index)
-        feedCardIDs.insert(card.id)
-        feedAnchors[card.id] = card
+        feedBoard.insertPublishedInOrder(card)
     }
 
     /// Keeps a loaded author page in step with a public card that just appeared.
@@ -1872,30 +1784,7 @@ final class HomeViewModel {
     }
 
     private func removeFromFeed(_ id: UUID) {
-        feedAnchors[id] = nil
-        feedCardIDs.remove(id)
-        feedCards.removeAll { $0.id == id }
-    }
-
-    private func mergingFeedAnchors(into page: [HomeCard], filter: HomeFeedFilter) -> [HomeCard] {
-        var next = page
-        let returned = Set(next.map(\.id))
-        for id in returned where feedAnchors[id] != nil {
-            feedAnchors[id] = nil
-        }
-
-        let missing = feedAnchors.values
-            .filter { $0.isPublic && matchesFeedFilter($0, filter) && !returned.contains($0.id) }
-            .sorted { feedSortIsBefore($0, $1) }
-        let pageIsFull = page.count >= Self.feedPageSize
-        for anchor in missing {
-            if pageIsFull, let last = next.last, !feedSortIsBefore(anchor, last) {
-                continue
-            }
-            let index = next.firstIndex { feedSortIsBefore(anchor, $0) } ?? next.endIndex
-            next.insert(anchor, at: index)
-        }
-        return next
+        feedBoard.remove(id)
     }
 
     /// True when `card` belongs above `other` in the newest-first feed.
@@ -1907,7 +1796,7 @@ final class HomeViewModel {
         if let match = cards.first(where: { $0.id == id }), match.isOwner {
             return match
         }
-        if let match = feedCards.first(where: { $0.id == id }), match.isOwner {
+        if let match = feedBoard.record(id), match.isOwner {
             return match
         }
         for feed in authorFeeds.values {
@@ -1940,7 +1829,7 @@ final class HomeViewModel {
         }
 
         let libraryIndex = cards.firstIndex(where: { $0.id == id })
-        let feedIndex = feedCards.firstIndex(where: { $0.id == id })
+        let placements = feedBoard.placements(of: id)
         let previousAuthorIndexes = authorCardIndexes(id)
         let previousModelIndexes = modelCardIndexes(id)
         if libraryIndex != nil {
@@ -1972,9 +1861,8 @@ final class HomeViewModel {
                 if let libraryIndex, !cards.contains(where: { $0.id == id }) {
                     cards.insert(snapshot, at: min(libraryIndex, cards.count))
                 }
-                if let feedIndex, !feedCards.contains(where: { $0.id == id }) {
-                    feedCards.insert(snapshot, at: min(feedIndex, feedCards.count))
-                    feedCardIDs.insert(id)
+                for placement in placements where feedBoard.record(id) == nil || !feedBoard.placements(of: id).contains(placement) {
+                    feedBoard.restore(snapshot, at: placement)
                 }
                 restoreAuthorCards(snapshot, at: previousAuthorIndexes)
                 restoreModelCards(snapshot, at: previousModelIndexes)
@@ -2083,13 +1971,11 @@ final class HomeViewModel {
                 ? (index: index, card: card)
                 : nil
         }
-        let feedEntries = feedCards.enumerated().compactMap { index, card in
+        let shelfEntries = feedBoard.placements { card in
             card.authorId == authorId && !card.isOwner
-                ? (index: index, card: card)
-                : nil
         }
-        let affectedIDs = Set((libraryEntries + feedEntries).map { $0.card.id })
-        let anchors = feedAnchors.filter { affectedIDs.contains($0.key) }
+        let affectedIDs = Set(libraryEntries.map(\.card.id) + shelfEntries.map(\.card.id))
+        let anchors = feedBoard.anchors.filter { affectedIDs.contains($0.key) }
         let followedEntry = followedPeople.firstIndex(where: { $0.id == authorId }).map {
             (index: $0, person: followedPeople[$0])
         }
@@ -2105,7 +1991,7 @@ final class HomeViewModel {
 
         return BlockAuthorSnapshot(
             libraryEntries: libraryEntries,
-            feedEntries: feedEntries,
+            shelfEntries: shelfEntries,
             feedAnchors: anchors,
             followedEntry: followedEntry,
             blockedEntry: blockedEntry,
@@ -2119,13 +2005,11 @@ final class HomeViewModel {
         where !cards.contains(where: { $0.id == entry.card.id }) {
             cards.insert(entry.card, at: min(entry.index, cards.count))
         }
-        for entry in snapshot.feedEntries.sorted(by: { $0.index < $1.index })
-        where !feedCards.contains(where: { $0.id == entry.card.id }) {
-            feedCards.insert(entry.card, at: min(entry.index, feedCards.count))
-            feedCardIDs.insert(entry.card.id)
+        for entry in snapshot.shelfEntries.sorted(by: { $0.placement.index < $1.placement.index }) {
+            feedBoard.restore(entry.card, at: entry.placement)
         }
-        for (id, anchor) in snapshot.feedAnchors {
-            feedAnchors[id] = anchor
+        for (_, anchor) in snapshot.feedAnchors {
+            feedBoard.restoreAnchor(anchor)
         }
         if let entry = snapshot.followedEntry,
            !followedPeople.contains(where: { $0.id == authorId }) {
@@ -2155,18 +2039,8 @@ final class HomeViewModel {
     }
 
     private func removeAuthorLocally(_ authorId: UUID) {
-        let removedIDs = Set(
-            (cards + feedCards)
-                .filter { $0.authorId == authorId && !$0.isOwner }
-                .map(\.id)
-        )
-
         cards.removeAll { $0.authorId == authorId && !$0.isOwner }
-        feedCards.removeAll { $0.authorId == authorId && !$0.isOwner }
-        feedCardIDs.subtract(removedIDs)
-        for id in removedIDs {
-            feedAnchors[id] = nil
-        }
+        feedBoard.remove { $0.authorId == authorId && !$0.isOwner }
         followedPeople.removeAll { $0.id == authorId }
 
         for id in Array(authorFeeds.keys)
@@ -2338,10 +2212,10 @@ final class HomeViewModel {
         }
 
         let libraryIndex = cards.firstIndex { $0.id == id }
-        let feedIndex = feedCards.firstIndex { $0.id == id }
+        let placements = feedBoard.placements(of: id)
         let previousAuthorIndexes = authorCardIndexes(id)
         let previousModelIndexes = modelCardIndexes(id)
-        let feedAnchor = feedAnchors[id]
+        let feedAnchor = feedBoard.anchors[id]
         dropUnavailableCard(id)
         let generation = (reportGeneration[id] ?? 0) + 1
         reportGeneration[id] = generation
@@ -2375,12 +2249,11 @@ final class HomeViewModel {
                 if let libraryIndex, !cards.contains(where: { $0.id == id }) {
                     cards.insert(target, at: min(libraryIndex, cards.count))
                 }
-                if let feedIndex, !feedCards.contains(where: { $0.id == id }) {
-                    feedCards.insert(target, at: min(feedIndex, feedCards.count))
-                    feedCardIDs.insert(id)
+                for placement in placements {
+                    feedBoard.restore(target, at: placement)
                 }
                 if let feedAnchor {
-                    feedAnchors[id] = feedAnchor
+                    feedBoard.restoreAnchor(feedAnchor)
                 }
                 restoreAuthorCards(target, at: previousAuthorIndexes)
                 restoreModelCards(target, at: previousModelIndexes)
@@ -2562,7 +2435,7 @@ final class HomeViewModel {
         }
 
         ensureOwnerInLibrary(snapshot)
-        let previousFeedIndex = feedCards.firstIndex(where: { $0.id == id })
+        let previousPlacements = feedBoard.placements(of: id)
         let previousAuthorIndexes = authorCardIndexes(id)
         let previousModelIndexes = modelCardIndexes(id)
         applyLocal(id: id) { card in
@@ -2611,8 +2484,8 @@ final class HomeViewModel {
                 if let current = cards.firstIndex(where: { $0.id == id }) {
                     cards[current].apply(stored)
                 }
-                if let current = feedCards.firstIndex(where: { $0.id == id }) {
-                    feedCards[current].apply(stored)
+                _ = feedBoard.update(id) { card in
+                    card.apply(stored)
                 }
                 if let cardId = UUID(uuidString: stored.id) {
                     for authorId in Array(authorFeeds.keys) {
@@ -2648,15 +2521,14 @@ final class HomeViewModel {
                 applyLocal(id: id) { card in
                     card.isPublic = previousPublic
                 }
-                if let previousFeedIndex {
-                    if feedCards.firstIndex(where: { $0.id == id }) == nil {
-                        var restored = snapshot
-                        restored.isPublic = previousPublic
-                        feedCards.insert(restored, at: min(previousFeedIndex, feedCards.count))
-                        feedCardIDs.insert(id)
-                    }
-                } else {
+                if previousPlacements.isEmpty {
                     removeFromFeed(id)
+                } else {
+                    var restored = snapshot
+                    restored.isPublic = previousPublic
+                    for placement in previousPlacements {
+                        feedBoard.restore(restored, at: placement)
+                    }
                 }
                 if previousPublic {
                     var restored = snapshot
@@ -2887,7 +2759,7 @@ final class HomeViewModel {
     }
 
     private func card(id: UUID) -> HomeCard? {
-        if let match = feedCards.first(where: { $0.id == id }) {
+        if let match = feedBoard.record(id) {
             return match
         }
         if let match = cards.first(where: { $0.id == id }) {
@@ -2907,9 +2779,7 @@ final class HomeViewModel {
     }
 
     private func applyLocal(id: UUID, _ body: (inout HomeCard) -> Void) {
-        if let index = feedCards.firstIndex(where: { $0.id == id }) {
-            body(&feedCards[index])
-        }
+        _ = feedBoard.update(id, body)
         if let index = cards.firstIndex(where: { $0.id == id }) {
             body(&cards[index])
         }
@@ -2944,8 +2814,8 @@ final class HomeViewModel {
     }
 
     private func replaceCard(_ card: HomeCard) {
-        if let index = feedCards.firstIndex(where: { $0.id == card.id }) {
-            feedCards[index] = card
+        if feedBoard.record(card.id) != nil {
+            feedBoard.remember(card)
         }
         if let index = cards.firstIndex(where: { $0.id == card.id }) {
             cards[index] = card
@@ -3415,7 +3285,7 @@ final class HomeViewModel {
         if authorFeeds[authorId]?.isSelf == true {
             return true
         }
-        if feedCards.contains(where: { $0.authorId == authorId && $0.isOwner }) {
+        if feedBoard.records.values.contains(where: { $0.authorId == authorId && $0.isOwner }) {
             return true
         }
         if cards.contains(where: { $0.authorId == authorId && $0.isOwner }) {
@@ -3435,7 +3305,7 @@ final class HomeViewModel {
         if let feed = authorFeeds[authorId], !feed.isSelf {
             return feed.following
         }
-        if let card = feedCards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
+        if let card = feedBoard.records.values.first(where: { $0.authorId == authorId && !$0.isOwner }) {
             return card.authorFollowing
         }
         if let card = cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
@@ -3455,9 +3325,7 @@ final class HomeViewModel {
     }
 
     private func setFollowing(_ authorId: UUID, following: Bool) {
-        for index in feedCards.indices where feedCards[index].authorId == authorId && !feedCards[index].isOwner {
-            feedCards[index].authorFollowing = following
-        }
+        feedBoard.updateAuthor(authorId, following: following)
         for index in cards.indices where cards[index].authorId == authorId && !cards[index].isOwner {
             cards[index].authorFollowing = following
         }

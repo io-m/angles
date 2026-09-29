@@ -2,6 +2,8 @@
 
 iOS app: type a negative thought, get it reframed in Stoic, Optimistic, Humorous, or Tough Love. Every card lives in your private library; posting one also puts it on the community Home. Compose Save defaults to Post, with Save privately one tap away. Paid-only after one onboarding taste.
 
+Home **All** is a mix ranked for the signed-in person. Each style tab is its own shelf of that same taste, tilted toward angles they have hearted in that style and angles that have helped other readers. Set `FEED_RANKING=resonance` to turn that on; leave it unset and Home stays newest-first. The weights are in [`BUILD.md`](BUILD.md) (sections 14 and 15). Profile, an author's page, and a model's page stay ordinary lists.
+
 What to build next lives in [`BUILD.md`](BUILD.md) — update that file whenever a screen or feature lands.
 
 ## Layout

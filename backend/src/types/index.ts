@@ -261,7 +261,7 @@ export type FeedListQuery = {
   after?: FeedCursor;
   categories?: Category[];
   emotions?: Emotion[];
-  /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
+  /** Cards that include this style. Ranked feeds also reorder around that angle. */
   style?: Style;
 };
 

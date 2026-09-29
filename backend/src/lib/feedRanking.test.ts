@@ -3,7 +3,11 @@ import {
   EMPTY_AFFINITY,
   RANKING_WEIGHTS,
   SPREAD_LIMITS,
+  STYLE_AFFINITY_FULL_HEARTS,
+  STYLE_RANKING_WEIGHTS,
   affinityTerm,
+  blendedAffinityTerm,
+  compareRanked,
   decodeFeedSession,
   encodeFeedSession,
   freshnessTerm,
@@ -16,8 +20,10 @@ import {
   secondChanceTerm,
   spreadPage,
   spreadRanked,
+  styleAffinityConfidence,
   type RankableCard,
   type SpreadableCard,
+  type StyleShelfContext,
 } from "./feedRanking.js";
 
 const NOW = new Date("2026-09-28T12:00:00.000Z");
@@ -166,6 +172,163 @@ describe("rankCards", () => {
     const scored = scoreCard(card(), { now: NOW, seed: "s", affinity: EMPTY_AFFINITY });
     expect(scored.terms.affinity).toBe(0);
     expect(scored.score).toBeGreaterThan(0);
+  });
+});
+
+describe("style shelves", () => {
+  const styleAffinity = {
+    categories: new Set(["work"] as const),
+    emotions: new Set(["shame"] as const),
+  };
+
+  function shelf(overrides: Partial<StyleShelfContext> = {}): StyleShelfContext {
+    return {
+      style: "stoic",
+      affinity: EMPTY_AFFINITY,
+      hearts: 0,
+      angleHearts: 0,
+      coverMatches: false,
+      ...overrides,
+    };
+  }
+
+  it("leaves All scoring untouched when no style shelf is requested", () => {
+    const subject = card({ hearts: 4, followed: true });
+    const scored = scoreCard(subject, { now: NOW, seed: "s", affinity: styleAffinity });
+    const manual =
+      RANKING_WEIGHTS.freshness * scored.terms.freshness +
+      RANKING_WEIGHTS.resonance * scored.terms.resonance +
+      RANKING_WEIGHTS.affinity * scored.terms.affinity +
+      RANKING_WEIGHTS.followed * scored.terms.followed +
+      RANKING_WEIGHTS.secondChance * scored.terms.secondChance +
+      RANKING_WEIGHTS.jitter * scored.terms.jitter;
+    expect(scored.score).toBeCloseTo(manual, 8);
+    expect(scored.terms.affinity).toBeCloseTo(affinityTerm(subject, styleAffinity), 8);
+    expect(scored.terms.jitter).toBe(jitterTerm(subject.id, "s"));
+  });
+
+  it("falls back to general taste when this style has no hearts", () => {
+    const subject = card();
+    expect(styleAffinityConfidence(0)).toBe(0);
+    expect(blendedAffinityTerm(subject, styleAffinity, EMPTY_AFFINITY, 0)).toBeCloseTo(
+      affinityTerm(subject, styleAffinity),
+      8,
+    );
+  });
+
+  it("lets confidence grow without a single heart taking over", () => {
+    const subject = card({ category: "work", emotions: ["shame", "fear"] });
+    const specific = {
+      categories: new Set(["work"] as const),
+      emotions: new Set(["shame", "fear"] as const),
+    };
+    expect(styleAffinityConfidence(1)).toBeCloseTo(1 / STYLE_AFFINITY_FULL_HEARTS, 8);
+    expect(blendedAffinityTerm(subject, EMPTY_AFFINITY, specific, 1)).toBeCloseTo(0.2, 8);
+    expect(blendedAffinityTerm(subject, EMPTY_AFFINITY, specific, 5)).toBeCloseTo(1, 8);
+    expect(blendedAffinityTerm(subject, EMPTY_AFFINITY, specific, 40)).toBeCloseTo(1, 8);
+
+    const oneHeart = scoreCard(subject, {
+      now: NOW,
+      seed: "s",
+      affinity: EMPTY_AFFINITY,
+      style: shelf({ affinity: specific, hearts: 1 }),
+    });
+    const untouched = scoreCard(subject, {
+      now: NOW,
+      seed: "s",
+      affinity: EMPTY_AFFINITY,
+      style: shelf(),
+    });
+    expect(oneHeart.score - untouched.score).toBeLessThan(RANKING_WEIGHTS.affinity);
+  });
+
+  it("ranks a hearted angle above an otherwise equal card, and saturates", () => {
+    const plain = card({ id: "aaaaaaaa-0000-4000-8000-000000000001", angleHearts: 0 });
+    const loved = card({ id: "bbbbbbbb-0000-4000-8000-000000000002", angleHearts: 6 });
+    const ranked = rankCards([plain, loved], {
+      now: NOW,
+      seed: "seed",
+      style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
+    });
+    expect(ranked[0]?.id).toBe(loved.id);
+
+    expect(resonanceTerm(card({ hearts: 5_000 }))).toBe(resonanceTerm(card({ hearts: 10 })));
+    expect(resonanceTerm(card({ hearts: 10 }))).toBeGreaterThan(resonanceTerm(card({ hearts: 6 })));
+    expect(STYLE_RANKING_WEIGHTS.styleResonance).toBeLessThan(RANKING_WEIGHTS.resonance);
+    expect(STYLE_RANKING_WEIGHTS.cover).toBeLessThan(RANKING_WEIGHTS.jitter);
+  });
+
+  it("is deterministic per style and does not collapse two shelves into one order", () => {
+    const pool = Array.from({ length: 8 }, (_, index) =>
+      card({
+        id: `aaaaaaaa-0000-4000-8000-0000000000${String(index).padStart(2, "0")}`,
+        createdAt: hoursAgo(index * 4),
+      }),
+    );
+    const stoic = rankCards(pool, {
+      now: NOW,
+      seed: "shared-seed",
+      style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
+    }).map((item) => item.id);
+    const humorous = rankCards(pool, {
+      now: NOW,
+      seed: "shared-seed",
+      style: { style: "humorous", affinity: EMPTY_AFFINITY, hearts: 0 },
+    }).map((item) => item.id);
+    expect(
+      rankCards(pool, {
+        now: NOW,
+        seed: "shared-seed",
+        style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
+      }).map((item) => item.id),
+    ).toEqual(stoic);
+    expect(humorous).not.toEqual(stoic);
+  });
+
+  it("gives a style shelf a different head from All when that angle is the strong one", () => {
+    const stoicId = "aaaaaaaa-0000-4000-8000-000000000001";
+    const humorousId = "bbbbbbbb-0000-4000-8000-000000000002";
+    const pool = [
+      card({ id: stoicId, coverStyle: "stoic", createdAt: hoursAgo(48) }),
+      card({ id: humorousId, coverStyle: "humorous", createdAt: hoursAgo(1) }),
+    ];
+    const all = rankCards(pool, { now: NOW, seed: "seed" }).map((item) => item.id);
+    const stoic = rankCards(
+      pool.map((item) => ({ ...item, angleHearts: item.id === stoicId ? 8 : 0 })),
+      {
+        now: NOW,
+        seed: "seed",
+        style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
+      },
+    );
+    const humorous = rankCards(
+      pool.map((item) => ({ ...item, angleHearts: item.id === humorousId ? 8 : 0 })),
+      {
+        now: NOW,
+        seed: "seed",
+        style: { style: "humorous", affinity: EMPTY_AFFINITY, hearts: 0 },
+      },
+    );
+    expect(stoic[0]?.id).toBe(stoicId);
+    expect(humorous[0]?.id).toBe(humorousId);
+    expect(stoic.map((item) => item.id)).not.toEqual(humorous.map((item) => item.id));
+    expect(all).not.toEqual(stoic.map((item) => item.id));
+  });
+
+  it("breaks an equal score on id, highest id first", () => {
+    const lower = scoreCard(card({ id: "aaaaaaaa-0000-4000-8000-000000000001" }), {
+      now: NOW,
+      seed: "s",
+    });
+    const higher = scoreCard(card({ id: "bbbbbbbb-0000-4000-8000-000000000002" }), {
+      now: NOW,
+      seed: "s",
+    });
+    const tied = [
+      { ...lower, score: 1 },
+      { ...higher, score: 1 },
+    ];
+    expect([...tied].sort(compareRanked).map((item) => item.id)).toEqual([higher.id, lower.id]);
   });
 });
 

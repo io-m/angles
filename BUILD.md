@@ -17,7 +17,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**No product work is queued.** Rows 9w through 13 are done. Do not invent screens or features.
+**No product work is queued.** Rows 9w through 15 are done. Do not invent screens or features.
 
 What is left is launch setup outside the app: a real server address, published privacy and support pages, Apple production settings, and the App Store listing. The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
 
@@ -84,6 +84,7 @@ Loading and error are **states on Results**, not their own screens.
 | 12 | Production credit metering | feature | done | `metering.ts`; `meteringPolicy.ts`; `reframe.ts`; `ReframeModels.swift`; `APIClient.swift`; `ReframeService.swift`; `HomeViewModel.swift`; `ComposeSheetView.swift`; `SubscriptionView.swift` | Monthly server-owned credits, retry-safe per-operation idempotency, account-period warnings, model tariffs/availability, and Subscription balance/reset UI. |
 | 13 | Backend release hardening | feature | done | `productionConfig.ts`; `productionMigrations.ts`; `seedCommunityGuard.ts`; `Dockerfile`; `.github/workflows/backend.yml` | Runtime migrations, production configuration fail-fast checks, a production seed kill-switch, non-root container health checks, and database-backed CI. |
 | 14 | Resonance feed ranking | feature | done | `feedRanking.ts`; `db/feed.ts`; `db/hearts.ts`; `mapCard.ts`; `routes/feed.ts`; `cursor.ts`; `schema.ts`; `0015_sharp_puff_adder.sql`; `types/index.ts`; `ReframeModels.swift`; `CardsService.swift`; `ReframeCardView.swift`; `HomeViewModel.swift` | Freshness, hearts, own-subject affinity, follows, second chance, and seeded jitter behind `FEED_RANKING`; session-frozen offset paging; `after` arrivals; per-page spread; author-only heart counts; viewer-leaning opening angle. |
+| 15 | Home style shelves | feature | done | `feedRanking.ts`; `db/feed.ts`; `db/hearts.ts`; `HomeFeedShelf.swift`; `HomeViewModel.swift`; `HomeView.swift` | Each Home style tab is its own ranked shelf for that viewer. All stays the mixed feed. Hearts, follows, and removals share one card record. |
 
 ### 1. Compose (home)
 
@@ -225,9 +226,9 @@ Not a new screen. This replaces the grouped Home and flip-card language from 9b�
 
 Not a new screen. Replaces the scrolling **Home** title from 9f/9h with Profile-like chrome.
 
-- **Tabs.** Five expanding chips: **All** (default, mixed `spotlightStyle`) plus the four styles. No Favorites. One `GET /feed` (life area / mood only); style tabs are in-memory like Profile — same cards, open on that angle. Filter sheet resets the shared feed.
+- **Tabs.** Five expanding chips: **All** (default, mixed `spotlightStyle`) plus the four styles. No Favorites. All is one ranked `GET /feed`. Each style tab is its own ranked shelf (`GET /feed?style=`), opened on that angle. Profile, author, and model pages still filter one library list in memory. The filter sheet resets every Home shelf.
 - **Layout.** One overlay row: expanding tabs leading, filter trailing, same height and center as the filter icon, with a little extra space under the chips. No Home Settings gear (Profile keeps it). Quiet style-tinted paper-to-grey canvas, style-tinted glass header, tab-bar footer fade. `StyleTabPager.swift` shares pager state, chips, and wash with Profile. Each tab is its own vertical `ScrollView` + lazy `HomeCardGrid`.
-- **API.** Optional `style` on `GET /feed` remains for later; Home tabs do not refetch it.
+- **API.** Each style tab calls `GET /feed?style=` and keeps its own page. All omits `style`. Profile, author, and model pages do not.
 
 ### 9r. Native Home pull-to-refresh
 
@@ -235,9 +236,9 @@ Not a new screen. Corrective polish on 9q.
 
 - **Native motion.** Each tab uses SwiftUI `.refreshable`; there is no added drag recognizer, synthetic threshold, layout hold, or refresh-time scroll lock.
 - **Indicator placement.** The scroll view carries a top `safeAreaInset` of the chrome height rather than a clear spacer inside its content. Cards still scroll up behind the frosted header, and because the inset is real, the system spinner emerges directly below the style tabs instead of behind them — no UIKit positioning overrides. Do not replace that inset with in-content padding: that is what hid the indicator between 2026-09-23 and 2026-09-28.
-- **Shared refresh.** The native async action awaits `HomeViewModel.refreshFeed()`. Existing cards stay visible and all tabs continue filtering the same in-memory feed.
+- **Shared refresh.** The native async action awaits `HomeViewModel.refreshFeed(tab)` for the shelf that was pulled. Existing cards stay visible. A pull on Stoic does not rotate All.
 - **Rotating pull.** Home is no longer strictly newest-first across a visit. One pull fetches a small head (8, arrivals only) and the next tail page (24) in parallel, then [`FeedRefreshPlan.swift`](AnglesApp/AnglesApp/Home/FeedRefreshPlan.swift) picks one outcome. Arrivals never share a page with a rotated batch: a page starting today and jumping to last week would hide everything in between and make the banner count a lie. `prepend` keeps the loaded page and its cursor; `rotate` swaps in the tail minus everything this visit showed and moves the cursor to the last tail card it *consumed*, never past one the page cap left behind; `catchUp` (a head that is nothing but arrivals) and `restart` (nothing unseen left) reload the newest page and clear the visit history; `unchanged` covers a catalog that fits on one page. `feedHighWater` is composite (`createdAt` plus id) because cards share a millisecond, and `feedSeenIDs` is wider than `feedCardIDs`, which a rotation resets to the page on screen.
-- **Stated outcome.** The library is still strictly newest-first, so a refresh with nothing newer returns the identical page and reads as a dead gesture. `FeedRefreshBanner` announces the result under the chrome for about 1s, with the same traveling border spark a new card gets: `N new posts`, `Fresh angles`, `Full circle`, `You're all caught up`, or `Couldn't refresh`. The failure case matters because a failed refresh with cards already on screen otherwise showed nothing at all. Only Home uses the middle two. A cancelled or superseded fetch stays silent (`PageFetchResult.discarded`), one half failing still reports the other's outcome, both failing leaves cards and cursor untouched, and a count is withheld while a committed style tab is still filling.
+- **Stated outcome.** The library is still strictly newest-first, so a refresh with nothing newer returns the identical page and reads as a dead gesture. `FeedRefreshBanner` announces the result under the chrome for about 1s, with the same traveling border spark a new card gets: `N new posts`, `Fresh angles`, `Full circle`, `You're all caught up`, or `Couldn't refresh`. The failure case matters because a failed refresh with cards already on screen otherwise showed nothing at all. Only Home uses the middle two. A cancelled or superseded fetch stays silent (`PageFetchResult.discarded`), one half failing still reports the other's outcome, and both failing leaves that shelf's cards and cursor untouched. Switching tabs does not replay another shelf's banner.
 - **Testing new arrivals.** `pnpm db:seed-recent [count]` appends public cards dated now without deleting anything, so a pull while the app is open genuinely finds newer posts. `pnpm db:seed-community` cannot show this: it re-inserts the same fixture rows with the same historical timestamps.
 
 ### 9u. Following list
@@ -258,7 +259,7 @@ Source privacy and terms documents describe account, AI-provider, card, profile,
 
 ### 9t. Following
 
-Not a new screen. A one-way follow on someone else's avatar. Home stays the public newest-first mix; a later algorithm can read the graph. No Following tab, counts, or messages. The people you follow are a sheet on Profile (9u).
+Not a new screen. A one-way follow on someone else's avatar. Their public posts stay in the same Home mix, with a modest lift once ranking is on (`BUILD.md` section 14). No Following tab, counts, or messages. The people you follow are a sheet on Profile (9u).
 
 - **Badge.** A bordered plus on another person's avatar, bottom-trailing. Tap follows; it scales up, ticks, and fills from paper to ink as the plus becomes a checkmark. Tap again unfollows. The rest of the avatar still opens their posts. Your own avatars stay plain, including Profile, compose, and the ready card.
 - **Graph.** `follows` is `(follower_id, followee_id)` with cascade deletes and a check against following yourself. `PUT /users/:id/follow` and `DELETE /users/:id/follow` are idempotent. Missing users are 404. `author.following` is on every card and on `GET /users/:id/cards`. Private posts stay off Home.
@@ -431,7 +432,15 @@ Home stops being chronological. `FEED_RANKING=resonance` turns it on; unset or `
 - **Arrivals.** `GET /feed?after=<createdAt|id>` returns only cards strictly newer than that cursor, newest first, and stays chronological even under ranking — otherwise a new post could rank out of sight. This is the head half of 9r's pull-to-refresh; the tail half carries the ranked cursor.
 - **Spread.** Each page of 24 is greedily re-picked: at most 2 cards per author and 6 at intensity 5, and never 3 in a row sharing a life area, dominant mood, or cover angle. The author and intensity caps are real limits; a run is reading rhythm, so breaking a run beats breaking a cap, and rank order beats returning a short page. The whole ranked list is spread one window at a time so the global order stays stable across offsets.
 - **Author-visible hearts.** `StoredReframeResult.heartCount` is per style and present only on the author's own public cards, omitted at zero: a `0` on a post about your worst day is worse than no number. Nobody sees anyone else's counts, there are no follower counts and no streaks — a public tally would change what people are willing to post. Counts come from a bounded aggregate over `saved_angles` (`saved_angles_card_idx`, `0015_sharp_puff_adder.sql`) rather than a denormalized counter, so the block and report paths that delete saves stay correct for free.
-- **Opening angle.** Someone else's card can open on the angle the viewer keeps hearting, on a stable per-card coin flip (`PREFERRED_COVER_SHARE`). A lean, not a takeover: All is meant to show mixed covers. Your own cards keep the cover you saved them with.
+- **Opening angle.** Someone else's card can open on the angle the viewer keeps hearting, on a stable per-card coin flip (`PREFERRED_COVER_SHARE`). A lean, not a takeover: All is meant to show mixed covers. Your own cards keep the cover you saved them with. A style shelf opens on the style you asked for; it does not use this coin flip.
+
+### 15. Home style shelves
+
+All stays the mixed ranked feed. Stoic, Optimistic, Humorous, and Tough love are separate shelves for the same viewer. A strong card can appear on more than one tab. Profile, author, and model pages stay libraries that filter one list to "has this angle."
+
+- **Style score.** A style request keeps the All score, then blends the viewer's general life-area and mood taste toward the taste implied by hearts on that style. Confidence reaches full weight at five matching hearts, so one heart cannot take over a shelf. Hearts on that exact angle add a capped style-resonance term. The saved cover is only a weak tie-break. Jitter is salted by style, so two shelves with the same scores do not share one order, and one shelf stays stable while you page it. With no `style`, the All score is unchanged. `FEED_RANKING` still has to be `resonance`; unset stays chronological.
+- **One card, many orders.** Home keeps one record per loaded card and one session per tab: order, cursor, footer, visit history, and refresh. Heart, follow, delete, report, block, and privacy updates write the record once and every shelf that shows it follows. A new public post lands on All and on any style shelf that has already loaded and includes that angle.
+- **Loading.** A style shelf fetches the first time you open it and keeps its page when you swipe away. The life-area and mood filter clears every shelf, then reloads the one you are on. Pull-to-refresh and load-more touch only that shelf.
 
 ## Postponed (do not start)
 
@@ -446,6 +455,7 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-09-29 — Home style shelves: each style tab is its own ranked page for that viewer, while All stays the mixed feed. Hearts on a style teach that shelf, hearts on that angle lift it, and one shared card record keeps hearts, follows, and removals in sync.
 - 2026-09-28 — Resonance feed ranking behind `FEED_RANKING`: freshness on a four-day scale, hearts as relief, affinity with what the viewer writes about, a second chance for unfound posts, and seeded jitter for variety; offset paging over a candidate set frozen per session; `GET /feed?after=` for arrivals; a per-page spread that caps one author and a wall of crisis; heart counts only on your own public cards; and an opening angle that leans to the style you heart without flattening the mix.
 - 2026-09-28 — Home pull-to-refresh rotates: one pull prepends real arrivals, otherwise swaps in the next batch this visit has not shown, and starts over once the catalog runs out. `FeedRefreshPlan.swift` is pure and unit-tested; the banner names which of the five outcomes happened.
 - 2026-09-25 — Final iOS audit fixes: StoreKit work is account-generation scoped; card writes and block loads reject stale completions; ambiguous reframe retries reuse their operation UUID; low-credit warnings are account-period scoped; subscription dates use neutral active-until copy and failed server sync has an explicit retry.

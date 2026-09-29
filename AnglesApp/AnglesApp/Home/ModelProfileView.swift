@@ -23,16 +23,16 @@ struct ModelProfileView: View {
             cards: { tab in
                 viewModel.modelCards(for: route.model, tab: tab)
             },
-            loadState: viewModel.modelLoadState(for: route.model),
-            footerState: viewModel.modelFooterState(for: route.model),
+            loadState: { _ in viewModel.modelLoadState(for: route.model) },
+            footerState: { _ in viewModel.modelFooterState(for: route.model) },
             emptyCopy: { tab in
                 tab.emptyCopy(appliedFilter: HomeFeedFilter())
             },
             offersOwnerPrivacyMenu: true,
-            onRetry: { viewModel.retryLoadModel(route.model) },
-            onRefresh: { await viewModel.refreshModel(route.model) },
-            onLoadMore: { viewModel.loadMoreModel(route.model) },
-            onRetryLoadMore: { viewModel.retryLoadMoreModel(route.model) },
+            onRetry: { _ in viewModel.retryLoadModel(route.model) },
+            onRefresh: { _ in await viewModel.refreshModel(route.model) },
+            onLoadMore: { _ in viewModel.loadMoreModel(route.model) },
+            onRetryLoadMore: { _ in viewModel.retryLoadMoreModel(route.model) },
             onDelete: deleteCard,
             onToggleFavorite: toggleFavorite,
             onSetPublic: setPublic,

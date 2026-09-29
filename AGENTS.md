@@ -20,7 +20,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/index.ts` — `serve()`, `PORT` (default 8787), bind `0.0.0.0`, signing-key and schema checks, pool shutdown
 - `backend/src/routes/reframe.ts` — `POST /reframe`, Zod, decision call then one batched style JSON (recook is a single style); signs every ready response
 - `backend/src/routes/cards.ts` — `POST/GET/PATCH/DELETE /cards`; `POST` only stores a signed cook
-- `backend/src/routes/feed.ts` — flat `GET /feed` (paged; multi-category/mood facets), viewer heart saves
+- `backend/src/routes/feed.ts` — flat `GET /feed` (paged; life-area/mood facets; optional `style` for a Home shelf), viewer heart saves
 - `backend/src/routes/users.ts` — `GET /users/:id/cards` (an author's public posts), `PUT/DELETE /users/:id/follow`
 - `backend/src/routes/appStoreNotifications.ts` — verified, idempotent App Store Server Notifications V2 receiver
 - `backend/src/auth.ts` — Better Auth (Sign in with Apple, bearer plugin)
@@ -30,6 +30,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/db/schema.ts` — Drizzle tables
 - `backend/src/db/cards.ts` — SQL seam for the library (own cards plus hearted cards that are still public)
 - `backend/src/db/feed.ts`, `backend/src/db/follows.ts` — Home, author lists, hearts on others' cards, follow graph
+- `backend/src/lib/feedRanking.ts` — Home order when `FEED_RANKING=resonance`. All is the mixed score. A `style` request adds that shelf's taste, angle hearts, and a weak cover nudge. Unset or `chronological` is newest-first. Tune only here.
 - `backend/src/db/communitySafety.ts` — reports, bidirectional block filtering, unblock list, automatic private threshold
 - `backend/src/db/subscriptions.ts` — account-bound StoreKit entitlement and notification state
 - `backend/src/db/metering.ts` — credit periods, operation leases/idempotency, abuse counters, provider-attempt ledger
@@ -49,6 +50,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Root/AppGate.swift` — the pure funnel resolver (launching / login / taste / paywall / home); AppRoot renders only from it
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
 - `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: All + four style tabs aligned with trailing filter; tinted glass header; no Home Settings gear
+- `AnglesApp/AnglesApp/Home/HomeFeedShelf.swift` — one Home card record, one page per tab. A heart, follow, or removal updates every shelf that is showing that post. Profile, author, and model pages do not use this ranking.
 - `AnglesApp/AnglesApp/Home/HomeFilterSheet.swift` — draft/apply Life area and Mood tabbed multi-select
 - `AnglesApp/AnglesApp/Home/HeaderChrome.swift` — shared header metrics and the bottom fade stops
 - `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library with a fixed compact identity header (avatar, session name), Favorites-first tabs and horizontally paged style lists; Settings gear and Following sheet; opaque style wash chrome
@@ -78,6 +80,14 @@ Every `POST /reframe` runs the decision call first — there is no local clarify
 - `{ kind: "ready", thought, thoughtOriginal?, results (1–4), meta, signature }` — `thought` is the cleaned English card copy. Each result is `{ style, reframe, signature }`.
 
 `meta` is `{ category, proposedCategory?, proposedLabel?, tags, intensity, timeframe, emotions, safety, inputLanguage, skippedStyles, matching }`. Categories are a closed set; anything else becomes `other` plus a proposal. Never reframe a thought flagged for safety. `followUps` caps at 6 and the decision is forced to land from the third.
+
+## Home ranking
+
+`GET /feed` with `FEED_RANKING=resonance` ranks for the signed-in viewer. The score in `feedRanking.ts` prefers a recent post, one people have hearted, one close to the life areas and moods in the viewer's own recent cards, one from someone they follow, and an unhearted post that is still young enough to be found. A little stable variety keeps one session from looking identical to the next. Distress is capped, never rewarded. There is no dwell-time signal.
+
+**All** omits `style` and stays that mixed feed. **Stoic**, **Optimistic**, **Humorous**, and **Tough love** each send `style` and get their own shelf: the same base score, plus taste learned from hearts on that style (one heart cannot take over; five matching hearts is full confidence), hearts on that exact angle, and a weak nudge when the author's cover matches the tab. A strong card may appear on more than one tab. The shelves are not forced to be disjoint. With the flag off, every tab is newest-first among cards that have that angle, so they look alike.
+
+The app keeps one copy of each loaded card and a separate order per tab. Life area and mood filters apply to every shelf. Author, model, and Profile pages stay ordinary lists. Per-style heart totals stay on the server. The full weights, paging, and spread rules are `BUILD.md` sections 14 and 15.
 
 Save writes that cook to `POST /cards` with both signatures echoed back unchanged. The cook `signature` covers `thought`, `thoughtOriginal`, and `meta` minus `matching`; each result signature covers the thought it answers plus its style and text. A recook signs its one result against the request `text`, which must be the cook's cleaned `thought`. `POST /cards` rejects any missing or mismatched signature, and any `meta.safety` other than `none`, with 400 `VALIDATION_ERROR`. Hearts are per style on `card_reframes` (or `saved_angles` for someone else's card); `isPublic` (default false) sits on the card. A hearted card leaves the viewer's library when its author makes it private. There are no pins. `POST /reframe` never stores cards or thought text; it writes only text-free metering/idempotency state and provider token/cost records.
 

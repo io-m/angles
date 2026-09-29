@@ -40,6 +40,32 @@ export async function loadCardHeartTotals(
   return totals;
 }
 
+/** Hearts on one angle, for ranking that style shelf without loading the other three. */
+export async function loadStyleHeartTotals(
+  cardIds: string[],
+  style: Style,
+  db: Selectable = getDb(),
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  if (cardIds.length === 0) {
+    return totals;
+  }
+
+  const rows = await db
+    .select({
+      cardId: savedAngles.cardId,
+      hearts: sql<number>`count(*)::int`,
+    })
+    .from(savedAngles)
+    .where(and(inArray(savedAngles.cardId, cardIds), eq(savedAngles.style, style)))
+    .groupBy(savedAngles.cardId);
+
+  for (const row of rows) {
+    totals.set(row.cardId, row.hearts);
+  }
+  return totals;
+}
+
 /**
  * The angle this viewer keeps hearting, across other people's cards and their own.
  * Null until they have hearted anything, which leaves every card on its own cover.
