@@ -3,20 +3,17 @@ import type postgres from "postgres";
 import type { LlmModelId } from "../lib/llmClient.js";
 import type { LlmUsageEvent } from "../lib/llmUsage.js";
 import {
+  COOK_CREDIT_COST,
   CREDIT_TARIFF_VERSION,
   DAILY_OPERATION_LIMIT,
   DAILY_PROVIDER_CALL_LIMIT,
-  MODEL_CREDIT_COST,
   MONTHLY_CREDITS,
   TASTE_LIFETIME_TURN_LIMIT,
   USAGE_PLAN_VERSION,
-  allowedModelsForCredits,
   developmentUsagePeriod,
-  isPublicLlmModel,
   isUsageEnforcementRequired,
   paidUsagePeriod,
   usageWarning,
-  type PublicLlmModelId,
   type UsageSummary,
 } from "../lib/meteringPolicy.js";
 import { REPLAY_TTL_MS, type SealedReplay } from "../lib/reframeReplay.js";
@@ -98,12 +95,11 @@ function summaryForPeriod(period: PeriodRow): UsageSummary {
     periodEnd: asDate(period.ends_at).toISOString(),
     resetsAt: asDate(period.ends_at).toISOString(),
     warning: usageWarning(remaining),
-    allowedModels: allowedModelsForCredits(remaining),
-    creditCost: { ...MODEL_CREDIT_COST },
+    creditCost: COOK_CREDIT_COST,
   };
 }
 
-function tasteSummary(available = true): UsageSummary {
+function tasteSummary(): UsageSummary {
   return {
     creditsGranted: 0,
     creditsRemaining: 0,
@@ -111,8 +107,7 @@ function tasteSummary(available = true): UsageSummary {
     periodEnd: null,
     resetsAt: null,
     warning: "empty",
-    allowedModels: available ? ["mistral-small-latest"] : [],
-    creditCost: { ...MODEL_CREDIT_COST },
+    creditCost: COOK_CREDIT_COST,
   };
 }
 
@@ -326,7 +321,7 @@ export async function startMeterOperation(input: {
             "Free taste was already consumed",
             "TASTE_ALREADY_CONSUMED",
             402,
-            tasteSummary(false),
+            tasteSummary(),
           );
         }
         throw new MeteringError(
@@ -348,14 +343,6 @@ export async function startMeterOperation(input: {
             usage,
           );
         }
-        if (input.model !== "mistral-small-latest") {
-          throw new MeteringError(
-            "Only Mistral is available during the free taste",
-            "MODEL_NOT_AVAILABLE",
-            402,
-            usage,
-          );
-        }
         const tastes = await tx<{ client_turn_count: number }[]>`
           insert into taste_usage (owner_id, client_turn_count, ready_count, updated_at)
           values (${input.ownerId}, 0, 0, ${sqlTimestamp(now)})
@@ -367,7 +354,7 @@ export async function startMeterOperation(input: {
             "Free taste limit reached",
             "TASTE_LIMIT_REACHED",
             402,
-            tasteSummary(false),
+            tasteSummary(),
           );
         }
         await tx`
@@ -380,18 +367,10 @@ export async function startMeterOperation(input: {
           throw new Error("period invariant");
         }
         usage = summaryForPeriod(period);
-        if (!isPublicLlmModel(input.model)) {
+        reservedCredits = COOK_CREDIT_COST;
+        if (usage.creditsRemaining < reservedCredits) {
           throw new MeteringError(
-            "That model is unavailable",
-            "MODEL_NOT_AVAILABLE",
-            402,
-            usage,
-          );
-        }
-        reservedCredits = MODEL_CREDIT_COST[input.model];
-        if (!usage.allowedModels.includes(input.model)) {
-          throw new MeteringError(
-            "Not enough credits for that model",
+            "Not enough credits",
             "INSUFFICIENT_CREDITS",
             402,
             usage,
@@ -406,7 +385,6 @@ export async function startMeterOperation(input: {
           ...usage,
           creditsRemaining: usage.creditsRemaining - reservedCredits,
           warning: usageWarning(usage.creditsRemaining - reservedCredits),
-          allowedModels: allowedModelsForCredits(usage.creditsRemaining - reservedCredits),
         };
       }
 
@@ -591,7 +569,7 @@ export async function finishMeterOperation(input: {
             "Free taste was already consumed",
             "TASTE_ALREADY_CONSUMED",
             402,
-            tasteSummary(false),
+            tasteSummary(),
           );
         }
         await tx`
@@ -701,16 +679,7 @@ async function getUsageSummaryInTransaction(
     throw new MeteringError("Sign in required", "UNAUTHENTICATED", 400);
   }
   const period = await ensurePeriod(tx, ownerId, context, now);
-  if (period) {
-    return summaryForPeriod(period);
-  }
-  if (context.taste_completed_at !== null || context.taste_consumed_at !== null) {
-    return tasteSummary(false);
-  }
-  const tastes = await tx<{ client_turn_count: number }[]>`
-    select client_turn_count from taste_usage where owner_id = ${ownerId}
-  `;
-  return tasteSummary((tastes[0]?.client_turn_count ?? 0) < TASTE_LIFETIME_TURN_LIMIT);
+  return period ? summaryForPeriod(period) : tasteSummary();
 }
 
 export async function getUsageSummary(

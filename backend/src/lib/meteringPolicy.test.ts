@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  allowedModelsForCredits,
   developmentUsagePeriod,
   paidUsagePeriod,
   requestFingerprint,
@@ -13,22 +12,7 @@ describe("metering policy", () => {
     vi.unstubAllEnvs();
   });
 
-  it("gates models by the fixed tariff thresholds", () => {
-    expect(allowedModelsForCredits(6)).toEqual([
-      "mistral-small-latest",
-      "deepseek-flash",
-      "gemini-3.8-flash",
-    ]);
-    expect(allowedModelsForCredits(5)).toEqual([
-      "mistral-small-latest",
-      "deepseek-flash",
-    ]);
-    expect(allowedModelsForCredits(2)).toEqual([
-      "mistral-small-latest",
-      "deepseek-flash",
-    ]);
-    expect(allowedModelsForCredits(1)).toEqual(["mistral-small-latest"]);
-    expect(allowedModelsForCredits(0)).toEqual([]);
+  it("warns at the fixed low-balance thresholds", () => {
     expect(usageWarning(0)).toBe("empty");
     expect(usageWarning(60)).toBe("critical");
     expect(usageWarning(61)).toBe("low");
@@ -57,12 +41,8 @@ describe("metering policy", () => {
   it("fingerprints canonical validated requests independently of key order", () => {
     vi.stubEnv("USAGE_ENFORCEMENT", "off");
     expect(
-      requestFingerprint({ text: "same", followUps: [{ answer: "a", question: "q" }] }, "deepseek-flash"),
-    ).toBe(
-      requestFingerprint({ followUps: [{ question: "q", answer: "a" }], text: "same" }, "deepseek-flash"),
-    );
-    expect(requestFingerprint({ text: "same" }, "deepseek-flash")).not.toBe(
-      requestFingerprint({ text: "changed" }, "deepseek-flash"),
-    );
+      requestFingerprint({ text: "same", followUps: [{ answer: "a", question: "q" }] }),
+    ).toBe(requestFingerprint({ followUps: [{ question: "q", answer: "a" }], text: "same" }));
+    expect(requestFingerprint({ text: "same" })).not.toBe(requestFingerprint({ text: "changed" }));
   });
 });

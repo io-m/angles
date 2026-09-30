@@ -4,7 +4,7 @@ import Testing
 @testable import Angles
 
 struct SafetyContractTests {
-    private let usage = #"{"creditsUsed":0,"remaining":599,"granted":600,"resetsAt":null,"warning":"normal","allowedModels":["mistral-small-latest"],"creditCost":1}"#
+    private let usage = #"{"creditsUsed":0,"remaining":599,"granted":600,"resetsAt":null,"warning":"normal","creditCost":1}"#
 
     private func decode(_ json: String) throws -> ReframeResponse {
         try JSONDecoder().decode(ReframeResponse.self, from: Data(json.utf8))
@@ -58,12 +58,87 @@ struct SafetyContractTests {
     }
 
     @Test func requestSendsRegionOnlyWhenKnown() throws {
-        let withRegion = ReframeRequest(text: "t", followUps: [], styles: nil, model: nil, region: "DK")
-        let without = ReframeRequest(text: "t", followUps: [], styles: nil, model: nil, region: nil)
+        let withRegion = ReframeRequest(text: "t", followUps: [], region: "DK")
+        let without = ReframeRequest(text: "t", followUps: [], region: nil)
         let encodedWith = String(decoding: try JSONEncoder().encode(withRegion), as: UTF8.self)
         let encodedWithout = String(decoding: try JSONEncoder().encode(without), as: UTF8.self)
         #expect(encodedWith.contains(#""region":"DK""#))
         #expect(!encodedWithout.contains("region"))
+        #expect(!encodedWith.contains("model"))
+        #expect(!encodedWith.contains("styles"))
+    }
+
+    @Test func recookEchoesTheSignedCookAndThePreviousAnswer() throws {
+        let metaJSON = #"{"category":"work","tags":["interview"],"intensity":3,"timeframe":"past","emotions":["anxious"],"distortions":["mind_reading"],"safety":"none","inputLanguage":"en","skippedStyles":[],"matching":{"category":"work","tags":["interview"],"intensityBand":"mid"}}"#
+        let meta = try JSONDecoder().decode(ReframeMeta.self, from: Data(metaJSON.utf8))
+        let body = RecookRequestBody(
+            recook: RecookRequest(
+                style: .toughLove,
+                cook: RecookSource(thought: "I froze.", thoughtOriginal: nil, meta: meta, model: "deepseek-flash", signature: "c"),
+                previous: RecookPrevious(reframe: "It passed.", signature: "r")
+            ),
+            region: "HR"
+        )
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(body)) as? [String: Any]
+        let recook = object?["recook"] as? [String: Any]
+        let cook = recook?["cook"] as? [String: Any]
+        #expect(object?["region"] as? String == "HR")
+        #expect(object?["text"] == nil)
+        #expect(recook?["style"] as? String == "tough_love")
+        #expect(cook?["thought"] as? String == "I froze.")
+        #expect(cook?["thoughtOriginal"] == nil)
+        #expect(cook?["model"] as? String == "deepseek-flash")
+        #expect(cook?["signature"] as? String == "c")
+        #expect((cook?["meta"] as? [String: Any])?["distortions"] as? [String] == ["mind_reading"])
+        #expect((recook?["previous"] as? [String: Any])?["signature"] as? String == "r")
+    }
+
+    @Test func readyCarriesTheModelTheServerRoutedTo() throws {
+        let meta = #"{"category":"work","tags":[],"intensity":3,"timeframe":"past","emotions":[],"safety":"none","inputLanguage":"en","skippedStyles":[],"matching":{"category":"work","tags":[],"intensityBand":"mid"}}"#
+        let response = try decode(
+            #"{"kind":"ready","thought":"I froze.","results":[{"style":"stoic","reframe":"It passed.","signature":"r"}],"meta":\#(meta),"model":"deepseek-flash","signature":"c","usage":\#(usage)}"#
+        )
+        guard case .ready(_, _, let results, _, let model, let signature, _) = response else {
+            Issue.record("Expected a ready cook")
+            return
+        }
+        #expect(model == "deepseek-flash")
+        #expect(signature == "c")
+        #expect(results.count == 1)
+    }
+
+    @Test func bothSignedVersionsOfAnAnswerEchoOnSaveAndRecook() throws {
+        let json = #"{"style":"stoic","reframe":"It passed.","reframeOriginal":"Prošlo je.","signature":"r"}"#
+        let signed = try JSONDecoder().decode(SignedReframeResult.self, from: Data(json.utf8))
+        #expect(signed.result.reframeOriginal == "Prošlo je.")
+        let echoed = try JSONSerialization.jsonObject(with: JSONEncoder().encode(signed)) as? [String: Any]
+        #expect(echoed?["reframeOriginal"] as? String == "Prošlo je.")
+        #expect(echoed?["signature"] as? String == "r")
+
+        let english = try JSONDecoder().decode(
+            SignedReframeResult.self,
+            from: Data(#"{"style":"stoic","reframe":"It passed.","signature":"r"}"#.utf8)
+        )
+        let englishEcho = String(decoding: try JSONEncoder().encode(english), as: UTF8.self)
+        #expect(!englishEcho.contains("reframeOriginal"))
+
+        let previous = RecookPrevious(reframe: "It passed.", reframeOriginal: "Prošlo je.", signature: "r")
+        let encodedPrevious = String(decoding: try JSONEncoder().encode(previous), as: UTF8.self)
+        #expect(encodedPrevious.contains(#""reframeOriginal":"Prošlo je.""#))
+    }
+
+    @Test func storedAnswerCarriesTheAuthorsOwnLanguage() throws {
+        let json = #"{"style":"stoic","reframe":"It passed.","reframeOriginal":"Prošlo je.","isFavorite":false}"#
+        let stored = try JSONDecoder().decode(StoredReframeResult.self, from: Data(json.utf8))
+        #expect(stored.result == ReframeResult(style: .stoic, reframe: "It passed.", reframeOriginal: "Prošlo je."))
+    }
+
+    @Test func signedDistortionsEchoUnchangedEvenWhenUnknown() throws {
+        let json = #"{"category":"work","tags":[],"intensity":3,"timeframe":"past","emotions":[],"distortions":["mind_reading","a_future_trap"],"safety":"none","inputLanguage":"en","skippedStyles":[],"matching":{"category":"work","tags":[],"intensityBand":"mid"}}"#
+        let meta = try JSONDecoder().decode(ReframeMeta.self, from: Data(json.utf8))
+        #expect(meta.distortions == ["mind_reading", "a_future_trap"])
+        let echoed = String(decoding: try JSONEncoder().encode(meta), as: UTF8.self)
+        #expect(echoed.contains(#""distortions":["mind_reading","a_future_trap"]"#))
     }
 }
 

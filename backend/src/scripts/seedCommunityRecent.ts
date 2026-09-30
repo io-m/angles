@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { ne } from "drizzle-orm";
 import { DEV_USER_ID } from "../lib/authStub.js";
+import { STEP_DEFAULT_MODELS } from "../lib/llmClient.js";
 import { intensityBand, type Category, type Emotion, type Style, type Timeframe } from "../types/index.js";
 import { getDb, closePool } from "../db/client.js";
 import { cardReframes, cardTags, cards, tags, users } from "../db/schema.js";
@@ -24,7 +25,6 @@ import { assertCommunitySeedAllowed } from "./seedCommunityGuard.js";
 
 const DEFAULT_COUNT = 3;
 const MAX_COUNT = 50;
-const SEED_MODELS = ["mistral-small-latest", "gemini-3.8-flash", "deepseek-flash"] as const;
 
 function loadFixture(): CommunityFixture {
   const path = resolve(process.cwd(), "fixtures/community.json");
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
       safety: "none",
       emotions: post.emotions as Emotion[],
       skippedStyles: [],
-      model: pick(SEED_MODELS, index),
+      model: STEP_DEFAULT_MODELS.writer,
       spotlightStyle: post.spotlightStyle as Style,
       isPublic: true,
       createdAt,

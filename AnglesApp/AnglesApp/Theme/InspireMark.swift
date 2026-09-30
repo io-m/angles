@@ -10,6 +10,9 @@ struct InspireMark: View {
     var size: CGFloat = 24
     var rendering: Rendering = .brand
 
+    /// The mark's deep orange, for glows that stand in for Angles itself.
+    static let brandColor = Color(red: 0.968, green: 0.451, blue: 0.037)
+
     @Environment(\.colorScheme) private var colorScheme
 
     /// Icon Composer canvas. Layer scale and translation match `Angles.icon`.

@@ -41,9 +41,9 @@ pnpm dev
 API listens on `http://localhost:8787` (bind `0.0.0.0`). A physical device must use the Mac LAN IP, not localhost. Product routes require a Better Auth session (`Authorization: Bearer`).
 
 - `GET /health` → `{ "status": "ok", "db": "ok" }` (503 when Postgres is down)
-- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[], "styles"?: Style[], "model"? }` → `{ "kind": "continue", ... }` or `{ "kind": "ready", "thought", "results", "meta", "signature" }`. It never stores a card or thought text, but it does write text-free metering, idempotency, provider-usage, and company-cost metadata.
+- `POST /reframe` → `{ "text": string, "followUps"?: { question, answer }[], "region"? }` or a signed `{ "recook": { style, cook, previous? } }` → `{ "kind": "continue", ... }` or `{ "kind": "ready", "thought", "results", "meta", "model", "signature" }`. The server picks the model for each step. It never stores a card or thought text, but it does write text-free metering, idempotency, provider-usage, and company-cost metadata.
 - `POST /cards` → save a kept cook, echoing the `/reframe` signatures; anything the server did not sign is rejected. `GET /cards` is the Profile library.
-- `GET /profile/usage` → the server-owned 600-credit membership period. Ready results cost Mistral 1, DeepSeek 2, or Gemini 6 credits; continues and failed operations cost 0.
+- `GET /profile/usage` → the server-owned 600-credit membership period. A ready cook or recook costs 1 credit; continues and failed operations cost 0.
 - `POST /profile/subscription/sync` verifies a signed StoreKit transaction. `POST /app-store/notifications` receives App Store Server Notifications V2.
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm build`.

@@ -2,7 +2,7 @@ import type { LlmModelId } from "./llmClient.js";
 
 export const LLM_RATE_VERSION = "2026-09-credits-v1";
 
-export type LlmCallKind = "decision" | "batch" | "reframe" | "moderation";
+export type LlmCallKind = "decision" | "batch" | "reframe" | "moderation" | "rewrite";
 export type LlmCallStatus = "succeeded" | "failed";
 export type UsageSource = "reported" | "estimated";
 

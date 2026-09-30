@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ReframeMeta, Style } from "../types/index.js";
 
 const MIN_KEY_LENGTH = 32;
-const VERSION = "v3";
+const VERSION = "v5";
 
 /** The part of a cook's meta that the card stores. `matching` is re-derived on save. */
 export type SignableMeta = Omit<ReframeMeta, "matching">;
@@ -12,6 +12,7 @@ export type SignableCook = {
   ownerId: string;
   thought: string;
   thoughtOriginal?: string;
+  /** The writer the server routed the cook to. A recook may be answered by another. */
   model: string;
   meta: SignableMeta;
 };
@@ -54,6 +55,7 @@ function cookParts({ ownerId, thought, thoughtOriginal, model, meta }: SignableC
     meta.intensity,
     meta.timeframe,
     meta.emotions,
+    meta.distortions,
     meta.safety,
     meta.inputLanguage,
     meta.skippedStyles.map((item) => [item.style, item.reason]),
@@ -65,30 +67,33 @@ function resultParts(
   thought: string,
   style: Style,
   reframe: string,
-  model: string,
+  reframeOriginal: string | undefined,
 ): unknown[] {
-  return ["result", ownerId.toLowerCase(), thought.trim(), style, reframe.trim(), model];
+  return ["result", ownerId.toLowerCase(), thought.trim(), style, reframe.trim(), reframeOriginal?.trim() ?? null];
 }
 
 export function signCook(cook: SignableCook): string {
   return hmac(cookParts(cook));
 }
 
-/** A result is bound to the cleaned thought it answers, so a recook verifies against the same card. */
+/**
+ * A result is bound to the cleaned thought it answers, so a recook verifies against the
+ * same card, and to both versions of the answer, so neither can be swapped on save.
+ */
 export function signResult(
   ownerId: string,
   thought: string,
   style: Style,
   reframe: string,
-  model: string,
+  reframeOriginal?: string,
 ): string {
-  return hmac(resultParts(ownerId, thought, style, reframe, model));
+  return hmac(resultParts(ownerId, thought, style, reframe, reframeOriginal));
 }
 
 export function verifyCook(
   cook: SignableCook & {
     signature: string;
-    results: { style: Style; reframe: string; signature: string }[];
+    results: { style: Style; reframe: string; reframeOriginal?: string; signature: string }[];
   },
 ): boolean {
   if (!matches(signCook(cook), cook.signature)) {
@@ -96,7 +101,7 @@ export function verifyCook(
   }
   return cook.results.every((item) =>
     matches(
-      signResult(cook.ownerId, cook.thought, item.style, item.reframe, cook.model),
+      signResult(cook.ownerId, cook.thought, item.style, item.reframe, item.reframeOriginal),
       item.signature,
     ),
   );

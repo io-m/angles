@@ -109,6 +109,7 @@ const baseInput: CreateCardInput = {
     intensity: 4,
     timeframe: "past",
     emotions: ["shame", "fear"],
+    distortions: [],
     safety: "none",
     inputLanguage: "en",
     skippedStyles: [],
@@ -530,7 +531,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       kind: "full",
       now: new Date("2026-09-25T12:00:00.000Z"),
     });
-    expect(ready.usage.creditsRemaining).toBe(598);
+    expect(ready.usage.creditsRemaining).toBe(599);
     const afterReady = await finishMeterOperation({
       operation: ready,
       state: "ready",
@@ -538,8 +539,9 @@ describe.skipIf(!testUrl)("cards integration", () => {
       usageEvents: [],
       now: new Date("2026-09-25T12:00:01.000Z"),
     });
-    expect(afterReady.creditsRemaining).toBe(598);
+    expect(afterReady.creditsRemaining).toBe(599);
 
+    // The routed model is recorded, not priced: a Gemini-routed cook costs the same one credit.
     const continued = await startMeterOperation({
       ownerId: DEV_USER_ID,
       clientRequestId: "00000000-0000-4000-8000-000000000202",
@@ -548,7 +550,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       kind: "full",
       now: new Date("2026-09-25T12:01:01.000Z"),
     });
-    expect(continued.usage.creditsRemaining).toBe(592);
+    expect(continued.usage.creditsRemaining).toBe(598);
     const afterContinue = await finishMeterOperation({
       operation: continued,
       state: "continue",
@@ -556,7 +558,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       usageEvents: [],
       now: new Date("2026-09-25T12:01:02.000Z"),
     });
-    expect(afterContinue.creditsRemaining).toBe(598);
+    expect(afterContinue.creditsRemaining).toBe(599);
   });
 
   it("enforces one running operation and all idempotency outcomes", async () => {
@@ -648,7 +650,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       requestFingerprint: "replayed",
     };
     const found = await findReframeReplay({ ...lookup, now: new Date("2026-09-25T12:30:00.000Z") });
-    expect(found?.chargedCredits).toBe(2);
+    expect(found?.chargedCredits).toBe(1);
     expect(openReplay(replayKey, found!.operationId, found!.sealed)).toEqual(body);
     expect(
       await findReframeReplay({
@@ -699,7 +701,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(row?.state).toBe("expired");
   });
 
-  it("cannot overspend the final credits and pauses Gemini below six", async () => {
+  it("cannot overspend the final credit and stops at zero", async () => {
     const bootstrap = await getUsageSummary(
       DEV_USER_ID,
       new Date("2026-09-25T12:00:00.000Z"),
@@ -710,7 +712,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     await applyCreditAdjustment({
       ownerId: DEV_USER_ID,
       periodId: period!.id,
-      deltaCredits: -594,
+      deltaCredits: -599,
       reasonCode: "test",
       now: new Date("2026-09-25T12:00:01.000Z"),
     });
@@ -720,7 +722,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         ownerId: DEV_USER_ID,
         clientRequestId: "00000000-0000-4000-8000-000000000231",
         requestFingerprint: "final-a",
-        model: "gemini-3.8-flash",
+        model: "deepseek-flash",
         kind: "full",
         now: new Date("2026-09-25T12:01:01.000Z"),
       }),
@@ -728,7 +730,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         ownerId: DEV_USER_ID,
         clientRequestId: "00000000-0000-4000-8000-000000000232",
         requestFingerprint: "final-b",
-        model: "gemini-3.8-flash",
+        model: "deepseek-flash",
         kind: "full",
         now: new Date("2026-09-25T12:01:01.000Z"),
       }),
@@ -748,32 +750,32 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
     expect((await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T12:01:03.000Z"))).creditsRemaining).toBe(0);
 
+    await expect(
+      startMeterOperation({
+        ownerId: DEV_USER_ID,
+        clientRequestId: "00000000-0000-4000-8000-000000000233",
+        requestFingerprint: "empty",
+        model: "deepseek-flash",
+        kind: "full",
+        now: new Date("2026-09-25T12:02:04.000Z"),
+      }),
+    ).rejects.toMatchObject({ code: "INSUFFICIENT_CREDITS" });
     await applyCreditAdjustment({
       ownerId: DEV_USER_ID,
       periodId: period!.id,
       deltaCredits: 5,
       reasonCode: "test",
-      now: new Date("2026-09-25T12:01:04.000Z"),
-    });
-    await expect(
-      startMeterOperation({
-        ownerId: DEV_USER_ID,
-        clientRequestId: "00000000-0000-4000-8000-000000000233",
-        requestFingerprint: "gemini-paused",
-        model: "gemini-3.8-flash",
-        kind: "full",
-        now: new Date("2026-09-25T12:02:04.000Z"),
-      }),
-    ).rejects.toMatchObject({ code: "INSUFFICIENT_CREDITS" });
-    const mistral = await startMeterOperation({
-      ownerId: DEV_USER_ID,
-      clientRequestId: "00000000-0000-4000-8000-000000000234",
-      requestFingerprint: "mistral-works",
-      model: "mistral-small-latest",
-      kind: "full",
       now: new Date("2026-09-25T12:02:05.000Z"),
     });
-    expect(mistral.usage.creditsRemaining).toBe(4);
+    const refilled = await startMeterOperation({
+      ownerId: DEV_USER_ID,
+      clientRequestId: "00000000-0000-4000-8000-000000000234",
+      requestFingerprint: "refilled",
+      model: "gemini-3.8-flash",
+      kind: "full",
+      now: new Date("2026-09-25T12:02:06.000Z"),
+    });
+    expect(refilled.usage.creditsRemaining).toBe(4);
   });
 
   it("limits taste turns, disallows recook, and enforces the UTC daily count", async () => {
@@ -1538,6 +1540,38 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(hidden?.results.every((item) => item.heartCount === undefined)).toBe(true);
 
     await getDb().delete(users).where(eq(users.id, fan));
+  });
+
+  it("shows the answer in their language to the author and English to everyone else", async () => {
+    const mine = await createCard({
+      ...baseInput,
+      thoughtOriginal: "Upropastio sam intervju i vrtim svaki drhtavi odgovor.",
+      meta: { ...baseInput.meta, inputLanguage: "hr" },
+      results: [
+        { style: "stoic", reframe: "A stoic take on showing up.", reframeOriginal: "Stoički pogled na to da si se pojavio." },
+        { style: "humorous", reframe: "A humorous take on showing up.", reframeOriginal: "A humorous take on showing up." },
+      ],
+      isPublic: true,
+    });
+    expect(mine.results.find((item) => item.style === "stoic")?.reframeOriginal).toBe(
+      "Stoički pogled na to da si se pojavio.",
+    );
+    // A second version that is just the English is not stored.
+    expect(mine.results.find((item) => item.style === "humorous")).not.toHaveProperty("reframeOriginal");
+
+    const theirs = await insertOtherCard({ thought: "Someone else's card in their own language.", isPublic: true });
+    await getDb()
+      .update(cardReframes)
+      .set({ reframeOriginal: "Tuđi odgovor na hrvatskom." })
+      .where(eq(cardReframes.cardId, theirs));
+
+    const feed = await listFeed({ limit: 50 });
+    expect(feed.find((card) => card.id === mine.id)?.results[0]?.reframeOriginal).toBe(
+      "Stoički pogled na to da si se pojavio.",
+    );
+    const other = feed.find((card) => card.id === theirs);
+    expect(other?.results.length).toBeGreaterThan(0);
+    expect(other?.results.every((item) => item.reframeOriginal === undefined)).toBe(true);
   });
 
   it("drops a hearted card from the library once its author makes it private", async () => {

@@ -34,7 +34,6 @@ vi.mock("../db/feed.js", () => ({
   listFeed: vi.fn(),
   listRankedFeed: vi.fn(),
   listPublicCardsForUser: vi.fn(),
-  listPublicCardsForModel: vi.fn(),
   saveFeedAngle: vi.fn(),
   unsaveFeedAngle: vi.fn(),
   clearFeedSaves: vi.fn(),

@@ -30,8 +30,6 @@ struct HomeCard: Identifiable, Equatable {
     var authorAvatarPath: String?
     /// Viewer follows this author. Always false on your own cards.
     var authorFollowing: Bool
-    /// Model that wrote the answer. Unknown ids stay nil so the card does not invent a logo.
-    var model: LlmModel?
     /// In memory only until History (SwiftData) lands. Shape exists now for matching later.
     var meta: ReframeMeta?
 
@@ -48,7 +46,6 @@ struct HomeCard: Identifiable, Equatable {
         authorInitials: String = UserInitials.letters,
         authorAvatarPath: String? = nil,
         authorFollowing: Bool = false,
-        model: LlmModel? = nil,
         meta: ReframeMeta? = nil
     ) {
         self.id = id
@@ -63,7 +60,6 @@ struct HomeCard: Identifiable, Equatable {
         self.authorInitials = authorInitials
         self.authorAvatarPath = authorAvatarPath
         self.authorFollowing = authorFollowing
-        self.model = model
         self.meta = meta
     }
 
@@ -75,7 +71,7 @@ struct HomeCard: Identifiable, Equatable {
             HomeCardSlide(
                 id: UUID(),
                 thought: stored.thought,
-                result: ReframeResult(style: result.style, reframe: result.reframe),
+                result: result.result,
                 isFavorite: result.isFavorite,
                 favoritedAt: result.favoritedAt.flatMap { ISO8601Dates.date(from: $0) },
                 heartCount: result.heartCount
@@ -97,7 +93,6 @@ struct HomeCard: Identifiable, Equatable {
             authorInitials: stored.author.initials,
             authorAvatarPath: stored.author.avatarUrl,
             authorFollowing: stored.isOwner ? false : stored.author.following,
-            model: LlmModel(rawValue: stored.model),
             meta: stored.reframeMeta
         )
     }
@@ -157,13 +152,12 @@ struct HomeCard: Identifiable, Equatable {
         authorInitials = stored.author.initials
         authorAvatarPath = stored.author.avatarUrl
         authorFollowing = stored.isOwner ? false : stored.author.following
-        model = LlmModel(rawValue: stored.model)
         for index in slides.indices {
             let style = slides[index].result.style
             guard let match = stored.results.first(where: { $0.style == style }) else {
                 continue
             }
-            slides[index].result = ReframeResult(style: match.style, reframe: match.reframe)
+            slides[index].result = match.result
             slides[index].isFavorite = match.isFavorite
             slides[index].favoritedAt = match.favoritedAt.flatMap { ISO8601Dates.date(from: $0) }
             slides[index].heartCount = match.heartCount
@@ -206,9 +200,10 @@ struct ReadyCook: Equatable {
     var thoughtOriginal: String?
     var results: [SignedReframeResult]
     var meta: ReframeMeta
-    /// Server signature over `thought`, `thoughtOriginal`, and `meta`; Save sends it back.
+    /// Server signature over `thought`, `thoughtOriginal`, `model`, and `meta`; Save sends it back.
     var signature: String
-    var model: LlmModel
+    /// The writer the server routed to. Opaque here: Save echoes it and nothing shows it.
+    var model: String
 }
 
 enum LibraryLoadState: Equatable {
@@ -417,19 +412,6 @@ private struct AuthorFeed {
     var isRefreshing = false
 }
 
-private struct ModelFeed {
-    var cards: [HomeCard] = []
-    var cardIDs: Set<UUID> = []
-    var loadState: LibraryLoadState = .loading
-    var footerState: FeedFooterState = .idle
-    var before: String?
-    var hasMore = true
-    var hasLoaded = false
-    var generation = 0
-    var task: Task<Void, Never>?
-    var isRefreshing = false
-}
-
 private struct BlockAuthorSnapshot {
     let libraryEntries: [(index: Int, card: HomeCard)]
     let shelfEntries: [(placement: HomeFeedPlacement, card: HomeCard)]
@@ -437,7 +419,6 @@ private struct BlockAuthorSnapshot {
     let followedEntry: (index: Int, person: FollowedPerson)?
     let blockedEntry: (index: Int, person: BlockedPerson)?
     let authorFeeds: [UUID: AuthorFeed]
-    let modelFeeds: [LlmModel: ModelFeed]
 }
 
 @MainActor
@@ -479,11 +460,6 @@ final class HomeViewModel {
         }
     }
     private(set) var appliedFilter = HomeFeedFilter()
-    var selectedModel: LlmModel {
-        didSet {
-            UserDefaults.standard.set(selectedModel.rawValue, forKey: Self.modelDefaultsKey)
-        }
-    }
     private(set) var libraryLoadState: LibraryLoadState
     private(set) var libraryFooterState: FeedFooterState = .idle
     private(set) var feedBoard = HomeFeedBoard()
@@ -536,7 +512,6 @@ final class HomeViewModel {
     private var blocksGeneration = 0
     private var writeSessionGeneration = 0
     private var authorFeeds: [UUID: AuthorFeed] = [:]
-    private var modelFeeds: [LlmModel: ModelFeed] = [:]
     private var writeErrorTask: Task<Void, Never>?
     private var shineTask: Task<Void, Never>?
     private var usageBannerTask: Task<Void, Never>?
@@ -549,7 +524,6 @@ final class HomeViewModel {
     private var pendingRecookAttempt: ReframeAttempt?
     private var pendingRecookStyle: Style?
 
-    private static let modelDefaultsKey = "angles.llmModel"
     private static let lowWarningPeriodKeyPrefix = "angles.lowCreditWarningPeriod"
     private static let writeErrorDuration: Duration = .seconds(3)
     private static let initialLoadRetryDelays: [Duration] = [
@@ -570,31 +544,19 @@ final class HomeViewModel {
         self.cardsService = cardsService
         self.profileService = profileService
         self.libraryLoadState = libraryLoadState
-        if let raw = UserDefaults.standard.string(forKey: Self.modelDefaultsKey),
-           let model = LlmModel(rawValue: raw) {
-            selectedModel = model
-        } else {
-            selectedModel = .mistral
-        }
+        UserDefaults.standard.removeObject(forKey: "angles.llmModel")
     }
 
-    var isModelLocked: Bool {
-        isCooking || recookingStyle != nil
-    }
-
-    func isModelAvailable(_ model: LlmModel) -> Bool {
+    /// False only once the server says the balance cannot pay for one more cook.
+    /// Local development may run against a backend without `/profile/usage`.
+    var hasCreditsForCook: Bool {
         guard let usageSummary else {
-            // Local development may run against a backend without `/profile/usage`.
             return true
         }
-        return usageSummary.allowedModels.contains(model.rawValue)
+        return usageSummary.creditsRemaining >= usageSummary.creditCost
     }
 
-    func creditCost(for model: LlmModel) -> Int {
-        usageSummary?.creditCost[model.rawValue] ?? model.creditCost
-    }
-
-    var usagePickerStatus: String? {
+    var usageStatus: String? {
         guard let usageSummary else {
             return nil
         }
@@ -635,14 +597,6 @@ final class HomeViewModel {
                     feed.initials = initials
                     feed.avatarPath = avatarPath
                 }
-                for index in feed.cards.indices where feed.cards[index].isOwner {
-                    feed.cards[index].authorInitials = initials
-                    feed.cards[index].authorAvatarPath = avatarPath
-                }
-            }
-        }
-        for model in Array(modelFeeds.keys) {
-            mutateModel(model) { feed in
                 for index in feed.cards.indices where feed.cards[index].isOwner {
                     feed.cards[index].authorInitials = initials
                     feed.cards[index].authorAvatarPath = avatarPath
@@ -703,7 +657,7 @@ final class HomeViewModel {
     var canSubmit: Bool {
         isComposerVisible
             && !composeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && isModelAvailable(selectedModel)
+            && hasCreditsForCook
     }
 
     var canPublish: Bool {
@@ -829,7 +783,7 @@ final class HomeViewModel {
                         results: cook.results,
                         meta: cook.meta,
                         signature: cook.signature,
-                        model: cook.model.rawValue,
+                        model: cook.model,
                         spotlightStyle: spotlight,
                         isPublic: isPublic
                     )
@@ -877,7 +831,6 @@ final class HomeViewModel {
             withTransaction(transaction) {
                 insertFeedCardAtFront(card)
                 insertPublicCardIntoLoadedAuthorFeed(card)
-                insertPublicCardIntoLoadedModelFeed(card)
             }
             homeFeedTab = .all
             saveLanding = .home
@@ -1114,7 +1067,6 @@ final class HomeViewModel {
         for task in blockTasks.values { task.cancel() }
         for task in feedTasks.values { task.cancel() }
         for feed in authorFeeds.values { feed.task?.cancel() }
-        for feed in modelFeeds.values { feed.task?.cancel() }
         favoriteTasks = [:]
         favoriteGeneration = [:]
         followTasks = [:]
@@ -1130,7 +1082,6 @@ final class HomeViewModel {
         blockTasks = [:]
         blockGeneration = [:]
         authorFeeds = [:]
-        modelFeeds = [:]
 
         feedTasks = [:]
         feedBoard.reset()
@@ -1699,39 +1650,9 @@ final class HomeViewModel {
         authorFeeds[authorId] = feed
     }
 
-    /// Keeps a loaded model page in step with a public card cooked by that model.
-    private func insertPublicCardIntoLoadedModelFeed(_ card: HomeCard) {
-        guard card.isPublic, let model = card.model, var feed = modelFeeds[model], feed.hasLoaded else {
-            return
-        }
-        if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
-            feed.cards[index].isPublic = true
-            modelFeeds[model] = feed
-            return
-        }
-        if feed.hasMore, let last = feed.cards.last, !feedSortIsBefore(card, last) {
-            return
-        }
-        let index = feed.cards.firstIndex { feedSortIsBefore(card, $0) } ?? feed.cards.endIndex
-        feed.cards.insert(card, at: index)
-        feed.cardIDs.insert(card.id)
-        modelFeeds[model] = feed
-    }
-
     private func removeFromAuthorFeeds(_ id: UUID) {
         for authorId in Array(authorFeeds.keys) {
             mutateAuthor(authorId) { feed in
-                guard feed.cardIDs.remove(id) != nil || feed.cards.contains(where: { $0.id == id }) else {
-                    return
-                }
-                feed.cards.removeAll { $0.id == id }
-            }
-        }
-    }
-
-    private func removeFromModelFeeds(_ id: UUID) {
-        for model in Array(modelFeeds.keys) {
-            mutateModel(model) { feed in
                 guard feed.cardIDs.remove(id) != nil || feed.cards.contains(where: { $0.id == id }) else {
                     return
                 }
@@ -1750,31 +1671,9 @@ final class HomeViewModel {
         return indexes
     }
 
-    private func modelCardIndexes(_ id: UUID) -> [LlmModel: Int] {
-        var indexes: [LlmModel: Int] = [:]
-        for (model, feed) in modelFeeds {
-            if let index = feed.cards.firstIndex(where: { $0.id == id }) {
-                indexes[model] = index
-            }
-        }
-        return indexes
-    }
-
     private func restoreAuthorCards(_ card: HomeCard, at indexes: [UUID: Int]) {
         for (authorId, index) in indexes {
             mutateAuthor(authorId) { feed in
-                guard !feed.cards.contains(where: { $0.id == card.id }) else {
-                    return
-                }
-                feed.cards.insert(card, at: min(index, feed.cards.count))
-                feed.cardIDs.insert(card.id)
-            }
-        }
-    }
-
-    private func restoreModelCards(_ card: HomeCard, at indexes: [LlmModel: Int]) {
-        for (model, index) in indexes {
-            mutateModel(model) { feed in
                 guard !feed.cards.contains(where: { $0.id == card.id }) else {
                     return
                 }
@@ -1805,11 +1704,6 @@ final class HomeViewModel {
                 return match
             }
         }
-        for feed in modelFeeds.values {
-            if let match = feed.cards.first(where: { $0.id == id }), match.isOwner {
-                return match
-            }
-        }
         return nil
     }
 
@@ -1832,13 +1726,11 @@ final class HomeViewModel {
         let libraryIndex = cards.firstIndex(where: { $0.id == id })
         let placements = feedBoard.placements(of: id)
         let previousAuthorIndexes = authorCardIndexes(id)
-        let previousModelIndexes = modelCardIndexes(id)
         if libraryIndex != nil {
             cards.removeAll { $0.id == id }
         }
         removeFromFeed(id)
         removeFromAuthorFeeds(id)
-        removeFromModelFeeds(id)
 
         deleteTasks[id]?.cancel()
         let generation = (deleteGeneration[id] ?? 0) + 1
@@ -1866,7 +1758,6 @@ final class HomeViewModel {
                     feedBoard.restore(snapshot, at: placement)
                 }
                 restoreAuthorCards(snapshot, at: previousAuthorIndexes)
-                restoreModelCards(snapshot, at: previousModelIndexes)
                 reportWriteFailure(error, "Couldn't delete that card. Check your connection.")
             }
         }
@@ -1963,7 +1854,6 @@ final class HomeViewModel {
         cards.removeAll { $0.id == id }
         removeFromFeed(id)
         removeFromAuthorFeeds(id)
-        removeFromModelFeeds(id)
     }
 
     private func blockAuthorSnapshot(_ authorId: UUID) -> BlockAuthorSnapshot {
@@ -1986,9 +1876,6 @@ final class HomeViewModel {
         let affectedAuthorFeeds = authorFeeds.filter { id, feed in
             id == authorId || feed.cards.contains { $0.authorId == authorId && !$0.isOwner }
         }
-        let affectedModelFeeds = modelFeeds.filter { _, feed in
-            feed.cards.contains { $0.authorId == authorId && !$0.isOwner }
-        }
 
         return BlockAuthorSnapshot(
             libraryEntries: libraryEntries,
@@ -1996,8 +1883,7 @@ final class HomeViewModel {
             feedAnchors: anchors,
             followedEntry: followedEntry,
             blockedEntry: blockedEntry,
-            authorFeeds: affectedAuthorFeeds,
-            modelFeeds: affectedModelFeeds
+            authorFeeds: affectedAuthorFeeds
         )
     }
 
@@ -2029,14 +1915,6 @@ final class HomeViewModel {
             feed.isRefreshing = false
             authorFeeds[id] = feed
         }
-        for (model, var feed) in snapshot.modelFeeds {
-            feed.task = nil
-            if feed.footerState == .loading {
-                feed.footerState = .idle
-            }
-            feed.isRefreshing = false
-            modelFeeds[model] = feed
-        }
     }
 
     private func removeAuthorLocally(_ authorId: UUID) {
@@ -2062,18 +1940,6 @@ final class HomeViewModel {
                     feed.hasLoaded = true
                     feed.loadState = .loaded
                 }
-            }
-        }
-        for model in Array(modelFeeds.keys)
-        where modelFeeds[model]?.cards.contains(where: { $0.authorId == authorId && !$0.isOwner }) == true {
-            mutateModel(model) { feed in
-                feed.task?.cancel()
-                feed.task = nil
-                feed.generation &+= 1
-                feed.cards.removeAll { $0.authorId == authorId && !$0.isOwner }
-                feed.cardIDs = Set(feed.cards.map(\.id))
-                feed.footerState = .idle
-                feed.isRefreshing = false
             }
         }
     }
@@ -2215,7 +2081,6 @@ final class HomeViewModel {
         let libraryIndex = cards.firstIndex { $0.id == id }
         let placements = feedBoard.placements(of: id)
         let previousAuthorIndexes = authorCardIndexes(id)
-        let previousModelIndexes = modelCardIndexes(id)
         let feedAnchor = feedBoard.anchors[id]
         dropUnavailableCard(id)
         let generation = (reportGeneration[id] ?? 0) + 1
@@ -2257,7 +2122,6 @@ final class HomeViewModel {
                     feedBoard.restoreAnchor(feedAnchor)
                 }
                 restoreAuthorCards(target, at: previousAuthorIndexes)
-                restoreModelCards(target, at: previousModelIndexes)
                 reportWriteFailure(error, "Couldn't report that card. Check your connection.")
             }
         }
@@ -2438,7 +2302,6 @@ final class HomeViewModel {
         ensureOwnerInLibrary(snapshot)
         let previousPlacements = feedBoard.placements(of: id)
         let previousAuthorIndexes = authorCardIndexes(id)
-        let previousModelIndexes = modelCardIndexes(id)
         applyLocal(id: id) { card in
             card.isPublic = isPublic
         }
@@ -2446,11 +2309,9 @@ final class HomeViewModel {
             snapshot.isPublic = true
             insertPublicCardIntoLoadedFeed(snapshot)
             insertPublicCardIntoLoadedAuthorFeed(snapshot)
-            insertPublicCardIntoLoadedModelFeed(snapshot)
         } else {
             removeFromFeed(id)
             removeFromAuthorFeeds(id)
-            removeFromModelFeeds(id)
         }
 
         let previousTask = publicTasks[id]
@@ -2496,22 +2357,13 @@ final class HomeViewModel {
                             }
                         }
                     }
-                    for model in Array(modelFeeds.keys) {
-                        mutateModel(model) { feed in
-                            if let index = feed.cards.firstIndex(where: { $0.id == cardId }) {
-                                feed.cards[index].apply(stored)
-                            }
-                        }
-                    }
                 }
                 if stored.isPublic, let card = ownerCard(id: id) {
                     insertPublicCardIntoLoadedFeed(card)
                     insertPublicCardIntoLoadedAuthorFeed(card)
-                    insertPublicCardIntoLoadedModelFeed(card)
                 } else {
                     removeFromFeed(id)
                     removeFromAuthorFeeds(id)
-                    removeFromModelFeeds(id)
                 }
             } catch {
                 guard !Task.isCancelled,
@@ -2535,10 +2387,8 @@ final class HomeViewModel {
                     var restored = snapshot
                     restored.isPublic = previousPublic
                     restoreAuthorCards(restored, at: previousAuthorIndexes)
-                    restoreModelCards(restored, at: previousModelIndexes)
                 } else {
                     removeFromAuthorFeeds(id)
-                    removeFromModelFeeds(id)
                 }
                 reportWriteFailure(
                     error,
@@ -2606,39 +2456,16 @@ final class HomeViewModel {
         }
     }
 
-    private func applyUsage(
-        _ summary: UsageSummary,
-        requestModel: LlmModel? = nil,
-        creditsUsed: Int = 0
-    ) {
+    private func applyUsage(_ summary: UsageSummary, creditsUsed: Int = 0) {
         hasLoadedUsage = true
         usageSummary = summary
-
-        let previousModel = selectedModel
-        var switchMessage: String?
-        if !summary.allowedModels.contains(previousModel.rawValue),
-           let fallback = [LlmModel.mistral, .deepseek, .gemini].first(where: {
-               summary.allowedModels.contains($0.rawValue)
-           }) {
-            selectedModel = fallback
-            switchMessage = "\(previousModel.displayName) is paused. Switched to \(fallback.displayName) until your credits reset."
+        if creditsUsed > 0 {
+            usageFeedback = "\(creditsUsed) \(creditsUsed == 1 ? "credit" : "credits") used"
         }
-
-        if creditsUsed > 0, let requestModel {
-            usageFeedback = "\(creditsUsed) \(creditsUsed == 1 ? "credit" : "credits") used · \(requestModel.displayName)"
-        }
-
-        if let switchMessage {
-            showUsageBanner(switchMessage)
-        } else {
-            showLowCreditWarningIfNeeded(summary)
-        }
+        showLowCreditWarningIfNeeded(summary)
     }
 
-    private func applyUsage(_ usage: ReframeUsage, requestModel: LlmModel) {
-        var costs = usageSummary?.creditCost
-            ?? Dictionary(uniqueKeysWithValues: LlmModel.allCases.map { ($0.rawValue, $0.creditCost) })
-        costs[requestModel.rawValue] = usage.creditCost
+    private func applyUsage(_ usage: ReframeUsage) {
         let previous = usageSummary
         applyUsage(
             UsageSummary(
@@ -2648,18 +2475,15 @@ final class HomeViewModel {
                 periodEnd: previous?.periodEnd,
                 resetsAt: usage.resetsAt,
                 warning: usage.warning,
-                allowedModels: usage.allowedModels,
-                creditCost: costs
+                creditCost: usage.creditCost
             ),
-            requestModel: requestModel,
             creditsUsed: usage.creditsUsed
         )
     }
 
     private func applyUsage(from payload: APIErrorPayload) {
         guard let creditsRemaining = payload.creditsRemaining,
-              let creditsGranted = payload.creditsGranted,
-              let allowedModels = payload.allowedModels else {
+              let creditsGranted = payload.creditsGranted else {
             return
         }
         let previous = usageSummary
@@ -2671,11 +2495,7 @@ final class HomeViewModel {
                 periodEnd: previous?.periodEnd,
                 resetsAt: payload.resetsAt,
                 warning: Self.usageWarning(remaining: creditsRemaining),
-                allowedModels: allowedModels,
-                creditCost: previous?.creditCost
-                    ?? Dictionary(
-                        uniqueKeysWithValues: LlmModel.allCases.map { ($0.rawValue, $0.creditCost) }
-                    )
+                creditCost: previous?.creditCost ?? 1
             )
         )
     }
@@ -2710,10 +2530,7 @@ final class HomeViewModel {
         return .normal
     }
 
-    private func composeFailure(
-        for error: Error,
-        model: LlmModel
-    ) -> (message: String, allowsRetry: Bool) {
+    private func composeFailure(for error: Error) -> (message: String, allowsRetry: Bool) {
         guard case APIError.httpStatus(_, let payload?, _) = error else {
             return ("Couldn't generate a reframe. Try again.", true)
         }
@@ -2727,9 +2544,7 @@ final class HomeViewModel {
         case "SUBSCRIPTION_REQUIRED":
             return ("Membership is required. Open Profile → Settings → Subscription.", false)
         case "INSUFFICIENT_CREDITS":
-            return ("Not enough credits for \(model.displayName). Choose an available model or wait\(reset).", true)
-        case "MODEL_NOT_AVAILABLE":
-            return ("\(model.displayName) isn't available right now. Choose another model.", true)
+            return ("You’re out of credits\(reset).", false)
         case "TASTE_RECOOK_UNAVAILABLE":
             return ("New answers aren't available during your free taste.", false)
         case "TASTE_LIMIT_REACHED":
@@ -2771,11 +2586,6 @@ final class HomeViewModel {
                 return match
             }
         }
-        for feed in modelFeeds.values {
-            if let match = feed.cards.first(where: { $0.id == id }) {
-                return match
-            }
-        }
         return nil
     }
 
@@ -2786,13 +2596,6 @@ final class HomeViewModel {
         }
         for authorId in Array(authorFeeds.keys) {
             mutateAuthor(authorId) { feed in
-                if let index = feed.cards.firstIndex(where: { $0.id == id }) {
-                    body(&feed.cards[index])
-                }
-            }
-        }
-        for model in Array(modelFeeds.keys) {
-            mutateModel(model) { feed in
                 if let index = feed.cards.firstIndex(where: { $0.id == id }) {
                     body(&feed.cards[index])
                 }
@@ -2828,13 +2631,6 @@ final class HomeViewModel {
                 }
             }
         }
-        for model in Array(modelFeeds.keys) {
-            mutateModel(model) { feed in
-                if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
-                    feed.cards[index] = card
-                }
-            }
-        }
     }
 
     private func syncSavedOtherIntoLibrary(_ card: HomeCard) {
@@ -2857,7 +2653,7 @@ final class HomeViewModel {
     func recookStyle(_ style: Style) {
         guard case .ready(let cook) = phase,
               recookingStyle == nil,
-              isModelAvailable(cook.model),
+              hasCreditsForCook,
               cook.results.contains(where: { $0.style == style })
         else {
             return
@@ -2866,9 +2662,21 @@ final class HomeViewModel {
         recookingStyle = style
         recookNotice = nil
         usageFeedback = nil
-        // Recook works from the cleaned English thought, not the raw paste.
-        let text = cook.thought
-        let model = cook.model
+        // The server verifies the signed cook and the answer being replaced, then skips triage.
+        let previous = cook.results.first(where: { $0.style == style })
+        let request = RecookRequest(
+            style: style,
+            cook: RecookSource(
+                thought: cook.thought,
+                thoughtOriginal: cook.thoughtOriginal,
+                meta: cook.meta,
+                model: cook.model,
+                signature: cook.signature
+            ),
+            previous: previous.map {
+                RecookPrevious(reframe: $0.reframe, reframeOriginal: $0.reframeOriginal, signature: $0.signature)
+            }
+        )
         let attempt: ReframeAttempt
         if pendingRecookStyle == style, let pendingRecookAttempt {
             attempt = pendingRecookAttempt
@@ -2890,12 +2698,7 @@ final class HomeViewModel {
             }
 
             do {
-                let response = try await reframeService.refine(
-                    text: text,
-                    styles: [style],
-                    model: model,
-                    attempt: attempt
-                )
+                let response = try await reframeService.recook(request, attempt: attempt)
                 guard !Task.isCancelled, refineGeneration == generation else {
                     return
                 }
@@ -2904,11 +2707,11 @@ final class HomeViewModel {
 
                 switch response {
                 case .continueTurn(let message, _, _, _, let usage):
-                    applyUsage(usage, requestModel: model)
+                    applyUsage(usage)
                     // That style no longer fits this thought; keep what we have.
                     recookNotice = message
-                case .ready(_, _, let incoming, _, _, let usage):
-                    applyUsage(usage, requestModel: model)
+                case .ready(_, _, let incoming, _, _, _, let usage):
+                    applyUsage(usage)
                     guard let replacement = incoming.first(where: { $0.style == style }),
                           case .ready(var current) = phase,
                           let index = current.results.firstIndex(where: { $0.style == style })
@@ -2930,7 +2733,7 @@ final class HomeViewModel {
                     pendingRecookAttempt = nil
                     pendingRecookStyle = nil
                 }
-                recookNotice = composeFailure(for: error, model: model).message
+                recookNotice = composeFailure(for: error).message
             }
         }
     }
@@ -2970,14 +2773,12 @@ final class HomeViewModel {
         phase = .cooking
         let text = statement
         let followUps = answeredFollowUps
-        let model = selectedModel
 
         refineTask = Task { @MainActor in
             do {
                 let response = try await reframeService.refine(
                     text: text,
                     followUps: followUps,
-                    model: model,
                     attempt: attempt
                 )
                 guard !Task.isCancelled, refineGeneration == generation else {
@@ -2987,7 +2788,7 @@ final class HomeViewModel {
 
                 switch response {
                 case .continueTurn(let message, let options, let safety, let crisisResource, let usage):
-                    applyUsage(usage, requestModel: model)
+                    applyUsage(usage)
                     turns.append(
                         RefineTurn(
                             id: UUID(),
@@ -3003,10 +2804,11 @@ final class HomeViewModel {
                     let thoughtOriginal,
                     let results,
                     let meta,
+                    let model,
                     let signature,
                     let usage
                 ):
-                    applyUsage(usage, requestModel: model)
+                    applyUsage(usage)
                     phase = .ready(
                         ReadyCook(
                             thought: thought,
@@ -3029,7 +2831,7 @@ final class HomeViewModel {
                 if !Self.isAmbiguousReframeFailure(error) {
                     pendingRefineAttempt = nil
                 }
-                let failure = composeFailure(for: error, model: model)
+                let failure = composeFailure(for: error)
                 composeErrorAllowsRetry = failure.allowsRetry
                 phase = .error(failure.message)
             }
@@ -3293,12 +3095,7 @@ final class HomeViewModel {
         if cards.contains(where: { $0.authorId == authorId && $0.isOwner }) {
             return true
         }
-        if authorFeeds.values.contains(where: { feed in
-            feed.cards.contains { $0.authorId == authorId && $0.isOwner }
-        }) {
-            return true
-        }
-        return modelFeeds.values.contains { feed in
+        return authorFeeds.values.contains { feed in
             feed.cards.contains { $0.authorId == authorId && $0.isOwner }
         }
     }
@@ -3314,11 +3111,6 @@ final class HomeViewModel {
             return card.authorFollowing
         }
         for feed in authorFeeds.values {
-            if let card = feed.cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
-                return card.authorFollowing
-            }
-        }
-        for feed in modelFeeds.values {
             if let card = feed.cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
                 return card.authorFollowing
             }
@@ -3342,14 +3134,6 @@ final class HomeViewModel {
                 }
             }
         }
-        for model in Array(modelFeeds.keys) {
-            mutateModel(model) { feed in
-                for index in feed.cards.indices
-                where feed.cards[index].authorId == authorId && !feed.cards[index].isOwner {
-                    feed.cards[index].authorFollowing = following
-                }
-            }
-        }
     }
 
     private func mutateAuthor(_ id: UUID, _ body: (inout AuthorFeed) -> Void) {
@@ -3358,188 +3142,6 @@ final class HomeViewModel {
         }
         body(&feed)
         authorFeeds[id] = feed
-    }
-
-    func modelCards(for model: LlmModel, tab: HomeFeedTab) -> [HomeCard] {
-        guard let feed = modelFeeds[model] else {
-            return []
-        }
-        guard let style = tab.matchingStyle else {
-            return feed.cards
-        }
-        return feed.cards.filter { $0.hasStyle(style) }
-    }
-
-    func modelLoadState(for model: LlmModel) -> LibraryLoadState {
-        modelFeeds[model]?.loadState ?? .loading
-    }
-
-    func modelFooterState(for model: LlmModel) -> FeedFooterState {
-        modelFeeds[model]?.footerState ?? .idle
-    }
-
-    func loadModelIfNeeded(_ model: LlmModel) async {
-        if modelFeeds[model] == nil {
-            modelFeeds[model] = ModelFeed()
-        }
-        guard modelFeeds[model]?.hasLoaded != true else {
-            return
-        }
-        if let task = modelFeeds[model]?.task {
-            await task.value
-            return
-        }
-        startModelTask(model, replacing: true)
-        await modelFeeds[model]?.task?.value
-    }
-
-    func refreshModel(_ model: LlmModel) async {
-        guard modelFeeds[model] != nil, modelFeeds[model]?.isRefreshing != true else {
-            return
-        }
-        mutateModel(model) { feed in
-            feed.isRefreshing = true
-            feed.task?.cancel()
-            feed.task = nil
-            feed.generation &+= 1
-            feed.footerState = .idle
-            if feed.cards.isEmpty {
-                feed.loadState = .loading
-            }
-        }
-        let generation = modelFeeds[model]?.generation ?? 0
-        await fetchModelPage(model: model, replacing: true, generation: generation)
-        mutateModel(model) { $0.isRefreshing = false }
-    }
-
-    func retryLoadModel(_ model: LlmModel) {
-        guard modelFeeds[model] != nil else {
-            return
-        }
-        mutateModel(model) { feed in
-            feed.task?.cancel()
-            feed.task = nil
-            feed.generation &+= 1
-            feed.before = nil
-            feed.hasMore = true
-            feed.footerState = .idle
-            feed.hasLoaded = false
-            if feed.cards.isEmpty {
-                feed.loadState = .loading
-            }
-        }
-        startModelTask(model, replacing: true)
-    }
-
-    func loadMoreModel(_ model: LlmModel) {
-        guard let feed = modelFeeds[model],
-              feed.hasLoaded,
-              feed.hasMore,
-              feed.before != nil,
-              feed.footerState == .idle,
-              feed.task == nil,
-              !feed.isRefreshing
-        else {
-            return
-        }
-        mutateModel(model) { $0.footerState = .loading }
-        startModelTask(model, replacing: false)
-    }
-
-    func retryLoadMoreModel(_ model: LlmModel) {
-        guard let feed = modelFeeds[model],
-              feed.footerState == .failed,
-              feed.task == nil,
-              !feed.isRefreshing
-        else {
-            return
-        }
-        mutateModel(model) { $0.footerState = .loading }
-        startModelTask(model, replacing: feed.before == nil)
-    }
-
-    private func startModelTask(_ model: LlmModel, replacing: Bool) {
-        guard var feed = modelFeeds[model], feed.task == nil else {
-            return
-        }
-        let generation = feed.generation
-        let task = Task { @MainActor in
-            await self.fetchModelPage(model: model, replacing: replacing, generation: generation)
-            guard self.modelFeeds[model]?.generation == generation else {
-                return
-            }
-            self.mutateModel(model) { $0.task = nil }
-        }
-        feed.task = task
-        modelFeeds[model] = feed
-    }
-
-    private func fetchModelPage(model: LlmModel, replacing: Bool, generation: Int) async {
-        let before = replacing ? nil : modelFeeds[model]?.before
-        do {
-            let response = try await cardsService.listModelCards(
-                id: model.rawValue,
-                limit: Self.feedPageSize,
-                before: before
-            )
-            guard !Task.isCancelled, modelFeeds[model]?.generation == generation else {
-                return
-            }
-
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                mutateModel(model) { feed in
-                    if replacing {
-                        feed.cards = merged(feed.cards, with: response.cards)
-                        feed.cardIDs = Set(feed.cards.map(\.id))
-                    } else {
-                        feed.cards.reserveCapacity(feed.cards.count + response.cards.count)
-                        for item in response.cards {
-                            guard let card = HomeCard(stored: item) else {
-                                continue
-                            }
-                            guard !isLocallyBlocked(card) else {
-                                continue
-                            }
-                            guard feed.cardIDs.insert(card.id).inserted else {
-                                continue
-                            }
-                            feed.cards.append(card)
-                        }
-                    }
-                    if let cursor = response.page.nextCursor {
-                        feed.before = cursor
-                    } else if replacing {
-                        feed.before = nil
-                    }
-                    feed.hasMore = response.page.hasMore(pageSize: Self.feedPageSize)
-                    feed.footerState = .idle
-                    feed.loadState = .loaded
-                    feed.hasLoaded = true
-                }
-            }
-        } catch {
-            guard !Task.isCancelled, modelFeeds[model]?.generation == generation, !Self.isCancellation(error) else {
-                return
-            }
-            mutateModel(model) { feed in
-                if replacing, feed.cards.isEmpty {
-                    feed.loadState = .failed("Couldn't load these posts.")
-                    feed.footerState = .idle
-                } else {
-                    feed.footerState = .failed
-                }
-            }
-        }
-    }
-
-    private func mutateModel(_ model: LlmModel, _ body: (inout ModelFeed) -> Void) {
-        guard var feed = modelFeeds[model] else {
-            return
-        }
-        body(&feed)
-        modelFeeds[model] = feed
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

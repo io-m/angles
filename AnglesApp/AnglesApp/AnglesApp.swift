@@ -17,7 +17,6 @@ private enum SessionEnd {
 
 enum BrowseRoute: Hashable {
     case author(AuthorRoute)
-    case model(ModelRoute)
 }
 
 @main
@@ -74,8 +73,7 @@ struct AppRoot: View {
                         canLoadFullAppContent: isHomeRevealed,
                         isActiveTab: selectedTab == .home,
                         onLogOut: logOut,
-                        onOpenAuthor: openAuthor,
-                        onOpenModel: openModel
+                        onOpenAuthor: openAuthor
                     )
                     .tabItem { Label("Home", systemImage: "house") }
                     .tag(RootTab.home)
@@ -94,7 +92,6 @@ struct AppRoot: View {
                         onDeleteAccount: deleteAccount,
                         canLoadFullAppContent: canLoadProfileContent,
                         onOpenAuthor: openAuthor,
-                        onOpenModel: openModel,
                         onOpenFollowed: openFollowed
                     )
                     .tabItem { Label("Profile", systemImage: "person") }
@@ -107,17 +104,7 @@ struct AppRoot: View {
                             route: author,
                             safeAreaInsets: homeSafeAreaInsets,
                             viewModel: viewModel,
-                            onOpenAuthor: openAuthor,
-                            onOpenModel: openModel
-                        )
-                        .navigationBarBackButtonHidden(true)
-                    case .model(let model):
-                        ModelProfileView(
-                            route: model,
-                            safeAreaInsets: homeSafeAreaInsets,
-                            viewModel: viewModel,
-                            onOpenAuthor: openAuthor,
-                            onOpenModel: openModel
+                            onOpenAuthor: openAuthor
                         )
                         .navigationBarBackButtonHidden(true)
                     }
@@ -623,16 +610,6 @@ struct AppRoot: View {
                 )
             )
         )
-    }
-
-    private func openModel(_ card: HomeCard) {
-        guard let model = card.model else {
-            return
-        }
-        if case .model(let current) = browsePath.last, current.model == model {
-            return
-        }
-        browsePath.append(.model(ModelRoute(model: model)))
     }
 
     private func showOwnProfile() {

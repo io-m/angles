@@ -13,54 +13,50 @@ import {
   type StartedMeterOperation,
 } from "../db/metering.js";
 import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
-import { signCook, signResult } from "../lib/cookSignature.js";
+import {
+  FORCE_READY_AFTER,
+  recookStyle,
+  uniqueStyles,
+  writeStyleBatch,
+  type CookCallOptions,
+} from "../lib/cook.js";
+import { signedMetaSchema } from "../lib/cookSchema.js";
+import { signCook, signResult, verifyCook } from "../lib/cookSignature.js";
 import { crisisMessage, crisisResourceLine } from "../lib/crisisResources.js";
-import { runDecision, type ReadyDecision } from "../lib/decision.js";
+import { runDecision } from "../lib/decision.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import {
   COOK_DEADLINE_MS,
-  generateJson,
-  generateReframe,
   LLM_MODEL_IDS,
   LlmError,
-  resolveEffectiveModel,
-  STYLE_BATCH_MAX_OUTPUT_TOKENS,
-  timeoutMsUntil,
-  type LlmCallOptions,
+  modelsForStep,
   type LlmModelId,
+  type StepModels,
 } from "../lib/llmClient.js";
 import type { LlmUsageEvent } from "../lib/llmUsage.js";
 import {
-  MODEL_CREDIT_COST,
-  isPublicLlmModel,
+  COOK_CREDIT_COST,
   isUsageEnforcementRequired,
   requestFingerprint,
   type UsageSummary,
 } from "../lib/meteringPolicy.js";
 import { openReplay, parseReplayKey, REPLAY_KEY_HEADER, sealReplay } from "../lib/reframeReplay.js";
 import {
-  REFRAME_HARD_MAX_CHARS,
-  STYLE_BATCH_PROMPT,
-  SYSTEM_PROMPTS,
-  styleBatchUserPrompt,
-  styleUserPrompt,
-} from "../lib/prompts.js";
-import {
+  matchingFor,
   STYLES,
   type ContinueResponse,
   type FollowUpAnswer,
   type ReadyResponse,
+  type ReframeMeta,
   type ReframeResponse,
-  type ReframeResult,
+  type ReframeUsage,
   type SafetyFlag,
-  type Style,
 } from "../types/index.js";
 
 const MAX_TEXT_LENGTH = 2000;
+const MAX_REFRAME_LENGTH = 4000;
 /** The model drives the exchange; this is an abuse guard, not a script length. */
 const MAX_FOLLOW_UPS = 6;
-/** From here on the decision call is told to land it, safety aside. */
-const FORCE_READY_AFTER = 3;
 
 const followUpSchema = z.object({
   question: z
@@ -78,210 +74,84 @@ const followUpSchema = z.object({
     ),
 });
 
-const styleSchema = z.enum(STYLES);
-
-const reframeRequestSchema = z.object({
-  text: z
+const trimmedText = (label: string, max: number) =>
+  z
     .string()
     .transform((value) => value.trim())
     .pipe(
       z
         .string()
-        .min(1, "text must not be empty")
-        .max(MAX_TEXT_LENGTH, `text must be at most ${MAX_TEXT_LENGTH} characters`),
-    ),
-  followUps: z
-    .array(followUpSchema)
-    .max(MAX_FOLLOW_UPS, `followUps must contain at most ${MAX_FOLLOW_UPS} entries`)
-    .optional(),
-  styles: z.array(styleSchema).min(1).max(STYLES.length).optional(),
-  model: z.enum(LLM_MODEL_IDS).optional(),
-  // Lenient on purpose: a malformed region must never block a crisis turn. It only
-  // falls back to the generic contact line.
-  region: z
-    .unknown()
-    .optional()
-    .transform((value) =>
-      typeof value === "string" && /^[A-Za-z]{2}$/.test(value) ? value.toUpperCase() : undefined,
-    ),
-}).strict();
+        .min(1, `${label} must not be empty`)
+        .max(max, `${label} must be at most ${max} characters`),
+    );
 
-type CookCallOptions = LlmCallOptions & {
-  deadlineAt: number;
-  model?: LlmModelId;
-};
+const recookSchema = z
+  .object({
+    style: z.enum(STYLES),
+    cook: z
+      .object({
+        thought: trimmedText("thought", MAX_TEXT_LENGTH),
+        thoughtOriginal: trimmedText("thoughtOriginal", MAX_TEXT_LENGTH).optional(),
+        meta: signedMetaSchema,
+        model: z.enum(LLM_MODEL_IDS),
+        signature: z.string().min(1).max(128),
+      })
+      .strict(),
+    previous: z
+      .object({
+        reframe: trimmedText("previous reframe", MAX_REFRAME_LENGTH),
+        reframeOriginal: trimmedText("previous reframeOriginal", MAX_REFRAME_LENGTH).optional(),
+        signature: z.string().min(1).max(128),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
 
-class StyleBatchParseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "StyleBatchParseError";
-  }
-}
-
-function uniqueStyles(styles: readonly Style[]): Style[] {
-  const seen = new Set<Style>();
-  const unique: Style[] = [];
-  for (const style of styles) {
-    if (!seen.has(style)) {
-      seen.add(style);
-      unique.push(style);
+const reframeRequestSchema = z
+  .object({
+    text: trimmedText("text", MAX_TEXT_LENGTH).optional(),
+    followUps: z
+      .array(followUpSchema)
+      .max(MAX_FOLLOW_UPS, `followUps must contain at most ${MAX_FOLLOW_UPS} entries`)
+      .optional(),
+    recook: recookSchema.optional(),
+    // Lenient on purpose: a malformed region must never block a crisis turn. It only
+    // falls back to the generic contact line.
+    region: z
+      .unknown()
+      .optional()
+      .transform((value) =>
+        typeof value === "string" && /^[A-Za-z]{2}$/.test(value) ? value.toUpperCase() : undefined,
+      ),
+  })
+  .strict()
+  .superRefine((body, ctx) => {
+    if ((body.text === undefined) === (body.recook === undefined)) {
+      ctx.addIssue({ code: "custom", message: "send either text or recook" });
     }
-  }
-  return unique;
-}
-
-function trimToSentence(reframe: string): string {
-  const clipped = reframe.slice(0, REFRAME_HARD_MAX_CHARS);
-  const lastStop = Math.max(
-    clipped.lastIndexOf("."),
-    clipped.lastIndexOf("!"),
-    clipped.lastIndexOf("?"),
-  );
-  if (lastStop > REFRAME_HARD_MAX_CHARS / 2) {
-    return clipped.slice(0, lastStop + 1).trim();
-  }
-  return `${clipped.trim().replace(/[,;:\s]+$/, "")}…`;
-}
-
-function callOptions(options: CookCallOptions): LlmCallOptions & { model?: LlmModelId } {
-  return {
-    model: options.model,
-    abortSignal: options.abortSignal,
-    timeoutMs: timeoutMsUntil(options.deadlineAt),
-    beforeProviderCall: options.beforeProviderCall,
-    usageSink: options.usageSink,
-  };
-}
-
-function extractJsonObject(raw: string): string {
-  const withoutFence = raw.replace(/```[a-zA-Z]*\s*/g, "").replace(/```/g, "").trim();
-  const start = withoutFence.indexOf("{");
-  const end = withoutFence.lastIndexOf("}");
-  if (start === -1 || end <= start) {
-    throw new StyleBatchParseError("style batch reply was not JSON");
-  }
-  return withoutFence.slice(start, end + 1);
-}
-
-function parseStyleBatch(raw: string, chosen: readonly Style[]): Partial<Record<Style, string>> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(extractJsonObject(raw));
-  } catch (error) {
-    if (error instanceof StyleBatchParseError) {
-      throw error;
+    if (body.recook !== undefined && body.followUps !== undefined) {
+      ctx.addIssue({ code: "custom", message: "a recook has no followUps" });
     }
-    throw new StyleBatchParseError("style batch reply was not JSON");
-  }
-
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new StyleBatchParseError("style batch reply was not an object");
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const out: Partial<Record<Style, string>> = {};
-  for (const style of chosen) {
-    const value = record[style];
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed.length > 0) {
-        out[style] = trimmed;
-      }
-    }
-  }
-  if (Object.keys(out).length !== chosen.length) {
-    throw new StyleBatchParseError("style batch reply omitted a requested style");
-  }
-  return out;
-}
-
-async function generateStyle(
-  decision: ReadyDecision,
-  style: Style,
-  options: CookCallOptions,
-): Promise<ReframeResult> {
-  const prompt = styleUserPrompt(decision.thought, decision.meta);
-  const first = (
-    await generateReframe({
-      text: prompt,
-      systemPrompt: SYSTEM_PROMPTS[style],
-      callKind: "reframe",
-      attempt: 1,
-      ...callOptions(options),
-    })
-  ).trim();
-  if (first.length === 0) {
-    throw new LlmError("LLM returned an empty reframe");
-  }
-  if (first.length <= REFRAME_HARD_MAX_CHARS) {
-    return { style, reframe: first };
-  }
-  return {
-    style,
-    reframe: trimToSentence(first),
-  };
-}
-
-async function requestStyleBatch(
-  decision: ReadyDecision,
-  chosen: Style[],
-  options: CookCallOptions,
-  attempt: number,
-): Promise<string> {
-  return generateJson({
-    text: styleBatchUserPrompt(decision.thought, decision.meta, chosen),
-    systemPrompt: STYLE_BATCH_PROMPT,
-    maxOutputTokens: STYLE_BATCH_MAX_OUTPUT_TOKENS,
-    callKind: "batch",
-    attempt,
-    ...callOptions(options),
   });
-}
 
-async function generateStyleBatch(
-  decision: ReadyDecision,
-  chosen: Style[],
-  options: CookCallOptions,
-): Promise<ReframeResult[]> {
-  let raw: string;
-  try {
-    raw = await requestStyleBatch(decision, chosen, options, 1);
-  } catch (error) {
-    if (error instanceof LlmError) {
-      throw error;
-    }
-    throw new LlmError("Style batch failed", { cause: error });
-  }
+type RecookInput = z.infer<typeof recookSchema>;
 
-  let parsed: Partial<Record<Style, string>>;
-  try {
-    parsed = parseStyleBatch(raw, chosen);
-  } catch (error) {
-    if (!(error instanceof StyleBatchParseError)) {
-      throw error;
-    }
-    try {
-      const retried = await requestStyleBatch(decision, chosen, options, 2);
-      parsed = parseStyleBatch(retried, chosen);
-    } catch {
-      throw new LlmError("Style batch reply could not be parsed");
-    }
-  }
-
-  const results: ReframeResult[] = [];
-  for (const style of chosen) {
-    const fromBatch = parsed[style];
-    if (fromBatch === undefined) {
-      throw new LlmError("Style batch reply omitted a requested style");
-    }
-    if (fromBatch.length <= REFRAME_HARD_MAX_CHARS) {
-      results.push({ style, reframe: fromBatch });
-      continue;
-    }
-    results.push({ style, reframe: trimToSentence(fromBatch) });
-  }
-
-  return results;
+/** A recook only starts from a cook this server signed for this account, previous answer included. */
+function verifiedRecook(ownerId: string, recook: RecookInput): boolean {
+  const { cook, previous, style } = recook;
+  return (
+    cook.meta.safety === "none" &&
+    verifyCook({
+      ownerId,
+      thought: cook.thought,
+      thoughtOriginal: cook.thoughtOriginal,
+      model: cook.model,
+      meta: cook.meta,
+      signature: cook.signature,
+      results: previous ? [{ style, ...previous }] : [],
+    })
+  );
 }
 
 /** Every `continue` is built here, so a safety turn always carries local contacts and no chips. */
@@ -301,12 +171,6 @@ function continueBody(
   };
 }
 
-/** A style the decision refused is answered with its reason, never with a bad joke. */
-function refusedStyleMessage(decision: ReadyDecision, style: Style): string {
-  const skipped = decision.meta.skippedStyles.find((item) => item.style === style);
-  return skipped?.reason ?? "That angle would not land well on this one.";
-}
-
 /** A response before its `usage`, which is what a replay stores. */
 type ReframePayload = Omit<ContinueResponse, "usage"> | Omit<ReadyResponse, "usage">;
 
@@ -319,7 +183,6 @@ async function replayCompleted(input: {
   clientRequestId: string;
   requestFingerprint: string;
   replayKey: Buffer;
-  model: LlmModelId;
 }): Promise<ReframeResponse | null> {
   const stored = await findReframeReplay(input);
   if (!stored) {
@@ -332,33 +195,20 @@ async function replayCompleted(input: {
   const summary = await getUsageSummary(input.ownerId);
   return {
     ...(payload as ReframePayload),
-    usage: responseUsage(summary, stored.chargedCredits, input.model),
+    usage: responseUsage(summary, stored.chargedCredits),
   };
 }
 
 export const reframeRoute = new Hono();
 
-function responseUsage(
-  summary: UsageSummary,
-  creditsUsed: number,
-  model: LlmModelId,
-): {
-  creditsUsed: number;
-  remaining: number;
-  granted: number;
-  resetsAt: string | null;
-  warning: UsageSummary["warning"];
-  allowedModels: UsageSummary["allowedModels"];
-  creditCost: number;
-} {
+function responseUsage(summary: UsageSummary, creditsUsed: number): ReframeUsage {
   return {
     creditsUsed,
     remaining: summary.creditsRemaining,
     granted: summary.creditsGranted,
     resetsAt: summary.resetsAt,
     warning: summary.warning,
-    allowedModels: summary.allowedModels,
-    creditCost: isPublicLlmModel(model) ? MODEL_CREDIT_COST[model] : 0,
+    creditCost: summary.creditCost,
   };
 }
 
@@ -370,7 +220,6 @@ function meteringErrorResponse(error: MeteringError): Record<string, unknown> {
           creditsRemaining: error.usage.creditsRemaining,
           creditsGranted: error.usage.creditsGranted,
           resetsAt: error.usage.resetsAt,
-          allowedModels: error.usage.allowedModels,
         }
       : {}),
   };
@@ -386,14 +235,19 @@ reframeRoute.post(
   }),
   async (c) => {
     const validated = c.req.valid("json");
-    const { text, followUps: rawFollowUps, styles: requestedStyles } = validated;
-    const followUps: FollowUpAnswer[] = rawFollowUps ?? [];
+    const { recook } = validated;
+    const followUps: FollowUpAnswer[] = validated.followUps ?? [];
     const deadlineAt = Date.now() + COOK_DEADLINE_MS;
     const abortSignal = c.req.raw.signal;
     const ownerId = getOwnerUserId();
-    let model: LlmModelId;
+    if (recook && !verifiedRecook(ownerId, recook)) {
+      return c.json(errorBody("recook does not match a reframe from this server", "VALIDATION_ERROR"), 400);
+    }
+    let decisionModels: StepModels;
+    let writerModels: StepModels;
     try {
-      model = resolveEffectiveModel(validated.model);
+      decisionModels = modelsForStep("decision");
+      writerModels = modelsForStep("writer");
     } catch {
       return c.json(errorBody("Failed to generate reframe", "LLM_ERROR"), 500);
     }
@@ -409,7 +263,7 @@ reframeRoute.post(
       parsedKey?.success
         ? parsedKey.data
         : randomUUID();
-    const fingerprint = requestFingerprint(validated, model);
+    const fingerprint = requestFingerprint(validated);
     const replayKey = parseReplayKey(c.req.header(REPLAY_KEY_HEADER));
     const usageEvents: LlmUsageEvent[] = [];
     let operation: StartedMeterOperation | undefined;
@@ -419,24 +273,14 @@ reframeRoute.post(
         ownerId,
         clientRequestId,
         requestFingerprint: fingerprint,
-        model,
-        kind: requestedStyles === undefined ? "full" : "recook",
+        model: writerModels.primary,
+        kind: recook ? "recook" : "full",
       });
       operation = startedOperation;
       const meteredCallOptions = {
         beforeProviderCall: () => beginProviderCall(startedOperation),
         usageSink: (event: LlmUsageEvent) => usageEvents.push(event),
       };
-      const decision = await runDecision({
-        text,
-        followUps,
-        model,
-        forceReady: followUps.length >= FORCE_READY_AFTER,
-        deadlineAt,
-        abortSignal,
-        ...meteredCallOptions,
-      });
-
       const finish = async (
         payload: ReframePayload,
         state: "ready" | "continue",
@@ -448,63 +292,90 @@ reframeRoute.post(
           usageEvents,
           ...(replayKey ? { replay: sealReplay(replayKey, startedOperation.operationId, payload) } : {}),
         });
-        const creditsUsed =
-          state === "continue" || startedOperation.taste || !isPublicLlmModel(model)
-            ? 0
-            : MODEL_CREDIT_COST[model];
-        return { ...payload, usage: responseUsage(summary, creditsUsed, model) };
+        const creditsUsed = state === "continue" || startedOperation.taste ? 0 : COOK_CREDIT_COST;
+        return { ...payload, usage: responseUsage(summary, creditsUsed) };
       };
+
+      let answeredBy: LlmModelId = writerModels.primary;
+      const options: CookCallOptions = {
+        deadlineAt,
+        abortSignal,
+        model: writerModels.primary,
+        fallbackModel: writerModels.fallback,
+        onAnsweredBy: (model) => {
+          answeredBy = model;
+        },
+        ...meteredCallOptions,
+      };
+
+      if (recook) {
+        const { cook, style, previous } = recook;
+        // A style the cook held back gets its reason, with no model call and no charge.
+        const skipped = cook.meta.skippedStyles.find((item) => item.style === style);
+        if (skipped) {
+          const payload = continueBody({ message: skipped.reason, options: [], safety: "none" }, validated.region);
+          return c.json(await finish(payload, "continue"));
+        }
+        const meta: ReframeMeta = { ...cook.meta, matching: matchingFor(cook.meta) };
+        const result = await recookStyle(
+          { thought: cook.thought, thoughtOriginal: cook.thoughtOriginal, meta },
+          style,
+          previous?.reframe,
+          options,
+        );
+        const payload: ReframePayload = {
+          kind: "ready",
+          thought: cook.thought,
+          ...(cook.thoughtOriginal ? { thoughtOriginal: cook.thoughtOriginal } : {}),
+          results: [
+            {
+              ...result,
+              signature: signResult(ownerId, cook.thought, style, result.reframe, result.reframeOriginal),
+            },
+          ],
+          meta,
+          // The cook's own writer and signature stand; a result signature never names a model.
+          model: cook.model,
+          signature: cook.signature,
+        };
+        return c.json(await finish(payload, "ready"));
+      }
+
+      const text = validated.text;
+      if (text === undefined) {
+        throw new LlmError("compose turn without text");
+      }
+      const decision = await runDecision({
+        text,
+        followUps,
+        model: decisionModels.primary,
+        fallbackModel: decisionModels.fallback,
+        forceReady: followUps.length >= FORCE_READY_AFTER,
+        deadlineAt,
+        abortSignal,
+        ...meteredCallOptions,
+      });
 
       if (decision.kind === "continue") {
         return c.json(await finish(continueBody(decision, validated.region), "continue"));
       }
 
-      const chosen = requestedStyles
-        ? uniqueStyles(requestedStyles).filter((style) => decision.styles.includes(style))
-        : uniqueStyles(decision.styles);
-
-      if (chosen.length === 0) {
-        const refused = requestedStyles?.[0];
-        const payload = continueBody(
-          {
-            message: refused
-              ? refusedStyleMessage(decision, refused)
-              : "I could not find an angle worth putting on a card yet.",
-            options: [],
-            safety: decision.meta.safety,
-          },
-          validated.region,
-        );
-        return c.json(await finish(payload, "continue"));
-      }
-
-      const options: CookCallOptions = {
-        deadlineAt,
-        abortSignal,
-        model,
-        ...meteredCallOptions,
-      };
-      const recookStyle = requestedStyles !== undefined && chosen.length === 1 ? chosen[0] : undefined;
-      const results = recookStyle
-        ? [await generateStyle(decision, recookStyle, options)]
-        : await generateStyleBatch(decision, chosen, options);
-
-      // A recook keeps the card's thought and meta, and the client sends that thought as `text`.
-      const signedThought = recookStyle ? text : decision.thought;
+      const results = await writeStyleBatch(decision, uniqueStyles(decision.styles), options);
       const payload: ReframePayload = {
         kind: "ready",
         thought: decision.thought,
         ...(decision.thoughtOriginal ? { thoughtOriginal: decision.thoughtOriginal } : {}),
         results: results.map((item) => ({
           ...item,
-          signature: signResult(ownerId, signedThought, item.style, item.reframe, model),
+          signature: signResult(ownerId, decision.thought, item.style, item.reframe, item.reframeOriginal),
         })),
         meta: decision.meta,
+        model: answeredBy,
         signature: signCook({
           ownerId,
           thought: decision.thought,
           thoughtOriginal: decision.thoughtOriginal,
-          model,
+          model: answeredBy,
           meta: decision.meta,
         }),
       };
@@ -520,7 +391,6 @@ reframeRoute.post(
           clientRequestId,
           requestFingerprint: fingerprint,
           replayKey,
-          model,
         });
         if (replayed) {
           return c.json(replayed);

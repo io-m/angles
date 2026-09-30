@@ -2,7 +2,7 @@
   "fill-specializations" : [
     {
       "value" : {
-        "automatic-gradient" : "display-p3:0.02761,0.01484,0.00112,1.00000"
+        "automatic-gradient" : "display-p3:0.04263,0.02402,0.00135,1.00000"
       }
     },
     {
@@ -73,10 +73,10 @@
           "image-name" : "Vector 2.svg",
           "name" : "Vector 2",
           "position" : {
-            "scale" : 0.9,
+            "scale" : 0.86,
             "translation-in-points" : [
-              45,
-              13
+              45.93024249999996,
+              13.069790000000012
             ]
           }
         },
@@ -129,10 +129,10 @@
           "image-name" : "Vector-1 2.svg",
           "name" : "Vector-1 2",
           "position" : {
-            "scale" : 0.9,
+            "scale" : 0.86,
             "translation-in-points" : [
-              -49.661550000000034,
-              -5.37259999999992
+              -44.24616249999997,
+              -4.9984300000000985
             ]
           }
         }

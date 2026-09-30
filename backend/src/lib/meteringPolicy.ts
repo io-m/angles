@@ -1,25 +1,14 @@
 import { createHmac } from "node:crypto";
-import type { LlmModelId } from "./llmClient.js";
 
 export const USAGE_PLAN_VERSION = "monthly-600-v1";
-export const CREDIT_TARIFF_VERSION = "public-models-v1";
+export const CREDIT_TARIFF_VERSION = "flat-v1";
 export const MONTHLY_CREDITS = 600;
 export const DAILY_OPERATION_LIMIT = 60;
 export const DAILY_PROVIDER_CALL_LIMIT = 200;
 export const TASTE_LIFETIME_TURN_LIMIT = 10;
 
-export const PUBLIC_LLM_MODELS = [
-  "mistral-small-latest",
-  "deepseek-flash",
-  "gemini-3.8-flash",
-] as const satisfies readonly LlmModelId[];
-export type PublicLlmModelId = (typeof PUBLIC_LLM_MODELS)[number];
-
-export const MODEL_CREDIT_COST: Record<PublicLlmModelId, number> = {
-  "mistral-small-latest": 1,
-  "deepseek-flash": 2,
-  "gemini-3.8-flash": 6,
-};
+/** Every ready cook and every recook costs the same, whichever model the server routed it to. */
+export const COOK_CREDIT_COST = 1;
 
 export type UsageWarning = "normal" | "low" | "critical" | "empty";
 
@@ -30,8 +19,7 @@ export type UsageSummary = {
   periodEnd: string | null;
   resetsAt: string | null;
   warning: UsageWarning;
-  allowedModels: PublicLlmModelId[];
-  creditCost: Record<PublicLlmModelId, number>;
+  creditCost: number;
 };
 
 export function isUsageEnforcementRequired(): boolean {
@@ -42,23 +30,6 @@ export function assertMeteringConfiguration(): void {
   if (isUsageEnforcementRequired() && !process.env.METERING_HMAC_KEY?.trim()) {
     throw new Error("METERING_HMAC_KEY is required when USAGE_ENFORCEMENT=required");
   }
-}
-
-export function isPublicLlmModel(model: LlmModelId): model is PublicLlmModelId {
-  return (PUBLIC_LLM_MODELS as readonly string[]).includes(model);
-}
-
-export function allowedModelsForCredits(remaining: number): PublicLlmModelId[] {
-  if (remaining >= 6) {
-    return [...PUBLIC_LLM_MODELS];
-  }
-  if (remaining >= 2) {
-    return ["mistral-small-latest", "deepseek-flash"];
-  }
-  if (remaining >= 1) {
-    return ["mistral-small-latest"];
-  }
-  return [];
 }
 
 export function usageWarning(remaining: number): UsageWarning {
@@ -145,8 +116,9 @@ function meteringHmacKey(): string {
   throw new Error("METERING_HMAC_KEY is required");
 }
 
-export function requestFingerprint(request: unknown, model: LlmModelId): string {
+/** The request alone: the server may route a retry to another model and it is still the same request. */
+export function requestFingerprint(request: unknown): string {
   return createHmac("sha256", meteringHmacKey())
-    .update(canonicalJson({ request, model }))
+    .update(canonicalJson({ request }))
     .digest("hex");
 }

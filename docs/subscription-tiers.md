@@ -16,17 +16,16 @@ The annual product does not grant 7,200 credits at once. Its allowance is divide
 
 | Result | User credits |
 | --- | ---: |
-| Ready Mistral result | 1 |
-| Ready DeepSeek result | 2 |
-| Ready Gemini result | 6 |
+| Ready cook (every chosen style) | 1 |
+| Ready single-style recook | 1 |
 | Continue or clarification | 0 |
 | Safety response | 0 |
 | Failed operation | 0 |
 | Save, publish, favorite, follow, report, or block | 0 |
 
-The same selected-model tariff applies to a full ready cook and a ready single-style recook. Credits are reserved before provider work and charged only when the operation finishes `ready`. A discarded ready result was still generated and remains charged.
+The tariff is flat: 1 credit whichever model the server routed the cook to, including a fallback. Credits are reserved before provider work and charged only when the operation finishes `ready`. A discarded ready result was still generated and remains charged.
 
-The onboarding taste uses Mistral and does not debit a paid allowance. It cannot be recooked. The server consumes the one-account grant when the first ready result settles, independently of whether that result is later saved.
+The onboarding taste uses the same server-routed models and does not debit a paid allowance. It cannot be recooked. The server consumes the one-account grant when the first ready result settles, independently of whether that result is later saved.
 
 ## Allowance behavior
 
@@ -36,22 +35,25 @@ The onboarding taste uses Mistral and does not debit a paid allowance. It cannot
 - The app warns at **120 credits remaining (20%)** and **60 credits remaining (10%)**. Empty is a persistent state, not a surprise Apple charge.
 - Settings → Subscription shows remaining/granted credits and the reset date.
 - `USAGE_PLAN_VERSION` is `monthly-600-v1`.
-- `CREDIT_TARIFF_VERSION` is `public-models-v1`.
+- `CREDIT_TARIFF_VERSION` is `flat-v1` (it was `public-models-v1`: Mistral 1, DeepSeek 2, Gemini 6 by the model the user picked).
 
 Versioned periods preserve the rules under which they were created. Changing allowance or tariffs requires a new version and an explicit migration/product decision; do not silently reinterpret historical periods.
 
-## Model availability and fallback
+## Model routing and fallback
 
-All three public models are part of the same paid membership:
+The app has no model picker and the request names no model. With 1 or more credits, cook and recook are available; at 0 they are unavailable until reset.
 
-- 6 or more credits: Mistral, DeepSeek, and Gemini are available.
-- 2–5 credits: Mistral and DeepSeek are available.
-- 1 credit: only Mistral is available.
-- 0 credits: cook and recook are unavailable until reset.
+The server picks the model for each step of a cook:
 
-The picker keeps models visible with their costs. If the selected model becomes unaffordable after an authoritative server summary, the client visibly falls back in cheapest-first order, normally to Mistral. The server remains authoritative and rejects an unavailable selection before making a provider call. It never silently runs an expensive model and bills a different tariff.
+| Step | Default | Environment variable |
+| --- | --- | --- |
+| Decision (continue or ready, cleaned thought, metadata) | `mistral-small-latest` | `LLM_DECISION_MODEL` |
+| Writer (every style, lint rewrites, recook) | `deepseek-flash` | `LLM_WRITER_MODEL` |
+| Public-card moderation | `mistral-small-latest` | `LLM_MODERATION_MODEL` |
 
-Provider outages are not credit fallback. A failed provider operation costs 0 user credits and returns an error; it is not automatically retried as a different model.
+Each step has a fallback on another provider (`LLM_DECISION_FALLBACK_MODEL` and the like; by default a Mistral step falls back to DeepSeek Flash, and a DeepSeek or Gemini step to Mistral Small). A retryable provider error (408, 429, 5xx, or a timeout) runs the same call once on the fallback. A ready cook, and the card saved from it, records the writer that answered as `model`; a recook keeps its cook's `model`. Changing a step's model is an environment change, not an app release, and it never changes the tariff.
+
+A failed operation, including one where the fallback also failed, costs 0 user credits and returns an error.
 
 ## Abuse limits
 
@@ -71,7 +73,7 @@ Decision follow-ups can use multiple provider calls without charging user credit
 
 ### Fixed user tariff
 
-The user ledger is intentionally simple and predictable: Mistral 1, DeepSeek 2, Gemini 6. It controls the 600-credit allowance and is independent of the exact token count of one request.
+The user ledger is intentionally simple and predictable: 1 credit per ready cook or recook. It controls the 600-credit allowance and is independent of the model and the exact token count of one request.
 
 It does not represent tokens, provider currency, or a resale of provider credits.
 
@@ -98,6 +100,19 @@ The versioned COGS calculation currently uses:
 - DeepSeek: `$0.03/1M` cache-hit input, `$0.30/1M` other input, and `$1.20/1M` output
 
 These are accounting inputs, not promises to users. Verify them before production launch and create a new `LLM_RATE_VERSION` when provider pricing changes.
+
+## Cost per cook
+
+Measured with `pnpm llm:eval` on the 80 golden thoughts (2026-09-30), Mistral Small deciding, judged by Gemini 3.8 Flash on a 1–5 scale:
+
+| Writer | Per ready cook | Tone | Specific | Distinct | Fresh | Kind | Latency p50 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `deepseek-flash` (default) | $0.00098 | 4.28 | 4.20 | 3.88 | 3.84 | 4.86 | 3.4 s |
+| `gemini-3.8-flash` | $0.00338 | 4.40 | 4.24 | 3.96 | 3.82 | 4.86 | 4.0 s |
+| `deepseek-v4-pro` | $0.00099 | 4.03 | 3.98 | 3.72 | 3.39 | 4.85 | 5.7 s |
+| `mistral-small-latest` | $0.00107 | 3.15 | 3.43 | 3.37 | 2.83 | 4.60 | 3.5 s |
+
+The budget is about $0.002 per ready cook, about $1.20 a month for a subscriber who uses all 600 credits. The default is about $0.001: roughly $0.59 a month at full use, 12% of the monthly price and 18% of the annual price per month before Apple's commission. Continue turns add a little on top and are bounded by the provider-call cap. Gemini writes slightly better on this judge (which may favour its own family) but costs over three times as much. `LLM_WRITER_MODEL` is the knob to raise quality later; re-run the eval before changing it.
 
 ## Provider-side controls
 

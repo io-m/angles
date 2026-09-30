@@ -7,12 +7,14 @@
 import { z } from "zod";
 import {
   CATEGORIES,
+  DISTORTIONS,
   EMOTIONS,
   SAFETY_FLAGS,
   STYLES,
   TIMEFRAMES,
-  intensityBand,
+  matchingFor,
   type Category,
+  type Distortion,
   type Emotion,
   type FollowUpAnswer,
   type ReframeMeta,
@@ -24,7 +26,7 @@ import {
 import {
   generateJson,
   LlmError,
-  timeoutMsUntil,
+  type JsonSchema,
   type LlmCallOptions,
   type LlmModelId,
 } from "./llmClient.js";
@@ -34,10 +36,16 @@ import {
   DECISION_PROMPT,
   DECISION_REPAIR_PROMPT,
   SAFETY_FALLBACK_MESSAGE,
+  SELF_BLAME_LOSS_SKIP_REASON,
   THOUGHT_HARD_MAX_CHARS,
   THOUGHT_HARD_MAX_WORDS,
+  THOUGHT_MAX_CHARS,
+  THOUGHT_MAX_WORDS,
   THOUGHT_MIN_WORDS,
+  THOUGHT_REPAIR_MAX_CHARS,
+  THOUGHT_REPAIR_MAX_WORDS,
 } from "./prompts.js";
+import { screensAsSelfHarm } from "./safetyScreen.js";
 import { slugify, titleCase, normalizeTagSlugs } from "./slugs.js";
 
 export type ContinueDecision = {
@@ -65,11 +73,79 @@ export type RunDecisionInput = {
   forceReady: boolean;
   deadlineAt?: number;
   abortSignal?: AbortSignal;
-} & Pick<LlmCallOptions, "beforeProviderCall" | "usageSink">;
+} & Pick<LlmCallOptions, "beforeProviderCall" | "usageSink" | "fallbackModel">;
 
 const MAX_OPTIONS = 3;
 const MAX_EMOTIONS = 3;
+const MAX_DISTORTIONS = 2;
 const MAX_ECHOED_OUTPUT = 2000;
+/** Triage and safety want the same answer every time. */
+export const DECISION_TEMPERATURE = 0.2;
+
+const nullable = (schema: Record<string, unknown>): Record<string, unknown> => ({
+  anyOf: [schema, { type: "null" }],
+});
+
+/**
+ * Enforced by providers that support it. The parser below still normalises and fails
+ * closed, because DeepSeek only gets plain JSON mode.
+ */
+export const DECISION_JSON_SCHEMA: JsonSchema = {
+  name: "decision",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "kind",
+      "input_language",
+      "safety",
+      "message",
+      "options",
+      "thought_en",
+      "thought_original_cleaned",
+      "styles",
+      "skipped_styles",
+      "category",
+      "proposed_category",
+      "proposed_label",
+      "tags",
+      "intensity",
+      "timeframe",
+      "emotions",
+      "distortions",
+    ],
+    properties: {
+      kind: { type: "string", enum: ["continue", "ready"] },
+      input_language: { type: "string" },
+      safety: { type: "string", enum: [...SAFETY_FLAGS] },
+      message: nullable({ type: "string" }),
+      options: { type: "array", items: { type: "string" } },
+      thought_en: nullable({ type: "string" }),
+      thought_original_cleaned: nullable({ type: "string" }),
+      styles: { type: "array", items: { type: "string", enum: [...STYLES] } },
+      skipped_styles: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["style", "reason"],
+          properties: {
+            style: { type: "string", enum: [...STYLES] },
+            reason: { type: "string" },
+          },
+        },
+      },
+      category: nullable({ type: "string", enum: [...CATEGORIES] }),
+      proposed_category: nullable({ type: "string" }),
+      proposed_label: nullable({ type: "string" }),
+      tags: { type: "array", items: { type: "string" } },
+      intensity: nullable({ type: "integer" }),
+      timeframe: nullable({ type: "string", enum: [...TIMEFRAMES] }),
+      emotions: { type: "array", items: { type: "string", enum: [...EMOTIONS] } },
+      distortions: { type: "array", items: { type: "string", enum: [...DISTORTIONS] } },
+    },
+  },
+};
 
 const skippedStyleSchema = z.object({
   style: z.enum(STYLES),
@@ -97,17 +173,24 @@ const rawDecisionSchema = z.object({
   intensity: z.number().nullish(),
   timeframe: z.string().max(32).nullish(),
   emotions: z.array(z.string().max(32)).nullish(),
+  distortions: z.array(z.string().max(48)).nullish(),
 });
 
 export type ParseOptions = {
   /** Reject a `continue` that is not justified by safety (final turn of an exchange). */
   requireReady?: boolean;
+  /** The last chance: a long cleaned thought is accepted up to the repair cap. */
+  repairPass?: boolean;
 };
 
 export class DecisionParseError extends Error {
-  constructor(message: string) {
+  /** Told to the model on the repair turn. Counts only, never the user's text. */
+  readonly repairHint?: string;
+
+  constructor(message: string, repairHint?: string) {
     super(message);
     this.name = "DecisionParseError";
+    this.repairHint = repairHint;
   }
 }
 
@@ -165,9 +248,10 @@ function isRejectedBounceContinue(decision: Decision, input: RunDecisionInput): 
   );
 }
 
+/** An English frame keeps a small model on the English rules when they typed in another language. */
 export function composeConversation(text: string, followUps: FollowUpAnswer[]): string {
   if (followUps.length === 0) {
-    return text;
+    return `They typed: ${text}`;
   }
 
   const extras = followUps
@@ -249,6 +333,23 @@ function normalizeEmotions(values: readonly string[] | null | undefined): Emotio
   return emotions;
 }
 
+function normalizeDistortions(values: readonly string[] | null | undefined): Distortion[] {
+  const distortions: Distortion[] = [];
+  for (const value of values ?? []) {
+    const candidate = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (
+      (DISTORTIONS as readonly string[]).includes(candidate) &&
+      !distortions.includes(candidate as Distortion)
+    ) {
+      distortions.push(candidate as Distortion);
+    }
+    if (distortions.length === MAX_DISTORTIONS) {
+      break;
+    }
+  }
+  return distortions;
+}
+
 function normalizeTimeframe(value: string | null | undefined): Timeframe {
   const candidate = value?.trim().toLowerCase() ?? "";
   return (TIMEFRAMES as readonly string[]).includes(candidate)
@@ -283,6 +384,34 @@ function normalizeSkipped(values: readonly SkippedStyle[] | null | undefined): S
     }
   }
   return skipped;
+}
+
+/**
+ * A style the model both chose and skipped counts as skipped. Tough love is held back
+ * from someone blaming themselves for a loss even when the model wrote it in.
+ */
+function chooseStyles(
+  requested: Style[],
+  skipped: SkippedStyle[],
+  selfBlameLoss: boolean,
+): { styles: Style[]; skippedStyles: SkippedStyle[] } {
+  let skippedStyles = skipped;
+  const base =
+    requested.length > 0 ? requested : STYLES.filter((style) => !skipped.some((item) => item.style === style));
+  let styles = base.filter((style) => !skipped.some((item) => item.style === style));
+  if (styles.length === 0) {
+    styles = base;
+    skippedStyles = skipped.filter((item) => !base.includes(item.style));
+  }
+
+  if (selfBlameLoss && styles.includes("tough_love") && styles.length > 1) {
+    styles = styles.filter((style) => style !== "tough_love");
+    skippedStyles = [
+      ...skippedStyles.filter((item) => item.style !== "tough_love"),
+      { style: "tough_love", reason: SELF_BLAME_LOSS_SKIP_REASON },
+    ];
+  }
+  return { styles, skippedStyles };
 }
 
 export function parseDecision(raw: string, options: ParseOptions = {}): Decision {
@@ -321,21 +450,26 @@ export function parseDecision(raw: string, options: ParseOptions = {}): Decision
   if (!thought) {
     throw new DecisionParseError("ready decision had no cleaned thought");
   }
-  if (wordCount(thought) > THOUGHT_HARD_MAX_WORDS || thought.length > THOUGHT_HARD_MAX_CHARS) {
-    throw new DecisionParseError("cleaned thought was far over the card budget");
+  const maxWords = options.repairPass ? THOUGHT_REPAIR_MAX_WORDS : THOUGHT_HARD_MAX_WORDS;
+  const maxChars = options.repairPass ? THOUGHT_REPAIR_MAX_CHARS : THOUGHT_HARD_MAX_CHARS;
+  if (wordCount(thought) > maxWords || thought.length > maxChars) {
+    throw new DecisionParseError(
+      "cleaned thought was far over the card budget",
+      `Your "thought_en" was ${wordCount(thought)} words and ${thought.length} characters. Rewrite it in at most ${THOUGHT_MAX_WORDS} words and ${THOUGHT_MAX_CHARS} characters: keep the sting, drop side details.`,
+    );
   }
 
-  const skippedStyles = normalizeSkipped(value.skipped_styles);
-  const requested = normalizeStyles(value.styles);
-  const styles =
-    requested.length > 0
-      ? requested
-      : STYLES.filter((style) => !skippedStyles.some((item) => item.style === style));
+  const { category, proposedCategory, proposedLabel } = normalizeCategory(value.category);
+  const distortions = normalizeDistortions(value.distortions);
+  const { styles, skippedStyles } = chooseStyles(
+    normalizeStyles(value.styles),
+    normalizeSkipped(value.skipped_styles),
+    category === "grief_loss" && distortions.includes("personalizing"),
+  );
   if (styles.length === 0) {
     throw new DecisionParseError("ready decision chose no styles");
   }
 
-  const { category, proposedCategory, proposedLabel } = normalizeCategory(value.category);
   const intensity = normalizeIntensity(value.intensity);
   const tags = normalizeTagSlugs(value.tags);
 
@@ -361,10 +495,11 @@ export function parseDecision(raw: string, options: ParseOptions = {}): Decision
     intensity,
     timeframe: normalizeTimeframe(value.timeframe),
     emotions: normalizeEmotions(value.emotions),
+    distortions,
     safety,
     inputLanguage: normalizeLanguage(value.input_language),
     skippedStyles,
-    matching: { category, tags, intensityBand: intensityBand(intensity) },
+    matching: matchingFor({ category, tags, intensity }),
   };
 
   const original = cleanString(value.thought_original_cleaned);
@@ -392,7 +527,43 @@ function refuseUnsafeReframe(decision: Decision): Decision {
   return decision;
 }
 
+function screenedContinue(inputLanguage: string): ContinueDecision {
+  return {
+    kind: "continue",
+    message: SAFETY_FALLBACK_MESSAGE,
+    options: [],
+    safety: "self_harm",
+    inputLanguage,
+  };
+}
+
+/**
+ * The phrase screen wins over a model that called explicit self-harm wording safe.
+ * A ready decision's cleaned copy is screened too: its English `thought` carries the
+ * English phrases for a language the screen has no list for.
+ */
+function applySafetyScreen(decision: Decision, screened: boolean): Decision {
+  if (decision.kind === "continue") {
+    return screened && decision.safety === "none" ? screenedContinue(decision.inputLanguage) : decision;
+  }
+  const cleaned = [decision.thought, ...(decision.thoughtOriginal ? [decision.thoughtOriginal] : [])];
+  return screened || screensAsSelfHarm(cleaned) ? screenedContinue(decision.meta.inputLanguage) : decision;
+}
+
 export async function runDecision(input: RunDecisionInput): Promise<Decision> {
+  const screened = screensAsSelfHarm([input.text, ...input.followUps.map((item) => item.answer)]);
+  try {
+    return applySafetyScreen(await decide(input), screened);
+  } catch (error) {
+    // A thought the screen caught still gets crisis help when the model fails.
+    if (screened && error instanceof LlmError) {
+      return screenedContinue("en");
+    }
+    throw error;
+  }
+}
+
+async function decide(input: RunDecisionInput): Promise<Decision> {
   const systemPrompt = input.forceReady
     ? `${DECISION_PROMPT}\n\n${DECISION_FORCE_READY}`
     : DECISION_PROMPT;
@@ -403,7 +574,10 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
     abortSignal: input.abortSignal,
     beforeProviderCall: input.beforeProviderCall,
     usageSink: input.usageSink,
-    ...(input.deadlineAt !== undefined ? { timeoutMs: timeoutMsUntil(input.deadlineAt) } : {}),
+    fallbackModel: input.fallbackModel,
+    deadlineAt: input.deadlineAt,
+    temperature: DECISION_TEMPERATURE,
+    jsonSchema: DECISION_JSON_SCHEMA,
   };
 
   const first = await generateJson({
@@ -415,6 +589,7 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
   });
 
   let bounceRejected = false;
+  let repairHint: string | undefined;
   try {
     const decision = refuseUnsafeReframe(
       parseDecision(first, { requireReady: input.forceReady }),
@@ -428,26 +603,27 @@ export async function runDecision(input: RunDecisionInput): Promise<Decision> {
     if (!(error instanceof DecisionParseError) && !(error instanceof SyntaxError)) {
       throw error;
     }
+    repairHint = error instanceof DecisionParseError ? error.repairHint : undefined;
   }
 
+  const repairPrompt = [
+    systemPrompt,
+    DECISION_REPAIR_PROMPT,
+    ...(bounceRejected ? [DECISION_BOUNCE_REPAIR] : []),
+    ...(repairHint ? [repairHint] : []),
+  ].join("\n\n");
   const repaired = await generateJson({
     text: `${conversation}\n\n---\nYour previous reply, which was rejected:\n${first.slice(0, MAX_ECHOED_OUTPUT)}`,
-    systemPrompt: bounceRejected
-      ? `${systemPrompt}\n\n${DECISION_REPAIR_PROMPT}\n\n${DECISION_BOUNCE_REPAIR}`
-      : `${systemPrompt}\n\n${DECISION_REPAIR_PROMPT}`,
-    model: input.model,
-    abortSignal: input.abortSignal,
+    systemPrompt: repairPrompt,
     callKind: "decision",
     attempt: 2,
-    beforeProviderCall: input.beforeProviderCall,
-    usageSink: input.usageSink,
-    ...(input.deadlineAt !== undefined ? { timeoutMs: timeoutMsUntil(input.deadlineAt) } : {}),
+    ...callOptions,
   });
 
   try {
     // The second pass accepts a `continue` even on a forced turn: a stubborn
     // model gets to keep the conversation rather than fail the request.
-    return refuseUnsafeReframe(parseDecision(repaired));
+    return refuseUnsafeReframe(parseDecision(repaired, { repairPass: true }));
   } catch (error) {
     if (error instanceof DecisionParseError || error instanceof SyntaxError) {
       throw new LlmError("Decision reply could not be parsed");

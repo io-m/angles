@@ -41,6 +41,22 @@ export const SAFETY_FLAGS = ["none", "self_harm", "harm_others", "abuse"] as con
 
 export type SafetyFlag = (typeof SAFETY_FLAGS)[number];
 
+/** Closed set of thinking traps the decision call may name. The writer pushes against them. */
+export const DISTORTIONS = [
+  "catastrophizing",
+  "mind_reading",
+  "all_or_nothing",
+  "overgeneralizing",
+  "personalizing",
+  "should_statements",
+  "labeling",
+  "fortune_telling",
+  "emotional_reasoning",
+  "discounting_positive",
+] as const;
+
+export type Distortion = (typeof DISTORTIONS)[number];
+
 export const INTENSITY_BANDS = ["low", "mid", "high"] as const;
 
 export type IntensityBand = (typeof INTENSITY_BANDS)[number];
@@ -50,18 +66,37 @@ export type FollowUpAnswer = {
   answer: string;
 };
 
-export type ReframeRequest = {
-  text: string;
-  followUps?: FollowUpAnswer[];
-  styles?: Style[];
-  model?: string;
+/** The signed cook a recook starts from, echoed exactly as `POST /reframe` returned it. */
+export type RecookSource = {
+  thought: string;
+  thoughtOriginal?: string;
+  meta: Omit<ReframeMeta, "matching"> & { matching?: MatchingKey };
+  model: string;
+  signature: string;
+};
+
+export type RecookRequest = {
+  style: Style;
+  cook: RecookSource;
+  /** The signed answer being replaced. Absent for a style the cook did not write. */
+  previous?: { reframe: string; reframeOriginal?: string; signature: string };
+};
+
+/** A compose turn sends `text`; a recook sends `recook` and skips the decision call. */
+export type ReframeRequest = (
+  | { text: string; followUps?: FollowUpAnswer[] }
+  | { recook: RecookRequest }
+) & {
   /** Device region (ISO 3166-1 alpha-2). Picks crisis contacts; never sent to the model. */
   region?: string;
 };
 
 export type ReframeResult = {
   style: Style;
+  /** English. The only version anyone but the author sees. */
   reframe: string;
+  /** The same answer in `meta.inputLanguage`, when that is not English. */
+  reframeOriginal?: string;
 };
 
 export type SkippedStyle = {
@@ -84,6 +119,8 @@ export type ReframeMeta = {
   intensity: number;
   timeframe: Timeframe;
   emotions: Emotion[];
+  /** 0–2 thinking traps the thought shows. Signed with the cook; not stored on the card. */
+  distortions: Distortion[];
   safety: SafetyFlag;
   inputLanguage: string;
   skippedStyles: SkippedStyle[];
@@ -106,7 +143,7 @@ export type ReframeUsage = {
   granted: number;
   resetsAt: string | null;
   warning: "normal" | "low" | "critical" | "empty";
-  allowedModels: Array<"mistral-small-latest" | "deepseek-flash" | "gemini-3.8-flash">;
+  /** What one cook or recook costs. Flat: the server picks the model. */
   creditCost: number;
 };
 
@@ -121,7 +158,9 @@ export type ReadyResponse = {
   thoughtOriginal?: string;
   results: SignedReframeResult[];
   meta: ReframeMeta;
-  /** Signs `thought`, `thoughtOriginal`, and `meta` (minus `matching`). */
+  /** The writer that answered. `POST /cards` echoes it; the phone never shows it. */
+  model: string;
+  /** Signs `thought`, `thoughtOriginal`, `model`, and `meta` (minus `matching`). */
   signature: string;
   usage: ReframeUsage;
 };
@@ -133,8 +172,7 @@ export type ProfileUsageBody = {
   periodEnd: string | null;
   resetsAt: string | null;
   warning: ReframeUsage["warning"];
-  allowedModels: ReframeUsage["allowedModels"];
-  creditCost: Record<ReframeUsage["allowedModels"][number], number>;
+  creditCost: number;
 };
 
 export type ReframeResponse = ContinueResponse | ReadyResponse;
@@ -169,11 +207,6 @@ export type AuthorCardsResponse = {
   cards: StoredCard[];
 };
 
-export type ModelCardsResponse = {
-  model: string;
-  cards: StoredCard[];
-};
-
 export type ProfileBody = {
   initials: string;
   avatarUrl?: string;
@@ -202,6 +235,8 @@ export type SubscriptionBody = {
 export type StoredReframeResult = {
   style: Style;
   reframe: string;
+  /** Sent to the author only; everyone else reads the English. */
+  reframeOriginal?: string;
   isFavorite: boolean;
   favoritedAt?: string;
   /**
@@ -309,4 +344,8 @@ export function intensityBand(intensity: number): IntensityBand {
     return "mid";
   }
   return "high";
+}
+
+export function matchingFor(meta: Pick<ReframeMeta, "category" | "tags" | "intensity">): MatchingKey {
+  return { category: meta.category, tags: meta.tags, intensityBand: intensityBand(meta.intensity) };
 }

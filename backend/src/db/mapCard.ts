@@ -115,6 +115,10 @@ export function toStoredCard(
           reframe: item.reframe,
           isFavorite: item.isFavorite,
         };
+        // The public card is English; only its author reads the answer in their language.
+        if (item.reframeOriginal) {
+          stored.reframeOriginal = item.reframeOriginal;
+        }
         if (item.favoritedAt) {
           stored.favoritedAt = item.favoritedAt.toISOString();
         }

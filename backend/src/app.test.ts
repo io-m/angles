@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DECISION_PROMPT, STYLE_BATCH_PROMPT, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
-import { signResult, verifyCook, type SignableMeta } from "./lib/cookSignature.js";
+import { signCook, signResult, verifyCook, type SignableMeta } from "./lib/cookSignature.js";
 import { CATEGORIES, STYLES, type Style } from "./types/index.js";
 
 vi.mock("./lib/llmClient.js", async (importOriginal) => {
@@ -30,12 +30,7 @@ vi.mock("./db/metering.js", () => {
     periodEnd: "2026-10-01T00:00:00.000Z",
     resetsAt: "2026-10-01T00:00:00.000Z",
     warning: "normal" as const,
-    allowedModels: ["mistral-small-latest", "deepseek-flash", "gemini-3.8-flash"] as const,
-    creditCost: {
-      "mistral-small-latest": 1,
-      "deepseek-flash": 2,
-      "gemini-3.8-flash": 6,
-    },
+    creditCost: 1,
   };
   return {
     MeteringError,
@@ -81,7 +76,8 @@ vi.mock("./db/client.js", () => ({
 
 const { app } = await import("./app.js");
 const { DEV_USER_ID } = await import("./lib/authStub.js");
-const { generateJson, generateReframe, STYLE_BATCH_MAX_OUTPUT_TOKENS } = await import("./lib/llmClient.js");
+const { generateJson, generateReframe, LlmError } = await import("./lib/llmClient.js");
+const { writerMaxOutputTokens } = await import("./lib/cook.js");
 const { probeDatabase } = await import("./db/client.js");
 const { findReframeReplay, finishMeterOperation, MeteringError, startMeterOperation } =
   await import("./db/metering.js");
@@ -220,7 +216,6 @@ type ResponseUsage = {
   granted: number;
   resetsAt: string | null;
   warning: string;
-  allowedModels: string[];
   creditCost: number;
 };
 type ContinueBody = {
@@ -235,7 +230,8 @@ type ReadyBody = {
   kind: string;
   thought: string;
   thoughtOriginal?: string;
-  results: { style: Style; reframe: string; signature: string }[];
+  results: { style: Style; reframe: string; reframeOriginal?: string; signature: string }[];
+  model: string;
   signature: string;
   usage: ResponseUsage;
   meta: {
@@ -289,6 +285,7 @@ describe("GET /health", () => {
 
 describe("POST /reframe", () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     delete process.env.USAGE_ENFORCEMENT;
     vi.mocked(generateJson).mockReset();
     vi.mocked(generateReframe).mockReset();
@@ -526,7 +523,10 @@ describe("POST /reframe", () => {
     const batchCall = vi.mocked(generateJson).mock.calls.find(([call]) =>
       isStyleBatchPrompt(call.systemPrompt),
     );
-    expect(batchCall?.[0].maxOutputTokens).toBe(STYLE_BATCH_MAX_OUTPUT_TOKENS);
+    expect(batchCall?.[0].maxOutputTokens).toBe(writerMaxOutputTokens(STYLES.length));
+    expect(batchCall?.[0].maxOutputTokens).toBeGreaterThanOrEqual(
+      STYLES.length * Math.ceil(REFRAME_HARD_MAX_CHARS / 3),
+    );
   });
 
   it("keeps the cleaned original when the input was not English", async () => {
@@ -617,13 +617,17 @@ describe("POST /reframe", () => {
     expect(generateJson).toHaveBeenCalledTimes(3);
   });
 
-  it("trims a long batch reframe without another provider call", async () => {
+  it("trims a long batch reframe to the card and tries one targeted rewrite", async () => {
     stubDecision(readyDecision({ styles: ["stoic"], skipped_styles: [] }));
     stubStyleBatch(styleBatch({ stoic: "word ".repeat(120) }));
-    const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+    vi.mocked(generateReframe).mockRejectedValueOnce(new LlmError("provider down"));
+    const response = await post({ text: LONG_TEXT });
+    const body = (await jsonOf(response)) as ReadyBody;
 
+    expect(response.status).toBe(200);
     expect(generateJson).toHaveBeenCalledTimes(2);
-    expect(generateReframe).not.toHaveBeenCalled();
+    expect(generateReframe).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(generateReframe).mock.calls[0]?.[0].callKind).toBe("rewrite");
     expect(body.results[0]?.reframe.length).toBeLessThanOrEqual(REFRAME_HARD_MAX_CHARS);
   });
 
@@ -639,27 +643,209 @@ describe("POST /reframe", () => {
     expect(reframe.endsWith(".")).toBe(true);
   });
 
-  it("returns one style on a recook", async () => {
-    stubDecision(readyDecision());
+  describe("recook", () => {
+    const NEW_HUMOR =
+      "Your brain replayed the interview so often it now qualifies as a streaming series, and nobody renewed it.";
 
-    const body = (await jsonOf(
-      await post({ text: LONG_TEXT, styles: ["humorous"] }),
-    )) as ReadyBody;
+    async function signedCook(decisionOverrides: DecisionOverrides = {}): Promise<ReadyBody> {
+      stubDecision(readyDecision(decisionOverrides));
+      const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+      vi.mocked(generateJson).mockClear();
+      vi.mocked(generateReframe).mockClear();
+      return body;
+    }
 
-    expect(body.results).toEqual([
-      {
-        style: "humorous",
-        reframe: "humorous reframe",
-        signature: signResult(
-          DEV_USER_ID,
-          LONG_TEXT,
-          "humorous",
-          "humorous reframe",
-          "mistral-small-latest",
-        ),
-      },
-    ]);
-    expect(generateReframe).toHaveBeenCalledTimes(1);
+    function recookOf(cook: ReadyBody, style: Style, overrides: Record<string, unknown> = {}) {
+      const previous = cook.results.find((item) => item.style === style);
+      return {
+        recook: {
+          style,
+          cook: {
+            thought: cook.thought,
+            ...(cook.thoughtOriginal ? { thoughtOriginal: cook.thoughtOriginal } : {}),
+            meta: cook.meta,
+            model: cook.model,
+            signature: cook.signature,
+          },
+          ...(previous
+            ? {
+                previous: {
+                  reframe: previous.reframe,
+                  ...(previous.reframeOriginal ? { reframeOriginal: previous.reframeOriginal } : {}),
+                  signature: previous.signature,
+                },
+              }
+            : {}),
+          ...overrides,
+        },
+      };
+    }
+
+    it("writes one new answer from the signed cook without a decision call", async () => {
+      const cook = await signedCook();
+      vi.mocked(generateReframe).mockResolvedValueOnce(NEW_HUMOR);
+
+      const response = await post(recookOf(cook, "humorous"));
+      const body = (await jsonOf(response)) as ReadyBody;
+
+      expect(response.status).toBe(200);
+      expect(generateJson).not.toHaveBeenCalled();
+      expect(generateReframe).toHaveBeenCalledTimes(1);
+      const call = vi.mocked(generateReframe).mock.calls[0]?.[0];
+      expect(call?.temperature).toBe(0.95);
+      expect(call?.text).toContain("humorous reframe");
+      expect(call?.text).toContain("different technique");
+      expect(body.results).toEqual([
+        {
+          style: "humorous",
+          reframe: NEW_HUMOR,
+          signature: signResult(DEV_USER_ID, cook.thought, "humorous", NEW_HUMOR),
+        },
+      ]);
+      expect(body.thought).toBe(cook.thought);
+      expect(body.model).toBe(cook.model);
+      expect(body.signature).toBe(cook.signature);
+      expect(body.usage.creditsUsed).toBe(1);
+      expect(vi.mocked(startMeterOperation).mock.calls.at(-1)?.[0].kind).toBe("recook");
+    });
+
+    it("answers a skipped style with its reason, without a model call or a charge", async () => {
+      const cook = await signedCook({
+        styles: ["stoic", "optimistic"],
+        skipped_styles: [{ style: "humorous", reason: "A joke would land wrong on a loss this fresh." }],
+      });
+
+      const body = (await jsonOf(await post(recookOf(cook, "humorous")))) as ContinueBody;
+
+      expect(body).toMatchObject({
+        kind: "continue",
+        message: "A joke would land wrong on a loss this fresh.",
+        options: [],
+        safety: "none",
+      });
+      expect(body.usage.creditsUsed).toBe(0);
+      expect(generateJson).not.toHaveBeenCalled();
+      expect(generateReframe).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["thought", (cook: ReadyBody) => ({ cook: { ...recookOf(cook, "stoic").recook.cook, thought: "Something never cooked." } })],
+      ["meta", (cook: ReadyBody) => ({ cook: { ...recookOf(cook, "stoic").recook.cook, meta: { ...cook.meta, category: "money" } } })],
+      ["model", (cook: ReadyBody) => ({ cook: { ...recookOf(cook, "stoic").recook.cook, model: "gemini-3.8-flash" } })],
+      ["previous answer", () => ({ previous: { reframe: "Words the server never wrote.", signature: "forged" } })],
+    ])("rejects a recook with a tampered %s before any model call", async (_field, override) => {
+      const cook = await signedCook();
+      vi.mocked(startMeterOperation).mockClear();
+
+      const response = await post(recookOf(cook, "stoic", override(cook)));
+
+      expect(response.status).toBe(400);
+      await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+      expect(startMeterOperation).not.toHaveBeenCalled();
+      expect(generateReframe).not.toHaveBeenCalled();
+    });
+
+    it("rejects a recook signed for another account", async () => {
+      const cook = await signedCook();
+      const forged = signCook({
+        ownerId: "00000000-0000-4000-8000-000000000199",
+        thought: cook.thought,
+        thoughtOriginal: cook.thoughtOriginal,
+        model: cook.model,
+        meta: (({ matching: _matching, ...rest }) => rest)(cook.meta) as SignableMeta,
+      });
+      const body = recookOf(cook, "stoic");
+      const response = await post({ recook: { ...body.recook, cook: { ...body.recook.cook, signature: forged } } });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects text and recook together", async () => {
+      const cook = await signedCook();
+      const response = await post({ text: LONG_TEXT, ...recookOf(cook, "stoic") });
+
+      expect(response.status).toBe(400);
+      await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
+    it("signs both versions of a bilingual cook, and a recook must echo the pair it replaces", async () => {
+      const pairs: Record<Style, { en: string; local: string }> = {
+        stoic: {
+          en: "One rough interview is a single afternoon, not a verdict on your whole career. Keep the lesson and let the tape stop.",
+          local: "Jedan loš intervju je jedno poslijepodne, a ne presuda cijeloj karijeri. Zadrži lekciju i pusti snimku da stane.",
+        },
+        optimistic: {
+          en: "Every shaky answer showed you exactly which stories to tighten, so the next panel meets a sharper version of you.",
+          local: "Svaki drhtavi odgovor pokazao ti je koje priče treba zategnuti, pa sljedeća komisija upoznaje oštriju verziju tebe.",
+        },
+        humorous: {
+          en: "Your brain has now rewatched that interview more times than any streaming hit, and still nobody is renewing the show.",
+          local: "Mozak je taj intervju pogledao više puta od bilo koje serije, a nitko i dalje ne produljuje sezonu.",
+        },
+        tough_love: {
+          en: "Replaying it will not change the outcome. Write down the two answers you fumbled, fix them tonight, and send the thank-you note.",
+          local: "Vrtjeti to neće promijeniti ishod. Zapiši dva odgovora koja si zeznuo, popravi ih večeras i pošalji zahvalu.",
+        },
+      };
+      const pair = (style: Style) => pairs[style];
+      const fresh = {
+        en: "The interview happened once; the replay is happening hourly. Only one of those is still up to you tonight.",
+        local: "Intervju se dogodio jednom, a vrtiš ga svaki sat. Samo je jedno od toga još uvijek na tebi večeras.",
+      };
+      stubDecision(
+        readyDecision({
+          input_language: "hr",
+          thought_original_cleaned: "Upropastio sam intervju i stalno vrtim svaki drhtavi odgovor.",
+        }),
+        JSON.stringify(fresh),
+      );
+      stubStyleBatch(
+        JSON.stringify({
+          plan: Object.fromEntries(STYLES.map((style) => [style, `${style}: plan`])),
+          ...Object.fromEntries(STYLES.map((style) => [style, pair(style)])),
+        }),
+      );
+
+      const cook = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+
+      const stoic = cook.results.find((item) => item.style === "stoic");
+      expect(stoic?.reframeOriginal).toBe(pair("stoic").local);
+      expect(stoic?.signature).toBe(
+        signResult(DEV_USER_ID, cook.thought, "stoic", pair("stoic").en, pair("stoic").local),
+      );
+      expect(stoic?.signature).not.toBe(signResult(DEV_USER_ID, cook.thought, "stoic", pair("stoic").en));
+
+      const withoutLocal = recookOf(cook, "stoic", {
+        previous: { reframe: stoic?.reframe, signature: stoic?.signature },
+      });
+      expect((await post(withoutLocal)).status).toBe(400);
+
+      const recooked = recookOf(cook, "stoic", {
+        previous: { reframe: stoic?.reframe, reframeOriginal: stoic?.reframeOriginal, signature: stoic?.signature },
+      });
+      const body = (await jsonOf(await post(recooked))) as ReadyBody;
+      expect(body.results).toEqual([
+        {
+          style: "stoic",
+          reframe: fresh.en,
+          reframeOriginal: fresh.local,
+          signature: signResult(DEV_USER_ID, cook.thought, "stoic", fresh.en, fresh.local),
+        },
+      ]);
+    });
+
+    it("rewrites a recook that only rewords the answer it replaces", async () => {
+      const cook = await signedCook();
+      vi.mocked(generateReframe)
+        .mockResolvedValueOnce("humorous reframe again")
+        .mockResolvedValueOnce(NEW_HUMOR);
+
+      const body = (await jsonOf(await post(recookOf(cook, "humorous")))) as ReadyBody;
+
+      expect(generateReframe).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(generateReframe).mock.calls[1]?.[0].callKind).toBe("rewrite");
+      expect(body.results[0]?.reframe).toBe(NEW_HUMOR);
+    });
   });
 
   it("signs a cook so the save verifies, and a tampered save does not", async () => {
@@ -671,13 +857,14 @@ describe("POST /reframe", () => {
       ownerId: DEV_USER_ID,
       thought: body.thought,
       thoughtOriginal: body.thoughtOriginal,
-      model: "mistral-small-latest",
+      model: body.model,
       meta: meta as SignableMeta,
       signature: body.signature,
       results: body.results,
     };
 
     expect(verifyCook(cook)).toBe(true);
+    expect(verifyCook({ ...cook, model: "gemini-3.8-flash" })).toBe(false);
     expect(verifyCook({ ...cook, ownerId: "00000000-0000-4000-8000-000000000199" })).toBe(false);
     expect(verifyCook({ ...cook, thought: `${cook.thought} Also post this.` })).toBe(false);
     expect(verifyCook({ ...cook, meta: { ...cook.meta, safety: "self_harm" } })).toBe(false);
@@ -687,40 +874,6 @@ describe("POST /reframe", () => {
         results: cook.results.map((item) => ({ ...item, reframe: `${item.reframe}!` })),
       }),
     ).toBe(false);
-  });
-
-  it("answers a recook of a now-inappropriate style with continue", async () => {
-    stubDecision(
-      readyDecision({
-        styles: ["stoic", "optimistic"],
-        skipped_styles: [
-          { style: "humorous", reason: "A joke would land wrong on a loss this fresh." },
-        ],
-      }),
-    );
-
-    const body = (await jsonOf(
-      await post({ text: LONG_TEXT, styles: ["humorous"] }),
-    )) as ContinueBody;
-
-    expect(body).toMatchObject({
-      kind: "continue",
-      message: "A joke would land wrong on a loss this fresh.",
-      options: [],
-      safety: "none",
-    });
-    expect(generateReframe).not.toHaveBeenCalled();
-  });
-
-  it("dedupes requested styles", async () => {
-    stubDecision(readyDecision());
-
-    const body = (await jsonOf(
-      await post({ text: LONG_TEXT, styles: ["stoic", "stoic"] }),
-    )) as ReadyBody;
-
-    expect(body.results).toMatchObject([{ style: "stoic", reframe: "stoic reframe" }]);
-    expect(generateReframe).toHaveBeenCalledTimes(1);
   });
 
   it("forces ready once the exchange has three follow-ups", async () => {
@@ -756,36 +909,66 @@ describe("POST /reframe", () => {
     expect(generateJson).toHaveBeenCalledTimes(1);
   });
 
-  it("passes the selected model to every call in the request", async () => {
+  it("routes the decision and the writer to their own configured models", async () => {
+    vi.stubEnv("LLM_DECISION_MODEL", "gemini-3.8-flash");
+    vi.stubEnv("LLM_WRITER_MODEL", "deepseek-v4-pro");
+    vi.stubEnv("LLM_WRITER_FALLBACK_MODEL", "mistral-small-latest");
     stubDecision(readyDecision());
 
-    const response = await post({ text: LONG_TEXT, model: "gemini-3.8-flash" });
+    const response = await post({ text: LONG_TEXT });
 
     expect(response.status).toBe(200);
-    expect(
-      vi.mocked(generateJson).mock.calls.every(([call]) => call.model === "gemini-3.8-flash"),
-    ).toBe(true);
+    const [decisionCall, batchCall] = vi.mocked(generateJson).mock.calls.map(([call]) => call);
+    expect(decisionCall?.model).toBe("gemini-3.8-flash");
+    expect(batchCall?.model).toBe("deepseek-v4-pro");
+    expect(batchCall?.fallbackModel).toBe("mistral-small-latest");
+    const body = (await jsonOf(response)) as ReadyBody;
+    expect(body.model).toBe("deepseek-v4-pro");
 
     vi.mocked(generateJson).mockClear();
     vi.mocked(generateReframe).mockClear();
-    stubReframes();
-    stubDecision(readyDecision());
+    vi.mocked(generateReframe).mockResolvedValueOnce(
+      "Your brain replayed the interview so often it now qualifies as a streaming series, and nobody renewed it.",
+    );
+    const humorous = body.results.find((item) => item.style === "humorous");
+    await post({
+      recook: {
+        style: "humorous",
+        cook: { thought: body.thought, meta: body.meta, model: body.model, signature: body.signature },
+        previous: { reframe: humorous?.reframe, signature: humorous?.signature },
+      },
+    });
 
-    await post({ text: LONG_TEXT, styles: ["humorous"], model: "gemini-3.8-flash" });
-
-    expect(vi.mocked(generateJson).mock.calls[0]?.[0].model).toBe("gemini-3.8-flash");
+    expect(generateJson).not.toHaveBeenCalled();
     expect(generateReframe).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gemini-3.8-flash" }),
+      expect.objectContaining({ model: "deepseek-v4-pro", fallbackModel: "mistral-small-latest" }),
     );
   });
 
-  it("passes the selected default model when the body has none", async () => {
-    stubDecision(readyDecision());
+  it("signs and returns the fallback writer when it answered", async () => {
+    vi.mocked(generateJson).mockImplementation(async (input) => {
+      if (isStyleBatchPrompt(input.systemPrompt)) {
+        input.onAnsweredBy?.("mistral-small-latest");
+        return styleBatch();
+      }
+      return readyDecision();
+    });
 
-    await post({ text: LONG_TEXT });
+    const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+    const { matching: _matching, ...meta } = body.meta;
 
-    expect(vi.mocked(generateJson).mock.calls[0]?.[0].model).toBe("mistral-small-latest");
-    expect(generateReframe).not.toHaveBeenCalled();
+    expect(body.model).toBe("mistral-small-latest");
+    expect(
+      verifyCook({
+        ownerId: DEV_USER_ID,
+        thought: body.thought,
+        thoughtOriginal: body.thoughtOriginal,
+        model: "mistral-small-latest",
+        meta: meta as SignableMeta,
+        signature: body.signature,
+        results: body.results,
+      }),
+    ).toBe(true);
   });
 
   it("never sends the raw text to a style call", async () => {
@@ -1013,16 +1196,16 @@ describe("POST /reframe", () => {
     expect(body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("rejects an unknown model", async () => {
-    const response = await post({ text: LONG_TEXT, model: "nope" });
+  it("rejects a model chosen by the client", async () => {
+    const response = await post({ text: LONG_TEXT, model: "gemini-3.8-flash" });
 
     expect(response.status).toBe(400);
     const body = (await jsonOf(response)) as { code: string };
     expect(body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("rejects unknown styles", async () => {
-    const response = await post({ text: LONG_TEXT, styles: ["nope"] });
+  it("rejects a styles list: the decision picks the styles", async () => {
+    const response = await post({ text: LONG_TEXT, styles: ["stoic"] });
 
     expect(response.status).toBe(400);
     const body = (await jsonOf(response)) as { code: string };

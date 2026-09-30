@@ -285,7 +285,6 @@ private enum LoginSample {
         isPublic: false,
         isOwner: false,
         authorInitials: "A",
-        model: .mistral,
         meta: workMeta(tags: ["meeting"], emotions: [.shame, .fear])
     )
 
@@ -318,7 +317,6 @@ private enum LoginSample {
         isPublic: false,
         isOwner: false,
         authorInitials: "R",
-        model: .mistral,
         meta: workMeta(tags: ["credit"], emotions: [.anger, .shame])
     )
 
@@ -351,7 +349,6 @@ private enum LoginSample {
         isPublic: false,
         isOwner: false,
         authorInitials: "M",
-        model: .mistral,
         meta: workMeta(tags: ["hours"], emotions: [.overwhelm, .sadness])
     )
 

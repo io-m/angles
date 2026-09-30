@@ -12,8 +12,8 @@ The production feature work is implemented in the repository. The app is not rea
 - Account-scoped onboarding: Apple sign-in first, one server-tracked taste while both taste timestamps are empty, a private taste save, then the hard paywall.
 - StoreKit 2 annual and monthly purchase, restore, renewal/expiry handling, Settings subscription status, plan management, and cancellation handoff to Apple.
 - Server-side verification of signed App Store transactions and Server Notifications V2, account-bound entitlements, idempotent notification processing, and subscription enforcement after the taste.
-- A server-owned allowance of 600 credits per monthly membership period for both products. Mistral costs 1 credit, DeepSeek 2, and Gemini 6 for a ready result; continue, safety, and failed operations cost 0 user credits.
-- All three public models in the picker with credit-aware availability, fallback to an affordable model, 20% and 10% warnings, reset information, request idempotency, and daily/burst abuse limits.
+- A server-owned allowance of 600 credits per monthly membership period for both products. A ready cook or recook costs 1 credit; continue, safety, and failed operations cost 0 user credits.
+- Server-side model routing per step with a fallback provider, 20% and 10% warnings, reset information, request idempotency, and daily/burst abuse limits. The app has no model picker.
 - Provider token usage and estimated/reported company cost recorded for every real provider attempt without storing thought text in the metering ledger.
 - Public/private cards, community Home, follows, per-angle favorites, reporting, blocking/unblocking, and pre-publication moderation.
 - Production hardening: runtime migrations before schema checks, production configuration fail-fast validation, a production seed guard, a non-root container with a health check, and Postgres-backed backend CI.

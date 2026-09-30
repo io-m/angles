@@ -69,7 +69,6 @@ struct ReframeCardView: View, Equatable {
     var onReport: (ReportReason) -> Void = { _ in }
     var onBlock: () -> Void = {}
     var onOpenAuthor: (() -> Void)? = nil
-    var onOpenModel: (() -> Void)? = nil
     var onToggleFollow: (() -> Void)? = nil
     var offersOwnerPrivacyMenu = false
 
@@ -86,9 +85,11 @@ struct ReframeCardView: View, Equatable {
     @State private var selectedStyle: Style?
     @State private var favoriteHaptic = 0
     @State private var favoriteFlipHaptic = 0
+    @State private var cardActionsHaptic = 0
     @State private var heartBurst = 0
     @State private var heartScale: CGFloat = 1
     @State private var isFavoriteFlipped = false
+    @State private var showCardActions = false
     @State private var showDeleteConfirm = false
     @State private var showReportReasons = false
     @State private var showBlockConfirm = false
@@ -144,11 +145,18 @@ struct ReframeCardView: View, Equatable {
         showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought
     }
 
-    private var hasOriginal: Bool {
-        guard let original = card.thoughtOriginal else {
-            return false
+    /// Only the author ever has a `reframeOriginal`; everyone else reads the English.
+    private var displayedAnswer: String? {
+        activeSlide.map { slide in
+            showingOriginal ? (slide.result.reframeOriginal ?? slide.result.reframe) : slide.result.reframe
         }
-        return original != card.thought
+    }
+
+    private var hasOriginal: Bool {
+        if let original = card.thoughtOriginal, original != card.thought {
+            return true
+        }
+        return visibleSlides.contains { $0.result.reframeOriginal != nil }
     }
 
     private var showsMenu: Bool {
@@ -214,8 +222,17 @@ struct ReframeCardView: View, Equatable {
     private var menuedCard: some View {
         if showsMenu {
             cardBody
-                .contextMenu {
-                    cardMenuItems
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.45, maximumDistance: 16)
+                        .onEnded { _ in
+                            cardActionsHaptic += 1
+                            showCardActions = true
+                        }
+                )
+                .sensoryFeedback(.impact(weight: .light), trigger: cardActionsHaptic)
+                .popover(isPresented: $showCardActions, attachmentAnchor: .point(.topTrailing)) {
+                    cardActionsPanel
+                        .presentationCompactAdaptation(.popover)
                 }
         } else {
             cardBody
@@ -240,7 +257,7 @@ struct ReframeCardView: View, Equatable {
 
             ReframeCopyStack(
                 thought: displayedThought,
-                answer: activeSlide?.result.reframe,
+                answer: displayedAnswer,
                 answerColor: activeAppearance.responseInk
             )
 
@@ -275,7 +292,7 @@ struct ReframeCardView: View, Equatable {
                 guard !tallReplyScrolls, newValue > 1, abs(newValue - tallIdealHeight) > 1 else { return }
                 tallIdealHeight = newValue
             }
-            .onChange(of: activeSlide?.result.reframe) { _, _ in
+            .onChange(of: displayedAnswer) { _, _ in
                 tallIdealHeight = 0
             }
     }
@@ -291,7 +308,7 @@ struct ReframeCardView: View, Equatable {
 
             ReframeCopyStack(
                 thought: displayedThought,
-                answer: activeSlide?.result.reframe,
+                answer: displayedAnswer,
                 answerColor: activeAppearance.responseInk,
                 thoughtFont: ReframeCardMetrics.tallThoughtFont,
                 answerFont: ReframeCardMetrics.tallAnswerFont,
@@ -299,10 +316,9 @@ struct ReframeCardView: View, Equatable {
                 chromeInset: ReframeCardMetrics.tallRhythm,
                 sectionSpacing: ReframeCardMetrics.tallSectionSpacing,
                 answerVerticalPadding: ReframeCardMetrics.tallAnswerVerticalPadding,
-                model: card.model,
-                modelFill: activeAppearance.ink,
-                scrollsAnswer: scrollsAnswer,
-                onOpenModel: onOpenModel
+                showsWriterMark: true,
+                writerMarkFill: activeAppearance.ink,
+                scrollsAnswer: scrollsAnswer
             )
             .frame(maxHeight: scrollsAnswer ? .infinity : nil, alignment: .top)
 
@@ -313,7 +329,7 @@ struct ReframeCardView: View, Equatable {
     private var favoriteFlipCard: some View {
         FlipStack(progress: isFavoriteFlipped ? 1 : 0) {
             favoriteFace(
-                copy: activeSlide?.result.reframe ?? "",
+                copy: displayedAnswer ?? "",
                 font: ReframeCardMetrics.answerFont,
                 foreground: activeAppearance.responseInk
             )
@@ -544,8 +560,9 @@ struct ReframeCardView: View, Equatable {
         badgeIconSize: CGFloat = 12,
         badgeFont: Font = .caption.weight(.medium)
     ) -> some View {
-        Menu {
-            cardMenuItems
+        Button {
+            cardActionsHaptic += 1
+            showCardActions = true
         } label: {
             HStack(spacing: 8) {
                 if let lifeArea = card.lifeAreaPresentation {
@@ -568,7 +585,6 @@ struct ReframeCardView: View, Equatable {
             .frame(minHeight: ReframeCardMetrics.controlSize, alignment: .trailing)
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
         .accessibilityLabel("Card actions")
     }
@@ -746,51 +762,66 @@ struct ReframeCardView: View, Equatable {
         max(0, (ReframeCardMetrics.controlSize - glyphSize) / 2)
     }
 
-    @ViewBuilder
-    private var cardMenuItems: some View {
-        if hasOriginal {
-            Button(action: toggleOriginalLanguage) {
-                Label(
+    private var cardActionsPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if hasOriginal {
+                cardActionRow(
                     showingOriginal ? "Show English" : "Show original",
                     systemImage: showingOriginal ? "character.bubble.fill" : "character.bubble"
-                )
+                ) {
+                    showCardActions = false
+                    toggleOriginalLanguage()
+                }
+                actionDivider()
             }
-        }
 
-        switch menuRole {
-        case .feed:
-            communitySafetyMenuItems
-        case .savedFromFeed:
-            communitySafetyMenuItems
-
-            cardDestructiveMenuButton(
-                "Remove from board",
-                systemImage: "rectangle.badge.minus",
-                action: onRemoveFromBoard
-            )
-        case .owner:
-            Button {
-                onSetPublic(!card.isPublic)
-            } label: {
-                Label(
+            switch menuRole {
+            case .feed:
+                communitySafetyRows
+            case .savedFromFeed:
+                communitySafetyRows
+                actionDivider()
+                cardActionRow(
+                    "Remove from board",
+                    systemImage: "rectangle.badge.minus",
+                    color: Self.blockRed
+                ) {
+                    runAfterActionsClose(onRemoveFromBoard)
+                }
+            case .owner:
+                cardActionRow(
                     card.isPublic ? "Make private" : "Make public",
                     systemImage: card.isPublic ? "lock.fill" : "globe"
-                )
-            }
-
-            cardDestructiveMenuButton("Delete", systemImage: "trash") {
-                showDeleteConfirm = true
+                ) {
+                    let makePublic = !card.isPublic
+                    runAfterActionsClose { onSetPublic(makePublic) }
+                }
+                actionDivider()
+                cardActionRow("Delete", systemImage: "trash", color: Self.blockRed) {
+                    runAfterActionsClose { showDeleteConfirm = true }
+                }
             }
         }
+        .frame(minWidth: 232)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
-    private var communitySafetyMenuItems: some View {
-        cardDestructiveMenuButton("Report", systemImage: "exclamationmark.bubble") {
-            showReportReasons = true
+    private var communitySafetyRows: some View {
+        cardActionRow(
+            "Report",
+            systemImage: "exclamationmark.bubble",
+            color: Self.reportRedOrange
+        ) {
+            runAfterActionsClose { showReportReasons = true }
         }
-        cardDestructiveMenuButton("Block \(displayAuthorInitials)", systemImage: "hand.raised") {
-            showBlockConfirm = true
+        actionDivider()
+        cardActionRow(
+            "Block \(displayAuthorInitials)",
+            systemImage: "hand.raised",
+            color: Self.blockRed
+        ) {
+            runAfterActionsClose { showBlockConfirm = true }
         }
     }
 
@@ -799,40 +830,74 @@ struct ReframeCardView: View, Equatable {
         return trimmed.isEmpty ? "this person" : trimmed
     }
 
-    private func cardDestructiveMenuButton(
+    /// Report is red-orange; block (and other removals) stay red so the two read apart.
+    private static let reportRedOrange = Color(red: 0.96, green: 0.36, blue: 0.14)
+    private static let blockRed = Color(uiColor: .systemRed)
+
+    private func cardActionRow(
         _ title: String,
         systemImage: String,
+        color: Color? = nil,
         action: @escaping () -> Void
     ) -> some View {
-        Button(role: .destructive, action: action) {
-            Label(title, systemImage: systemImage)
-                .foregroundStyle(Color(uiColor: .systemRed))
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Text(title)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: systemImage)
+                    .font(.body.weight(.medium))
+                    .frame(width: 22)
+            }
+            .foregroundStyle(color ?? theme.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
         }
-        .tint(Color(uiColor: .systemRed))
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+
+    private func actionDivider() -> some View {
+        Rectangle()
+            .fill(theme.cardHairline)
+            .frame(height: 0.5)
+            .padding(.leading, 16)
+    }
+
+    /// A confirmation sheet cannot present while this popover is still up.
+    private func runAfterActionsClose(_ action: @escaping () -> Void) {
+        showCardActions = false
+        Task { @MainActor in
+            await Task.yield()
+            action()
+        }
     }
 
     private func toggleOriginalLanguage() {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.32)) {
             showingOriginal.toggle()
         }
-        if presentation == .favoriteAngles {
+        // The answer face changes language too when it has a second version; otherwise
+        // only the thought does, so show that side.
+        if presentation == .favoriteAngles, activeSlide?.result.reframeOriginal == nil {
             showFavoriteThought()
         }
     }
 
     private var accessibilityLabel: String {
         let prefix = card.lifeAreaPresentation.map { "\($0.label). " } ?? ""
-        guard let slide = activeSlide else {
+        guard let slide = activeSlide, let answer = displayedAnswer else {
             return prefix + displayedThought
         }
         if presentation == .favoriteAngles {
             let body = isFavoriteFlipped
                 ? displayedThought
-                : "\(slide.result.style.displayName) answer. \(slide.result.reframe)"
+                : "\(slide.result.style.displayName) answer. \(answer)"
             return prefix + body
         }
         return prefix
-            + "\(displayedThought). \(slide.result.style.displayName) answer. \(slide.result.reframe)"
+            + "\(displayedThought). \(slide.result.style.displayName) answer. \(answer)"
     }
 
     private func preferredStyle() -> Style? {
@@ -918,14 +983,20 @@ struct OverlayProposalCard: View {
     }
 
     private var hasOriginal: Bool {
-        guard let thoughtOriginal else {
-            return false
+        if let thoughtOriginal, thoughtOriginal != thought {
+            return true
         }
-        return thoughtOriginal != thought
+        return results.contains { $0.reframeOriginal != nil }
     }
 
     private var displayedThought: String {
         showingOriginal ? (thoughtOriginal ?? thought) : thought
+    }
+
+    private var displayedAnswer: String? {
+        activeResult.map { result in
+            showingOriginal ? (result.reframeOriginal ?? result.reframe) : result.reframe
+        }
     }
 
     var body: some View {
@@ -934,7 +1005,7 @@ struct OverlayProposalCard: View {
 
             ReframeCopyStack(
                 thought: displayedThought,
-                answer: activeResult?.reframe,
+                answer: displayedAnswer,
                 answerColor: activeAppearance.responseInk
             )
 
@@ -1111,10 +1182,10 @@ struct OverlayProposalCard: View {
     }
 
     private var accessibilityLabel: String {
-        guard let result = activeResult else {
+        guard let result = activeResult, let answer = displayedAnswer else {
             return displayedThought
         }
-        return "\(displayedThought). \(result.style.displayName) answer. \(result.reframe)"
+        return "\(displayedThought). \(result.style.displayName) answer. \(answer)"
     }
 
     private func setSelectedStyleWithoutAnimation(_ style: Style?) {
@@ -1136,11 +1207,11 @@ private struct ReframeCopyStack: View {
     var chromeInset: CGFloat = ReframeCardMetrics.chromeInset
     var sectionSpacing: CGFloat = ReframeCardMetrics.sectionSpacing
     var answerVerticalPadding: CGFloat = 14
-    var model: LlmModel? = nil
-    var modelFill: Color? = nil
+    /// Tall cards sign the reply as Angles. The server picks the model, so no card names one.
+    var showsWriterMark: Bool = false
+    var writerMarkFill: Color? = nil
     /// When the card is at the viewport cap, only the reply scrolls.
     var scrollsAnswer: Bool = false
-    var onOpenModel: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -1179,12 +1250,12 @@ private struct ReframeCopyStack: View {
         )
     }
 
-    /// Tall cards pass a model: icon and name share one row. The reply stays full width under it.
+    /// Tall cards show the mark and name on one row. The reply stays full width under it.
     @ViewBuilder
     private func answerRow(_ answer: String) -> some View {
-        VStack(alignment: .leading, spacing: model == nil ? 0 : ReframeCardMetrics.tallRhythm) {
-            if let model {
-                modelRow(model)
+        VStack(alignment: .leading, spacing: showsWriterMark ? ReframeCardMetrics.tallRhythm : 0) {
+            if showsWriterMark {
+                writerMarkRow
             }
 
             Text(answer)
@@ -1197,37 +1268,24 @@ private struct ReframeCopyStack: View {
                 .modifier(TallAnswerScroll(enabled: scrollsAnswer))
         }
         .padding(.horizontal, chromeInset)
-        .padding(.top, model == nil ? answerVerticalPadding : ReframeCardMetrics.tallRhythm)
-        .padding(.bottom, model == nil ? answerVerticalPadding : 0)
+        .padding(.top, showsWriterMark ? ReframeCardMetrics.tallRhythm : answerVerticalPadding)
+        .padding(.bottom, showsWriterMark ? 0 : answerVerticalPadding)
         .frame(maxHeight: scrollsAnswer ? .infinity : nil, alignment: .top)
     }
 
-    @ViewBuilder
-    private func modelRow(_ model: LlmModel) -> some View {
-        let row = HStack(spacing: 10) {
-            ModelLogo(model: model, side: 18)
+    private var writerMarkRow: some View {
+        HStack(spacing: 10) {
+            InspireMark(size: 16)
                 .frame(width: ReframeCardMetrics.chipSize, height: ReframeCardMetrics.chipSize)
-                .background((modelFill ?? theme.ink).opacity(0.08), in: Circle())
+                .background((writerMarkFill ?? theme.ink).opacity(0.08), in: Circle())
 
-            Text(model.displayName)
+            Text("Angles")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(-1)
         }
-        .accessibilityElement(children: .combine)
-
-        if let onOpenModel {
-            Button(action: onOpenModel) {
-                row
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Posts by \(model.displayName)")
-        } else {
-            row
-                .accessibilityLabel("Written by \(model.displayName)")
-        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Written by Angles")
     }
 }
 

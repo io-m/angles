@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   composeConversation,
   DecisionParseError,
@@ -6,7 +6,15 @@ import {
   looksLikeThought,
   normalizeSafety,
   parseDecision,
+  runDecision,
 } from "./decision.js";
+import { generateJson, LlmError } from "./llmClient.js";
+import { SAFETY_FALLBACK_MESSAGE } from "./prompts.js";
+
+vi.mock("./llmClient.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./llmClient.js")>();
+  return { ...actual, generateJson: vi.fn() };
+});
 
 function raw(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -53,6 +61,12 @@ describe("parseDecision", () => {
     expect(() => parseDecision(raw({ thought_en: "and then ".repeat(60) }))).toThrow(
       /card budget/,
     );
+  });
+
+  it("accepts a long cleaned thought only on the repair pass", () => {
+    const long = `${"work keeps piling up and ".repeat(9)}I can't keep doing this.`;
+    expect(() => parseDecision(raw({ thought_en: long }))).toThrow(/card budget/);
+    expect(parseDecision(raw({ thought_en: long }), { repairPass: true }).kind).toBe("ready");
   });
 
   it("rejects a continue with no message", () => {
@@ -140,6 +154,58 @@ describe("parseDecision", () => {
     expect(decision.meta.emotions).toEqual(["shame"]);
   });
 
+  it("keeps at most two known distortions", () => {
+    const decision = parseDecision(
+      raw({ distortions: ["Mind Reading", "catastrophizing", "vibes", "labeling"] }),
+    );
+    if (decision.kind !== "ready") {
+      throw new Error("expected ready");
+    }
+    expect(decision.meta.distortions).toEqual(["mind_reading", "catastrophizing"]);
+  });
+
+  it("treats a style that is both chosen and skipped as skipped", () => {
+    const decision = parseDecision(
+      raw({ skipped_styles: [{ style: "humorous", reason: "A joke would land wrong." }] }),
+    );
+    if (decision.kind !== "ready") {
+      throw new Error("expected ready");
+    }
+    expect(decision.styles).toEqual(["stoic", "optimistic", "tough_love"]);
+  });
+
+  it("holds tough love back from self-blame over a loss", () => {
+    const decision = parseDecision(
+      raw({
+        category: "grief_loss",
+        distortions: ["personalizing"],
+        styles: ["stoic", "optimistic", "tough_love"],
+        skipped_styles: [{ style: "humorous", reason: "Not on a loss." }],
+      }),
+    );
+    if (decision.kind !== "ready") {
+      throw new Error("expected ready");
+    }
+    expect(decision.styles).toEqual(["stoic", "optimistic"]);
+    expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+  });
+
+  it("keeps tough love on self-blame outside a loss", () => {
+    const decision = parseDecision(raw({ distortions: ["personalizing"] }));
+    if (decision.kind !== "ready") {
+      throw new Error("expected ready");
+    }
+    expect(decision.styles).toContain("tough_love");
+  });
+
+  it("reads missing distortions as none", () => {
+    const decision = parseDecision(raw());
+    if (decision.kind !== "ready") {
+      throw new Error("expected ready");
+    }
+    expect(decision.meta.distortions).toEqual([]);
+  });
+
   it("falls back to the unskipped styles when the model forgets the list", () => {
     const decision = parseDecision(
       raw({
@@ -171,9 +237,104 @@ describe("parseDecision", () => {
   });
 });
 
+describe("runDecision safety screen", () => {
+  beforeEach(() => {
+    vi.mocked(generateJson).mockReset();
+  });
+
+  const run = (text: string, followUps: { question: string; answer: string }[] = []) =>
+    runDecision({ text, followUps, forceReady: false });
+
+  it("turns a ready decision on explicit self-harm wording into crisis help", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(raw({ input_language: "en" }));
+    await expect(run("Everyone would be better off without me")).resolves.toEqual({
+      kind: "continue",
+      message: SAFETY_FALLBACK_MESSAGE,
+      options: [],
+      safety: "self_harm",
+      inputLanguage: "en",
+    });
+  });
+
+  it("replaces a question and its chips on a thought the screen caught", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(
+      raw({ kind: "continue", message: "What happened today?", options: ["Work stuff"] }),
+    );
+    const decision = await run("I wish I could go to sleep and never wake up");
+    expect(decision).toMatchObject({ kind: "continue", safety: "self_harm", options: [] });
+  });
+
+  it("keeps the model's own crisis message when it already flagged the turn", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(
+      raw({ kind: "continue", message: "I'm really glad you told me.", safety: "self_harm" }),
+    );
+    const decision = await run("I want to kill myself");
+    expect(decision).toMatchObject({ kind: "continue", message: "I'm really glad you told me." });
+  });
+
+  it("screens the model's English copy of a thought in a language the screen has no list for", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(
+      raw({
+        thought_en: "I don't want to be alive anymore and nothing feels worth it.",
+        thought_original_cleaned: "मैं अब और जीना नहीं चाहता, कुछ भी मायने नहीं रखता।",
+        input_language: "hi",
+      }),
+    );
+    await expect(run("मैं अब और जीना नहीं चाहता, कुछ भी मायने नहीं रखता")).resolves.toMatchObject({
+      kind: "continue",
+      safety: "self_harm",
+      options: [],
+      inputLanguage: "hi",
+    });
+  });
+
+  it("screens the user's follow-up answers too", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(raw());
+    const decision = await run("work has been a lot lately and nothing is going right", [
+      { question: "What is weighing on you most?", answer: "honestly I don't want to be alive" },
+    ]);
+    expect(decision).toMatchObject({ kind: "continue", safety: "self_harm" });
+  });
+
+  it("still gives crisis help when the model fails on a screened thought", async () => {
+    vi.mocked(generateJson).mockRejectedValue(new LlmError("provider down"));
+    await expect(run("I want to end my life")).resolves.toMatchObject({
+      kind: "continue",
+      safety: "self_harm",
+    });
+  });
+
+  it("tells the repair turn how long the rejected thought was", async () => {
+    const long = `${"work keeps piling up and ".repeat(9)}I can't keep doing this.`;
+    vi.mocked(generateJson)
+      .mockResolvedValueOnce(raw({ thought_en: long }))
+      .mockResolvedValueOnce(raw());
+    await expect(run("work keeps piling up and my girlfriend says I'm never present")).resolves.toMatchObject({
+      kind: "ready",
+    });
+    const repair = vi.mocked(generateJson).mock.calls[1]?.[0];
+    expect(repair?.systemPrompt).toMatch(/was \d+ words and \d+ characters/);
+    expect(repair?.systemPrompt).not.toContain("piling");
+  });
+
+  it("leaves idioms and ordinary failures alone", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(raw());
+    await expect(run("This deadline is killing me, I have three reports due")).resolves.toMatchObject({
+      kind: "ready",
+    });
+
+    vi.mocked(generateJson).mockRejectedValue(new LlmError("provider down"));
+    await expect(run("This deadline is killing me, I have three reports due")).rejects.toThrow(
+      LlmError,
+    );
+  });
+});
+
 describe("composeConversation", () => {
-  it("returns the thought alone with no follow-ups", () => {
-    expect(composeConversation("I feel behind.", [])).toBe("I feel behind.");
+  it("frames a first turn in English", () => {
+    expect(composeConversation("Osjećam se kao da kasnim.", [])).toBe(
+      "They typed: Osjećam se kao da kasnim.",
+    );
   });
 
   it("marks the exchange as already answered", () => {

@@ -33,8 +33,6 @@ struct ReframeService: Sendable {
     func refine(
         text: String,
         followUps: [FollowUpAnswer] = [],
-        styles: [Style]? = nil,
-        model: LlmModel? = nil,
         attempt: ReframeAttempt = ReframeAttempt()
     ) async throws -> ReframeResponse {
         try await client.post(
@@ -42,15 +40,25 @@ struct ReframeService: Sendable {
             body: ReframeRequest(
                 text: text,
                 followUps: followUps,
-                styles: styles,
-                model: model,
                 region: Self.deviceRegion()
             ),
-            headers: [
-                "Idempotency-Key": attempt.id.uuidString.lowercased(),
-                "Replay-Key": attempt.replayKey,
-            ]
+            headers: Self.headers(for: attempt)
         )
+    }
+
+    func recook(_ recook: RecookRequest, attempt: ReframeAttempt = ReframeAttempt()) async throws -> ReframeResponse {
+        try await client.post(
+            path: "reframe",
+            body: RecookRequestBody(recook: recook, region: Self.deviceRegion()),
+            headers: Self.headers(for: attempt)
+        )
+    }
+
+    private static func headers(for attempt: ReframeAttempt) -> [String: String] {
+        [
+            "Idempotency-Key": attempt.id.uuidString.lowercased(),
+            "Replay-Key": attempt.replayKey,
+        ]
     }
 
     /// Where the phone is set to, not the language typed. Numeric UN regions are left out.

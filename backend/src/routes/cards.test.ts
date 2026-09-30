@@ -69,6 +69,7 @@ const cookMeta = {
   intensity: 5,
   timeframe: "past" as const,
   emotions: ["shame" as const, "fear" as const],
+  distortions: ["catastrophizing" as const],
   safety: "none" as const,
   inputLanguage: "en",
   skippedStyles: [] as [],
@@ -79,7 +80,7 @@ const cookBody = {
   results: STYLES.map((style) => ({
     style,
     reframe: `A ${style} take.`,
-    signature: signResult(DEV_USER_ID, cookThought, style, `A ${style} take.`, cookModel),
+    signature: signResult(DEV_USER_ID, cookThought, style, `A ${style} take.`),
   })),
   meta: {
     ...cookMeta,
@@ -166,6 +167,50 @@ describe("POST /cards", () => {
     expect(createCard).not.toHaveBeenCalled();
   });
 
+  describe("answers in their language", () => {
+    const stoicHr = "Jedan loš intervju nije presuda. Zadrži ono što si naučio i pusti snimku da stane.";
+    const bilingual = {
+      ...cookBody,
+      results: cookBody.results.map((item) =>
+        item.style === "stoic"
+          ? {
+              ...item,
+              reframeOriginal: stoicHr,
+              signature: signResult(DEV_USER_ID, cookThought, "stoic", item.reframe, stoicHr),
+            }
+          : item,
+      ),
+    };
+
+    it("stores the signed version in their language next to the English", async () => {
+      vi.mocked(createCard).mockResolvedValue(storedCard());
+
+      const response = await app.request(jsonRequest("/cards", "POST", bilingual));
+
+      expect(response.status).toBe(201);
+      const payload = vi.mocked(createCard).mock.calls[0]?.[0] as CreateCardInput;
+      expect(payload.results[0]).toEqual({ style: "stoic", reframe: "A stoic take.", reframeOriginal: stoicHr });
+      expect(payload.results[1]).toEqual({ style: "optimistic", reframe: "A optimistic take." });
+    });
+
+    it.each([
+      ["swapped", "Potpuno drugi odgovor koji server nikad nije napisao."],
+      ["removed", undefined],
+    ])("rejects a %s version in their language", async (_label, reframeOriginal) => {
+      const response = await app.request(
+        jsonRequest("/cards", "POST", {
+          ...bilingual,
+          results: bilingual.results.map((item) =>
+            item.style === "stoic" ? { ...item, reframeOriginal } : item,
+          ),
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(createCard).not.toHaveBeenCalled();
+    });
+  });
+
   it("rejects a cook signed for another account", async () => {
     const otherOwner = "00000000-0000-4000-8000-000000000199";
     const response = await app.request(
@@ -173,7 +218,7 @@ describe("POST /cards", () => {
         ...cookBody,
         results: cookBody.results.map((item) => ({
           ...item,
-          signature: signResult(otherOwner, cookThought, item.style, item.reframe, cookModel),
+          signature: signResult(otherOwner, cookThought, item.style, item.reframe),
         })),
         signature: signCook({
           ownerId: otherOwner,
@@ -207,6 +252,11 @@ describe("POST /cards", () => {
     ["model", { model: "deepseek-flash" }],
     ["meta", { meta: { ...cookBody.meta, category: "money" } }],
     ["safety", { meta: { ...cookBody.meta, safety: "self_harm" } }],
+    ["distortions", { meta: { ...cookBody.meta, distortions: ["labeling"] } }],
+    [
+      "missing distortions",
+      { meta: (({ distortions: _distortions, ...rest }) => rest)(cookBody.meta) },
+    ],
     [
       "reframe",
       {
@@ -243,14 +293,9 @@ describe("POST /cards", () => {
     expect(response.status).toBe(201);
   });
 
-  it("rejects results signed for a different model", async () => {
-    const results = cookBody.results.map(({ style, reframe }) => ({
-      style,
-      reframe,
-      signature: signResult(DEV_USER_ID, cookThought, style, reframe, "deepseek-flash"),
-    }));
+  it("rejects a cook whose model was changed after signing", async () => {
     const response = await app.request(
-      jsonRequest("/cards", "POST", { ...cookBody, results }),
+      jsonRequest("/cards", "POST", { ...cookBody, model: "gemini-3.8-flash" }),
     );
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
@@ -331,12 +376,12 @@ describe("POST /cards", () => {
           {
             style: "stoic",
             reframe: "one",
-            signature: signResult(DEV_USER_ID, cookThought, "stoic", "one", cookModel),
+            signature: signResult(DEV_USER_ID, cookThought, "stoic", "one"),
           },
           {
             style: "stoic",
             reframe: "two",
-            signature: signResult(DEV_USER_ID, cookThought, "stoic", "two", cookModel),
+            signature: signResult(DEV_USER_ID, cookThought, "stoic", "two"),
           },
         ],
       }),

@@ -12,43 +12,17 @@ import {
   patchCard,
 } from "../db/cards.js";
 import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
+import { signedMetaSchema } from "../lib/cookSchema.js";
 import { verifyCook } from "../lib/cookSignature.js";
 import { cardCursorSchema } from "../lib/cursor.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { LLM_MODEL_IDS } from "../lib/llmClient.js";
 import { REPORT_REASONS } from "../lib/communitySafetyTypes.js";
 import { moderatePublicCard } from "../lib/publicModeration.js";
-import {
-  CATEGORIES,
-  EMOTIONS,
-  SAFETY_FLAGS,
-  STYLES,
-  TIMEFRAMES,
-} from "../types/index.js";
+import { CATEGORIES, STYLES } from "../types/index.js";
 
 const MAX_THOUGHT_LENGTH = 2000;
 const MAX_REFRAME_LENGTH = 4000;
-
-const skippedStyleSchema = z.object({
-  style: z.enum(STYLES),
-  reason: z.string().min(1).max(400),
-});
-
-const createMetaSchema = z
-  .object({
-    category: z.enum(CATEGORIES),
-    proposedCategory: z.string().min(1).max(64).optional(),
-    proposedLabel: z.string().min(1).max(64).optional(),
-    tags: z.array(z.string().max(48)).max(8).default([]),
-    intensity: z.number().int().min(1).max(5),
-    timeframe: z.enum(TIMEFRAMES),
-    emotions: z.array(z.enum(EMOTIONS)).max(3),
-    safety: z.enum(SAFETY_FLAGS),
-    inputLanguage: z.string().min(1).max(32),
-    skippedStyles: z.array(skippedStyleSchema).default([]),
-    matching: z.unknown().optional(),
-  })
-  .transform(({ matching: _matching, ...rest }) => rest);
 
 const createCardSchema = z
   .object({
@@ -69,6 +43,11 @@ const createCardSchema = z
             .string()
             .transform((value) => value.trim())
             .pipe(z.string().min(1, "reframe must not be empty").max(MAX_REFRAME_LENGTH)),
+          reframeOriginal: z
+            .string()
+            .transform((value) => value.trim())
+            .pipe(z.string().min(1).max(MAX_REFRAME_LENGTH))
+            .optional(),
           signature: z.string().min(1).max(128),
         }),
       )
@@ -77,7 +56,7 @@ const createCardSchema = z
       .refine((items) => new Set(items.map((item) => item.style)).size === items.length, {
         message: "results must not repeat a style",
       }),
-    meta: createMetaSchema,
+    meta: signedMetaSchema,
     signature: z.string().min(1).max(128),
     model: z.enum(LLM_MODEL_IDS),
     spotlightStyle: z.enum(STYLES),
@@ -167,7 +146,7 @@ cardsRoute.post(
     const card = await createCard(
       {
         ...rest,
-        results: results.map(({ style, reframe }) => ({ style, reframe })),
+        results: results.map(({ signature: _signature, ...result }) => result),
       },
       { cookSignature: signature },
     );

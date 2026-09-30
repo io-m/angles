@@ -17,7 +17,6 @@ struct HomeView: View {
     var isActiveTab: Bool = true
     var onLogOut: (() -> Void)? = nil
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
-    var onOpenModel: (HomeCard) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -57,7 +56,6 @@ struct HomeView: View {
             onReport: reportCard,
             onBlock: blockAuthor,
             onOpenAuthor: onOpenAuthor,
-            onOpenModel: onOpenModel,
             onToggleFollow: toggleFollow
         ) { pagerState, settledSelection, onSelectTab in
             HomeChrome(
@@ -176,7 +174,6 @@ struct HomeFeedPager<Chrome: View>: View {
     let onReport: (HomeCard, ReportReason) -> Void
     let onBlock: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
-    let onOpenModel: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
     let chrome: (
         StyleTabPagerState<HomeFeedTab>,
@@ -218,7 +215,6 @@ struct HomeFeedPager<Chrome: View>: View {
         onReport: @escaping (HomeCard, ReportReason) -> Void,
         onBlock: @escaping (HomeCard) -> Void,
         onOpenAuthor: @escaping (HomeCard) -> Void,
-        onOpenModel: @escaping (HomeCard) -> Void,
         onToggleFollow: @escaping (HomeCard) -> Void,
         @ViewBuilder chrome: @escaping (
             StyleTabPagerState<HomeFeedTab>,
@@ -253,7 +249,6 @@ struct HomeFeedPager<Chrome: View>: View {
         self.onReport = onReport
         self.onBlock = onBlock
         self.onOpenAuthor = onOpenAuthor
-        self.onOpenModel = onOpenModel
         self.onToggleFollow = onToggleFollow
         self.chrome = chrome
     }
@@ -326,7 +321,6 @@ struct HomeFeedPager<Chrome: View>: View {
                                 onReport: onReport,
                                 onBlock: onBlock,
                                 onOpenAuthor: onOpenAuthor,
-                                onOpenModel: onOpenModel,
                                 onToggleFollow: onToggleFollow,
                                 offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
                             )
@@ -492,7 +486,6 @@ struct HomeFeedTabPage: View {
     let onReport: (HomeCard, ReportReason) -> Void
     let onBlock: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
-    let onOpenModel: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
     let offersOwnerPrivacyMenu: Bool
 
@@ -632,7 +625,6 @@ struct HomeFeedTabPage: View {
                         onBlock: onBlock,
                         shiningCardID: shiningCardID,
                         onOpenAuthor: onOpenAuthor,
-                        onOpenModel: onOpenModel,
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6,

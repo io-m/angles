@@ -58,6 +58,7 @@ export const llmCallKindEnum = pgEnum("llm_call_kind", [
   "batch",
   "reframe",
   "moderation",
+  "rewrite",
 ]);
 export const llmCallStatusEnum = pgEnum("llm_call_status", ["succeeded", "failed"]);
 export const usageSourceEnum = pgEnum("usage_source", ["reported", "estimated"]);
@@ -439,9 +440,6 @@ export const cards = pgTable(
     index("cards_public_created_idx")
       .on(table.createdAt.desc().nullsFirst(), table.id.desc().nullsFirst())
       .where(sql`${table.isPublic} = true`),
-    index("cards_public_model_created_idx")
-      .on(table.model, table.createdAt.desc().nullsFirst(), table.id.desc().nullsFirst())
-      .where(sql`${table.isPublic} = true`),
     index("cards_emotions_gin_idx").using("gin", table.emotions),
     // One card per signed cook, so a retried save cannot post the same card twice.
     uniqueIndex("cards_user_cook_signature_unique").on(table.userId, table.cookSignature),
@@ -458,6 +456,8 @@ export const cardReframes = pgTable(
       .references(() => cards.id, { onDelete: "cascade" }),
     style: styleEnum("style").notNull(),
     reframe: text("reframe").notNull(),
+    /** The answer in the card's input language. Shown to the author only. */
+    reframeOriginal: text("reframe_original"),
     position: integer("position").notNull(),
     isFavorite: boolean("is_favorite").notNull().default(false),
     favoritedAt: timestamp("favorited_at", { withTimezone: true, mode: "date" }),

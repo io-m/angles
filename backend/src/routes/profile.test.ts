@@ -107,12 +107,7 @@ describe("profile avatar", () => {
       periodEnd: "2026-10-01T00:00:00.000Z",
       resetsAt: "2026-10-01T00:00:00.000Z",
       warning: "normal",
-      allowedModels: ["mistral-small-latest", "deepseek-flash", "gemini-3.8-flash"],
-      creditCost: {
-        "mistral-small-latest": 1,
-        "deepseek-flash": 2,
-        "gemini-3.8-flash": 6,
-      },
+      creditCost: 1,
     });
     vi.mocked(putAvatar).mockResolvedValue(undefined);
     vi.mocked(deleteAvatar).mockResolvedValue(undefined);
@@ -261,7 +256,7 @@ describe("profile avatar", () => {
     expect(body).toMatchObject({
       creditsGranted: 600,
       creditsRemaining: 594,
-      allowedModels: ["mistral-small-latest", "deepseek-flash", "gemini-3.8-flash"],
+      creditCost: 1,
     });
     expect(body.tokens).toBeUndefined();
     expect(body.cost).toBeUndefined();

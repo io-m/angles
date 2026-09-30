@@ -17,7 +17,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**No product work is queued.** Rows 9w through 15 are done. Do not invent screens or features.
+**No product work is queued.** Rows 9w through 17 are done. Do not invent screens or features.
 
 What is left is launch setup outside the app: a real server address, published privacy and support pages, Apple production settings, and the App Store listing. The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
 
@@ -37,7 +37,7 @@ Loading and error are **states on Results**, not their own screens.
 | 4 | Hook up fetching | feature | done | `ReframeService.swift`; `backend/src/routes/reframe.ts` | API contract exists. Overlay mocks on-device until a real LLM. |
 | 4b | Tabs + Profile shell | screen | done | `AnglesApp.swift`; `Root/RootTabBar.swift`; `HomeView.swift`; `ProfileView.swift`; `HomeCardGrid.swift` | Home empty + Settings; Sparkle compose; Profile filters by style present, not cover. |
 | 4c | Real LLM | feature | done | `llmClient.ts`; `HomeViewModel.swift`; `AppConfig.swift` | Overlay calls `POST /reframe`. Default Mistral Small 4; Gemini 3.8 Flash and DeepSeek via `LLM_MODEL`. |
-| 4d | Model picker | feature | done | `ComposeSheetView.swift`; `LlmModel.swift`; `llmClient.ts` | Compose header picks Mistral / Gemini / DeepSeek; `POST /reframe` sends `model`. |
+| 4d | Model picker | feature | removed | `ComposeSheetView.swift`; `LlmModel.swift`; `llmClient.ts` | Removed in 17: the server routes a model per step and compose has no picker. |
 | 4e | Core LLM contract | feature | done | `decision.ts`; `prompts.ts`; `reframe.ts`; `ReframeModels.swift`; `HomeViewModel.swift` | Every cook runs a JSON decision call; `continue` keeps the composer; card-fit English thought plus matching metadata. |
 | 5 | Card persistence | feature | done | `docker-compose.yml`; `backend/src/db/*`; `CardsService.swift`; `HomeViewModel.swift` | Profile library reads Postgres; Save writes the full cook; categories and tags are first-class. |
 | 5b | Favorite angles | feature | done | `schema.ts`; `cards.ts`; `ReframeCardView.swift`; `ProfileView.swift`; `FavoritesView.swift`; `ProfileSubsetView.swift` | Per-style hearts; Profile strip (max 6) plus full Favorite angles grid; liked styles only in that carousel. |
@@ -77,7 +77,7 @@ Loading and error are **states on Results**, not their own screens.
 | 9s | Public author profile | screen | done | `AuthorProfileView.swift`; `HomeView.swift`; `StyleTabPager.swift`; `ReframeCardView.swift`; `HomeViewModel.swift`; `users.ts`; `feed.ts`; `ReframeModels.swift` | Avatar opens that author's public posts in Home's five-tab pager; your own avatar switches to Profile. |
 | 9t | Following | feature | done | `follows.ts`; `schema.ts`; `0006_worthless_liz_osborn.sql`; `users.ts`; `mapCard.ts`; `feed.ts`; `ReframeCardView.swift`; `HomeViewModel.swift`; `AuthorProfileView.swift` | One-way follow badge on other people's avatars; their public posts stay in the same Home mix. |
 | 9u | Following list | feature | done | `follows.ts`; `profile.ts`; `FollowingSheet.swift`; `ProfileView.swift`; `HomeViewModel.swift`; `ProfileService.swift` | A people icon beside Settings opens the people you follow; a row opens their posts, and the minus icon unfollows. |
-| 9v | Model cards page | screen | done | `ModelProfileView.swift`; `HomeView.swift`; `StyleTabPager.swift`; `HomeViewModel.swift`; `models.ts`; `feed.ts`; `schema.ts`; `0008_public_model_created_idx.sql`; `ReframeModels.swift` | Tapping a model opens its public cards in Home's five-tab pager, with a logo-only header. |
+| 9v | Model cards page | screen | removed | `ModelProfileView.swift`; `HomeView.swift`; `StyleTabPager.swift`; `HomeViewModel.swift`; `models.ts`; `feed.ts`; `schema.ts`; `0008_public_model_created_idx.sql`; `ReframeModels.swift` | Removed in 17 with the picker (index dropped in `0017_wise_aaron_stack.sql`); every card carries the Angles mark. |
 | 9w | Production community safety | feature | done | `ReframeModels.swift`; `CardsService.swift`; `ProfileService.swift`; `ReframeCardView.swift`; `BlockedPeopleSheet.swift`; `SettingsView.swift`; `HomeViewModel.swift` | Report reasons and confirmed blocks remove unsafe community content across loaded pages; Settings lists blocked people for undo. |
 | 10 | Production legal/privacy hardening | feature | done | `docs/legal/*`; `PrivacyInfo.xcprivacy`; `AppConfig.swift`; `Info*.plist`; `project.yml`; `SettingsView.swift`; `PaywallView.swift` | Source privacy/terms, App Privacy declarations, Release-safe configuration, and centralized legal/support links. |
 | 11 | Server subscription entitlement | feature | done | `subscriptions.ts`; `appStoreVerifier.ts`; `appStoreNotifications.ts`; `StoreKitManager.swift`; `ProfileService.swift`; `0011_workable_rage.sql` | Account-bound StoreKit purchases sync verified JWS receipts to a server-owned entitlement; account generations prevent late Apple/server results from crossing sessions. |
@@ -86,6 +86,7 @@ Loading and error are **states on Results**, not their own screens.
 | 14 | Resonance feed ranking | feature | done | `feedRanking.ts`; `db/feed.ts`; `db/hearts.ts`; `mapCard.ts`; `routes/feed.ts`; `cursor.ts`; `schema.ts`; `0015_sharp_puff_adder.sql`; `types/index.ts`; `ReframeModels.swift`; `CardsService.swift`; `ReframeCardView.swift`; `HomeViewModel.swift` | Freshness, hearts, theme affinity (what the viewer writes and hearts, recency-weighted), follows, second chance, and seeded jitter behind `FEED_RANKING`; a 40/35/25 core/adjacent/explore page mix (v3: recency-first, kept angles hidden); session-frozen offset paging; `after` arrivals; per-page spread; author-only heart counts; viewer-leaning opening angle. |
 | 15 | Home style shelves | feature | done | `feedRanking.ts`; `db/feed.ts`; `db/hearts.ts`; `HomeFeedShelf.swift`; `HomeViewModel.swift`; `HomeView.swift` | Each Home style tab is its own ranked shelf for that viewer, and each card has one primary tab per viewer so the tabs mostly show different cards. For you stays the mixed feed. Hearts, follows, and removals share one card record. |
 | 16 | Pre-release hardening | feature | done | `decision.ts`; `crisisResources.ts`; `prompts.ts`; `reframeReplay.ts`; `metering.ts`; `reframe.ts`; `subscriptions.ts`; `cookSignature.ts`; `cards.ts`; `profile.ts`; `schema.ts`; `0016_chilly_molecule_man.sql`; `ReframeModels.swift`; `ReframeService.swift`; `HomeViewModel.swift`; `ComposeSheetView.swift`; `StoreKitManager.swift` | Safety fails closed with region-picked crisis lines; a dropped `/reframe` response replays instead of charging again; access past a failed renewal is grace only; one card per owner-bound cook; account delete never orphans a photo. |
+| 17 | Reframe engine v2 | feature | done | `prompts.ts`; `decision.ts`; `safetyScreen.ts`; `cook.ts`; `cookSchema.ts`; `reframeLint.ts`; `llmClient.ts`; `llmUsage.ts`; `meteringPolicy.ts`; `cookSignature.ts`; `reframe.ts`; `cards.ts`; `mapCard.ts`; `schema.ts`; `0017_wise_aaron_stack.sql`; `llmEval.ts`; `eval/thoughts.json`; `types/index.ts`; `ReframeModels.swift`; `ReframeService.swift`; `HomeViewModel.swift`; `ComposeSheetView.swift`; `ReframeCardView.swift`; `InspireMark.swift` | The server picks the model per step and every cook costs 1 credit; a sharper voice and technique menu per style, a hidden plan, lint with one targeted rewrite, a recook that changes technique, and answers in the writer's own language for its author. |
 
 ### 1. Compose (home)
 
@@ -130,9 +131,9 @@ Three-target bar: Home (community feed, Settings gear), Sparkle (existing compos
 
 Not a new screen. `generateReframe` calls a provider catalog (`mistral-small-latest` default, plus `gemini-3.8-flash`, `deepseek-flash`, `deepseek-v4-pro`). Overlay `startRefine` / recook use `ReframeService`. Follow-ups stayed the mock bank until 4e.
 
-### 4d. Model picker
+### 4d. Model picker — removed in 17
 
-Compose overlay header: trailing 40pt logo button (always visible) opens a compact popover. Sends optional `model` on `POST /reframe`. Missing `model` still uses env `LLM_MODEL`. DeepSeek Pro stays catalog-only, not in the picker.
+Was a compose-header logo button that sent `model` on `POST /reframe`. The server now routes each step to a model (`modelsForStep`), so the phone never picks one and `/reframe` rejects a `model` field.
 
 ### 4e. Core LLM contract
 
@@ -227,9 +228,9 @@ Not a new screen. This replaces the grouped Home and flip-card language from 9b�
 
 Not a new screen. Replaces the scrolling **Home** title from 9f/9h with Profile-like chrome.
 
-- **Tabs.** Five expanding chips: **For you** (default, mixed `spotlightStyle`) plus the four styles. No Favorites. For you is one ranked `GET /feed`. Each style tab is its own ranked shelf (`GET /feed?style=`), opened on that angle. Profile, author, and model pages still filter one library list in memory. The filter sheet resets every Home shelf.
+- **Tabs.** Five expanding chips: **For you** (default, mixed `spotlightStyle`) plus the four styles. No Favorites. For you is one ranked `GET /feed`. Each style tab is its own ranked shelf (`GET /feed?style=`), opened on that angle. Profile and author pages still filter one library list in memory. The filter sheet resets every Home shelf.
 - **Layout.** One overlay row: expanding tabs leading, filter trailing, same height and center as the filter icon, with a little extra space under the chips. No Home Settings gear (Profile keeps it). Quiet style-tinted paper-to-grey canvas, style-tinted glass header, tab-bar footer fade. `StyleTabPager.swift` shares pager state, chips, and wash with Profile. Each tab is its own vertical `ScrollView` + lazy `HomeCardGrid`.
-- **API.** Each style tab calls `GET /feed?style=` and keeps its own page. For you omits `style`. Profile, author, and model pages do not.
+- **API.** Each style tab calls `GET /feed?style=` and keeps its own page. For you omits `style`. Profile and author pages do not.
 
 ### 9r. Native Home pull-to-refresh
 
@@ -252,7 +253,7 @@ Not a new screen. The Profile bar has a people icon in the same round container 
 
 ### 9w. Production community safety
 
-Every non-owner community card offers Report and Block. Reporting chooses a compact reason; blocking requires confirmation and removes the author's cards, saves, and follow state across Home, Profile, author, and model pages. The author profile chrome exposes the same block action. Settings → Blocked people lists blocked accounts and restores a row if unblock fails. Public save/publish moderation errors explain whether the content is disallowed or moderation is temporarily unavailable.
+Every non-owner community card offers Report and Block. Reporting chooses a compact reason; blocking requires confirmation and removes the author's cards, saves, and follow state across Home, Profile, and author pages. The author profile chrome exposes the same block action. Settings → Blocked people lists blocked accounts and restores a row if unblock fails. Public save/publish moderation errors explain whether the content is disallowed or moderation is temporarily unavailable.
 
 ### 10. Production legal/privacy hardening
 
@@ -418,9 +419,9 @@ Sign in first, then one taste if this account still needs it.
 
 ### 12. Production credit metering
 
-The server owns a 600-credit membership period and returns remaining/granted credits, reset time, warning level, model availability, and tariff data. Mistral costs 1, DeepSeek 2, and Gemini 6. Every intentional refine turn and recook sends a fresh UUID `Idempotency-Key` and a fresh `Replay-Key`. There is no automatic retry; if the user retries after an ambiguous transport failure, the client reuses that logical operation's pair so the retry cannot spend twice, and if the first attempt had finished, the server returns its sealed response instead of a 409. An explicit server failure or a new turn gets a new pair.
+The server owns a 600-credit membership period and returns remaining/granted credits, reset time, warning level, and `creditCost`. Since 17 every cook and recook costs 1 credit whichever model the server routed it to (it used to be Mistral 1, DeepSeek 2, Gemini 6 by the picked model). Every intentional refine turn and recook sends a fresh UUID `Idempotency-Key` and a fresh `Replay-Key`. There is no automatic retry; if the user retries after an ambiguous transport failure, the client reuses that logical operation's pair so the retry cannot spend twice, and if the first attempt had finished, the server returns its sealed response instead of a 409. An explicit server failure or a new turn gets a new pair.
 
-Compose keeps all three models visible with their costs and disables only models excluded by the latest server summary. A newly unaffordable selection visibly falls back in Mistral-first cost order, while an unavailable local usage endpoint leaves the picker usable until authoritative usage arrives. Low credit warnings appear once per period, critical/empty state stays beside the picker, and each paid ready response quietly reports the credits used. Metering, rate-limit, taste, duplicate-operation, and subscription errors have specific recovery copy; an already-completed result is never automatically retried.
+Low credit warnings appear once per period, the critical/empty state stays in the compose header, and each paid ready response quietly reports the credits used. Metering, rate-limit, taste, duplicate-operation, and subscription errors have specific recovery copy; an already-completed result is never automatically retried.
 
 Settings → Subscription loads `GET /profile/usage` independently and shows remaining of granted credits, period reset date, a progress bar, and retryable load failure. There are no credit packs, push/email warnings, modal warnings, or separate usage screen.
 
@@ -441,12 +442,25 @@ Home stops being chronological. `FEED_RANKING=resonance` turns it on; unset or `
 
 ### 15. Home style shelves
 
-For you stays the mixed ranked feed. Stoic, Optimistic, Humorous, and Tough love are separate shelves for the same viewer. A strong card can appear on more than one tab. Profile, author, and model pages stay libraries that filter one list to "has this angle."
+For you stays the mixed ranked feed. Stoic, Optimistic, Humorous, and Tough love are separate shelves for the same viewer. A strong card can appear on more than one tab. Profile and author pages stay libraries that filter one list to "has this angle."
 
 - **Style score.** A style request keeps the For you score, then blends the viewer's general theme affinity toward the taste implied by hearts on that style. Confidence reaches full weight at five matching hearts, so one heart cannot take over a shelf. Hearts on that exact angle add a capped style-resonance term. The saved cover is only a weak tie-break. Jitter is salted by style, so two shelves with the same scores do not share one order, and one shelf stays stable while you page it. With no `style`, the For you score is unchanged. `FEED_RANKING` still has to be `resonance`; unset stays chronological.
 - **Primary tab.** Each card has one primary tab per viewer: the style it fits best among the angles it has. Fit is that tab's hearted taste relative to the viewer's general taste (hearts on any tab feed the general taste, so one tab cannot claim every card that matches the viewer) plus strangers' hearts on that angle. The author's cover is left out, since it is one style for every viewer and would skew a cold catalog. Ties, which is every card for a new viewer, break on a hash of viewer, card, and style with no session seed, so each tab's request reaches the same answer without coordinating and a new viewer gets a roughly even, personal split. On a style shelf a card whose primary is another style loses `STYLE_RANKING_WEIGHTS.offTab`: a penalty and not a filter, so a thin tab still fills from other tabs' cards once its own run out. The penalty is 2.5, more than everything an old card can score on the terms every tab shares, and it fades in with age (`OFF_TAB_FADE_HOURS`: none under 1h, full from 6h), so a brand-new post is on every tab like a normal feed and only older cards stay on their own tab. Two tabs share the last few hours of posts and any thin explore pool; the audit below prints both. A style request loads all four tabs' hearts, each angle's hearts, and each card's angles in single grouped queries.
 - **One card, many orders.** Home keeps one record per loaded card and one session per tab: order, cursor, footer, visit history, and refresh. Heart, follow, delete, report, block, and privacy updates write the record once and every shelf that shows it follows. A new public post lands on For you and on any style shelf that has already loaded and includes that angle.
 - **Loading.** A style shelf fetches the first time you open it and keeps its page when you swipe away. The life-area and mood filter clears every shelf, then reloads the one you are on. Pull-to-refresh and load-more touch only that shelf.
+
+### 17. Reframe engine v2
+
+The reframe pipeline, rebuilt around quality per style and a measured cost. Prompt copy is in `prompts.ts`, the pipeline in `cook.ts`, and every change is measured with `pnpm llm:eval`.
+
+- **Server routing.** The request names no model and compose has no picker; the model cards page and the provider logos are gone, and every card carries the Angles mark. `modelsForStep` picks decision, writer, and moderation models from `LLM_*_MODEL` (defaults Mistral Small, DeepSeek Flash, Mistral Small), each with a fallback on another provider for a retryable error. Every ready cook or recook costs 1 credit (`flat-v1`).
+- **Robustness.** The batch output cap is computed from the length budget and the style count; JSON calls use schema mode; decision runs at temperature 0.2 and the writer at 0.8; Gemini thinks at a low level; each call gets up to 8 s and the whole cook fits a 13 s deadline inside the phone's timeout.
+- **Decision.** `meta.distortions` names up to two thinking traps. Heavy thoughts adapt each style instead of skipping it. Passive suicidal phrasing is in the examples, and `safetyScreen.ts` overrides a model's `none` on explicit or passive self-harm wording. It has phrase lists for English and 15 other languages written with spaces, each with idiom exclusions, and on a ready turn it also reads the model's English copy, so a language with no list (Hindi, Japanese, Arabic) still gets the English one. The golden set has crisis thoughts in 8 languages besides English.
+- **Writer.** Each style has a sharper voice, a technique menu, banned openers, and a line for heavy thoughts (`STYLE_VOICES`), plus shared gold examples (`GOLD_CARDS`). A hidden plan names one technique and insight per style, all different, before the answers. Timeframe, intensity, and the named traps shape the answer.
+- **Lint.** `reframeLint.ts` checks length, questions, stray numbers, markdown, clichés, banned openers, and overlap between styles; a flagged style gets one targeted rewrite (call kind `rewrite`) that ships only if it has fewer problems.
+- **Recook.** The phone echoes the signed cook and the answer it replaces. The server verifies the signature, skips the decision call, and asks for a different technique at temperature 0.95.
+- **Their language.** When the thought was not in English, each answer comes back in English and in that language (`reframeOriginal`). Both are signed. The public card is English; only the author sees and toggles their own-language version. Stored in `card_reframes.reframe_original` (`0017_wise_aaron_stack.sql`).
+- **Result.** On 80 golden thoughts with DeepSeek Flash writing, v2 lifts every judged score over the baseline (tone 4.08 → 4.28, specific 3.99 → 4.20, distinct 3.69 → 3.88, fresh 3.54 → 3.84, kind 4.77 → 4.86) and clears every lint category, at $0.00098 per ready cook against $0.00061. Safety recall stays 100%. The writer comparison is in `docs/subscription-tiers.md`.
 
 ## Postponed (do not start)
 
@@ -461,6 +475,7 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-09-30 — Reframe engine v2. The server picks the model for each step (Mistral Small decides, DeepSeek Flash writes, each with a fallback on another provider) and every cook or recook costs 1 credit; the compose picker, model page, and provider logos are gone and cards carry the Angles mark. Each style has a sharper voice, a technique menu, and banned openers; the writer plans a distinct technique per style, a lint pass rewrites any flagged style once, and a recook reuses the signed cook with a different technique and no decision call. A thought in another language gets each answer in that language too, shown only to its author. Safety adds distortions to meta and a phrase screen for passive self-harm. Measured on 80 golden thoughts: every judged score up, every lint category at zero, about $0.001 per cook.
 - 2026-09-30 — Pre-release hardening. An unknown safety label is read as `self_harm` on the server and the phone, so a crisis can never be reframed; crisis numbers come from `crisisResources.ts` by the phone's region (988 US/Canada, 112 Europe, a short table, a generic local-emergency line otherwise), and the model never writes one. Every cook sends a `Replay-Key` beside its `Idempotency-Key`; the server seals the finished response under it for an hour, so a retry after a lost response gets the same cook back without a second charge or a second taste. `billing_retry` after grace is locked on the server and phone, a lapsed-receipt sync no longer ends grace early, and a failed status read keeps an existing unlock over a lapsed receipt. Cook signatures (v3) bind the owner; one cook makes one card per account; `cards.user_id` cascades; account delete retries the photo and fails with 503 rather than orphaning it.
 - 2026-09-30 — Feed ranking v3: recency first (one-day freshness at weight 2.0, off-tab penalty only for posts older than an hour and full from six), angles the viewer already kept stay out of All and the matching tab for the visit, the theme mix now caps each bucket instead of interleaving slots, and `pnpm db:seed-realistic` and `pnpm db:feed-audit` build and grade a realistic community. Backend only; no API or iOS change.
 - 2026-09-30 — Feed ranking v2, backend only: themes learned from what the viewer writes and hearts on any tab (recency-weighted, confidence-gated, `other` ignored), a 40/35/25 core/adjacent/explore mix on every page, a soft run limit for the viewer's own theme, and a primary tab per card so the four style tabs mostly show different cards. No API or iOS change.

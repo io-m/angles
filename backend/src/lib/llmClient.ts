@@ -19,14 +19,18 @@ import {
 loadLocalEnvFile({ skipWhenVitest: true });
 
 export const LLM_TIMEOUT_MS = 8_000;
-export const LLM_MAX_OUTPUT_TOKENS = 120;
+export const LLM_MAX_OUTPUT_TOKENS = 160;
 export const DECISION_MAX_OUTPUT_TOKENS = 700;
-/** Four short reframes as JSON: ~4 × 60 tokens plus keys. */
-export const STYLE_BATCH_MAX_OUTPUT_TOKENS = 280;
-export const COOK_DEADLINE_MS = 10_000;
+/** Inside the phone's 15 s request timeout, with room for the response to travel. */
+export const COOK_DEADLINE_MS = 13_000;
 export const MIN_LLM_CALL_MS = 800;
-export const DEFAULT_LLM_MODEL = "mistral-small-latest";
-const MAX_IN_FLIGHT = 3;
+export const DEFAULT_LLM_MODEL: LlmModelId = "mistral-small-latest";
+const DEFAULT_MAX_IN_FLIGHT = 32;
+/**
+ * Gemini counts thinking against maxOutputTokens, so the visible budget gets this on top.
+ * `low` is the floor for gemini-3.8-flash; `minimal` is rejected with a 400.
+ */
+export const GEMINI_THINKING_HEADROOM = 1024;
 
 export const LLM_MODEL_IDS = [
   "mistral-small-latest",
@@ -45,22 +49,87 @@ export const LLM_MODELS: Record<LlmModelId, { provider: LlmProvider }> = {
   "deepseek-v4-pro": { provider: "deepseek" },
 };
 
-const KEY_ENV: Record<LlmProvider, string> = {
+export const LLM_PROVIDER_KEY_ENV: Record<LlmProvider, string> = {
   mistral: "MISTRAL_API_KEY",
   gemini: "GEMINI_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
 };
+
+/** The server picks the model for each step of a cook; the phone never does. */
+export const LLM_STEPS = ["decision", "writer", "moderation"] as const;
+export type LlmStep = (typeof LLM_STEPS)[number];
+
+const STEP_ENV: Record<LlmStep, { model: string; fallback: string }> = {
+  decision: { model: "LLM_DECISION_MODEL", fallback: "LLM_DECISION_FALLBACK_MODEL" },
+  writer: { model: "LLM_WRITER_MODEL", fallback: "LLM_WRITER_FALLBACK_MODEL" },
+  moderation: { model: "LLM_MODERATION_MODEL", fallback: "LLM_MODERATION_FALLBACK_MODEL" },
+};
+
+/** Chosen with `pnpm llm:eval`. Move a default only with a fresh eval run behind it. */
+export const STEP_DEFAULT_MODELS: Record<LlmStep, LlmModelId> = {
+  decision: "mistral-small-latest",
+  writer: "deepseek-flash",
+  moderation: "mistral-small-latest",
+};
+
+/** A different provider, so one outage cannot take a step down on its own. */
+const DEFAULT_FALLBACK: Record<LlmProvider, LlmModelId> = {
+  mistral: "deepseek-flash",
+  deepseek: "mistral-small-latest",
+  gemini: "mistral-small-latest",
+};
+
+export type StepModels = { primary: LlmModelId; fallback?: LlmModelId };
+
+function configuredModel(environment: NodeJS.ProcessEnv, name: string): LlmModelId | undefined {
+  const raw = environment[name]?.trim();
+  if (!raw) {
+    return undefined;
+  }
+  if (!isLlmModelId(raw)) {
+    throw new LlmError(`Unknown ${name}`);
+  }
+  return raw;
+}
+
+/** `LLM_<STEP>_MODEL` or the default; `LLM_<STEP>_FALLBACK_MODEL=none` turns the fallback off. */
+export function modelsForStep(
+  step: LlmStep,
+  environment: NodeJS.ProcessEnv = process.env,
+): StepModels {
+  const names = STEP_ENV[step];
+  const primary = configuredModel(environment, names.model) ?? STEP_DEFAULT_MODELS[step];
+  if (environment[names.fallback]?.trim().toLowerCase() === "none") {
+    return { primary };
+  }
+  const fallback =
+    configuredModel(environment, names.fallback) ?? DEFAULT_FALLBACK[LLM_MODELS[primary].provider];
+  return fallback === primary ? { primary } : { primary, fallback };
+}
 
 const CHAT_COMPLETIONS_URL: Record<Exclude<LlmProvider, "gemini">, string> = {
   mistral: "https://api.mistral.ai/v1/chat/completions",
   deepseek: "https://api.deepseek.com/chat/completions",
 };
 
+/** A JSON Schema the provider enforces where it can (Mistral, Gemini). DeepSeek gets JSON mode. */
+export type JsonSchema = {
+  name: string;
+  schema: Record<string, unknown>;
+};
+
 export type LlmCallOptions = {
   timeoutMs?: number;
+  /** Absolute cook deadline. The call's own timeout is taken from it once a slot is free. */
+  deadlineAt?: number;
   abortSignal?: AbortSignal;
   callKind?: LlmCallKind;
   attempt?: number;
+  temperature?: number;
+  /** Tried once when the primary provider fails (HTTP, timeout, network), never on a bad reply. */
+  fallbackModel?: LlmModelId;
+  /** Which model actually answered, primary or fallback. */
+  onAnsweredBy?: (model: LlmModelId) => void;
   beforeProviderCall?: () => Promise<void>;
   usageSink?: (event: LlmUsageEvent) => void;
 };
@@ -69,13 +138,14 @@ export type GenerateReframeInput = {
   text: string;
   systemPrompt: string;
   model?: LlmModelId;
+  maxOutputTokens?: number;
 } & LlmCallOptions;
 
 export type GenerateJsonInput = GenerateReframeInput & {
-  maxOutputTokens?: number;
+  jsonSchema?: JsonSchema;
 };
 
-type ProviderCallInput = GenerateReframeInput & {
+type ProviderCallInput = GenerateJsonInput & {
   maxOutputTokens: number;
   json: boolean;
 };
@@ -93,8 +163,13 @@ const consecutiveMissingUsage = new Map<LlmModelId, number>();
 let inFlight = 0;
 const waiters: Array<() => void> = [];
 
+function maxInFlight(): number {
+  const configured = Number(process.env.LLM_MAX_IN_FLIGHT);
+  return Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_MAX_IN_FLIGHT;
+}
+
 async function withConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
-  while (inFlight >= MAX_IN_FLIGHT) {
+  while (inFlight >= maxInFlight()) {
     await new Promise<void>((resolve) => {
       waiters.push(resolve);
     });
@@ -118,42 +193,69 @@ export function timeoutMsUntil(deadlineAt: number): number {
 }
 
 export class LlmError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  /** A provider-side failure another model could answer. */
+  readonly retryable: boolean;
+
+  constructor(message: string, options?: { cause?: unknown; retryable?: boolean }) {
     super(message, options);
     this.name = "LlmError";
+    this.retryable = options?.retryable ?? false;
   }
 }
 
 export async function generateReframe(
   input: GenerateReframeInput,
 ): Promise<string> {
-  return runWithTimeout({
+  return runWithFallback({
     ...input,
-    maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
+    maxOutputTokens: input.maxOutputTokens ?? LLM_MAX_OUTPUT_TOKENS,
     json: false,
   });
 }
 
-/** Structured JSON call (decision or style batch). Returns the raw model string; the caller parses. */
+/** Structured JSON call (decision or writer). Returns the raw model string; the caller parses. */
 export async function generateJson(input: GenerateJsonInput): Promise<string> {
-  return runWithTimeout({
-    text: input.text,
-    systemPrompt: input.systemPrompt,
-    model: input.model,
-    timeoutMs: input.timeoutMs,
-    abortSignal: input.abortSignal,
-    callKind: input.callKind,
-    attempt: input.attempt,
-    beforeProviderCall: input.beforeProviderCall,
-    usageSink: input.usageSink,
+  return runWithFallback({
+    ...input,
     maxOutputTokens: input.maxOutputTokens ?? DECISION_MAX_OUTPUT_TOKENS,
     json: true,
   });
 }
 
-async function runWithTimeout(input: ProviderCallInput): Promise<string> {
+async function runWithFallback(input: ProviderCallInput): Promise<string> {
+  const primary = resolveEffectiveModel(input.model);
+  try {
+    const content = await runWithTimeout(input, primary);
+    input.onAnsweredBy?.(primary);
+    return content;
+  } catch (error) {
+    const fallback = input.fallbackModel;
+    if (
+      fallback === undefined ||
+      fallback === primary ||
+      !(error instanceof LlmError) ||
+      !error.retryable ||
+      input.abortSignal?.aborted
+    ) {
+      throw error;
+    }
+    console.error("llm_fallback", { from: primary, to: fallback, reason: error.message });
+    const content = await runWithTimeout(input, fallback);
+    input.onAnsweredBy?.(fallback);
+    return content;
+  }
+}
+
+function callTimeoutMs(input: ProviderCallInput): number {
+  if (input.deadlineAt !== undefined) {
+    return Math.min(timeoutMsUntil(input.deadlineAt), input.timeoutMs ?? LLM_TIMEOUT_MS);
+  }
+  return Math.min(input.timeoutMs ?? LLM_TIMEOUT_MS, LLM_TIMEOUT_MS);
+}
+
+async function runWithTimeout(input: ProviderCallInput, model: LlmModelId): Promise<string> {
   return withConcurrencyLimit(async () => {
-    const timeoutMs = Math.min(input.timeoutMs ?? LLM_TIMEOUT_MS, LLM_TIMEOUT_MS);
+    const timeoutMs = callTimeoutMs(input);
     const timeoutController = new AbortController();
     const timer = setTimeout(() => {
       timeoutController.abort();
@@ -165,7 +267,6 @@ async function runWithTimeout(input: ProviderCallInput): Promise<string> {
         ? timeoutController.signal
         : AbortSignal.any([timeoutController.signal, clientSignal]);
 
-    const model = resolveEffectiveModel(input.model);
     const provider = LLM_MODELS[model].provider;
     let providerAttempted = false;
     try {
@@ -192,7 +293,7 @@ async function runWithTimeout(input: ProviderCallInput): Promise<string> {
         consecutiveMissingUsage.set(model, missing);
         console.error("usage_missing", { model });
         if (missing >= MISSING_USAGE_LIMIT) {
-          throw new LlmError("LLM model unavailable");
+          throw new LlmError("LLM model unavailable", { retryable: true });
         }
       }
       return result.content;
@@ -216,9 +317,9 @@ async function runWithTimeout(input: ProviderCallInput): Promise<string> {
         throw new LlmError("LLM request aborted", { cause: error });
       }
       if (timeoutController.signal.aborted) {
-        throw new LlmError("LLM request timed out", { cause: error });
+        throw new LlmError("LLM request timed out", { cause: error, retryable: true });
       }
-      throw new LlmError("LLM request failed", { cause: error });
+      throw new LlmError("LLM request failed", { cause: error, retryable: true });
     } finally {
       clearTimeout(timer);
     }
@@ -248,27 +349,19 @@ function usageEvent(
   };
 }
 
-function isLlmModelId(value: string): value is LlmModelId {
+export function isLlmModelId(value: string): value is LlmModelId {
   return (LLM_MODEL_IDS as readonly string[]).includes(value);
 }
 
 export function resolveEffectiveModel(requested?: LlmModelId): LlmModelId {
-  if (requested) {
-    return requested;
-  }
-
-  const raw = process.env.LLM_MODEL?.trim() || DEFAULT_LLM_MODEL;
-  if (!isLlmModelId(raw)) {
-    throw new LlmError("Unknown LLM_MODEL");
-  }
-  return raw;
+  return requested ?? DEFAULT_LLM_MODEL;
 }
 
 function apiKeyFor(provider: LlmProvider): string {
-  const envName = KEY_ENV[provider];
+  const envName = LLM_PROVIDER_KEY_ENV[provider];
   const key = process.env[envName]?.trim() ?? "";
   if (key.length === 0) {
-    throw new LlmError(`${envName} is not set`);
+    throw new LlmError(`${envName} is not set`, { retryable: true });
   }
   return key;
 }
@@ -298,6 +391,8 @@ async function callProvider(
       signal,
       maxOutputTokens: input.maxOutputTokens,
       json: input.json,
+      jsonSchema: input.jsonSchema,
+      temperature: input.temperature,
     });
   }
 
@@ -313,9 +408,23 @@ async function callProvider(
       ...(provider === "mistral"
         ? { reasoning_effort: "none" }
         : { thinking: { type: "disabled" } }),
-      ...(input.json ? { response_format: { type: "json_object" } } : {}),
+      ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+      ...(input.json ? { response_format: chatResponseFormat(provider, input.jsonSchema) } : {}),
     },
   });
+}
+
+function chatResponseFormat(
+  provider: Exclude<LlmProvider, "gemini">,
+  jsonSchema: JsonSchema | undefined,
+): Record<string, unknown> {
+  if (provider === "mistral" && jsonSchema) {
+    return {
+      type: "json_schema",
+      json_schema: { name: jsonSchema.name, schema: jsonSchema.schema, strict: true },
+    };
+  }
+  return { type: "json_object" };
 }
 
 type ChatMessageContent =
@@ -351,6 +460,10 @@ type GeminiGenerateResponse = {
   }>;
 };
 
+function httpError(status: number): LlmError {
+  return new LlmError(`LLM HTTP ${status}`, { retryable: status === 408 || status === 429 || status >= 500 });
+}
+
 async function requestChatCompletions(options: {
   url: string;
   apiKey: string;
@@ -380,13 +493,13 @@ async function requestChatCompletions(options: {
   });
 
   if (!response.ok) {
-    throw new LlmError(`LLM HTTP ${response.status}`);
+    throw httpError(response.status);
   }
 
   const payload = (await response.json()) as ChatCompletionResponse;
   const content = extractChatContent(payload.choices?.[0]?.message?.content);
   if (content.length === 0) {
-    throw new LlmError("LLM returned an empty reframe");
+    throw new LlmError("LLM returned an empty reframe", { retryable: true });
   }
   const requestedModel = options.model as LlmModelId;
   const provider = LLM_MODELS[requestedModel].provider;
@@ -409,6 +522,8 @@ async function requestGemini(options: {
   signal: AbortSignal;
   maxOutputTokens: number;
   json: boolean;
+  jsonSchema: JsonSchema | undefined;
+  temperature: number | undefined;
 }): Promise<ProviderCallResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.model}:generateContent`;
   const response = await fetch(url, {
@@ -423,24 +538,26 @@ async function requestGemini(options: {
       },
       contents: [{ role: "user", parts: [{ text: options.text }] }],
       generationConfig: {
-        maxOutputTokens: options.maxOutputTokens,
+        maxOutputTokens: options.maxOutputTokens + GEMINI_THINKING_HEADROOM,
         thinkingConfig: {
           thinkingLevel: "low",
         },
+        ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
         ...(options.json ? { responseMimeType: "application/json" } : {}),
+        ...(options.json && options.jsonSchema ? { responseJsonSchema: options.jsonSchema.schema } : {}),
       },
     }),
     signal: options.signal,
   });
 
   if (!response.ok) {
-    throw new LlmError(`LLM HTTP ${response.status}`);
+    throw httpError(response.status);
   }
 
   const payload = (await response.json()) as GeminiGenerateResponse;
   const content = extractGeminiText(payload.candidates?.[0]?.content?.parts);
   if (content.length === 0) {
-    throw new LlmError("LLM returned an empty reframe");
+    throw new LlmError("LLM returned an empty reframe", { retryable: true });
   }
   return {
     content,
@@ -482,4 +599,3 @@ export function resetMissingUsageCircuitForTests(): void {
     consecutiveMissingUsage.clear();
   }
 }
-

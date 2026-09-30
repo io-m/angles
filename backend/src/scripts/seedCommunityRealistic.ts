@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { DEV_USER_ID } from "../lib/authStub.js";
+import { STEP_DEFAULT_MODELS } from "../lib/llmClient.js";
 import type { Category, Style } from "../types/index.js";
 import { closePool, getDb } from "../db/client.js";
 import { cardReframes, cards, savedAngles, users } from "../db/schema.js";
@@ -90,6 +91,7 @@ async function main(): Promise<void> {
         intensity: item.intensity,
         intensityBand: item.intensityBand,
         isPublic: true,
+        model: STEP_DEFAULT_MODELS.writer,
       })
       .where(eq(cards.id, item.id));
   }

@@ -114,7 +114,6 @@ struct TallHomeCardGrid: View, Equatable {
     var onBlock: (HomeCard) -> Void = { _ in }
     var shiningCardID: UUID? = nil
     var onOpenAuthor: ((HomeCard) -> Void)? = nil
-    var onOpenModel: ((HomeCard) -> Void)? = nil
     var onToggleFollow: (HomeCard) -> Void = { _ in }
     /// Fires before the end is visible, so a server-paged grid can append off screen.
     var onReachEnd: (() -> Void)? = nil
@@ -149,7 +148,6 @@ struct TallHomeCardGrid: View, Equatable {
                     onReport: { reason in onReport(card, reason) },
                     onBlock: { onBlock(card) },
                     onOpenAuthor: openAuthorAction(for: card),
-                    onOpenModel: openModelAction(for: card),
                     onToggleFollow: followAction(for: card),
                     offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
                 )
@@ -189,13 +187,6 @@ struct TallHomeCardGrid: View, Equatable {
             return nil
         }
         return { onOpenAuthor(card) }
-    }
-
-    private func openModelAction(for card: HomeCard) -> (() -> Void)? {
-        guard card.model != nil, let onOpenModel else {
-            return nil
-        }
-        return { onOpenModel(card) }
     }
 
     private func followAction(for card: HomeCard) -> (() -> Void)? {

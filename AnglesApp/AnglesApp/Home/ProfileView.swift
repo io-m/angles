@@ -49,7 +49,6 @@ struct ProfileView: View {
     var onDeleteAccount: (() async -> Bool)? = nil
     var canLoadFullAppContent = false
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
-    var onOpenModel: (HomeCard) -> Void = { _ in }
     var onOpenFollowed: (FollowedPerson) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -203,7 +202,6 @@ struct ProfileView: View {
                                 onReport: reportCard,
                                 onBlock: blockAuthor,
                                 onOpenAuthor: onOpenAuthor,
-                                onOpenModel: onOpenModel,
                                 onToggleFollow: toggleFollow
                             )
                             .containerRelativeFrame(.horizontal)
@@ -535,7 +533,6 @@ private struct ProfileTabPage: View {
     var onReport: (HomeCard, ReportReason) -> Void
     var onBlock: (HomeCard) -> Void
     var onOpenAuthor: (HomeCard) -> Void
-    var onOpenModel: (HomeCard) -> Void
     var onToggleFollow: (HomeCard) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -677,7 +674,6 @@ private struct ProfileTabPage: View {
                         onBlock: onBlock,
                         shiningCardID: shiningCardID,
                         onOpenAuthor: onOpenAuthor,
-                        onOpenModel: onOpenModel,
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6,

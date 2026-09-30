@@ -4,7 +4,7 @@ import {
   recordStandaloneLlmUsage,
 } from "../db/metering.js";
 import { getOwnerUserId } from "./authStub.js";
-import { generateJson } from "./llmClient.js";
+import { generateJson, modelsForStep } from "./llmClient.js";
 import type { LlmUsageEvent } from "./llmUsage.js";
 import { isUsageEnforcementRequired } from "./meteringPolicy.js";
 
@@ -64,9 +64,13 @@ export async function moderatePublicCard(input: {
     }
   };
   try {
+    const { primary, fallback } = modelsForStep("moderation");
     const raw = await generateJson({
       systemPrompt: PUBLIC_MODERATION_PROMPT,
       text: JSON.stringify({ thought: input.thought, reframes: input.reframes }),
+      model: primary,
+      fallbackModel: fallback,
+      temperature: 0,
       maxOutputTokens: 100,
       callKind: "moderation",
       attempt: 1,

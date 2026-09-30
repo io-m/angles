@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ne } from "drizzle-orm";
 import { DEV_USER_ID } from "../lib/authStub.js";
+import { STEP_DEFAULT_MODELS } from "../lib/llmClient.js";
 import { intensityBand, type Category, type Emotion, type Style, type Timeframe } from "../types/index.js";
 import { getDb, closePool } from "../db/client.js";
 import { cardReframes, cardTags, cards, tags, users } from "../db/schema.js";
@@ -56,8 +57,6 @@ async function main(): Promise<void> {
   }
   const tagRows = allSlugs.length > 0 ? await db.select().from(tags) : [];
   const tagBySlug = new Map(tagRows.map((row) => [row.slug, row.id]));
-  const seedModels = ["mistral-small-latest", "gemini-3.8-flash", "deepseek-flash"] as const;
-
   for (const [index, post] of fixture.posts.entries()) {
     await db.insert(cards).values({
       id: post.id,
@@ -72,7 +71,7 @@ async function main(): Promise<void> {
       safety: "none",
       emotions: post.emotions as Emotion[],
       skippedStyles: [],
-      model: seedModels[index % seedModels.length]!,
+      model: STEP_DEFAULT_MODELS.writer,
       spotlightStyle: post.spotlightStyle as Style,
       isPublic: true,
       createdAt: new Date(post.createdAt),

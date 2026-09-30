@@ -12,7 +12,6 @@ struct AuthorProfileView: View {
     let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
     let onOpenAuthor: (HomeCard) -> Void
-    let onOpenModel: (HomeCard) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -52,7 +51,6 @@ struct AuthorProfileView: View {
             onReport: reportCard,
             onBlock: blockAuthor,
             onOpenAuthor: onOpenAuthor,
-            onOpenModel: onOpenModel,
             onToggleFollow: toggleFollow
         ) { pagerState, settledSelection, onSelectTab in
             AuthorChrome(

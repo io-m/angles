@@ -56,12 +56,10 @@ If the app is killed after the server returned a ready taste but before the card
 
 Both monthly and annual subscriptions grant **600 credits for each monthly membership period**:
 
-- Mistral ready result: 1 credit
-- DeepSeek ready result: 2 credits
-- Gemini ready result: 6 credits
+- Ready cook or recook: 1 credit
 - Continue, safety response, or failed operation: 0 user credits
 
-The backend reserves the selected model's tariff before provider work and charges only a ready result. The app keeps all three models visible, disables unavailable choices, and moves an unaffordable selection to the cheapest allowed model. Credits do not roll over and there are no packs or overages.
+The backend reserves the credit before provider work and charges only a ready result. The server picks the model for each step; the app has no model picker. Credits do not roll over and there are no packs or overages.
 
 ## App Review
 

@@ -54,13 +54,12 @@ struct ComposeSheetView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-    private var composerGlowColor: Color { viewModel.selectedModel.brandColor }
+    private var composerGlowColor: Color { InspireMark.brandColor }
     @FocusState private var composerFocused: Bool
     @State private var headerStrip: CGFloat = 119
     @State private var showRestartAlert = false
     @State private var showLeaveAlert = false
     @State private var leaveKind: LeaveKind = .discard
-    @State private var showModelPicker = false
     @State private var isCelebratingSave = false
 
     private var isComposing: Bool {
@@ -216,49 +215,41 @@ struct ComposeSheetView: View {
     }
 
     private var standardHeader: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            ViewThatFits(in: .horizontal) {
-                standardHeaderRow
+        ViewThatFits(in: .horizontal) {
+            standardHeaderRow
 
-                VStack(spacing: 6) {
-                    HStack(alignment: .center, spacing: 12) {
-                        headerLeadingControl
-                            .frame(
-                                maxWidth: .infinity,
-                                minHeight: 40,
-                                alignment: .leading
-                            )
-
-                        modelPickerButton
-                    }
-
-                    if hasStatement, !isOnboardingTaste {
-                        HStack {
-                            Spacer(minLength: 0)
-                            startAgainButton
-                        }
-                    }
-                }
-            }
-
-            usageStatusLine
+            standardHeaderStacked
         }
     }
 
     private var standardHeaderRow: some View {
         HStack(alignment: .center, spacing: 12) {
             headerLeadingControl
-                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
 
-            HStack(spacing: 12) {
-                if hasStatement, !isOnboardingTaste {
-                    startAgainButton
-                }
+            Spacer(minLength: 0)
 
-                modelPickerButton
+            if hasStatement, !isOnboardingTaste {
+                startAgainButton
             }
+
+            usageStatusLine
         }
         .frame(minHeight: 40)
+    }
+
+    private var standardHeaderStacked: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(alignment: .center, spacing: 12) {
+                headerLeadingControl
+                Spacer(minLength: 0)
+                usageStatusLine
+            }
+            .frame(minHeight: 40)
+
+            if hasStatement, !isOnboardingTaste {
+                startAgainButton
+            }
+        }
     }
 
     private var startAgainButton: some View {
@@ -274,20 +265,17 @@ struct ComposeSheetView: View {
 
     private var restoreHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 restoreHeadline
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                modelPickerButton
+                usageStatusLine
             }
             .frame(minHeight: 40)
 
             if storeKitManager?.hasEndedMembership == true {
                 restoreRenewButton
             }
-
-            usageStatusLine
-                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .accessibilityElement(children: .contain)
     }
@@ -356,85 +344,9 @@ struct ComposeSheetView: View {
         return storeKitManager?.hasEndedMembership != true
     }
 
-    private var modelPickerButton: some View {
-        Button {
-            showModelPicker = true
-        } label: {
-            ModelLogoButton(
-                model: viewModel.selectedModel,
-                fill: theme.surface,
-                hairline: theme.cardHairline
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(viewModel.isModelLocked)
-        .opacity(viewModel.isModelLocked ? 0.45 : 1)
-        .accessibilityLabel("Model")
-        .accessibilityValue(viewModel.selectedModel.displayName)
-        .popover(isPresented: $showModelPicker, arrowEdge: .top) {
-            modelPicker
-                .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private var modelPicker: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(LlmModel.allCases) { model in
-                let isSelected = viewModel.selectedModel == model
-                let isAvailable = viewModel.isModelAvailable(model)
-
-                Button {
-                    viewModel.selectedModel = model
-                    showModelPicker = false
-                } label: {
-                    HStack(spacing: 12) {
-                        ModelLogo(model: model, side: 18)
-                            .frame(width: 22, alignment: .center)
-
-                        Text(model.displayName)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(isAvailable ? theme.ink : theme.faint)
-
-                        Spacer(minLength: 12)
-
-                        Text("\(viewModel.creditCost(for: model)) \(viewModel.creditCost(for: model) == 1 ? "credit" : "credits")")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(theme.muted)
-
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(theme.ink)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(!isAvailable || viewModel.isModelLocked)
-                .opacity(isAvailable ? 1 : 0.5)
-                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
-                .accessibilityValue(
-                    "\(viewModel.creditCost(for: model)) credits, \(isAvailable ? "available" : "unavailable")"
-                )
-
-                if model != LlmModel.allCases.last {
-                    Rectangle()
-                        .fill(theme.line)
-                        .frame(height: 1)
-                        .padding(.leading, 50)
-                }
-            }
-        }
-        .padding(.vertical, 8)
-        .frame(minWidth: 220)
-        .background(theme.surface)
-    }
-
     @ViewBuilder
     private var usageStatusLine: some View {
-        if let status = viewModel.usagePickerStatus {
+        if let status = viewModel.usageStatus {
             Text(status)
                 .font(.caption.weight(viewModel.usageSummary?.warning == .critical ? .semibold : .medium))
                 .foregroundStyle(
@@ -546,8 +458,7 @@ struct ComposeSheetView: View {
                         recookingStyle: viewModel.recookingStyle,
                         identityStore: identityStore,
                         isPublic: $viewModel.composeIsPublic,
-                        allowsRecook: !isOnboardingTaste
-                            && viewModel.isModelAvailable(viewModel.selectedModel),
+                        allowsRecook: !isOnboardingTaste && viewModel.hasCreditsForCook,
                         onRecook: { style in
                             viewModel.recookStyle(style)
                         }

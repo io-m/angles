@@ -9,7 +9,6 @@ import { appStoreNotificationsRoute } from "./routes/appStoreNotifications.js";
 import { cardsRoute } from "./routes/cards.js";
 import { feedRoute } from "./routes/feed.js";
 import { healthRoute } from "./routes/health.js";
-import { modelsRoute } from "./routes/models.js";
 import { avatarsRoute, profileRoute } from "./routes/profile.js";
 import { reframeRoute } from "./routes/reframe.js";
 import { usersRoute } from "./routes/users.js";
@@ -56,7 +55,6 @@ export function createApp(): Hono {
   app.route("/feed", feedRoute);
   app.route("/profile", profileRoute);
   app.route("/users", usersRoute);
-  app.route("/models", modelsRoute);
   app.route("/avatars", avatarsRoute);
 
   app.notFound((c) => c.json(errorBody("Not found", "NOT_FOUND"), 404));

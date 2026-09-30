@@ -1,16 +1,7 @@
 import { X509Certificate } from "node:crypto";
-import {
-  PUBLIC_LLM_MODELS,
-  type PublicLlmModelId,
-} from "./meteringPolicy.js";
+import { LLM_PROVIDER_KEY_ENV, LLM_STEPS, modelsForStep } from "./llmClient.js";
 
 type Environment = NodeJS.ProcessEnv;
-
-const PUBLIC_MODEL_KEYS: Record<PublicLlmModelId, string> = {
-  "mistral-small-latest": "MISTRAL_API_KEY",
-  "deepseek-flash": "DEEPSEEK_API_KEY",
-  "gemini-3.8-flash": "GEMINI_API_KEY",
-};
 
 const PLACEHOLDER_PATTERN =
   /^(?:missing|placeholder|change[-_ ]?me|replace[-_ ]?me|your[-_ ].+|example(?:[-_ ].*)?|<.+>)$/i;
@@ -171,8 +162,16 @@ export function assertProductionConfiguration(
     }
   }
 
-  for (const model of PUBLIC_LLM_MODELS) {
-    nonPlaceholderValue(environment, PUBLIC_MODEL_KEYS[model], errors);
+  // Every provider key, so moving a step to another model is an env change, not an outage.
+  for (const keyName of Object.values(LLM_PROVIDER_KEY_ENV)) {
+    nonPlaceholderValue(environment, keyName, errors);
+  }
+  for (const step of LLM_STEPS) {
+    try {
+      modelsForStep(step, environment);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : `Invalid ${step} model`);
+    }
   }
 
   const bucket = configuredValue(environment, "BUCKET", errors);

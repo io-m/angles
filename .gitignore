@@ -15,6 +15,9 @@ coverage/
 *.tsbuildinfo
 .pnpm-store/
 
+# LLM eval reports (synthetic thoughts only, still not for git)
+backend/eval/out/
+
 # Logs
 *.log
 npm-debug.log*

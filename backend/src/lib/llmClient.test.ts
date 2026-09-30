@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { generateJson, generateReframe, LLM_MAX_OUTPUT_TOKENS, LlmError, MIN_LLM_CALL_MS, resetMissingUsageCircuitForTests, STYLE_BATCH_MAX_OUTPUT_TOKENS, timeoutMsUntil } from "./llmClient.js";
+import { GEMINI_THINKING_HEADROOM, generateJson, generateReframe, LLM_MAX_OUTPUT_TOKENS, LlmError, MIN_LLM_CALL_MS, modelsForStep, resetMissingUsageCircuitForTests, STEP_DEFAULT_MODELS, timeoutMsUntil } from "./llmClient.js";
 
 const INPUT = {
   text: "I bombed my job interview today and cannot stop replaying every pause.",
@@ -32,7 +32,6 @@ function lastRequest(fetchMock: ReturnType<typeof vi.fn>): {
 describe("generateReframe", () => {
   beforeEach(() => {
     resetMissingUsageCircuitForTests();
-    vi.stubEnv("LLM_MODEL", "mistral-small-latest");
     vi.stubEnv("MISTRAL_API_KEY", "mistral-test");
     vi.stubEnv("GEMINI_API_KEY", "gemini-test");
     vi.stubEnv("DEEPSEEK_API_KEY", "deepseek-test");
@@ -68,7 +67,7 @@ describe("generateReframe", () => {
     ]);
   });
 
-  it("uses a requested model instead of LLM_MODEL", async () => {
+  it("uses the requested model", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         candidates: [
@@ -93,7 +92,6 @@ describe("generateReframe", () => {
   });
 
   it("calls Gemini with thinking low and skips thought parts", async () => {
-    vi.stubEnv("LLM_MODEL", "gemini-3.8-flash");
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         candidates: [
@@ -110,7 +108,9 @@ describe("generateReframe", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(generateReframe(INPUT)).resolves.toBe("Meet the moment you still control.");
+    await expect(generateReframe({ ...INPUT, model: "gemini-3.8-flash" })).resolves.toBe(
+      "Meet the moment you still control.",
+    );
 
     const { url, init, body } = lastRequest(fetchMock);
     expect(url).toBe(
@@ -123,13 +123,81 @@ describe("generateReframe", () => {
     const generationConfig = body.generationConfig as {
       thinkingConfig: { thinkingLevel: string };
       maxOutputTokens: number;
+      temperature?: number;
     };
     expect(generationConfig.thinkingConfig.thinkingLevel).toBe("low");
-    expect(generationConfig.maxOutputTokens).toBe(LLM_MAX_OUTPUT_TOKENS);
+    expect(generationConfig.maxOutputTokens).toBe(LLM_MAX_OUTPUT_TOKENS + GEMINI_THINKING_HEADROOM);
+    expect(generationConfig.temperature).toBeUndefined();
+  });
+
+  it("sends a requested temperature to each provider in its own place", async () => {
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) =>
+      String(url).includes("googleapis")
+        ? jsonResponse({ candidates: [{ content: { parts: [{ text: "Hold steady." }] } }] })
+        : jsonResponse({ choices: [{ message: { content: "Hold steady." } }] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateReframe({ ...INPUT, temperature: 0.8 });
+    await generateReframe({ ...INPUT, temperature: 0.8, model: "gemini-3.8-flash" });
+
+    const mistralBody = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as {
+      temperature?: number;
+    };
+    const geminiBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)) as {
+      generationConfig: { temperature?: number };
+    };
+    expect(mistralBody.temperature).toBe(0.8);
+    expect(geminiBody.generationConfig.temperature).toBe(0.8);
+  });
+
+  it("falls back to another model once when the provider fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) =>
+      String(url).includes("mistral")
+        ? jsonResponse({ error: "overloaded" }, 503)
+        : jsonResponse({ choices: [{ message: { content: "Take the next step." } }] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const answeredBy = vi.fn();
+    const usageSink = vi.fn();
+
+    await expect(
+      generateReframe({ ...INPUT, fallbackModel: "deepseek-flash", onAnsweredBy: answeredBy, usageSink }),
+    ).resolves.toBe("Take the next step.");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://api.deepseek.com/chat/completions");
+    expect(answeredBy).toHaveBeenCalledWith("deepseek-flash");
+    expect(usageSink).toHaveBeenCalledWith(
+      expect.objectContaining({ requestedModel: "mistral-small-latest", status: "failed" }),
+    );
+    expect(usageSink).toHaveBeenCalledWith(
+      expect.objectContaining({ requestedModel: "deepseek-flash", status: "succeeded" }),
+    );
+  });
+
+  it("does not fall back on a request the provider rejected as malformed", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ error: "bad request" }, 400));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateReframe({ ...INPUT, fallbackModel: "deepseek-flash" })).rejects.toThrow(
+      "LLM HTTP 400",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start a call once the cook deadline is gone", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      generateReframe({ ...INPUT, deadlineAt: Date.now() + MIN_LLM_CALL_MS - 1 }),
+    ).rejects.toThrow("Cook deadline exceeded");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("calls DeepSeek Flash with thinking disabled", async () => {
-    vi.stubEnv("LLM_MODEL", "deepseek-flash");
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         choices: [{ message: { content: [{ type: "text", text: "Keep moving." }] } }],
@@ -137,7 +205,7 @@ describe("generateReframe", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(generateReframe(INPUT)).resolves.toBe("Keep moving.");
+    await expect(generateReframe({ ...INPUT, model: "deepseek-flash" })).resolves.toBe("Keep moving.");
 
     const { url, body } = lastRequest(fetchMock);
     expect(url).toBe("https://api.deepseek.com/chat/completions");
@@ -146,7 +214,6 @@ describe("generateReframe", () => {
   });
 
   it("calls DeepSeek Pro on the same endpoint", async () => {
-    vi.stubEnv("LLM_MODEL", "deepseek-v4-pro");
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         choices: [{ message: { content: "Own the next step." } }],
@@ -154,21 +221,13 @@ describe("generateReframe", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(generateReframe(INPUT)).resolves.toBe("Own the next step.");
+    await expect(generateReframe({ ...INPUT, model: "deepseek-v4-pro" })).resolves.toBe(
+      "Own the next step.",
+    );
 
     const { url, body } = lastRequest(fetchMock);
     expect(url).toBe("https://api.deepseek.com/chat/completions");
     expect(body.model).toBe("deepseek-v4-pro");
-  });
-
-  it("rejects an unknown model without calling fetch", async () => {
-    vi.stubEnv("LLM_MODEL", "muse-spark-1.3");
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(generateReframe(INPUT)).rejects.toBeInstanceOf(LlmError);
-    await expect(generateReframe(INPUT)).rejects.toThrow("Unknown LLM_MODEL");
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects a missing provider key", async () => {
@@ -280,6 +339,40 @@ describe("generateReframe", () => {
   });
 });
 
+describe("modelsForStep", () => {
+  it("uses the step defaults with a fallback on another provider", () => {
+    const decision = modelsForStep("decision", {});
+    const writer = modelsForStep("writer", {});
+    expect(decision.primary).toBe(STEP_DEFAULT_MODELS.decision);
+    expect(writer.primary).toBe(STEP_DEFAULT_MODELS.writer);
+    for (const step of [decision, writer]) {
+      expect(step.fallback).toBeDefined();
+      expect(step.fallback).not.toBe(step.primary);
+    }
+  });
+
+  it("reads a step override, a fallback override, and none", () => {
+    expect(
+      modelsForStep("writer", {
+        LLM_WRITER_MODEL: "gemini-3.8-flash",
+        LLM_WRITER_FALLBACK_MODEL: "deepseek-flash",
+      }),
+    ).toEqual({ primary: "gemini-3.8-flash", fallback: "deepseek-flash" });
+    expect(modelsForStep("decision", { LLM_DECISION_FALLBACK_MODEL: "none" })).toEqual({
+      primary: STEP_DEFAULT_MODELS.decision,
+    });
+  });
+
+  it("rejects an unknown model id", () => {
+    expect(() => modelsForStep("writer", { LLM_WRITER_MODEL: "muse-spark-1.3" })).toThrow(
+      LlmError,
+    );
+    expect(() => modelsForStep("writer", { LLM_WRITER_MODEL: "muse-spark-1.3" })).toThrow(
+      "Unknown LLM_WRITER_MODEL",
+    );
+  });
+});
+
 describe("timeoutMsUntil", () => {
   it("caps at the per-call timeout", () => {
     expect(timeoutMsUntil(Date.now() + 60_000)).toBe(8_000);
@@ -303,7 +396,7 @@ describe("generateJson", () => {
     vi.restoreAllMocks();
   });
 
-  it("sends a tight max_tokens for a style batch", async () => {
+  it("sends the caller's max_tokens and plain JSON mode without a schema", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         choices: [{ message: { content: '{"stoic":"Keep the next attempt."}' } }],
@@ -314,11 +407,39 @@ describe("generateJson", () => {
     await generateJson({
       text: "I bombed my interview.",
       systemPrompt: "Each JSON field is that style only",
-      maxOutputTokens: STYLE_BATCH_MAX_OUTPUT_TOKENS,
+      maxOutputTokens: 496,
     });
 
     const { body } = lastRequest(fetchMock);
-    expect(body.max_tokens).toBe(STYLE_BATCH_MAX_OUTPUT_TOKENS);
+    expect(body.max_tokens).toBe(496);
     expect(body.response_format).toEqual({ type: "json_object" });
+  });
+
+  it("enforces a schema on Mistral and Gemini, and keeps DeepSeek on JSON mode", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "gemini-test");
+    vi.stubEnv("DEEPSEEK_API_KEY", "deepseek-test");
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) =>
+      String(url).includes("googleapis")
+        ? jsonResponse({ candidates: [{ content: { parts: [{ text: '{"stoic":"x"}' }] } }] })
+        : jsonResponse({ choices: [{ message: { content: '{"stoic":"x"}' } }] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const jsonSchema = { name: "reframes", schema: { type: "object", properties: { stoic: { type: "string" } } } };
+
+    await generateJson({ text: "x", systemPrompt: "y", jsonSchema });
+    await generateJson({ text: "x", systemPrompt: "y", jsonSchema, model: "gemini-3.8-flash" });
+    await generateJson({ text: "x", systemPrompt: "y", jsonSchema, model: "deepseek-flash" });
+
+    const bodies = fetchMock.mock.calls.map(
+      (call) => JSON.parse(String((call[1] as RequestInit).body)) as Record<string, unknown>,
+    );
+    expect(bodies[0]?.response_format).toEqual({
+      type: "json_schema",
+      json_schema: { name: "reframes", schema: jsonSchema.schema, strict: true },
+    });
+    expect((bodies[1]?.generationConfig as Record<string, unknown>).responseJsonSchema).toEqual(
+      jsonSchema.schema,
+    );
+    expect(bodies[2]?.response_format).toEqual({ type: "json_object" });
   });
 });

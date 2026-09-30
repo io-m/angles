@@ -175,6 +175,9 @@ struct ReframeMeta: Codable, Equatable, Sendable {
     let intensity: Int
     let timeframe: Timeframe
     let emotions: [Emotion]
+    /// Thinking traps the server named. Raw values on purpose: the cook signature covers
+    /// them, so a save must echo exactly what arrived, including values this build does not know.
+    let distortions: [String]
     let safety: SafetyFlag
     let inputLanguage: String
     let skippedStyles: [SkippedStyle]
@@ -188,6 +191,7 @@ struct ReframeMeta: Codable, Equatable, Sendable {
         intensity: Int,
         timeframe: Timeframe,
         emotions: [Emotion],
+        distortions: [String] = [],
         safety: SafetyFlag,
         inputLanguage: String,
         skippedStyles: [SkippedStyle],
@@ -200,6 +204,7 @@ struct ReframeMeta: Codable, Equatable, Sendable {
         self.intensity = intensity
         self.timeframe = timeframe
         self.emotions = emotions
+        self.distortions = distortions
         self.safety = safety
         self.inputLanguage = inputLanguage
         self.skippedStyles = skippedStyles
@@ -216,6 +221,7 @@ struct ReframeMeta: Codable, Equatable, Sendable {
         timeframe = try container.decodeIfPresent(Timeframe.self, forKey: .timeframe) ?? .ongoing
         emotions = (try container.decodeIfPresent([String].self, forKey: .emotions) ?? [])
             .compactMap(Emotion.init(rawValue:))
+        distortions = try container.decodeIfPresent([String].self, forKey: .distortions) ?? []
         safety = try container.decodeIfPresent(SafetyFlag.self, forKey: .safety) ?? .none
         inputLanguage = try container.decodeIfPresent(String.self, forKey: .inputLanguage) ?? "en"
         skippedStyles = (
@@ -253,9 +259,8 @@ struct UsageSummary: Codable, Equatable, Sendable {
     let periodEnd: String?
     let resetsAt: String?
     let warning: UsageWarning
-    /// Raw IDs stay server-authoritative. The current UI only recognizes `LlmModel.allCases`.
-    let allowedModels: [String]
-    let creditCost: [String: Int]
+    /// What one cook or recook costs. Flat: the server picks the model.
+    let creditCost: Int
 
     var resetDate: Date? {
         resetsAt.flatMap(ISO8601Dates.date(from:))
@@ -268,9 +273,7 @@ struct ReframeUsage: Codable, Equatable, Sendable {
     let granted: Int
     let resetsAt: String?
     let warning: UsageWarning
-    /// Raw IDs stay server-authoritative. Unknown future models are safely ignored by this build.
-    let allowedModels: [String]
-    /// Cost of the model selected for this request.
+    /// What one cook or recook costs. Flat: the server picks the model.
     let creditCost: Int
 }
 
@@ -280,22 +283,18 @@ struct APIErrorPayload: Decodable, Equatable, Sendable {
     let creditsRemaining: Int?
     let creditsGranted: Int?
     let resetsAt: String?
-    let allowedModels: [String]?
 }
 
+/// A compose turn. The server picks the styles.
 struct ReframeRequest: Codable, Equatable, Sendable {
     let text: String
     let followUps: [FollowUpAnswer]
-    let styles: [Style]?
-    let model: LlmModel?
     /// Device region (ISO 3166-1 alpha-2). The server uses it only to pick crisis contacts.
     let region: String?
 
     private enum CodingKeys: String, CodingKey {
         case text
         case followUps
-        case styles
-        case model
         case region
     }
 
@@ -305,31 +304,64 @@ struct ReframeRequest: Codable, Equatable, Sendable {
         if !followUps.isEmpty {
             try container.encode(followUps, forKey: .followUps)
         }
-        try container.encodeIfPresent(styles, forKey: .styles)
-        try container.encodeIfPresent(model, forKey: .model)
         try container.encodeIfPresent(region, forKey: .region)
     }
 }
 
-struct ReframeResult: Codable, Equatable, Sendable {
-    let style: Style
-    let reframe: String
+/// The signed cook a recook starts from, echoed exactly as `/reframe` returned it.
+struct RecookSource: Codable, Equatable, Sendable {
+    let thought: String
+    let thoughtOriginal: String?
+    let meta: ReframeMeta
+    let model: String
+    let signature: String
 }
 
-/// A reframe from `POST /reframe`. `POST /cards` only accepts results the server signed.
+struct RecookPrevious: Codable, Equatable, Sendable {
+    let reframe: String
+    var reframeOriginal: String? = nil
+    let signature: String
+}
+
+struct RecookRequest: Codable, Equatable, Sendable {
+    let style: Style
+    let cook: RecookSource
+    /// The signed answer being replaced.
+    let previous: RecookPrevious?
+}
+
+/// "New answer" for one style. The server verifies the cook and skips the decision call.
+struct RecookRequestBody: Codable, Equatable, Sendable {
+    let recook: RecookRequest
+    let region: String?
+}
+
+struct ReframeResult: Codable, Equatable, Sendable {
+    let style: Style
+    /// English. The only version anyone but the author sees.
+    let reframe: String
+    /// The same answer in the language they typed, when that is not English.
+    var reframeOriginal: String? = nil
+}
+
+/// A reframe from `POST /reframe`. `POST /cards` only accepts results the server signed,
+/// and the signature covers both versions, so Save echoes `reframeOriginal` unchanged.
 struct SignedReframeResult: Codable, Equatable, Sendable {
     let style: Style
     let reframe: String
+    var reframeOriginal: String? = nil
     let signature: String
 
     var result: ReframeResult {
-        ReframeResult(style: style, reframe: reframe)
+        ReframeResult(style: style, reframe: reframe, reframeOriginal: reframeOriginal)
     }
 }
 
 struct StoredReframeResult: Decodable, Equatable, Sendable {
     let style: Style
     let reframe: String
+    /// Sent to the author only.
+    let reframeOriginal: String?
     let isFavorite: Bool
     let favoritedAt: String?
     /// How many other people hearted this angle. The server sends it only on your own
@@ -339,15 +371,21 @@ struct StoredReframeResult: Decodable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case style
         case reframe
+        case reframeOriginal
         case isFavorite
         case favoritedAt
         case heartCount
+    }
+
+    var result: ReframeResult {
+        ReframeResult(style: style, reframe: reframe, reframeOriginal: reframeOriginal)
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         style = try container.decode(Style.self, forKey: .style)
         reframe = try container.decode(String.self, forKey: .reframe)
+        reframeOriginal = try container.decodeIfPresent(String.self, forKey: .reframeOriginal)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         favoritedAt = try container.decodeIfPresent(String.self, forKey: .favoritedAt)
         heartCount = try container.decodeIfPresent(Int.self, forKey: .heartCount)
@@ -364,12 +402,14 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
         crisisResource: String?,
         usage: ReframeUsage
     )
-    /// `signature` covers the thought and meta; each result carries its own.
+    /// `signature` covers the thought, meta, and `model`; each result carries its own.
+    /// `model` is the writer the server routed to. Save echoes it; the app never shows it.
     case ready(
         thought: String,
         thoughtOriginal: String?,
         results: [SignedReframeResult],
         meta: ReframeMeta,
+        model: String,
         signature: String,
         usage: ReframeUsage
     )
@@ -384,6 +424,7 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
         case thoughtOriginal
         case results
         case meta
+        case model
         case signature
         case usage
     }
@@ -406,6 +447,7 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
                 thoughtOriginal: try container.decodeIfPresent(String.self, forKey: .thoughtOriginal),
                 results: try container.decode([SignedReframeResult].self, forKey: .results),
                 meta: try container.decode(ReframeMeta.self, forKey: .meta),
+                model: try container.decode(String.self, forKey: .model),
                 signature: try container.decode(String.self, forKey: .signature),
                 usage: try container.decode(ReframeUsage.self, forKey: .usage)
             )
@@ -561,25 +603,6 @@ struct BlockedPerson: Identifiable, Equatable, Hashable, Sendable {
             return nil
         }
         self.init(id: id, initials: author.initials, avatarPath: author.avatarUrl)
-    }
-}
-
-struct ModelCardsResponse: Decodable, Equatable, Sendable {
-    let model: String
-    let cards: [StoredCard]
-    let page: CardPage
-
-    private enum CodingKeys: String, CodingKey {
-        case model
-        case cards
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        model = try container.decode(String.self, forKey: .model)
-        let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
-        cards = raw.compactMap(\.value)
-        page = try CardPage(container: container, key: .cards)
     }
 }
 

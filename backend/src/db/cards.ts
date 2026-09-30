@@ -124,6 +124,8 @@ export async function createCard(
           cardId,
           style: result.style,
           reframe: result.reframe,
+          reframeOriginal:
+            result.reframeOriginal && result.reframeOriginal !== result.reframe ? result.reframeOriginal : null,
           position,
         })),
       );
