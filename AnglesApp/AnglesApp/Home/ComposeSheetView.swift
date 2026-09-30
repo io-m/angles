@@ -451,9 +451,7 @@ struct ComposeSheetView: View {
         if isComposing && !hasStatement {
             GeometryReader { geo in
                 VStack(spacing: 20) {
-                    Image(systemName: "sparkle")
-                        .font(.system(size: 56, weight: .medium))
-                        .foregroundStyle(theme.ink)
+                    InspireMark(size: 56)
 
                     VStack(spacing: 8) {
                         Text("Break the spiral.")
@@ -720,11 +718,8 @@ struct ComposeSheetView: View {
     }
 
     private var aiAvatar: some View {
-        CircleIcon(
-            systemName: "sparkle",
+        InspireMarkCircle(
             fill: theme.surface,
-            symbol: theme.ink,
-            weight: .semibold,
             hairline: theme.cardHairline
         )
         .accessibilityHidden(true)

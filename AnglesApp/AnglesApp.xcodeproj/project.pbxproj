@@ -47,6 +47,7 @@
 		A72468A7C749E204738C1D2C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B13ED3B345E39F024359E6C0 /* Assets.xcassets */; };
 		A822B18D9B139FF8129822CC /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7E4784E528CDE420C415B939 /* Lottie */; };
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
+		B5EAC4C0ABD423A66050338D /* InspireMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17DACFE5A32F9B04674495C /* InspireMark.swift */; };
 		B9938F536C7B31B2B2AB7059 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB09EE79B4A27D757AD2944A /* AuthService.swift */; };
 		BBDCFC5DAA64296BE09CD43A /* FeedRefreshPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */; };
 		BD5651910EFAA74B0C7C11AD /* HomeFeedPullRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926E1968DC6C213D5BAAAF2E /* HomeFeedPullRefresh.swift */; };
@@ -122,6 +123,7 @@
 		B3956722F5CD9FC2607E738A /* RootTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabBar.swift; sourceTree = "<group>"; };
 		B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnglesApp.swift; sourceTree = "<group>"; };
 		BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedShelfTests.swift; sourceTree = "<group>"; };
+		C17DACFE5A32F9B04674495C /* InspireMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspireMark.swift; sourceTree = "<group>"; };
 		C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		C4B72925153855FD655114F4 /* celebration-checkmark.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "celebration-checkmark.json"; sourceTree = "<group>"; };
 		C5E9DDB98903339C5AC14D80 /* ModelProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProfileView.swift; sourceTree = "<group>"; };
@@ -175,6 +177,7 @@
 				DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */,
 				A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */,
 				551EA9251B494B0E82C36D47 /* ColorTokens.swift */,
+				C17DACFE5A32F9B04674495C /* InspireMark.swift */,
 				4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */,
 				C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */,
 				657231FF50708210A4AA9FDD /* UserAppearance.swift */,
@@ -467,6 +470,7 @@
 				A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */,
 				C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */,
 				830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */,
+				B5EAC4C0ABD423A66050338D /* InspireMark.swift in Sources */,
 				BFB32DC8E79F7A90F9203F19 /* KeychainStore.swift in Sources */,
 				01AF1E84E1E39FDEDE63AF92 /* LlmModel.swift in Sources */,
 				7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */,

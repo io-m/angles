@@ -737,12 +737,9 @@ private struct ProfileEmptyLibraryHero: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            CircleIcon(
-                systemName: "sparkle",
+            InspireMarkCircle(
                 fill: theme.paper,
-                symbol: theme.ink,
-                size: .big,
-                weight: .semibold,
+                markSize: .big,
                 hairline: theme.cardHairline
             )
 
@@ -760,8 +757,7 @@ private struct ProfileEmptyLibraryHero: View {
 
             Button(action: onInspire) {
                 HStack(spacing: 8) {
-                    Image(systemName: "sparkle")
-                        .font(.system(size: 15, weight: .semibold))
+                    InspireMark(size: 18, rendering: .monochrome(theme.paper))
                     Text("Inspire me")
                         .font(.subheadline.weight(.semibold))
                 }

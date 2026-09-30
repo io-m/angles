@@ -81,7 +81,7 @@ struct AppRoot: View {
                     .tag(RootTab.home)
 
                     Color.clear
-                        .tabItem { Label("Inspire me", systemImage: "sparkle") }
+                        .tabItem { Label("Inspire me", image: "InspireMarkTab") }
                         .tag(RootTab.compose)
 
                     ProfileView(
