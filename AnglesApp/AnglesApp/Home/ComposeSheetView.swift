@@ -166,13 +166,13 @@ struct ComposeSheetView: View {
 
     private var sessionLayout: some View {
         canvas
+            .overlay { welcomeHero }
             .safeAreaInset(edge: .top, spacing: 0) {
                 header
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 bottomChrome
             }
-            .overlay { welcomeHero }
     }
 
     private var header: some View {
@@ -449,27 +449,24 @@ struct ComposeSheetView: View {
     @ViewBuilder
     private var welcomeHero: some View {
         if isComposing && !hasStatement {
-            GeometryReader { geo in
-                VStack(spacing: 20) {
-                    InspireMark(size: 56)
+            VStack(spacing: 20) {
+                InspireMark(size: 56)
 
-                    VStack(spacing: 8) {
-                        Text("Break the spiral.")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(theme.ink)
-                            .tracking(-0.4)
+                VStack(spacing: 8) {
+                    Text("Break the spiral.")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+                        .tracking(-0.4)
 
-                        Text("When a thought keeps looping in your head, see it from another angle.")
-                            .font(.subheadline)
-                            .foregroundStyle(theme.muted)
-                            .lineSpacing(3)
-                            .multilineTextAlignment(.center)
-                    }
+                    Text("When a thought keeps looping in your head, see it from another angle.")
+                        .font(.subheadline)
+                        .foregroundStyle(theme.muted)
+                        .lineSpacing(3)
+                        .multilineTextAlignment(.center)
                 }
-                .padding(.horizontal, 28)
-                .position(x: geo.size.width / 2, y: geo.size.height * 0.38)
             }
-            .ignoresSafeArea(.keyboard)
+            .padding(.horizontal, 28)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Break the spiral. When a thought keeps looping in your head, see it from another angle.")
@@ -478,6 +475,7 @@ struct ComposeSheetView: View {
 
     private var canvas: some View {
         thread
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .mask {
                 VStack(spacing: 0) {
                     LinearGradient(
