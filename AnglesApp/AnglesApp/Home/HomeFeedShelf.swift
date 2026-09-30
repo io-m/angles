@@ -370,7 +370,7 @@ struct HomeFeedBoard {
         return .applied
     }
 
-    /// The card you just posted. All gets it immediately; a style shelf gets it
+    /// The card you just posted. For you gets it immediately; a style shelf gets it
     /// only once that shelf has already loaded and the card has that angle.
     mutating func insertPublishedAtFront(_ card: HomeCard) {
         records[card.id] = card
@@ -423,7 +423,7 @@ struct HomeFeedBoard {
         }
     }
 
-    /// Clears every shelf. `blank` drops the cards on screen; otherwise All stays
+    /// Clears every shelf. `blank` drops the cards on screen; otherwise For you stays
     /// up until its replacement page arrives and the style shelves reload later.
     mutating func invalidate(blank: Bool) {
         if blank {

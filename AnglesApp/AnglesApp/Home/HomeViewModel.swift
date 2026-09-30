@@ -248,11 +248,11 @@ enum HomeFeedTab: Equatable, Hashable, CaseIterable {
     case toughLove
 
     var title: String {
-        matchingStyle?.displayName ?? "All published thoughts"
+        matchingStyle?.displayName ?? "For you"
     }
 
     var chipTitle: String {
-        matchingStyle?.displayName ?? "All"
+        matchingStyle?.displayName ?? "For you"
     }
 
     var matchingStyle: Style? {
@@ -272,7 +272,7 @@ enum HomeFeedTab: Equatable, Hashable, CaseIterable {
 
     var systemImage: String {
         guard let style = matchingStyle else {
-            return "square.grid.2x2"
+            return "star.fill"
         }
 
         return CardStyleAppearance(style: style).systemImage
@@ -486,7 +486,7 @@ final class HomeViewModel {
     private(set) var libraryLoadState: LibraryLoadState
     private(set) var libraryFooterState: FeedFooterState = .idle
     private(set) var feedBoard = HomeFeedBoard()
-    /// All's first load. Style shelves stay unloaded until their tab is opened.
+    /// For you's first load. Style shelves stay unloaded until their tab is opened.
     var feedLoadState: LibraryLoadState { feedBoard.shelf(.all).loadState }
     /// The banner for the shelf that was just pulled. Switching tabs must not replay it.
     private(set) var feedRefreshOutcome: FeedRefreshOutcome?
@@ -1230,7 +1230,7 @@ final class HomeViewModel {
     }
 
     /// Pull-to-refresh for the shelf that was pulled. Each tab keeps its own cursor,
-    /// so a Stoic pull cannot rotate All, and the other way around.
+    /// so a Stoic pull cannot rotate For you, and the other way around.
     func refreshFeed(_ tab: HomeFeedTab = .all) async {
         guard let generation = feedBoard.beginRefresh(on: tab) else {
             return
@@ -1657,7 +1657,7 @@ final class HomeViewModel {
 
         cancelFeedTasks()
         appliedFilter = HomeFeedFilter()
-        // All stays on screen until the unfiltered page arrives. The shelf you are
+        // For you stays on screen until the unfiltered page arrives. The shelf you are
         // looking at reloads now; the others reload on their next visit.
         feedBoard.invalidate(blank: false)
         startFeedTask(on: homeFeedTab, replacing: true, reportsFailure: true)

@@ -3,7 +3,7 @@
  *
  *   pnpm db:feed-audit --viewer=you@example.com
  *
- * Calls `listRankedFeed` for All and each style tab as that account (one visit, one
+ * Calls `listRankedFeed` for For you and each style tab as that account (one visit, one
  * session), prints the first page of each, and prints the numbers the feed is meant to
  * hold: time first, tabs that differ, no kept angle coming back. Read-only.
  */
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
       }
       console.log("");
     };
-    show("All", all);
+    show("For you", all);
     for (const style of STYLES) {
       show(style, tabs.get(style) ?? []);
     }
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
 
     console.log("== Numbers");
     console.log(
-      `Under 48h on All: ${recent}/${all.length} (${Math.round((100 * recent) / Math.max(1, all.length))}%), ${inLast48h.length} such posts exist`,
+      `Under 48h on For you: ${recent}/${all.length} (${Math.round((100 * recent) / Math.max(1, all.length))}%), ${inLast48h.length} such posts exist`,
     );
     console.log(
       `Newest visible post is slot ${newestRank === -1 ? "not on page 1" : newestRank + 1} (want 1 to 6)`,
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
     for (const card of all) {
       counts[bucketOf(card)] += 1;
     }
-    console.log(`Mix on All: core ${counts.core}, adjacent ${counts.adjacent}, explore ${counts.explore}`);
+    console.log(`Mix on For you: core ${counts.core}, adjacent ${counts.adjacent}, explore ${counts.explore}`);
 
     const leaked =
       all.filter((card) => keptAngles(card).length > 0).length +

@@ -30,7 +30,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/db/schema.ts` — Drizzle tables
 - `backend/src/db/cards.ts` — SQL seam for the library (own cards plus hearted cards that are still public)
 - `backend/src/db/feed.ts`, `backend/src/db/follows.ts` — Home, author lists, hearts on others' cards, follow graph
-- `backend/src/lib/feedRanking.ts` — Home order when `FEED_RANKING=resonance`. All is the mixed score. A `style` request adds that shelf's taste, angle hearts, a weak cover nudge, and an off-primary-tab penalty. Also the theme learning and the core/adjacent/explore page mix. Unset or `chronological` is newest-first. Tune only here.
+- `backend/src/lib/feedRanking.ts` — Home order when `FEED_RANKING=resonance`. For you is the mixed score. A `style` request adds that shelf's taste, angle hearts, a weak cover nudge, and an off-primary-tab penalty. Also the theme learning and the core/adjacent/explore page mix. Unset or `chronological` is newest-first. Tune only here.
 - `backend/src/scripts/seedCommunityRealistic.ts`, `feedAudit.ts` — `pnpm db:seed-realistic` reshapes the fixture community (dates, authors, hearts); `pnpm db:feed-audit --viewer=<email>` grades the ranked feed
 - `backend/src/db/communitySafety.ts` — reports, bidirectional block filtering, unblock list, automatic private threshold
 - `backend/src/db/subscriptions.ts` — account-bound StoreKit entitlement and notification state
@@ -50,7 +50,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/AnglesApp.swift` — AppRoot: TabView (Home, Profile), compose overlay, shared `HomeViewModel`
 - `AnglesApp/AnglesApp/Root/AppGate.swift` — the pure funnel resolver (launching / login / taste / paywall / home); AppRoot renders only from it
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
-- `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: All + four style tabs aligned with trailing filter; tinted glass header; no Home Settings gear
+- `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: For you + four style tabs aligned with trailing filter; tinted glass header; no Home Settings gear
 - `AnglesApp/AnglesApp/Home/HomeFeedShelf.swift` — one Home card record, one page per tab. A heart, follow, or removal updates every shelf that is showing that post. Profile, author, and model pages do not use this ranking.
 - `AnglesApp/AnglesApp/Home/HomeFilterSheet.swift` — draft/apply Life area and Mood tabbed multi-select
 - `AnglesApp/AnglesApp/Home/HeaderChrome.swift` — shared header metrics and the bottom fade stops
@@ -88,9 +88,9 @@ Every `POST /reframe` runs the decision call first — there is no local clarify
 
 **Themes** are the top life areas and moods from what the viewer writes and every angle they heart on any tab, recency-weighted (14-day half-life) and confidence-gated (five cards or hearts is a full profile; `other` is never a theme). Every page then follows a **theme mix**: about 40% core (their own life areas), 35% adjacent (neighbouring life areas or moods), 25% explore, scaled down with confidence and off entirely for a new viewer. Ranking orders cards inside a bucket; each bucket is capped at its share of the page, so the mix never pushes old cards ahead of new ones.
 
-**Kept angles stay out.** All hides a card once the viewer has hearted any of its angles; a style tab hides only that tab's own angle. Frozen to the visit's start, so paging is exact.
+**Kept angles stay out.** For you hides a card once the viewer has hearted any of its angles; a style tab hides only that tab's own angle. Frozen to the visit's start, so paging is exact.
 
-**All** omits `style` and stays that mixed feed. **Stoic**, **Optimistic**, **Humorous**, and **Tough love** each send `style` and get their own shelf: the same base score, plus taste learned from hearts on that style (one heart cannot take over; five matching hearts is full confidence), hearts on that exact angle, and a weak nudge when the author's cover matches the tab. Each card also has one **primary tab** for that viewer (the style it fits best, ties broken by a stable viewer+card hash), and a card on another style's primary tab is penalised, so the tabs mostly show different cards. The penalty fades out for posts under a few hours old, so the newest posts are on every tab. It is a penalty, not a filter: a thin tab still fills. With the flag off, every tab is newest-first among cards that have that angle, so they look alike.
+**For you** omits `style` and stays that mixed feed. **Stoic**, **Optimistic**, **Humorous**, and **Tough love** each send `style` and get their own shelf: the same base score, plus taste learned from hearts on that style (one heart cannot take over; five matching hearts is full confidence), hearts on that exact angle, and a weak nudge when the author's cover matches the tab. Each card also has one **primary tab** for that viewer (the style it fits best, ties broken by a stable viewer+card hash), and a card on another style's primary tab is penalised, so the tabs mostly show different cards. The penalty fades out for posts under a few hours old, so the newest posts are on every tab. It is a penalty, not a filter: a thin tab still fills. With the flag off, every tab is newest-first among cards that have that angle, so they look alike.
 
 The app keeps one copy of each loaded card and a separate order per tab. Life area and mood filters apply to every shelf. Author, model, and Profile pages stay ordinary lists. Per-style heart totals stay on the server. The full weights, paging, and spread rules are `BUILD.md` sections 14 and 15.
 

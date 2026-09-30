@@ -2,7 +2,7 @@
 
 This landing shipped. Do not re-implement it, and do not put Home style tabs back on one shared list.
 
-Current Home order is `BUILD.md` sections 14 and 15. **All** is the mixed ranked feed (`GET /feed`, no `style`). Each style tab is its own ranked shelf (`GET /feed?style=`), opened on that angle. A new public post is inserted on All and on any style shelf that has already loaded and includes that angle. `feedCards` is gone. `HomeFeedShelf.swift` keeps one card record and one page per tab. With `FEED_RANKING` unset, Home is newest-first and the style tabs look alike.
+Current Home order is `BUILD.md` sections 14 and 15. **For you** is the mixed ranked feed (`GET /feed`, no `style`). Each style tab is its own ranked shelf (`GET /feed?style=`), opened on that angle. A new public post is inserted on For you and on any style shelf that has already loaded and includes that angle. `feedCards` is gone. `HomeFeedShelf.swift` keeps one card record and one page per tab. With `FEED_RANKING` unset, Home is newest-first and the style tabs look alike.
 
 New thread: do not assume prior chat context. Read the current repo before coding.
 
@@ -20,7 +20,7 @@ The first-run taste save is unchanged. It still goes to the membership paywall.
 - `AnglesApp/AnglesApp/AnglesApp.swift` — `handleSavedCard` sends a normal save to Profile
 - `AnglesApp/AnglesApp/Home/ComposeSheetView.swift` — `publishAndLeave`, save bar (“Save to public library” / “Save to private library”)
 - `AnglesApp/AnglesApp/Home/HomeViewModel.swift` — `saveCook` inserts into the library `cards` array; a public save also lands on the Home shelves
-- `AnglesApp/AnglesApp/Home/HomeView.swift` — tall feed, All + style tabs, unused `glimpseCard`
+- `AnglesApp/AnglesApp/Home/HomeView.swift` — tall feed, For you + style tabs, unused `glimpseCard`
 - `AnglesApp/AnglesApp/Paywall/PaywallView.swift` — existing Lottie `celebration-checkmark`
 - `AnglesApp/Resources/celebration-checkmark.json`
 - `backend/src/db/feed.ts` — `listFeed` requires `isPublic` and `userId !== viewerId`
@@ -48,7 +48,7 @@ Home is every public card, including the viewer’s own. Private cards stay off 
 
 Compose still defaults public.
 
-- **Public, not taste.** Success, then Home, **All** tab, list at the top, this card first. It is a tall Home card. It also shows on any Home style shelf that has already loaded and includes that angle. The landing tab is All. Unopened style shelves pick it up from the server, not from a local filter of All.
+- **Public, not taste.** Success, then Home, **For you** tab, list at the top, this card first. It is a tall Home card. It also shows on any Home style shelf that has already loaded and includes that angle. The landing tab is For you. Unopened style shelves pick it up from the server, not from a local filter of For you.
 - **Private, not taste.** Success, then Profile, on the style tab for the card’s spotlight style, with that card in view. It is not inserted into Home. The library insert in `saveCook` already puts it at the front of `cards`.
 - **Taste.** Leave `handleSavedCard`’s onboarding branch alone. Do not run this Home arrival. Do not stack this celebration on the paywall celebration.
 
@@ -56,11 +56,11 @@ If Home’s Life area / Mood filter would hide the new public card, clear that f
 
 ### The card has to stay
 
-Do not use `glimpseCard`. That hook prepends a card only in the view and scrolls All to the top. `BUILD.md` already killed the half-second feed glimpse. A refresh would drop a glimpse, which is the doubt this work removes.
+Do not use `glimpseCard`. That hook prepends a card only in the view and scrolls For you to the top. `BUILD.md` already killed the half-second feed glimpse. A refresh would drop a glimpse, which is the doubt this work removes.
 
 On public save success:
 
-1. Insert the saved card at the front of All, and into any style shelf that has already loaded and includes that angle. The library insert in `saveCook` already puts it at the front of `cards`.
+1. Insert the saved card at the front of For you, and into any style shelf that has already loaded and includes that angle. The library insert in `saveCook` already puts it at the front of `cards`.
 2. `GET /feed` includes the viewer’s public cards, so a later page can still contain it. Do not re-fetch the whole feed just to show this one card. A pull may rank it off the top; the local insert is what makes the landing immediate.
 3. Making that card private, or deleting it, removes it from every Home shelf as well as the library.
 4. A later “Make public” on an existing library card makes it eligible for Home. Insert it into the loaded feed if Home is already loaded. No second celebration for the menu toggle.
@@ -75,7 +75,7 @@ Public or private, not taste:
 
 1. The save button stays up while `POST /cards` runs. Do not dismiss the overlay on the tap.
 2. On success: a success haptic, then the checkmark plays once, centered, over the compose overlay. Cap the beat at about one second. Reduce Motion skips the Lottie, keeps the haptic, and holds a short beat (about 0.4s).
-3. Under the overlay, the destination is already in place: Home All at the top for a public post, or the Profile spotlight style tab with the new card in view for a private post.
+3. Under the overlay, the destination is already in place: Home For you at the top for a public post, or the Profile spotlight style tab with the new card in view for a private post.
 4. Dismiss the overlay with the existing compose fade (`ComposeMotion`). The first thing they see is that card. No empty gap, no jump to a different tab after the fade, no second layout pass that scrolls it away.
 
 Failure still shows the existing save error and leaves the overlay up. Do not play the checkmark.
@@ -103,4 +103,4 @@ Update `cards.integration.test.ts`: the viewer’s public card is in `listFeed` 
 
 Backend tests for the feed query. Then build, install, and launch on Joe’s iPhone (`E5C20243-B9B7-571E-9EEA-14FC441C13B7`, `app.angles.ios`). No Simulator. Do not say it is ready until that launch succeeds.
 
-On device, confirm three paths: public Post opens onto that card at the top of Home All and survives pull-to-refresh; private Save privately opens onto that card on Profile and it is absent from Home; a taste save still opens the paywall.
+On device, confirm three paths: public Post opens onto that card at the top of Home For you and survives pull-to-refresh; private Save privately opens onto that card on Profile and it is absent from Home; a taste save still opens the paywall.

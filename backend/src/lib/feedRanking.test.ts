@@ -232,7 +232,7 @@ describe("style shelves", () => {
     };
   }
 
-  it("leaves All scoring untouched when no style shelf is requested", () => {
+  it("leaves For you scoring untouched when no style shelf is requested", () => {
     const subject = card({ hearts: 4, followed: true });
     const scored = scoreCard(subject, { now: NOW, seed: "s", affinity: styleAffinity });
     const manual =
@@ -322,7 +322,7 @@ describe("style shelves", () => {
     expect(humorous).not.toEqual(stoic);
   });
 
-  it("gives a style shelf a different head from All when that angle is the strong one", () => {
+  it("gives a style shelf a different head from For you when that angle is the strong one", () => {
     const stoicId = "aaaaaaaa-0000-4000-8000-000000000001";
     const humorousId = "bbbbbbbb-0000-4000-8000-000000000002";
     const pool = [
@@ -509,7 +509,7 @@ describe("openingStyle", () => {
           preferred: "humorous",
         }) === "humorous",
     ).length;
-    // Home's All tab is meant to show mixed covers, so this is a lean, not a takeover.
+    // Home's For you tab is meant to show mixed covers, so this is a lean, not a takeover.
     expect(preferredCount).toBeGreaterThan(cards.length * 0.35);
     expect(preferredCount).toBeLessThan(cards.length * 0.65);
   });
@@ -1036,7 +1036,7 @@ describe("primary tab", () => {
     expect(onStoic.score).toBeCloseTo(noPenalty.score, 8);
   });
 
-  it("leaves All untouched by tab assignment", () => {
+  it("leaves For you untouched by tab assignment", () => {
     const subject = card();
     const plain = scoreCard(subject, { now: NOW, seed: "s" });
     const ranked = rankCards([subject], { now: NOW, seed: "s" });
@@ -1045,7 +1045,7 @@ describe("primary tab", () => {
 });
 
 describe("isKeptOnShelf", () => {
-  it("hides on All once any angle is kept, and on a tab only for that angle", () => {
+  it("hides on For you once any angle is kept, and on a tab only for that angle", () => {
     const kept = new Set<Style>(["optimistic"]);
     expect(isKeptOnShelf(kept, undefined)).toBe(true);
     expect(isKeptOnShelf(kept, "optimistic")).toBe(true);

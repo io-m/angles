@@ -1755,7 +1755,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       const after = await listFeed({ limit: 50 });
       const leaning = after.filter((card) => card.spotlightStyle === "tough_love");
       expect(leaning.length).toBeGreaterThan(0);
-      // A lean, not a takeover: Home's All tab is meant to show mixed covers.
+      // A lean, not a takeover: Home's For you tab is meant to show mixed covers.
       expect(leaning.length).toBeLessThan(after.length);
 
       // Their own card keeps the cover they saved it with.

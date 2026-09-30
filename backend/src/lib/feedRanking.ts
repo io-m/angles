@@ -108,7 +108,7 @@ export type RankableCard = {
   angleHeartsByStyle?: Partial<Record<Style, number>>;
   /** The angles this card actually has. Absent means all four. */
   availableStyles?: readonly Style[];
-  /** The cover the author saved. A weak shelf signal, never an All-tab input. */
+  /** The cover the author saved. A weak shelf signal, never a For you input. */
   coverStyle?: Style;
 };
 
@@ -289,7 +289,7 @@ export function blendedAffinityTerm(
   return (1 - confidence) * base + confidence * specific;
 }
 
-/** A style shelf's extra inputs. Absent on All, which keeps the base score alone. */
+/** A style shelf's extra inputs. Absent on For you, which keeps the base score alone. */
 export type StyleShelfContext = {
   style: Style;
   affinity: ViewerAffinity;
@@ -411,7 +411,7 @@ export function scoreCard(
       : affinityTerm(card, affinity) * affinity.confidence,
     followed: card.followed ? 1 : 0,
     secondChance: secondChanceTerm(card, options.now),
-    // A style salt keeps two shelves from tying into the same order. All omits it.
+    // A style salt keeps two shelves from tying into the same order. For you omits it.
     jitter: jitterTerm(card.id, style ? `${options.seed}:${style.style}` : options.seed),
   };
 
@@ -432,7 +432,7 @@ export function scoreCard(
 }
 
 /**
- * Whether the viewer has already kept this card on the shelf they are reading. All hides
+ * Whether the viewer has already kept this card on the shelf they are reading. For you hides
  * a card once any of its angles is hearted. A style tab hides it only if that tab's own
  * angle is hearted, so the same thought can still show in a voice they have not kept.
  */
@@ -457,7 +457,7 @@ export function rankCards(
     now: Date;
     seed: string;
     affinity?: ViewerAffinity;
-    /** Set on a style shelf. All leaves it unset and ignores angle hearts and covers. */
+    /** Set on a style shelf. For you leaves it unset and ignores angle hearts and covers. */
     style?: {
       style: Style;
       affinity: ViewerAffinity;
@@ -785,7 +785,7 @@ export function spreadRanked<T extends SpreadableCard>(
 
 /**
  * Share of a viewer's cards that open on the angle they keep hearting. Deliberately not
- * all of them: Home's All tab exists to show mixed covers, and one style on every card
+ * all of them: Home's For you tab exists to show mixed covers, and one style on every card
  * would make the feed read like a single voice.
  */
 const PREFERRED_COVER_SHARE = 0.5;
@@ -794,7 +794,7 @@ const PREFERRED_COVER_SHARE = 0.5;
  * Which angle a card opens on for this viewer.
  *
  * Someone who hearts Humorous should meet Humorous more often, but the mix is the point
- * of the All tab, so the choice is a stable coin flip per card rather than a takeover.
+ * of the For you tab, so the choice is a stable coin flip per card rather than a takeover.
  * Deterministic in the card and the viewer, so a card does not change face on a reload.
  */
 export function openingStyle(options: {
