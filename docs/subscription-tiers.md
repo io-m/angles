@@ -113,6 +113,6 @@ If a provider-wide cap trips, affected requests fail with no user-credit charge.
 
 ## StoreKit and server entitlement
 
-Apple handles purchase, renewal, refund, and cancellation. The client sends signed transaction data to the backend. The backend verifies Apple signatures, binds the original transaction to one Angles account, processes Server Notifications V2 idempotently, and determines active/grace/billing-retry/expired/revoked state.
+Apple handles purchase, renewal, refund, and cancellation. The client sends signed transaction data to the backend. The backend verifies Apple signatures, binds the original transaction to one Angles account, processes Server Notifications V2 idempotently, and determines active/grace/billing-retry/expired/revoked state. Only active and grace unlock: billing retry after Apple's Billing Grace Period is locked, so that grace period must be on in App Store Connect.
 
 Production must run with both subscription and usage enforcement set to `required`. Local/test configurations may disable enforcement but do not define the shipped product.

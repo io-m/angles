@@ -37,7 +37,9 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/db/metering.ts` — credit periods, operation leases/idempotency, abuse counters, provider-attempt ledger
 - `backend/src/db/productionMigrations.ts` — packaged startup migrations
 - `backend/src/db/cursor.ts`, `backend/src/lib/cursor.ts` — the shared `createdAt|id` page cursor (row comparison, index-seekable)
-- `backend/src/lib/cookSignature.ts` — HMAC over a cook (`COOK_SIGNING_KEY`); `/reframe` signs, `POST /cards` verifies
+- `backend/src/lib/cookSignature.ts` — HMAC over a cook and its owner (`COOK_SIGNING_KEY`); `/reframe` signs, `POST /cards` verifies
+- `backend/src/lib/crisisResources.ts` — region → crisis line table; the model never writes numbers
+- `backend/src/lib/reframeReplay.ts` — seals a finished `/reframe` response under the client's `Replay-Key`
 - `backend/src/lib/decision.ts` — the structured decision call: continue vs ready, cleaned thought, styles, metadata
 - `backend/src/lib/llmClient.ts` — **only** file to change when picking an LLM provider (`generateReframe`, `generateJson`)
 - `backend/src/lib/llmUsage.ts`, `backend/src/lib/meteringPolicy.ts` — provider-token COGS and fixed 600-credit user tariff
@@ -77,10 +79,14 @@ Follow `BUILD.md`. Do not add screens or features that are not the current item.
 
 Every `POST /reframe` runs the decision call first — there is no local clarify bank and no word-count gate. It answers one of two shapes:
 
-- `{ kind: "continue", message, options, safety }` — the composer stays up; the user answers or says more.
+- `{ kind: "continue", message, options, safety, crisisResource? }` — the composer stays up; the user answers or says more. `crisisResource` is present exactly when `safety` is not `none`.
 - `{ kind: "ready", thought, thoughtOriginal?, results (1–4), meta, signature }` — `thought` is the cleaned English card copy. Each result is `{ style, reframe, signature }`.
 
 `meta` is `{ category, proposedCategory?, proposedLabel?, tags, intensity, timeframe, emotions, safety, inputLanguage, skippedStyles, matching }`. Categories are a closed set; anything else becomes `other` plus a proposal. Never reframe a thought flagged for safety. `followUps` caps at 6 and the decision is forced to land from the third.
+
+**Safety fails closed.** Any safety label the model returns that is not `none` or a clear synonym of it is treated as `self_harm`, on the server (`normalizeSafety` in `decision.ts`) and in `SafetyFlag` on the phone. A flagged turn is a continue with no chips, even on a forced turn. The model never writes a phone number or hotline: the request carries the phone's `region` (ISO 3166-1 alpha-2, never sent to the model), and `crisisResources.ts` picks the line — 988 in the US and Canada, 112 across Europe, a short table of others, and a generic "call your local emergency number" line for anything unknown or malformed. A malformed `region` never fails the request. A crisis message that contains a digit is replaced with the fixed fallback.
+
+**Retries replay.** Every refine turn and recook sends an `Idempotency-Key` UUID and a `Replay-Key` (32 random bytes, unpadded base64url) that the phone keeps with it. The server seals the finished response under that key (AES-256-GCM, `reframeReplay.ts`) in the same transaction that charges it, and keeps the ciphertext for an hour. A retry with the same key and request gets the same signed response back and is not charged again; the taste is not spent twice. The server never stores the replay key, so it cannot read what it stored.
 
 ## Home ranking
 
@@ -94,7 +100,11 @@ Every `POST /reframe` runs the decision call first — there is no local clarify
 
 The app keeps one copy of each loaded card and a separate order per tab. Life area and mood filters apply to every shelf. Author, model, and Profile pages stay ordinary lists. Per-style heart totals stay on the server. The full weights, paging, and spread rules are `BUILD.md` sections 14 and 15.
 
-Save writes that cook to `POST /cards` with both signatures echoed back unchanged. The cook `signature` covers `thought`, `thoughtOriginal`, and `meta` minus `matching`; each result signature covers the thought it answers plus its style and text. A recook signs its one result against the request `text`, which must be the cook's cleaned `thought`. `POST /cards` rejects any missing or mismatched signature, and any `meta.safety` other than `none`, with 400 `VALIDATION_ERROR`. Hearts are per style on `card_reframes` (or `saved_angles` for someone else's card); `isPublic` (default false) sits on the card. A hearted card leaves the viewer's library when its author makes it private. There are no pins. `POST /reframe` never stores cards or thought text; it writes only text-free metering/idempotency state and provider token/cost records.
+Save writes that cook to `POST /cards` with both signatures echoed back unchanged. Both signatures are bound to the account that cooked it, so a cook signed for one account does not save under another. The cook `signature` covers `thought`, `thoughtOriginal`, and `meta` minus `matching`; each result signature covers the thought it answers plus its style and text. A recook signs its one result against the request `text`, which must be the cook's cleaned `thought`. `POST /cards` rejects any missing or mismatched signature, and any `meta.safety` other than `none`, with 400 `VALIDATION_ERROR`. One cook makes at most one card per account (`cards.cook_signature`): a repeated save returns the first card with 200, before moderation. Hearts are per style on `card_reframes` (or `saved_angles` for someone else's card); `isPublic` (default false) sits on the card. A hearted card leaves the viewer's library when its author makes it private. There are no pins. `POST /reframe` never stores cards or plaintext thought text; it writes only text-free metering/idempotency state, provider token/cost records, and the hour-long replay sealed under a key the server does not keep.
+
+## Subscription access
+
+Access is `active`, or `grace` while Apple's Billing Grace Period lasts. `billing_retry` after grace is stored but locked, on the server and on the phone. A client sync of a lapsed receipt never overwrites a grace or billing-retry state from Apple's notifications. On the phone, a status read that fails or times out does not clear an unlock the phone already had when the only receipt for this account is a lapsed one; the server still gates every cook. Billing Grace Period must be on in App Store Connect. Account delete removes the avatar first, retries it, and fails with 503 `STORAGE_UNAVAILABLE` without deleting anything if storage will not confirm.
 
 ## Type sync
 

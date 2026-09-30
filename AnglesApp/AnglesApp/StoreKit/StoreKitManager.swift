@@ -670,9 +670,9 @@ final class StoreKitManager {
             return
         }
         guard isCurrent(context) else { return }
-        let statuses = await groupStatuses(context: context)
+        let read = await groupStatuses(context: context)
         guard isCurrent(context) else { return }
-        let detail = await activeSubscriptionDetail(statuses: statuses, context: context)
+        let detail = await activeSubscriptionDetail(statuses: read.statuses, context: context)
         guard isCurrent(context) else { return }
         if let detail {
             activeProductID = detail.productID
@@ -684,7 +684,19 @@ final class StoreKitManager {
                 errorMessage = nil
             }
         } else if lockWhenEmpty {
-            clearActiveEntitlement()
+            let lapsedReceipt = read.failed && hasUnlockedFullApp
+                ? await holdsLapsedReceipt(context: context)
+                : false
+            guard isCurrent(context) else { return }
+            if Self.keepsUnlockAfterEmptyRead(
+                statusReadFailed: read.failed,
+                isUnlocked: hasUnlockedFullApp,
+                holdsLapsedReceipt: lapsedReceipt
+            ) {
+                Self.debugLog("status read failed over a lapsed receipt; keeping unlock")
+            } else {
+                clearActiveEntitlement()
+            }
         }
         Self.debugLog(
             "entitlements active=\(detail != nil) unlocked=\(hasUnlockedFullApp) lockWhenEmpty=\(lockWhenEmpty) \(debugSnapshot)"
@@ -741,27 +753,74 @@ final class StoreKitManager {
         let environment: String
     }
 
+    private struct GroupStatusRead {
+        var statuses: [Product.SubscriptionInfo.Status] = []
+        /// A read failed or timed out, so an empty answer is not proof the membership ended.
+        var failed = false
+    }
+
     /// One status read per subscription group. Either product returns every status in the group,
     /// so reading both only doubled the time a stalled sandbox read could hold login or launch.
-    private func groupStatuses(context: AccountContext) async -> [Product.SubscriptionInfo.Status] {
+    private func groupStatuses(context: AccountContext) async -> GroupStatusRead {
         var seenGroups = Set<String>()
-        var statuses: [Product.SubscriptionInfo.Status] = []
+        var read = GroupStatusRead()
         for product in products {
-            guard isCurrent(context) else { return [] }
+            guard isCurrent(context) else { return GroupStatusRead() }
             guard Self.productIDs.contains(product.id),
                   let subscription = product.subscription,
                   seenGroups.insert(subscription.subscriptionGroupID).inserted else {
                 continue
             }
-            statuses += await subscriptionStatuses(for: subscription, productID: product.id)
-            guard isCurrent(context) else { return [] }
+            if let statuses = await subscriptionStatuses(for: subscription, productID: product.id) {
+                read.statuses += statuses
+            } else {
+                read.failed = true
+            }
+            guard isCurrent(context) else { return GroupStatusRead() }
         }
-        return statuses
+        return read
     }
 
-    /// Apple's live answer only: subscribed / grace / billing-retry status first, then an
-    /// unexpired verified `currentEntitlements` transaction. `Transaction.latest` is deliberately
-    /// absent: a leftover receipt for an expired subscription must never unlock Home.
+    /// Grace keeps access; billing retry after grace does not. Grace is the only access past a
+    /// failed renewal, matching the server.
+    nonisolated static func statusUnlocks(_ state: Product.SubscriptionInfo.RenewalState) -> Bool {
+        state == .subscribed || state == .inGracePeriod
+    }
+
+    /// A grace-period receipt is already past its expiration date, so when the status read fails
+    /// the fallback cannot see grace. Keep an unlock the phone already had rather than lock a
+    /// paying member out on a stalled read; the server still gates every cook.
+    nonisolated static func keepsUnlockAfterEmptyRead(
+        statusReadFailed: Bool,
+        isUnlocked: Bool,
+        holdsLapsedReceipt: Bool
+    ) -> Bool {
+        statusReadFailed && isUnlocked && holdsLapsedReceipt
+    }
+
+    /// A verified, unrevoked Angles receipt for this account whose expiration date has passed.
+    private func holdsLapsedReceipt(context: AccountContext) async -> Bool {
+        let now = Date()
+        for await result in Transaction.currentEntitlements {
+            guard isCurrent(context) else { return false }
+            guard case .verified(let transaction) = result,
+                  isAppStoreBacked(transaction),
+                  Self.productIDs.contains(transaction.productID),
+                  transaction.revocationDate == nil,
+                  !transaction.isUpgraded,
+                  let expirationDate = transaction.expirationDate,
+                  expirationDate <= now,
+                  isForConfiguredAccount(transaction, context: context) else {
+                continue
+            }
+            return true
+        }
+        return false
+    }
+
+    /// Apple's live answer only: subscribed / grace status first, then an unexpired verified
+    /// `currentEntitlements` transaction. `Transaction.latest` is deliberately absent: a
+    /// leftover receipt for an expired subscription must never unlock Home.
     private func activeSubscriptionDetail(
         statuses: [Product.SubscriptionInfo.Status],
         context: AccountContext
@@ -769,32 +828,30 @@ final class StoreKitManager {
         for status in statuses {
             guard isCurrent(context) else { return nil }
             Self.debugLog("subscription status: \(String(describing: status.state))")
-            switch status.state {
-            case .subscribed, .inGracePeriod, .inBillingRetryPeriod:
-                guard let transaction = try? verified(status.transaction),
-                      Self.productIDs.contains(transaction.productID),
-                      isAppStoreBacked(transaction),
-                      isForConfiguredAccount(transaction, context: context) else {
-                    Self.debugLog("ignored non-App Store status")
-                    continue
-                }
-                Self.logTransaction("status", transaction)
-                let syncResult = await syncWithServer(
-                    status.transaction.jwsRepresentation,
-                    context: context
-                )
-                guard isCurrent(context) else { return nil }
-                if case .rejected = syncResult {
-                    continue
-                }
-                return ActiveSubscription(
-                    productID: transaction.productID,
-                    expiresAt: transaction.expirationDate,
-                    environment: String(describing: transaction.environment)
-                )
-            default:
+            guard Self.statusUnlocks(status.state) else {
                 continue
             }
+            guard let transaction = try? verified(status.transaction),
+                  Self.productIDs.contains(transaction.productID),
+                  isAppStoreBacked(transaction),
+                  isForConfiguredAccount(transaction, context: context) else {
+                Self.debugLog("ignored non-App Store status")
+                continue
+            }
+            Self.logTransaction("status", transaction)
+            let syncResult = await syncWithServer(
+                status.transaction.jwsRepresentation,
+                context: context
+            )
+            guard isCurrent(context) else { return nil }
+            if case .rejected = syncResult {
+                continue
+            }
+            return ActiveSubscription(
+                productID: transaction.productID,
+                expiresAt: transaction.expirationDate,
+                environment: String(describing: transaction.environment)
+            )
         }
 
         let now = Date()
@@ -839,7 +896,7 @@ final class StoreKitManager {
     private func subscriptionStatuses(
         for subscription: Product.SubscriptionInfo,
         productID: String
-    ) async -> [Product.SubscriptionInfo.Status] {
+    ) async -> [Product.SubscriptionInfo.Status]? {
         let read = Task { try await subscription.status }
         let watchdog = Task {
             try? await Task.sleep(for: Self.statusTimeout)
@@ -851,7 +908,7 @@ final class StoreKitManager {
             return try await read.value
         } catch {
             Self.debugLog("subscription status failed \(productID): \(error.localizedDescription)")
-            return []
+            return nil
         }
     }
 
@@ -860,7 +917,7 @@ final class StoreKitManager {
     /// `currentEntitlements` can report `.active`. The live group check comes first so an
     /// expired Annual cannot beat a live Monthly.
     private func membershipHistoryProbe(context: AccountContext) async -> MembershipHistoryProbe {
-        let statuses = await groupStatuses(context: context)
+        let statuses = await groupStatuses(context: context).statuses
         guard isCurrent(context) else { return .none }
         if await activeSubscriptionDetail(statuses: statuses, context: context) != nil {
             guard isCurrent(context) else { return .none }
@@ -917,9 +974,8 @@ final class StoreKitManager {
         )
     }
 
-    /// `Transaction.currentEntitlements` already includes grace and billing-retry while Apple
-    /// still considers the user entitled. Expired, revoked, upgraded-away, or Xcode Testing
-    /// receipts are skipped.
+    /// A receipt past its expiration date never unlocks here; grace comes only from the live
+    /// status. Expired, revoked, upgraded-away, or Xcode Testing receipts are skipped.
     private func isActiveAnglesEntitlement(_ transaction: Transaction, now: Date) -> Bool {
         guard isAppStoreBacked(transaction) else {
             return false

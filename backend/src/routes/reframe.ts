@@ -5,13 +5,16 @@ import { z } from "zod";
 import { DbError } from "../db/client.js";
 import {
   beginProviderCall,
+  findReframeReplay,
   finishMeterOperation,
+  getUsageSummary,
   MeteringError,
   startMeterOperation,
   type StartedMeterOperation,
 } from "../db/metering.js";
 import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
 import { signCook, signResult } from "../lib/cookSignature.js";
+import { crisisMessage, crisisResourceLine } from "../lib/crisisResources.js";
 import { runDecision, type ReadyDecision } from "../lib/decision.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import {
@@ -34,6 +37,7 @@ import {
   requestFingerprint,
   type UsageSummary,
 } from "../lib/meteringPolicy.js";
+import { openReplay, parseReplayKey, REPLAY_KEY_HEADER, sealReplay } from "../lib/reframeReplay.js";
 import {
   REFRAME_HARD_MAX_CHARS,
   STYLE_BATCH_PROMPT,
@@ -45,8 +49,10 @@ import {
   STYLES,
   type ContinueResponse,
   type FollowUpAnswer,
+  type ReadyResponse,
   type ReframeResponse,
   type ReframeResult,
+  type SafetyFlag,
   type Style,
 } from "../types/index.js";
 
@@ -90,6 +96,14 @@ const reframeRequestSchema = z.object({
     .optional(),
   styles: z.array(styleSchema).min(1).max(STYLES.length).optional(),
   model: z.enum(LLM_MODEL_IDS).optional(),
+  // Lenient on purpose: a malformed region must never block a crisis turn. It only
+  // falls back to the generic contact line.
+  region: z
+    .unknown()
+    .optional()
+    .transform((value) =>
+      typeof value === "string" && /^[A-Za-z]{2}$/.test(value) ? value.toUpperCase() : undefined,
+    ),
 }).strict();
 
 type CookCallOptions = LlmCallOptions & {
@@ -270,17 +284,55 @@ async function generateStyleBatch(
   return results;
 }
 
-/** A style the decision refused is answered with its reason, never with a bad joke. */
-function refusedStyleResponse(
-  decision: ReadyDecision,
-  style: Style,
+/** Every `continue` is built here, so a safety turn always carries local contacts and no chips. */
+function continueBody(
+  turn: { message: string; options: string[]; safety: SafetyFlag },
+  region: string | undefined,
 ): Omit<ContinueResponse, "usage"> {
-  const skipped = decision.meta.skippedStyles.find((item) => item.style === style);
+  if (turn.safety === "none") {
+    return { kind: "continue", message: turn.message, options: turn.options, safety: "none" };
+  }
   return {
     kind: "continue",
-    message: skipped?.reason ?? "That angle would not land well on this one.",
+    message: crisisMessage(turn.message),
     options: [],
-    safety: decision.meta.safety,
+    safety: turn.safety,
+    crisisResource: crisisResourceLine(region),
+  };
+}
+
+/** A style the decision refused is answered with its reason, never with a bad joke. */
+function refusedStyleMessage(decision: ReadyDecision, style: Style): string {
+  const skipped = decision.meta.skippedStyles.find((item) => item.style === style);
+  return skipped?.reason ?? "That angle would not land well on this one.";
+}
+
+/** A response before its `usage`, which is what a replay stores. */
+type ReframePayload = Omit<ContinueResponse, "usage"> | Omit<ReadyResponse, "usage">;
+
+/**
+ * A retry of a finished request gets the response it already paid for, with the balance
+ * as it is now. Null when there is nothing to replay, which leaves the original 409.
+ */
+async function replayCompleted(input: {
+  ownerId: string;
+  clientRequestId: string;
+  requestFingerprint: string;
+  replayKey: Buffer;
+  model: LlmModelId;
+}): Promise<ReframeResponse | null> {
+  const stored = await findReframeReplay(input);
+  if (!stored) {
+    return null;
+  }
+  const payload = openReplay(input.replayKey, stored.operationId, stored.sealed);
+  if (payload === null || typeof payload !== "object") {
+    return null;
+  }
+  const summary = await getUsageSummary(input.ownerId);
+  return {
+    ...(payload as ReframePayload),
+    usage: responseUsage(summary, stored.chargedCredits, input.model),
   };
 }
 
@@ -358,6 +410,7 @@ reframeRoute.post(
         ? parsedKey.data
         : randomUUID();
     const fingerprint = requestFingerprint(validated, model);
+    const replayKey = parseReplayKey(c.req.header(REPLAY_KEY_HEADER));
     const usageEvents: LlmUsageEvent[] = [];
     let operation: StartedMeterOperation | undefined;
 
@@ -384,21 +437,26 @@ reframeRoute.post(
         ...meteredCallOptions,
       });
 
-      if (decision.kind === "continue") {
+      const finish = async (
+        payload: ReframePayload,
+        state: "ready" | "continue",
+      ): Promise<ReframeResponse> => {
         const summary = await finishMeterOperation({
-          operation,
-          state: "continue",
-          resultKind: "continue",
+          operation: startedOperation,
+          state,
+          resultKind: state,
           usageEvents,
+          ...(replayKey ? { replay: sealReplay(replayKey, startedOperation.operationId, payload) } : {}),
         });
-        const body: ReframeResponse = {
-          kind: "continue",
-          message: decision.message,
-          options: decision.options,
-          safety: decision.safety,
-          usage: responseUsage(summary, 0, model),
-        };
-        return c.json(body);
+        const creditsUsed =
+          state === "continue" || startedOperation.taste || !isPublicLlmModel(model)
+            ? 0
+            : MODEL_CREDIT_COST[model];
+        return { ...payload, usage: responseUsage(summary, creditsUsed, model) };
+      };
+
+      if (decision.kind === "continue") {
+        return c.json(await finish(continueBody(decision, validated.region), "continue"));
       }
 
       const chosen = requestedStyles
@@ -407,23 +465,17 @@ reframeRoute.post(
 
       if (chosen.length === 0) {
         const refused = requestedStyles?.[0];
-        const summary = await finishMeterOperation({
-          operation,
-          state: "continue",
-          resultKind: "continue",
-          usageEvents,
-        });
-        const response = refused
-          ? refusedStyleResponse(decision, refused)
-          : ({
-              kind: "continue",
-              message: "I could not find an angle worth putting on a card yet.",
-              options: [],
-              safety: decision.meta.safety,
-            } satisfies Omit<ContinueResponse, "usage">);
-        return c.json(
-          { ...response, usage: responseUsage(summary, 0, model) },
+        const payload = continueBody(
+          {
+            message: refused
+              ? refusedStyleMessage(decision, refused)
+              : "I could not find an angle worth putting on a card yet.",
+            options: [],
+            safety: decision.meta.safety,
+          },
+          validated.region,
         );
+        return c.json(await finish(payload, "continue"));
       }
 
       const options: CookCallOptions = {
@@ -439,33 +491,41 @@ reframeRoute.post(
 
       // A recook keeps the card's thought and meta, and the client sends that thought as `text`.
       const signedThought = recookStyle ? text : decision.thought;
-      const summary = await finishMeterOperation({
-        operation,
-        state: "ready",
-        resultKind: "ready",
-        usageEvents,
-      });
-      const creditsUsed =
-        operation.taste || !isPublicLlmModel(model) ? 0 : MODEL_CREDIT_COST[model];
-      const body: ReframeResponse = {
+      const payload: ReframePayload = {
         kind: "ready",
         thought: decision.thought,
         ...(decision.thoughtOriginal ? { thoughtOriginal: decision.thoughtOriginal } : {}),
         results: results.map((item) => ({
           ...item,
-          signature: signResult(signedThought, item.style, item.reframe, model),
+          signature: signResult(ownerId, signedThought, item.style, item.reframe, model),
         })),
         meta: decision.meta,
         signature: signCook({
+          ownerId,
           thought: decision.thought,
           thoughtOriginal: decision.thoughtOriginal,
           model,
           meta: decision.meta,
         }),
-        usage: responseUsage(summary, creditsUsed, model),
       };
-      return c.json(body);
+      return c.json(await finish(payload, "ready"));
     } catch (error) {
+      if (
+        error instanceof MeteringError &&
+        error.code === "REQUEST_ALREADY_COMPLETED" &&
+        replayKey
+      ) {
+        const replayed = await replayCompleted({
+          ownerId,
+          clientRequestId,
+          requestFingerprint: fingerprint,
+          replayKey,
+          model,
+        });
+        if (replayed) {
+          return c.json(replayed);
+        }
+      }
       if (operation) {
         try {
           await finishMeterOperation({

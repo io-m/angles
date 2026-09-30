@@ -19,6 +19,7 @@ import {
   type PublicLlmModelId,
   type UsageSummary,
 } from "../lib/meteringPolicy.js";
+import { REPLAY_TTL_MS, type SealedReplay } from "../lib/reframeReplay.js";
 import { getSql, wrapDbError } from "./client.js";
 
 const OPERATION_LEASE_MS = 30_000;
@@ -157,7 +158,7 @@ function entitlementIsActive(row: EntitlementContext, now: Date): boolean {
       asDate(row.grace_period_expires_at) > now
     );
   }
-  return row.status === "billing_retry";
+  return false;
 }
 
 async function ensurePeriod(
@@ -178,7 +179,7 @@ async function ensurePeriod(
     active &&
     paidThrough &&
     paidThrough <= now &&
-    (entitlement.status === "grace" || entitlement.status === "billing_retry")
+    entitlement.status === "grace"
       ? new Date(paidThrough.getTime() - 1)
       : now;
   const range =
@@ -527,6 +528,8 @@ export async function finishMeterOperation(input: {
   state: TerminalState;
   resultKind?: "ready" | "continue";
   usageEvents: readonly LlmUsageEvent[];
+  /** Committed with the charge, so a completed operation is never unrecoverable. */
+  replay?: SealedReplay;
   now?: Date;
 }): Promise<UsageSummary> {
   const now = input.now ?? new Date();
@@ -605,6 +608,18 @@ export async function finishMeterOperation(input: {
             updated_at = ${sqlTimestamp(now)}
         where id = ${input.operation.operationId}
       `;
+      await tx`delete from reframe_replays where expires_at <= ${sqlTimestamp(now)}`;
+      if (input.replay && input.state !== "failed") {
+        await tx`
+          insert into reframe_replays (
+            operation_id, owner_id, iv, auth_tag, ciphertext, expires_at
+          ) values (
+            ${input.operation.operationId}, ${input.operation.ownerId}, ${input.replay.iv},
+            ${input.replay.authTag}, ${input.replay.ciphertext},
+            ${sqlTimestamp(new Date(now.getTime() + REPLAY_TTL_MS))}
+          )
+        `;
+      }
       return getUsageSummaryInTransaction(tx, input.operation.ownerId, now);
     });
   } catch (error) {
@@ -612,6 +627,53 @@ export async function finishMeterOperation(input: {
       throw error;
     }
     throw wrapDbError(error, "finish_meter_operation");
+  }
+}
+
+export type StoredReplay = {
+  operationId: string;
+  chargedCredits: number;
+  sealed: SealedReplay;
+};
+
+/** The sealed response of this exact completed request, if it has not expired. */
+export async function findReframeReplay(input: {
+  ownerId: string;
+  clientRequestId: string;
+  requestFingerprint: string;
+  now?: Date;
+}): Promise<StoredReplay | null> {
+  const now = input.now ?? new Date();
+  try {
+    const rows = await getSql()<
+      {
+        operation_id: string;
+        charged_credits: number;
+        iv: string;
+        auth_tag: string;
+        ciphertext: string;
+      }[]
+    >`
+      select o.id as operation_id, o.charged_credits, r.iv, r.auth_tag, r.ciphertext
+      from meter_operations o
+      join reframe_replays r on r.operation_id = o.id and r.owner_id = o.owner_id
+      where o.owner_id = ${input.ownerId}
+        and o.client_request_id = ${input.clientRequestId}
+        and o.request_fingerprint = ${input.requestFingerprint}
+        and o.state in ('ready', 'continue')
+        and r.expires_at > ${sqlTimestamp(now)}
+    `;
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+    return {
+      operationId: row.operation_id,
+      chargedCredits: row.charged_credits,
+      sealed: { iv: row.iv, authTag: row.auth_tag, ciphertext: row.ciphertext },
+    };
+  } catch (error) {
+    throw wrapDbError(error, "find_reframe_replay");
   }
 }
 

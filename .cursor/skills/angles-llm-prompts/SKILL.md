@@ -15,7 +15,7 @@ Load-bearing rules, do not weaken them casually:
 
 - `ready` is the default. Heavy is not the same as unclear: grief, loss, self-hatred and hopelessness get cooked, with the wrong styles skipped.
 - If you can name the situation in one clause, cook it. Broken English, typos, rudeness, and irritation at family are thoughts. Never bounce with "I didn't catch a thought" / "try again".
-- Safety is only suicide, self-harm, harm to others, or abuse. Only those mention a crisis line, and they never get a reframe.
+- Safety is only suicide, self-harm, harm to others, or abuse. They never get a reframe. The model never writes a phone number, hotline, or country; `crisisResources.ts` adds the line for the phone's region, and a crisis message containing a digit is replaced with `SAFETY_FALLBACK_MESSAGE`. An unknown safety label is read as `self_harm`.
 - Skip reasons are written as user-facing sentences: a recook of a skipped style returns that reason verbatim.
 - Worked examples at the bottom of the decide section carry a lot of weight on small models. Test any edit against them.
 

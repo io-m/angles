@@ -35,6 +35,7 @@
 - [ ] Monthly and annual products use `app.angles.ios.monthly` and `app.angles.ios.annual`, are localized, priced at `$4.99` and `$39.99`, and are included with the submitted version.
 - [ ] Configure App Store Server Notifications V2 to `https://<production-api>/app-store/notifications`.
 - [ ] Send Apple's test notification and confirm a verified `200` response.
+- [ ] Turn on Billing Grace Period in App Store Connect (Subscriptions → Billing Grace Period). Without it, a failed renewal locks the app at once: billing retry after grace does not unlock.
 - [ ] Test new purchase, restore, renewal, expiry, billing retry/grace where available, refund/revocation, and transaction ownership conflict.
 
 ## Providers and operations

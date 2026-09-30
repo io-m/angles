@@ -192,11 +192,21 @@ function cleanString(value: string | null | undefined): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizeSafety(value: string | null | undefined): SafetyFlag {
-  const candidate = value?.trim().toLowerCase() ?? "";
+/** Ways a model says "no safety concern" without using the catalog word. */
+const NO_SAFETY_CONCERN: ReadonlySet<string> = new Set(["null", "no", "false", "n/a", "na", "safe"]);
+
+/**
+ * Fails closed. Any label outside the catalog ("suicide", "suicidal", "crisis", ...) is
+ * treated as self-harm: a false alarm costs one crisis message, a miss ships a reframe.
+ */
+export function normalizeSafety(value: string | null | undefined): SafetyFlag {
+  const candidate = (value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (candidate === "" || NO_SAFETY_CONCERN.has(candidate)) {
+    return "none";
+  }
   return (SAFETY_FLAGS as readonly string[]).includes(candidate)
     ? (candidate as SafetyFlag)
-    : "none";
+    : "self_harm";
 }
 
 function normalizeLanguage(value: string | null | undefined): string {

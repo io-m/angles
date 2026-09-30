@@ -47,7 +47,25 @@ async function loadCard(
   return toStoredCard(row, { angles: new Map() }, undefined, undefined, hearts?.get(row.id));
 }
 
-export async function createCard(input: CreateCardInput): Promise<StoredCard> {
+/** The viewer's card saved from this signed cook, if one exists. */
+export async function findOwnCardByCookSignature(cookSignature: string): Promise<StoredCard | null> {
+  try {
+    const db = getDb();
+    const row = await db.query.cards.findFirst({
+      columns: { id: true },
+      where: and(eq(cards.userId, getOwnerUserId()), eq(cards.cookSignature, cookSignature)),
+    });
+    return row ? await loadCard(db, row.id) : null;
+  } catch (error) {
+    throw wrapDbError(error, "findOwnCardByCookSignature");
+  }
+}
+
+/** With a `cookSignature`, a second save of the same cook returns the first card instead. */
+export async function createCard(
+  input: CreateCardInput,
+  options: { cookSignature?: string } = {},
+): Promise<StoredCard> {
   try {
     return await getDb().transaction(async (tx) => {
       const thoughtOriginal =
@@ -76,10 +94,26 @@ export async function createCard(input: CreateCardInput): Promise<StoredCard> {
           skippedStyles: input.meta.skippedStyles,
           model: input.model,
           spotlightStyle: input.spotlightStyle,
+          cookSignature: options.cookSignature ?? null,
           ...(input.isPublic === undefined ? {} : { isPublic: input.isPublic }),
         })
+        .onConflictDoNothing({ target: [cards.userId, cards.cookSignature] })
         .returning({ id: cards.id });
 
+      if (!inserted && options.cookSignature) {
+        const existing = await tx.query.cards.findFirst({
+          columns: { id: true },
+          where: and(
+            eq(cards.userId, getOwnerUserId()),
+            eq(cards.cookSignature, options.cookSignature),
+          ),
+        });
+        const loaded = existing ? await loadCard(tx, existing.id) : null;
+        if (!loaded) {
+          throw new DbError("Database error");
+        }
+        return loaded;
+      }
       const cardId = inserted?.id;
       if (!cardId) {
         throw new DbError("Database error");

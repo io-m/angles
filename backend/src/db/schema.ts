@@ -277,6 +277,28 @@ export const meterOperations = pgTable(
   ],
 );
 
+/**
+ * The response of a finished operation, so a retry with the same idempotency key gets the
+ * cook it already paid for. AES-256-GCM under a key only the client holds: the server
+ * cannot read this without the retry, and the row expires within the hour.
+ */
+export const reframeReplays = pgTable(
+  "reframe_replays",
+  {
+    operationId: uuid("operation_id")
+      .primaryKey()
+      .references(() => meterOperations.id, { onDelete: "cascade" }),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    iv: text("iv").notNull(),
+    authTag: text("auth_tag").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date", precision: 3 }).notNull(),
+  },
+  (table) => [index("reframe_replays_expires_idx").on(table.expiresAt)],
+);
+
 export const llmCallUsage = pgTable(
   "llm_call_usage",
   {
@@ -383,7 +405,7 @@ export const cards = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     thoughtEn: text("thought_en").notNull(),
     thoughtOriginal: text("thought_original"),
     inputLanguage: text("input_language").notNull(),
@@ -399,6 +421,8 @@ export const cards = pgTable(
     model: text("model").notNull(),
     spotlightStyle: styleEnum("spotlight_style").notNull(),
     isPublic: boolean("is_public").notNull().default(false),
+    /** The cook signature this card was saved from. Null only on cards saved before it existed. */
+    cookSignature: text("cook_signature"),
     // Millisecond precision so the `createdAt|id` page cursor round-trips through a JS Date exactly.
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date", precision: 3 })
       .notNull()
@@ -419,6 +443,8 @@ export const cards = pgTable(
       .on(table.model, table.createdAt.desc().nullsFirst(), table.id.desc().nullsFirst())
       .where(sql`${table.isPublic} = true`),
     index("cards_emotions_gin_idx").using("gin", table.emotions),
+    // One card per signed cook, so a retried save cannot post the same card twice.
+    uniqueIndex("cards_user_cook_signature_unique").on(table.userId, table.cookSignature),
     check("cards_intensity_range", sql`intensity between 1 and 5`),
   ],
 );

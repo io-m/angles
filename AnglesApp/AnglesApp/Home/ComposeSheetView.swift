@@ -591,7 +591,7 @@ struct ComposeSheetView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if turn.safety.needsCare {
-                    Text("If you are in danger right now, call or text 988.")
+                    Text(turn.crisisResource ?? SafetyFlag.unknownRegionCrisisLine)
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(theme.muted)
                         .fixedSize(horizontal: false, vertical: true)

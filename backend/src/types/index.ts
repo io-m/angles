@@ -55,6 +55,8 @@ export type ReframeRequest = {
   followUps?: FollowUpAnswer[];
   styles?: Style[];
   model?: string;
+  /** Device region (ISO 3166-1 alpha-2). Picks crisis contacts; never sent to the model. */
+  region?: string;
 };
 
 export type ReframeResult = {
@@ -93,6 +95,8 @@ export type ContinueResponse = {
   message: string;
   options: string[];
   safety: SafetyFlag;
+  /** Local crisis contacts for the request's region. Present exactly when `safety` is not `none`. */
+  crisisResource?: string;
   usage: ReframeUsage;
 };
 

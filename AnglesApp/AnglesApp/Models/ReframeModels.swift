@@ -128,10 +128,16 @@ enum SafetyFlag: String, Codable, CaseIterable, Sendable {
     case harmOthers = "harm_others"
     case abuse
 
+    /// Fails closed, unlike the other enums here: an unknown flag still shows crisis help,
+    /// and the server refuses to save a card whose safety is not `none`.
     init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
-        self = SafetyFlag(rawValue: raw) ?? .none
+        self = SafetyFlag(rawValue: raw) ?? .selfHarm
     }
+
+    /// Shown when a crisis turn arrives without the server's local contacts.
+    static let unknownRegionCrisisLine =
+        "If you are in danger, call your local emergency number now, or reach out to someone you trust."
 
     var needsCare: Bool {
         self != .none
@@ -282,12 +288,15 @@ struct ReframeRequest: Codable, Equatable, Sendable {
     let followUps: [FollowUpAnswer]
     let styles: [Style]?
     let model: LlmModel?
+    /// Device region (ISO 3166-1 alpha-2). The server uses it only to pick crisis contacts.
+    let region: String?
 
     private enum CodingKeys: String, CodingKey {
         case text
         case followUps
         case styles
         case model
+        case region
     }
 
     func encode(to encoder: Encoder) throws {
@@ -298,6 +307,7 @@ struct ReframeRequest: Codable, Equatable, Sendable {
         }
         try container.encodeIfPresent(styles, forKey: .styles)
         try container.encodeIfPresent(model, forKey: .model)
+        try container.encodeIfPresent(region, forKey: .region)
     }
 }
 
@@ -346,7 +356,14 @@ struct StoredReframeResult: Decodable, Equatable, Sendable {
 
 enum ReframeResponse: Decodable, Equatable, Sendable {
     /// Not ready to cook: the composer stays up and the user can answer or say more.
-    case continueTurn(message: String, options: [String], safety: SafetyFlag, usage: ReframeUsage)
+    /// `crisisResource` is the server's local crisis contacts, present on a safety turn.
+    case continueTurn(
+        message: String,
+        options: [String],
+        safety: SafetyFlag,
+        crisisResource: String?,
+        usage: ReframeUsage
+    )
     /// `signature` covers the thought and meta; each result carries its own.
     case ready(
         thought: String,
@@ -362,6 +379,7 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
         case message
         case options
         case safety
+        case crisisResource
         case thought
         case thoughtOriginal
         case results
@@ -379,6 +397,7 @@ enum ReframeResponse: Decodable, Equatable, Sendable {
                 message: try container.decode(String.self, forKey: .message),
                 options: try container.decodeIfPresent([String].self, forKey: .options) ?? [],
                 safety: try container.decodeIfPresent(SafetyFlag.self, forKey: .safety) ?? .none,
+                crisisResource: try container.decodeIfPresent(String.self, forKey: .crisisResource),
                 usage: try container.decode(ReframeUsage.self, forKey: .usage)
             )
         case "ready":

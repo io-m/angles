@@ -57,7 +57,8 @@ if (testUrl) {
 }
 
 const { closePool, getDb, getSql } = await import("./client.js");
-const { createCard, deleteCard, getCard, listCards, patchCard } = await import("./cards.js");
+const { createCard, deleteCard, findOwnCardByCookSignature, getCard, listCards, patchCard } =
+  await import("./cards.js");
 const { deleteOwnerAccount } = await import("./users.js");
 const { blockUser, reportCard, unblockUser } = await import("./communitySafety.js");
 const {
@@ -72,10 +73,12 @@ const {
   applyCreditAdjustment,
   beginProviderCall,
   expireStaleOperations,
+  findReframeReplay,
   finishMeterOperation,
   getUsageSummary,
   startMeterOperation,
 } = await import("./metering.js");
+const { openReplay, parseReplayKey, sealReplay } = await import("../lib/reframeReplay.js");
 const { clearFeedSaves, listFeed, listRankedFeed, saveFeedAngle } = await import("./feed.js");
 const { followUser, unfollowUser } = await import("./follows.js");
 const { createApp } = await import("../app.js");
@@ -377,7 +380,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(await getDb().select().from(subscriptionEntitlements)).toHaveLength(1);
   });
 
-  it("keeps grace and billing retry on the last paid quota without minting another period", async () => {
+  it("keeps grace on the last paid quota and locks billing retry once grace ends", async () => {
     process.env.USAGE_ENFORCEMENT = "required";
     const paidThrough = new Date("2026-10-25T10:00:00.000Z");
     const paidTransaction = appStoreTransaction({
@@ -439,6 +442,15 @@ describe.skipIf(!testUrl)("cards integration", () => {
     ).toBe(599);
     expect(await getDb().select().from(usagePeriods)).toHaveLength(1);
 
+    // The phone re-syncs its lapsed receipt during grace; that must not end grace early.
+    await syncSubscriptionTransaction(
+      DEV_USER_ID,
+      { ...paidTransaction, signedDate: new Date("2026-10-28T10:00:00.000Z") },
+      new Date("2026-10-28T10:00:01.000Z"),
+    );
+    expect((await getSubscription(DEV_USER_ID)).status).toBe("grace");
+    expect(await hasActiveEntitlement(DEV_USER_ID, new Date("2026-10-28T10:00:02.000Z"))).toBe(true);
+
     const retrySignedAt = new Date("2026-11-01T10:01:00.000Z");
     await processSubscriptionNotification(
       appStoreNotification({
@@ -458,11 +470,24 @@ describe.skipIf(!testUrl)("cards integration", () => {
       retrySignedAt,
     );
     expect((await getSubscription(DEV_USER_ID)).status).toBe("billing_retry");
-    expect(await hasActiveEntitlement(DEV_USER_ID, new Date("2026-11-02T10:00:00.000Z"))).toBe(true);
-    expect(
-      (await getUsageSummary(DEV_USER_ID, new Date("2026-11-02T10:00:00.000Z")))
-        .creditsRemaining,
-    ).toBe(599);
+    expect((await getSubscription(DEV_USER_ID)).isEntitled).toBe(false);
+    expect(await hasActiveEntitlement(DEV_USER_ID, new Date("2026-11-02T10:00:00.000Z"))).toBe(false);
+    await expect(
+      startMeterOperation({
+        ownerId: DEV_USER_ID,
+        clientRequestId: "00000000-0000-4000-8000-000000000186",
+        requestFingerprint: "retry-blocked",
+        model: "mistral-small-latest",
+        kind: "full",
+        now: new Date("2026-11-02T10:00:00.000Z"),
+      }),
+    ).rejects.toMatchObject({ code: "SUBSCRIPTION_REQUIRED" });
+    await syncSubscriptionTransaction(
+      DEV_USER_ID,
+      { ...paidTransaction, signedDate: new Date("2026-11-03T10:00:00.000Z") },
+      new Date("2026-11-03T10:00:01.000Z"),
+    );
+    expect((await getSubscription(DEV_USER_ID)).status).toBe("billing_retry");
     expect(await getDb().select().from(usagePeriods)).toHaveLength(1);
 
     const expiredSignedAt = new Date("2026-11-10T10:01:00.000Z");
@@ -593,6 +618,68 @@ describe.skipIf(!testUrl)("cards integration", () => {
         now: new Date("2026-09-25T12:00:03.000Z"),
       }),
     ).rejects.toMatchObject({ code: "REQUEST_ALREADY_COMPLETED" });
+  });
+
+  it("keeps a finished operation's sealed body for its own request until it expires", async () => {
+    const replayKey = parseReplayKey(Buffer.alloc(32, 3).toString("base64url"))!;
+    const operation = await startMeterOperation({
+      ownerId: DEV_USER_ID,
+      clientRequestId: "00000000-0000-4000-8000-000000000221",
+      requestFingerprint: "replayed",
+      model: "deepseek-flash",
+      kind: "full",
+      now: new Date("2026-09-25T12:00:00.000Z"),
+    });
+    const body = { kind: "ready", thought: baseInput.thought, signature: "sig" };
+    await finishMeterOperation({
+      operation,
+      state: "ready",
+      resultKind: "ready",
+      usageEvents: [],
+      replay: sealReplay(replayKey, operation.operationId, body),
+      now: new Date("2026-09-25T12:00:01.000Z"),
+    });
+    const [stored] = await getSql()<{ ciphertext: string }[]>`select ciphertext from reframe_replays`;
+    expect(stored?.ciphertext).not.toContain("interview");
+
+    const lookup = {
+      ownerId: DEV_USER_ID,
+      clientRequestId: "00000000-0000-4000-8000-000000000221",
+      requestFingerprint: "replayed",
+    };
+    const found = await findReframeReplay({ ...lookup, now: new Date("2026-09-25T12:30:00.000Z") });
+    expect(found?.chargedCredits).toBe(2);
+    expect(openReplay(replayKey, found!.operationId, found!.sealed)).toEqual(body);
+    expect(
+      await findReframeReplay({
+        ...lookup,
+        requestFingerprint: "edited",
+        now: new Date("2026-09-25T12:30:00.000Z"),
+      }),
+    ).toBeNull();
+    expect(
+      await findReframeReplay({ ...lookup, now: new Date("2026-09-25T13:00:01.000Z") }),
+    ).toBeNull();
+
+    const failed = await startMeterOperation({
+      ownerId: DEV_USER_ID,
+      clientRequestId: "00000000-0000-4000-8000-000000000222",
+      requestFingerprint: "failed",
+      model: "deepseek-flash",
+      kind: "full",
+      now: new Date("2026-09-25T13:00:02.000Z"),
+    });
+    await finishMeterOperation({
+      operation: failed,
+      state: "failed",
+      usageEvents: [],
+      replay: sealReplay(replayKey, failed.operationId, body),
+      now: new Date("2026-09-25T13:00:03.000Z"),
+    });
+    const remaining = await getSql()<{ count: number }[]>`
+      select count(*)::int as count from reframe_replays
+    `;
+    expect(remaining[0]?.count).toBe(0);
   });
 
   it("expires a stale lease and releases its reservation", async () => {
@@ -900,6 +987,53 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(await getDb().select().from(usagePeriods)).toHaveLength(1);
   });
 
+  it("saves one card per signed cook, even when two saves race", async () => {
+    const first = await createCard(baseInput, { cookSignature: "cook-signature-1" });
+    const retry = await createCard(baseInput, { cookSignature: "cook-signature-1" });
+    expect(retry.id).toBe(first.id);
+    expect((await findOwnCardByCookSignature("cook-signature-1"))?.id).toBe(first.id);
+
+    const raced = await Promise.all([
+      createCard(baseInput, { cookSignature: "cook-signature-2" }),
+      createCard(baseInput, { cookSignature: "cook-signature-2" }),
+    ]);
+    expect(raced[0].id).toBe(raced[1].id);
+
+    await createCard(baseInput);
+    await createCard(baseInput);
+    expect(await getDb().select().from(cards)).toHaveLength(4);
+    expect(await getDb().select().from(cardReframes)).toHaveLength(4 * baseInput.results.length);
+    expect(await findOwnCardByCookSignature("never-saved")).toBeNull();
+  });
+
+  it("removes a user's cards with the user row", async () => {
+    const otherUserId = "00000000-0000-4000-8000-000000000197";
+    await getDb().insert(users).values({
+      id: otherUserId,
+      name: "Other",
+      email: "other-cascade@angles.invalid",
+      initials: "OT",
+    });
+    await getDb().insert(cards).values({
+      userId: otherUserId,
+      thoughtEn: "Another thought.",
+      inputLanguage: "en",
+      category: "work",
+      intensity: 2,
+      intensityBand: "low",
+      timeframe: "past",
+      safety: "none",
+      emotions: ["fear"],
+      skippedStyles: [],
+      model: "mistral-small-latest",
+      spotlightStyle: "stoic",
+    });
+
+    await getDb().delete(users).where(eq(users.id, otherUserId));
+
+    expect(await getDb().select().from(cards).where(eq(cards.userId, otherUserId))).toEqual([]);
+  });
+
   it("stores no prompt, response, or user-text columns in metering tables", async () => {
     const columns = await getSql()<
       { table_name: string; column_name: string }[]
@@ -909,7 +1043,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       where table_schema = 'public'
         and table_name in (
           'usage_periods', 'meter_operations', 'llm_call_usage',
-          'daily_usage', 'credit_adjustments', 'taste_usage'
+          'daily_usage', 'credit_adjustments', 'taste_usage', 'reframe_replays'
         )
     `;
     expect(

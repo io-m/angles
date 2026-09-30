@@ -192,6 +192,7 @@ struct RefineTurn: Identifiable, Equatable {
     let message: String
     let options: [String]
     let safety: SafetyFlag
+    var crisisResource: String? = nil
     var reply: String?
     var replyWasChip: Bool = false
 
@@ -544,8 +545,8 @@ final class HomeViewModel {
     private var usageAccountID: String?
     private var usageGeneration = 0
     private var refineGeneration = 0
-    private var pendingRefineRequestID: UUID?
-    private var pendingRecookRequestID: UUID?
+    private var pendingRefineAttempt: ReframeAttempt?
+    private var pendingRecookAttempt: ReframeAttempt?
     private var pendingRecookStyle: Style?
 
     private static let modelDefaultsKey = "angles.llmModel"
@@ -793,9 +794,9 @@ final class HomeViewModel {
             statement = "\(statement)\n\n\(text)"
         }
 
-        let requestID = UUID()
-        pendingRefineRequestID = requestID
-        startRefine(requestID: requestID)
+        let attempt = ReframeAttempt()
+        pendingRefineAttempt = attempt
+        startRefine(attempt: attempt)
     }
 
     func retryRefine() {
@@ -803,9 +804,9 @@ final class HomeViewModel {
             return
         }
 
-        let requestID = pendingRefineRequestID ?? UUID()
-        pendingRefineRequestID = requestID
-        startRefine(requestID: requestID)
+        let attempt = pendingRefineAttempt ?? ReframeAttempt()
+        pendingRefineAttempt = attempt
+        startRefine(attempt: attempt)
     }
 
     /// `forcePrivate` is the onboarding taste: that save is private whatever the toggle says.
@@ -2868,12 +2869,12 @@ final class HomeViewModel {
         // Recook works from the cleaned English thought, not the raw paste.
         let text = cook.thought
         let model = cook.model
-        let requestID: UUID
-        if pendingRecookStyle == style, let pendingRecookRequestID {
-            requestID = pendingRecookRequestID
+        let attempt: ReframeAttempt
+        if pendingRecookStyle == style, let pendingRecookAttempt {
+            attempt = pendingRecookAttempt
         } else {
-            requestID = UUID()
-            pendingRecookRequestID = requestID
+            attempt = ReframeAttempt()
+            pendingRecookAttempt = attempt
             pendingRecookStyle = style
         }
 
@@ -2893,16 +2894,16 @@ final class HomeViewModel {
                     text: text,
                     styles: [style],
                     model: model,
-                    requestID: requestID
+                    attempt: attempt
                 )
                 guard !Task.isCancelled, refineGeneration == generation else {
                     return
                 }
-                pendingRecookRequestID = nil
+                pendingRecookAttempt = nil
                 pendingRecookStyle = nil
 
                 switch response {
-                case .continueTurn(let message, _, _, let usage):
+                case .continueTurn(let message, _, _, _, let usage):
                     applyUsage(usage, requestModel: model)
                     // That style no longer fits this thought; keep what we have.
                     recookNotice = message
@@ -2926,7 +2927,7 @@ final class HomeViewModel {
                     return
                 }
                 if !Self.isAmbiguousReframeFailure(error) {
-                    pendingRecookRequestID = nil
+                    pendingRecookAttempt = nil
                     pendingRecookStyle = nil
                 }
                 recookNotice = composeFailure(for: error, model: model).message
@@ -2945,8 +2946,8 @@ final class HomeViewModel {
         turns = []
         recookingStyle = nil
         recookNotice = nil
-        pendingRefineRequestID = nil
-        pendingRecookRequestID = nil
+        pendingRefineAttempt = nil
+        pendingRecookAttempt = nil
         pendingRecookStyle = nil
         usageFeedback = nil
         composeErrorAllowsRetry = true
@@ -2956,13 +2957,13 @@ final class HomeViewModel {
         phase = .composing
     }
 
-    private func startRefine(requestID: UUID) {
+    private func startRefine(attempt: ReframeAttempt) {
         refineTask?.cancel()
         refineGeneration &+= 1
         let generation = refineGeneration
         recookingStyle = nil
         recookNotice = nil
-        pendingRecookRequestID = nil
+        pendingRecookAttempt = nil
         pendingRecookStyle = nil
         usageFeedback = nil
         composeErrorAllowsRetry = true
@@ -2977,22 +2978,23 @@ final class HomeViewModel {
                     text: text,
                     followUps: followUps,
                     model: model,
-                    requestID: requestID
+                    attempt: attempt
                 )
                 guard !Task.isCancelled, refineGeneration == generation else {
                     return
                 }
-                pendingRefineRequestID = nil
+                pendingRefineAttempt = nil
 
                 switch response {
-                case .continueTurn(let message, let options, let safety, let usage):
+                case .continueTurn(let message, let options, let safety, let crisisResource, let usage):
                     applyUsage(usage, requestModel: model)
                     turns.append(
                         RefineTurn(
                             id: UUID(),
                             message: message,
                             options: options,
-                            safety: safety
+                            safety: safety,
+                            crisisResource: crisisResource
                         )
                     )
                     phase = .awaitingReply
@@ -3025,7 +3027,7 @@ final class HomeViewModel {
                 }
 
                 if !Self.isAmbiguousReframeFailure(error) {
-                    pendingRefineRequestID = nil
+                    pendingRefineAttempt = nil
                 }
                 let failure = composeFailure(for: error, model: model)
                 composeErrorAllowsRetry = failure.allowsRetry

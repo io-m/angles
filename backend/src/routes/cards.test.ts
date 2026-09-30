@@ -25,6 +25,7 @@ vi.mock("../db/client.js", () => {
 
 vi.mock("../db/cards.js", () => ({
   createCard: vi.fn(),
+  findOwnCardByCookSignature: vi.fn(async () => null),
   listCards: vi.fn(),
   getCard: vi.fn(),
   hasPublicationReportLock: vi.fn(async () => false),
@@ -45,8 +46,15 @@ vi.mock("../lib/publicModeration.js", () => ({
 }));
 
 const { createApp } = await import("../app.js");
-const { createCard, deleteCard, getCard, hasPublicationReportLock, listCards, patchCard } =
-  await import("../db/cards.js");
+const {
+  createCard,
+  deleteCard,
+  findOwnCardByCookSignature,
+  getCard,
+  hasPublicationReportLock,
+  listCards,
+  patchCard,
+} = await import("../db/cards.js");
 const { reportCard } = await import("../db/communitySafety.js");
 const { moderatePublicCard } = await import("../lib/publicModeration.js");
 
@@ -71,13 +79,13 @@ const cookBody = {
   results: STYLES.map((style) => ({
     style,
     reframe: `A ${style} take.`,
-    signature: signResult(cookThought, style, `A ${style} take.`, cookModel),
+    signature: signResult(DEV_USER_ID, cookThought, style, `A ${style} take.`, cookModel),
   })),
   meta: {
     ...cookMeta,
     matching: { category: "work" as const, tags: ["ignored"], intensityBand: "low" as const },
   },
-  signature: signCook({ thought: cookThought, model: cookModel, meta: cookMeta }),
+  signature: signCook({ ownerId: DEV_USER_ID, thought: cookThought, model: cookModel, meta: cookMeta }),
   model: cookModel,
   spotlightStyle: "stoic" as const,
 };
@@ -140,6 +148,45 @@ describe("POST /cards", () => {
     const payload = vi.mocked(createCard).mock.calls[0]?.[0] as CreateCardInput;
     expect(payload).not.toHaveProperty("signature");
     expect(payload.results[0]).toEqual({ style: "stoic", reframe: "A stoic take." });
+    expect(vi.mocked(createCard).mock.calls[0]?.[1]).toEqual({ cookSignature: cookBody.signature });
+  });
+
+  it("returns the card a retried save already made, without publishing again", async () => {
+    const stored = storedCard({ isPublic: true });
+    vi.mocked(findOwnCardByCookSignature).mockResolvedValueOnce(stored);
+
+    const response = await app.request(
+      jsonRequest("/cards", "POST", { ...cookBody, isPublic: true }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toEqual(stored);
+    expect(findOwnCardByCookSignature).toHaveBeenCalledWith(cookBody.signature);
+    expect(moderatePublicCard).not.toHaveBeenCalled();
+    expect(createCard).not.toHaveBeenCalled();
+  });
+
+  it("rejects a cook signed for another account", async () => {
+    const otherOwner = "00000000-0000-4000-8000-000000000199";
+    const response = await app.request(
+      jsonRequest("/cards", "POST", {
+        ...cookBody,
+        results: cookBody.results.map((item) => ({
+          ...item,
+          signature: signResult(otherOwner, cookThought, item.style, item.reframe, cookModel),
+        })),
+        signature: signCook({
+          ownerId: otherOwner,
+          thought: cookThought,
+          model: cookModel,
+          meta: cookMeta,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(createCard).not.toHaveBeenCalled();
   });
 
   it("rejects a card without signatures", async () => {
@@ -181,7 +228,7 @@ describe("POST /cards", () => {
       jsonRequest("/cards", "POST", {
         ...cookBody,
         meta: flaggedMeta,
-        signature: signCook({ thought: cookThought, model: cookModel, meta: flaggedMeta }),
+        signature: signCook({ ownerId: DEV_USER_ID, thought: cookThought, model: cookModel, meta: flaggedMeta }),
       }),
     );
     expect(response.status).toBe(400);
@@ -200,7 +247,7 @@ describe("POST /cards", () => {
     const results = cookBody.results.map(({ style, reframe }) => ({
       style,
       reframe,
-      signature: signResult(cookThought, style, reframe, "deepseek-flash"),
+      signature: signResult(DEV_USER_ID, cookThought, style, reframe, "deepseek-flash"),
     }));
     const response = await app.request(
       jsonRequest("/cards", "POST", { ...cookBody, results }),
@@ -284,12 +331,12 @@ describe("POST /cards", () => {
           {
             style: "stoic",
             reframe: "one",
-            signature: signResult(cookThought, "stoic", "one", cookModel),
+            signature: signResult(DEV_USER_ID, cookThought, "stoic", "one", cookModel),
           },
           {
             style: "stoic",
             reframe: "two",
-            signature: signResult(cookThought, "stoic", "two", cookModel),
+            signature: signResult(DEV_USER_ID, cookThought, "stoic", "two", cookModel),
           },
         ],
       }),

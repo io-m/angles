@@ -128,7 +128,9 @@ struct AuthCredentialsTests {
 
 struct AuditRegressionTests {
     @Test func reframeUsesTheExplicitIdempotencyKey() async {
-        let requestID = UUID(uuidString: "00000000-0000-4000-8000-000000000123")!
+        let attempt = ReframeAttempt(
+            id: UUID(uuidString: "00000000-0000-4000-8000-000000000123")!
+        )
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RequestCaptureURLProtocol.self]
         let session = URLSession(configuration: configuration)
@@ -138,8 +140,9 @@ struct AuditRegressionTests {
         RequestCaptureURLProtocol.requestHandler = { request in
             #expect(
                 request.value(forHTTPHeaderField: "Idempotency-Key")
-                    == requestID.uuidString.lowercased()
+                    == attempt.id.uuidString.lowercased()
             )
+            #expect(request.value(forHTTPHeaderField: "Replay-Key") == attempt.replayKey)
             let response = HTTPURLResponse(
                 url: request.url!,
                 statusCode: 409,
@@ -154,7 +157,7 @@ struct AuditRegressionTests {
         defer { RequestCaptureURLProtocol.requestHandler = nil }
 
         do {
-            _ = try await service.refine(text: "A thought", requestID: requestID)
+            _ = try await service.refine(text: "A thought", attempt: attempt)
             Issue.record("Expected the stubbed conflict")
         } catch let APIError.httpStatus(code, payload, _) {
             #expect(code == 409)

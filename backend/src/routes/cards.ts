@@ -5,12 +5,13 @@ import { reportCard } from "../db/communitySafety.js";
 import {
   createCard,
   deleteCard,
+  findOwnCardByCookSignature,
   getCard,
   hasPublicationReportLock,
   listCards,
   patchCard,
 } from "../db/cards.js";
-import { requireAuth } from "../lib/authStub.js";
+import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
 import { verifyCook } from "../lib/cookSignature.js";
 import { cardCursorSchema } from "../lib/cursor.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
@@ -132,8 +133,16 @@ cardsRoute.post(
   }),
   async (c) => {
     const { signature, results, ...rest } = c.req.valid("json");
-    if (rest.meta.safety !== "none" || !verifyCook({ ...rest, signature, results })) {
+    if (
+      rest.meta.safety !== "none" ||
+      !verifyCook({ ...rest, ownerId: getOwnerUserId(), signature, results })
+    ) {
       return c.json(errorBody("card does not match a reframe from this server", "VALIDATION_ERROR"), 400);
+    }
+    // A retried save whose first response was lost gets the card it already made.
+    const existing = await findOwnCardByCookSignature(signature);
+    if (existing) {
+      return c.json(existing, 200);
     }
     if (rest.isPublic === true) {
       let allowed: boolean;
@@ -155,10 +164,13 @@ cardsRoute.post(
         );
       }
     }
-    const card = await createCard({
-      ...rest,
-      results: results.map(({ style, reframe }) => ({ style, reframe })),
-    });
+    const card = await createCard(
+      {
+        ...rest,
+        results: results.map(({ style, reframe }) => ({ style, reframe })),
+      },
+      { cookSignature: signature },
+    );
     return c.json(card, 201);
   },
 );

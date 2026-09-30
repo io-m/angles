@@ -276,9 +276,42 @@ describe("profile avatar", () => {
   });
 
   it("deletes the account", async () => {
+    vi.mocked(deleteOwnerAccount).mockReset();
     vi.mocked(deleteOwnerAccount).mockResolvedValue(undefined);
     const response = await app.request("/profile", { method: "DELETE" });
     expect(response.status).toBe(204);
     expect(deleteOwnerAccount).toHaveBeenCalledOnce();
+  });
+
+  it("retries a failed photo delete before deleting the account", async () => {
+    vi.mocked(deleteOwnerAccount).mockReset();
+    vi.mocked(deleteOwnerAccount).mockResolvedValue(undefined);
+    vi.mocked(getUserById).mockResolvedValue(user({ avatarKey: `avatars/${DEV_USER_ID}-1.jpg` }));
+    vi.mocked(deleteAvatar)
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockResolvedValueOnce(undefined);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await app.request("/profile", { method: "DELETE" });
+
+    expect(response.status).toBe(204);
+    expect(deleteAvatar).toHaveBeenCalledTimes(2);
+    expect(deleteOwnerAccount).toHaveBeenCalledOnce();
+    errorLog.mockRestore();
+  });
+
+  it("keeps the account when the photo cannot be deleted", async () => {
+    vi.mocked(deleteOwnerAccount).mockReset();
+    vi.mocked(getUserById).mockResolvedValue(user({ avatarKey: `avatars/${DEV_USER_ID}-1.jpg` }));
+    vi.mocked(deleteAvatar).mockRejectedValue(new Error("timeout"));
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await app.request("/profile", { method: "DELETE" });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "STORAGE_UNAVAILABLE" });
+    expect(deleteAvatar).toHaveBeenCalledTimes(3);
+    expect(deleteOwnerAccount).not.toHaveBeenCalled();
+    errorLog.mockRestore();
   });
 });

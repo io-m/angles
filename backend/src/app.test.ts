@@ -54,6 +54,7 @@ vi.mock("./db/metering.js", () => {
     beginProviderCall: vi.fn(async () => undefined),
     beginStandaloneProviderCall: vi.fn(async () => undefined),
     finishMeterOperation: vi.fn(async () => summary),
+    findReframeReplay: vi.fn(async () => null),
     getUsageSummary: vi.fn(async () => summary),
     recordStandaloneLlmUsage: vi.fn(async () => undefined),
   };
@@ -79,9 +80,11 @@ vi.mock("./db/client.js", () => ({
 }));
 
 const { app } = await import("./app.js");
+const { DEV_USER_ID } = await import("./lib/authStub.js");
 const { generateJson, generateReframe, STYLE_BATCH_MAX_OUTPUT_TOKENS } = await import("./lib/llmClient.js");
 const { probeDatabase } = await import("./db/client.js");
-const { finishMeterOperation, startMeterOperation } = await import("./db/metering.js");
+const { findReframeReplay, finishMeterOperation, MeteringError, startMeterOperation } =
+  await import("./db/metering.js");
 
 const SHORT_TEXT = "I bombed my job interview today.";
 const LONG_TEXT =
@@ -225,6 +228,7 @@ type ContinueBody = {
   message: string;
   options: string[];
   safety: string;
+  crisisResource?: string;
   usage: ResponseUsage;
 };
 type ReadyBody = {
@@ -388,17 +392,19 @@ describe("POST /reframe", () => {
     stubDecision(
       continueDecision({
         safety: "self_harm",
-        message: "I don't want to make light of this. Please call or text 988 right now.",
+        message: "I don't want to make light of this. Please reach someone right now.",
         options: ["I can do that"],
       }),
     );
 
-    const response = await post({ text: "I don't want to be here anymore." });
+    const response = await post({ text: "I don't want to be here anymore.", region: "US" });
 
     expect(response.status).toBe(200);
     const body = (await jsonOf(response)) as ContinueBody & { results?: unknown };
     expect(body.kind).toBe("continue");
     expect(body.safety).toBe("self_harm");
+    expect(body.message).toBe("I don't want to make light of this. Please reach someone right now.");
+    expect(body.crisisResource).toContain("988");
     expect(body.options).toEqual([]);
     expect(body.results).toBeUndefined();
     expect(generateReframe).not.toHaveBeenCalled();
@@ -413,8 +419,83 @@ describe("POST /reframe", () => {
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ContinueBody;
     expect(body.kind).toBe("continue");
     expect(body.safety).toBe("self_harm");
-    expect(body.message).toContain("988");
+    expect(body.message).not.toMatch(/\d/);
+    expect(body.crisisResource).toBeDefined();
     expect(generateReframe).not.toHaveBeenCalled();
+  });
+
+  it("never ships a reframe when the model uses a safety label outside the catalog", async () => {
+    stubDecision(readyDecision({ safety: "suicide" }));
+
+    const body = (await jsonOf(await post({ text: LONG_TEXT, region: "HR" }))) as ContinueBody;
+    expect(body.kind).toBe("continue");
+    expect(body.safety).toBe("self_harm");
+    expect(body.crisisResource).toContain("112");
+    expect(body.crisisResource).not.toContain("988");
+    expect(generateJson).toHaveBeenCalledTimes(1);
+    expect(generateReframe).not.toHaveBeenCalled();
+  });
+
+  it("keeps an off-catalog crisis continue on a forced turn instead of repairing it into a cook", async () => {
+    stubDecision(
+      continueDecision({ safety: "self-injury", message: "Please reach a real person now.", options: ["OK"] }),
+    );
+
+    const body = (await jsonOf(
+      await post({
+        text: SHORT_TEXT,
+        followUps: [
+          { question: "What happened?", answer: "Everything." },
+          { question: "Since when?", answer: "Months." },
+          { question: "And now?", answer: "I want it to stop." },
+        ],
+      }),
+    )) as ContinueBody;
+    expect(body.kind).toBe("continue");
+    expect(body.safety).toBe("self_harm");
+    expect(body.options).toEqual([]);
+    expect(generateJson).toHaveBeenCalledTimes(1);
+    expect(generateReframe).not.toHaveBeenCalled();
+  });
+
+  it("replaces a crisis message that names a number, since the model cannot know the country", async () => {
+    stubDecision(
+      continueDecision({ safety: "self_harm", message: "Please call 988 right now.", options: [] }),
+    );
+
+    const body = (await jsonOf(await post({ text: SHORT_TEXT, region: "DK" }))) as ContinueBody;
+    expect(body.message).not.toContain("988");
+    expect(body.message).not.toMatch(/\d/);
+    expect(body.crisisResource).toContain("112");
+  });
+
+  it("falls back to the generic crisis line for a missing or malformed region", async () => {
+    stubDecision(
+      continueDecision({ safety: "abuse", message: "You should not be alone with this." }),
+      continueDecision({ safety: "abuse", message: "You should not be alone with this." }),
+    );
+
+    const missing = (await jsonOf(await post({ text: SHORT_TEXT }))) as ContinueBody;
+    const malformed = await post({ text: SHORT_TEXT, region: "not-a-region" });
+    expect(malformed.status).toBe(200);
+    const malformedBody = (await jsonOf(malformed)) as ContinueBody;
+    for (const body of [missing, malformedBody]) {
+      expect(body.crisisResource).toBe(
+        "If you are in danger, call your local emergency number now, or reach out to someone you trust.",
+      );
+    }
+  });
+
+  it("sends no crisis line on an ordinary continue", async () => {
+    stubDecision(continueDecision());
+
+    const body = (await jsonOf(await post({ text: SHORT_TEXT, region: "US" }))) as ContinueBody;
+    expect(body.safety).toBe("none");
+    expect(body.crisisResource).toBeUndefined();
+  });
+
+  it("keeps crisis numbers out of the model prompts", () => {
+    expect(DECISION_PROMPT).not.toMatch(/\b988\b|\b112\b|\b911\b/);
   });
 
   it("returns a card-fit thought, the chosen styles, and matching metadata", async () => {
@@ -570,6 +651,7 @@ describe("POST /reframe", () => {
         style: "humorous",
         reframe: "humorous reframe",
         signature: signResult(
+          DEV_USER_ID,
           LONG_TEXT,
           "humorous",
           "humorous reframe",
@@ -586,6 +668,7 @@ describe("POST /reframe", () => {
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
     const { matching: _matching, ...meta } = body.meta;
     const cook = {
+      ownerId: DEV_USER_ID,
       thought: body.thought,
       thoughtOriginal: body.thoughtOriginal,
       model: "mistral-small-latest",
@@ -595,6 +678,7 @@ describe("POST /reframe", () => {
     };
 
     expect(verifyCook(cook)).toBe(true);
+    expect(verifyCook({ ...cook, ownerId: "00000000-0000-4000-8000-000000000199" })).toBe(false);
     expect(verifyCook({ ...cook, thought: `${cook.thought} Also post this.` })).toBe(false);
     expect(verifyCook({ ...cook, meta: { ...cook.meta, safety: "self_harm" } })).toBe(false);
     expect(
@@ -785,6 +869,122 @@ describe("POST /reframe", () => {
     ).toBe(
       vi.mocked(startMeterOperation).mock.calls[1]?.[0].requestFingerprint,
     );
+  });
+
+  describe("replay of a finished request", () => {
+    const REQUEST_ID = "00000000-0000-4000-8000-000000000abc";
+    const REPLAY_KEY = Buffer.alloc(32, 7).toString("base64url");
+
+    async function postWithReplayKey(body: unknown, replayKey: string = REPLAY_KEY) {
+      return app.request("/reframe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": REQUEST_ID,
+          "Replay-Key": replayKey,
+        },
+        body: JSON.stringify(body),
+      });
+    }
+
+    function alreadyCompleted() {
+      vi.mocked(startMeterOperation).mockRejectedValueOnce(
+        new MeteringError("Request already completed", "REQUEST_ALREADY_COMPLETED", 409),
+      );
+    }
+
+    beforeEach(() => {
+      vi.mocked(finishMeterOperation).mockClear();
+      vi.mocked(findReframeReplay).mockReset();
+      vi.mocked(findReframeReplay).mockResolvedValue(null);
+    });
+
+    function sealedFromFinish() {
+      const call = vi.mocked(finishMeterOperation).mock.calls.at(-1)?.[0];
+      expect(call?.replay).toBeDefined();
+      return call!.replay!;
+    }
+
+    it("stores no plaintext and returns the same signed cook to a retry", async () => {
+      stubDecision(readyDecision());
+      const first = await postWithReplayKey({ text: SHORT_TEXT });
+      expect(first.status).toBe(200);
+      const original = (await jsonOf(first)) as ReadyBody & { usage: ResponseUsage };
+      const sealed = sealedFromFinish();
+      expect(JSON.stringify(sealed)).not.toContain("interview");
+
+      alreadyCompleted();
+      vi.mocked(findReframeReplay).mockResolvedValueOnce({
+        operationId: "00000000-0000-4000-8000-000000000777",
+        chargedCredits: original.usage.creditsUsed,
+        sealed,
+      });
+      const callsBefore = vi.mocked(generateJson).mock.calls.length;
+      const retry = await postWithReplayKey({ text: SHORT_TEXT });
+
+      expect(retry.status).toBe(200);
+      const replayed = (await jsonOf(retry)) as ReadyBody & { usage: ResponseUsage };
+      expect(replayed).toEqual(original);
+      expect(vi.mocked(generateJson).mock.calls.length).toBe(callsBefore);
+      expect(vi.mocked(findReframeReplay).mock.calls[0]?.[0]).toMatchObject({
+        clientRequestId: REQUEST_ID,
+      });
+    });
+
+    it("replays a crisis continue turn with its resource line", async () => {
+      stubDecision(continueDecision({ safety: "self_harm", options: [] }));
+      const first = await postWithReplayKey({ text: SHORT_TEXT, region: "US" });
+      const original = (await jsonOf(first)) as ContinueBody;
+      expect(original.crisisResource).toContain("988");
+
+      alreadyCompleted();
+      vi.mocked(findReframeReplay).mockResolvedValueOnce({
+        operationId: "00000000-0000-4000-8000-000000000777",
+        chargedCredits: 0,
+        sealed: sealedFromFinish(),
+      });
+      const retry = await postWithReplayKey({ text: SHORT_TEXT, region: "US" });
+
+      expect(retry.status).toBe(200);
+      expect(await jsonOf(retry)).toEqual(original);
+    });
+
+    it("keeps the 409 when the replay key does not open the stored body", async () => {
+      stubDecision(readyDecision());
+      await postWithReplayKey({ text: SHORT_TEXT });
+      const sealed = sealedFromFinish();
+
+      alreadyCompleted();
+      vi.mocked(findReframeReplay).mockResolvedValueOnce({
+        operationId: "00000000-0000-4000-8000-000000000777",
+        chargedCredits: 2,
+        sealed,
+      });
+      const retry = await postWithReplayKey(
+        { text: SHORT_TEXT },
+        Buffer.alloc(32, 9).toString("base64url"),
+      );
+
+      expect(retry.status).toBe(409);
+      expect(await jsonOf(retry)).toMatchObject({ code: "REQUEST_ALREADY_COMPLETED" });
+    });
+
+    it("keeps the 409 when nothing was stored for the request", async () => {
+      alreadyCompleted();
+      const retry = await postWithReplayKey({ text: SHORT_TEXT });
+
+      expect(retry.status).toBe(409);
+      expect(await jsonOf(retry)).toMatchObject({ code: "REQUEST_ALREADY_COMPLETED" });
+    });
+
+    it("stores nothing without a well-formed replay key", async () => {
+      stubDecision(readyDecision(), readyDecision());
+      await post({ text: SHORT_TEXT });
+      expect(vi.mocked(finishMeterOperation).mock.calls.at(-1)?.[0].replay).toBeUndefined();
+
+      await postWithReplayKey({ text: SHORT_TEXT }, "too-short");
+      expect(vi.mocked(finishMeterOperation).mock.calls.at(-1)?.[0].replay).toBeUndefined();
+    });
   });
 
   it("does not let failed metering cleanup mask the provider error response", async () => {

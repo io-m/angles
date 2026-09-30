@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { composeConversation, DecisionParseError, isGenericBounceContinue, looksLikeThought, parseDecision } from "./decision.js";
+import {
+  composeConversation,
+  DecisionParseError,
+  isGenericBounceContinue,
+  looksLikeThought,
+  normalizeSafety,
+  parseDecision,
+} from "./decision.js";
 
 function raw(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -63,6 +70,39 @@ describe("parseDecision", () => {
       { requireReady: true },
     );
     expect(safe.kind).toBe("continue");
+  });
+
+  it("treats a safety label outside the catalog as self-harm on a ready decision", () => {
+    for (const label of ["suicide", "suicidal", "crisis", "Self Harm", "self-harm", "SELF_HARM"]) {
+      const decision = parseDecision(raw({ safety: label }));
+      if (decision.kind !== "ready") {
+        throw new Error("expected ready");
+      }
+      expect(decision.meta.safety).toBe("self_harm");
+    }
+  });
+
+  it("keeps a collapsed crisis continue flagged, without chips, even on a forced turn", () => {
+    const decision = parseDecision(
+      raw({ kind: "continue", message: "Please reach someone now.", options: ["OK"], safety: "suicide" }),
+      { requireReady: true },
+    );
+    if (decision.kind !== "continue") {
+      throw new Error("expected continue");
+    }
+    expect(decision.safety).toBe("self_harm");
+    expect(decision.options).toEqual([]);
+  });
+
+  it("reads separator variants of catalog safety labels", () => {
+    expect(normalizeSafety("harm-others")).toBe("harm_others");
+    expect(normalizeSafety(" Abuse ")).toBe("abuse");
+  });
+
+  it("treats a missing or plainly negative safety label as none", () => {
+    for (const label of [null, undefined, "", "  ", "none", "None", "null", "no", "false", "N/A", "safe"]) {
+      expect(normalizeSafety(label)).toBe("none");
+    }
   });
 
   it("derives the matching band from intensity", () => {

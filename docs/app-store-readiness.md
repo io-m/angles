@@ -19,7 +19,7 @@ The production feature work is implemented in the repository. The app is not rea
 - Production hardening: runtime migrations before schema checks, production configuration fail-fast validation, a production seed guard, a non-root container with a health check, and Postgres-backed backend CI.
 - Source privacy/terms documents, privacy manifest, Release-safe plist split, and centralized API/legal/support configuration.
 
-`POST /reframe` does not store cards or thought text. It does write text-free operation, idempotency, usage, token, and company-cost metadata. A card is stored only when the signed cook is sent to `POST /cards`.
+`POST /reframe` does not store cards or plaintext thought text. It does write text-free operation, idempotency, usage, token, and company-cost metadata, plus an hour-long replay of the finished response encrypted under a key only the device holds. A card is stored only when the signed cook is sent to `POST /cards`.
 
 ## Remaining external blockers
 

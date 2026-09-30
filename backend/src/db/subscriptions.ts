@@ -9,9 +9,11 @@ import type { SubscriptionBody } from "../types/index.js";
 import { getDb, wrapDbError } from "./client.js";
 import { subscriptionEntitlements, subscriptionEvents, users } from "./schema.js";
 
-export const ENTITLED_STATUSES = ["active", "grace", "billing_retry"] as const;
+/** Billing retry after grace has ended is stored but locked: access past a failed renewal is Apple's grace period only. */
+export const ENTITLED_STATUSES = ["active", "grace"] as const;
 export type SubscriptionStatus =
   | (typeof ENTITLED_STATUSES)[number]
+  | "billing_retry"
   | "expired"
   | "revoked";
 
@@ -33,10 +35,7 @@ function isEntitled(row: EntitlementRow, now: Date): boolean {
   if (row.status === "active") {
     return row.paidThrough > now;
   }
-  if (row.status === "grace") {
-    return row.gracePeriodExpiresAt !== null && row.gracePeriodExpiresAt > now;
-  }
-  return row.status === "billing_retry";
+  return row.gracePeriodExpiresAt !== null && row.gracePeriodExpiresAt > now;
 }
 
 export function subscriptionBody(
@@ -228,6 +227,17 @@ export async function syncSubscriptionTransaction(
       if (!replacing && current && eventAt < current.lastAppleEventAt) {
         return subscriptionBody(current, now);
       }
+      const status = transactionStatus(transaction, now);
+      // A lapsed receipt says nothing about renewal; grace and retry come only from Apple's notifications.
+      if (
+        !replacing &&
+        current &&
+        status === "expired" &&
+        (current.status === "grace" || current.status === "billing_retry") &&
+        transaction.expiresDate <= current.paidThrough
+      ) {
+        return subscriptionBody(current, now);
+      }
 
       const rows = await db
         .insert(subscriptionEntitlements)
@@ -237,7 +247,7 @@ export async function syncSubscriptionTransaction(
           currentTransactionId: transaction.transactionId,
           productId: transaction.productId,
           environment: transaction.environment,
-          status: transactionStatus(transaction, now),
+          status,
           paidThrough: transaction.expiresDate,
           gracePeriodExpiresAt: null,
           renewalDate: null,
@@ -256,7 +266,7 @@ export async function syncSubscriptionTransaction(
             currentTransactionId: transaction.transactionId,
             productId: transaction.productId,
             environment: transaction.environment,
-            status: transactionStatus(transaction, now),
+            status,
             paidThrough: transaction.expiresDate,
             gracePeriodExpiresAt: null,
             renewalDate: null,

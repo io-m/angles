@@ -122,18 +122,40 @@ profileRoute.delete("/", requireAuth, async (c) => {
   if (!current) {
     return c.json(errorBody("Profile was not found", "NOT_FOUND"), 404);
   }
-  if (current.avatarKey) {
-    try {
-      await deleteAvatar(current.avatarKey);
-    } catch (error) {
-      console.error("account_delete_avatar_failed", {
-        name: error instanceof Error ? error.name : "error",
-      });
-    }
+  // The photo goes first: once the row is gone nothing points at it and it would outlive the account.
+  if (current.avatarKey && !(await deleteAvatarWithRetry(current.avatarKey))) {
+    return c.json(
+      errorBody("Couldn't remove your photo, so nothing was deleted. Try again.", "STORAGE_UNAVAILABLE"),
+      503,
+    );
   }
   await deleteOwnerAccount();
   return c.body(null, 204);
 });
+
+const AVATAR_DELETE_ATTEMPTS = 3;
+
+/** Deleting a missing object succeeds, so a retry after a lost response is safe. */
+async function deleteAvatarWithRetry(key: string): Promise<boolean> {
+  for (let attempt = 1; attempt <= AVATAR_DELETE_ATTEMPTS; attempt += 1) {
+    try {
+      await deleteAvatar(key);
+      return true;
+    } catch (error) {
+      console.error("account_delete_avatar_failed", {
+        attempt,
+        name: error instanceof Error ? error.name : "error",
+      });
+      if (error instanceof StorageUnavailableError) {
+        return false;
+      }
+      if (attempt < AVATAR_DELETE_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
+      }
+    }
+  }
+  return false;
+}
 
 profileRoute.get("/following", requireAuth, async (c) => {
   const body: FollowingListResponse = { users: await listFollowing() };

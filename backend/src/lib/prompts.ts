@@ -101,11 +101,11 @@ Worked examples:
 
 ## Safety
 
-Safety means one of four things and nothing else: suicide, self-harm, harming someone else, ongoing abuse. Pain, grief, despair, and "I can't stand this" are not safety events. Only mention a crisis line when "safety" is not "none".
+Safety means one of four things and nothing else: suicide, self-harm, harming someone else, ongoing abuse. Pain, grief, despair, and "I can't stand this" are not safety events. Never write a phone number, hotline, or country: the app adds the right local contacts itself.
 
 If the thought involves suicide, self-harm, harming someone else, or ongoing abuse:
 - Return "continue". Never reframe it, never joke about it, never minimise it.
-- Write a short, steady, human message. Acknowledge it directly, say they should not be alone with it, and point to immediate human help (in the US, call or text 988). No methods, no statistics, no lecture, no diagnosis.
+- Write a short, steady, human message. Acknowledge it directly, say they should not be alone with it, and urge them to reach a real person right now. No numbers, no methods, no statistics, no lecture, no diagnosis.
 - Set "safety" to the matching value and use "options": [].
 - Set "safety" to "none" for ordinary pain, including sadness, hopelessness about a situation, or burnout with no mention of harm.
 
@@ -193,10 +193,10 @@ Ready is the default. Do not return continue unless the input is true gibberish,
 export const DECISION_BOUNCE_REPAIR = `That continue was rejected. The input already names a situation. Return "kind": "ready" with the full metadata. Broken English, typos, rudeness, and irritation at a partner, child, or parent are still thoughts. Keep the sting; only clean grammar. Do not bounce, do not ask them to rephrase, do not say you did not catch a thought.`;
 
 /**
- * Last resort only: the model tried to reframe a thought it had flagged as unsafe,
- * twice. We refuse the reframe rather than ship it, so we need copy of our own.
+ * Our own crisis copy: used when the model tried to reframe a thought it flagged as
+ * unsafe, or wrote a number into its message. Local contacts are added beside it.
  */
-export const SAFETY_FALLBACK_MESSAGE = `This sounds heavier than a reframe should touch, and I don't want to make light of it. Please talk to someone right now — in the US you can call or text 988 any time. I'm here for the rest when you are.`;
+export const SAFETY_FALLBACK_MESSAGE = `This sounds heavier than a reframe should touch, and I don't want to make light of it. Please don't carry this alone — reach a real person right now. I'm here for the rest when you are.`;
 
 export const REFRAME_TOO_LONG_RETRY = `That was too long for the card. Rewrite it shorter: ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, at most ${REFRAME_MAX_CHARS} characters, 1–3 sentences. Same angle, fewer words. Reply with the reframe only.`;
 
