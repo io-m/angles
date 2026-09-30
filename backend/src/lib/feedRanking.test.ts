@@ -1,16 +1,27 @@
 import { describe, expect, it } from "vitest";
+import { STYLES, type Category, type Emotion, type Style } from "../types/index.js";
 import {
+  AFFINITY_CONFIG,
   EMPTY_AFFINITY,
+  MIN_MIX_CONFIDENCE,
+  PRIMARY_TIE_WEIGHT,
+  offTabFade,
   RANKING_WEIGHTS,
   SPREAD_LIMITS,
   STYLE_AFFINITY_FULL_HEARTS,
   STYLE_RANKING_WEIGHTS,
+  THEME_MIX,
   affinityTerm,
+  assignPrimaryStyles,
   blendedAffinityTerm,
+  bucketCaps,
+  buildAffinity,
+  classifyTheme,
   compareRanked,
   decodeFeedSession,
   encodeFeedSession,
   freshnessTerm,
+  isKeptOnShelf,
   jitterTerm,
   openingStyle,
   rankCards,
@@ -21,9 +32,14 @@ import {
   spreadPage,
   spreadRanked,
   styleAffinityConfidence,
+  themeMix,
+  type AffinitySignal,
   type RankableCard,
   type SpreadableCard,
   type StyleShelfContext,
+  type StyleTabs,
+  type ThemeBucket,
+  type ViewerAffinity,
 } from "./feedRanking.js";
 
 const NOW = new Date("2026-09-28T12:00:00.000Z");
@@ -45,6 +61,19 @@ function card(overrides: Partial<RankableCard> = {}): RankableCard {
   };
 }
 
+/** Themes with equal strength, so each one is "the top theme" and scores 1. */
+function themes(
+  categories: readonly Category[],
+  emotions: readonly Emotion[],
+  confidence = 1,
+): ViewerAffinity {
+  return {
+    categories: new Map(categories.map((key) => [key, 1 / categories.length])),
+    emotions: new Map(emotions.map((key) => [key, 1 / emotions.length])),
+    confidence,
+  };
+}
+
 function spreadable(overrides: Partial<SpreadableCard> = {}): SpreadableCard {
   return {
     id: "11111111-1111-4111-8111-111111111111",
@@ -58,12 +87,31 @@ function spreadable(overrides: Partial<SpreadableCard> = {}): SpreadableCard {
 }
 
 describe("ranking terms", () => {
-  it("decays freshness over days, not hours", () => {
+  it("decays freshness over a day or two, like a social feed", () => {
     expect(freshnessTerm(card({ createdAt: NOW }), NOW)).toBeCloseTo(1, 5);
-    // A day old is still most of its freshness: this app has no news cycle.
-    expect(freshnessTerm(card({ createdAt: hoursAgo(24) }), NOW)).toBeGreaterThan(0.75);
-    expect(freshnessTerm(card({ createdAt: hoursAgo(96) }), NOW)).toBeCloseTo(Math.exp(-1), 5);
-    expect(freshnessTerm(card({ createdAt: hoursAgo(24 * 30) }), NOW)).toBeLessThan(0.01);
+    // Still most of its worth this morning, about a third by tomorrow, gone in a few days.
+    expect(freshnessTerm(card({ createdAt: hoursAgo(6) }), NOW)).toBeGreaterThan(0.75);
+    expect(freshnessTerm(card({ createdAt: hoursAgo(24) }), NOW)).toBeCloseTo(Math.exp(-1), 5);
+    expect(freshnessTerm(card({ createdAt: hoursAgo(72) }), NOW)).toBeLessThan(0.06);
+    expect(freshnessTerm(card({ createdAt: hoursAgo(24 * 30) }), NOW)).toBeLessThan(0.001);
+  });
+
+  it("lets a newer post beat an older one, and only clear signals overturn that", () => {
+    const fresh = scoreCard(card({ id: "a", createdAt: hoursAgo(2) }), { now: NOW, seed: "s" });
+    const yesterday = scoreCard(card({ id: "a", createdAt: hoursAgo(26), hearts: 2 }), {
+      now: NOW,
+      seed: "s",
+    });
+    // A lone couple of hearts does not lift yesterday's post over a fresh one.
+    expect(fresh.score).toBeGreaterThan(yesterday.score);
+
+    const threeDays = scoreCard(card({ id: "a", createdAt: hoursAgo(72), hearts: 10 }), {
+      now: NOW,
+      seed: "s",
+    });
+    const twoDaysPlain = scoreCard(card({ id: "a", createdAt: hoursAgo(48) }), { now: NOW, seed: "s" });
+    // A card people clearly keep can outrank a plain one a day newer.
+    expect(threeDays.score).toBeGreaterThan(twoDaysPlain.score);
   });
 
   it("damps resonance and caps it so one card cannot own the feed", () => {
@@ -74,10 +122,7 @@ describe("ranking terms", () => {
   });
 
   it("scores affinity from the viewer's own life areas and moods", () => {
-    const affinity = {
-      categories: new Set(["work"] as const),
-      emotions: new Set(["shame", "fear"] as const),
-    };
+    const affinity = themes(["work"], ["shame", "fear"]);
     expect(affinityTerm(card({ category: "money", emotions: [] }), affinity)).toBe(0);
     expect(affinityTerm(card({ category: "work", emotions: [] }), affinity)).toBeCloseTo(0.6, 5);
     expect(
@@ -136,10 +181,7 @@ describe("rankCards", () => {
   });
 
   it("puts a card about the viewer's own subject above a stranger's subject", () => {
-    const affinity = {
-      categories: new Set(["grief_loss"] as const),
-      emotions: new Set(["sadness"] as const),
-    };
+    const affinity = themes(["grief_loss"], ["sadness"]);
     const ranked = rankCards(
       [
         card({ id: "aaaaaaaa-0000-4000-8000-000000000001", category: "money", emotions: [] }),
@@ -158,7 +200,8 @@ describe("rankCards", () => {
     const pool = Array.from({ length: 12 }, (_, index) =>
       card({
         id: `aaaaaaaa-0000-4000-8000-0000000000${String(index).padStart(2, "0")}`,
-        createdAt: hoursAgo(index * 4),
+        // The same hour: time is the biggest term, so only ties are left to the seed.
+        createdAt: hoursAgo(1),
       }),
     );
     const first = rankCards(pool, { now: NOW, seed: "seed-one" }).map((item) => item.id);
@@ -176,10 +219,7 @@ describe("rankCards", () => {
 });
 
 describe("style shelves", () => {
-  const styleAffinity = {
-    categories: new Set(["work"] as const),
-    emotions: new Set(["shame"] as const),
-  };
+  const styleAffinity = themes(["work"], ["shame"]);
 
   function shelf(overrides: Partial<StyleShelfContext> = {}): StyleShelfContext {
     return {
@@ -218,10 +258,7 @@ describe("style shelves", () => {
 
   it("lets confidence grow without a single heart taking over", () => {
     const subject = card({ category: "work", emotions: ["shame", "fear"] });
-    const specific = {
-      categories: new Set(["work"] as const),
-      emotions: new Set(["shame", "fear"] as const),
-    };
+    const specific = themes(["work"], ["shame", "fear"]);
     expect(styleAffinityConfidence(1)).toBeCloseTo(1 / STYLE_AFFINITY_FULL_HEARTS, 8);
     expect(blendedAffinityTerm(subject, EMPTY_AFFINITY, specific, 1)).toBeCloseTo(0.2, 8);
     expect(blendedAffinityTerm(subject, EMPTY_AFFINITY, specific, 5)).toBeCloseTo(1, 8);
@@ -262,7 +299,7 @@ describe("style shelves", () => {
     const pool = Array.from({ length: 8 }, (_, index) =>
       card({
         id: `aaaaaaaa-0000-4000-8000-0000000000${String(index).padStart(2, "0")}`,
-        createdAt: hoursAgo(index * 4),
+        createdAt: hoursAgo(1),
       }),
     );
     const stoic = rankCards(pool, {
@@ -289,7 +326,7 @@ describe("style shelves", () => {
     const stoicId = "aaaaaaaa-0000-4000-8000-000000000001";
     const humorousId = "bbbbbbbb-0000-4000-8000-000000000002";
     const pool = [
-      card({ id: stoicId, coverStyle: "stoic", createdAt: hoursAgo(48) }),
+      card({ id: stoicId, coverStyle: "stoic", createdAt: hoursAgo(6) }),
       card({ id: humorousId, coverStyle: "humorous", createdAt: hoursAgo(1) }),
     ];
     const all = rankCards(pool, { now: NOW, seed: "seed" }).map((item) => item.id);
@@ -513,5 +550,510 @@ describe("rankingEnabled", () => {
     expect(rankingEnabled({ FEED_RANKING: "chronological" })).toBe(false);
     expect(rankingEnabled({ FEED_RANKING: "true" })).toBe(false);
     expect(rankingEnabled({ FEED_RANKING: " Resonance " })).toBe(true);
+  });
+});
+
+function signal(overrides: Partial<AffinitySignal> = {}): AffinitySignal {
+  return { category: "work", emotions: ["shame"], at: NOW, source: "authored", ...overrides };
+}
+
+describe("buildAffinity", () => {
+  it("reads themes as shares, leader first, and keeps only the themes", () => {
+    const affinity = buildAffinity(
+      [
+        ...Array.from({ length: 6 }, () => signal({ category: "work", emotions: ["fear"] })),
+        ...Array.from({ length: 3 }, () => signal({ category: "money", emotions: ["envy"] })),
+        signal({ category: "family", emotions: ["anger"] }),
+      ],
+      NOW,
+    );
+    expect(affinity.categories.get("work")).toBeCloseTo(0.6, 5);
+    expect(affinity.categories.get("money")).toBeCloseTo(0.3, 5);
+    // 10% is below the 15% floor: one card is not a theme.
+    expect(affinity.categories.has("family")).toBe(false);
+    expect(affinity.emotions.has("fear")).toBe(true);
+  });
+
+  it("never treats 'other' as a theme", () => {
+    const affinity = buildAffinity(
+      [
+        ...Array.from({ length: 8 }, () => signal({ category: "other", emotions: [] })),
+        signal({ category: "health", emotions: [] }),
+      ],
+      NOW,
+    );
+    expect(affinity.categories.has("other")).toBe(false);
+    expect([...affinity.categories.keys()]).toEqual(["health"]);
+  });
+
+  it("keeps a leader even when the profile is flat", () => {
+    const flat = (["work", "money", "family", "health", "identity", "future", "grief_loss"] as const).map(
+      (category) => signal({ category, emotions: [] }),
+    );
+    expect(buildAffinity(flat, NOW).categories.size).toBeGreaterThan(0);
+  });
+
+  it("lets a heart outweigh something the viewer merely wrote", () => {
+    const affinity = buildAffinity(
+      [
+        signal({ category: "work", emotions: [] }),
+        signal({ category: "grief_loss", emotions: [], source: "hearted" }),
+      ],
+      NOW,
+    );
+    expect(affinity.categories.get("grief_loss") ?? 0).toBeGreaterThan(
+      affinity.categories.get("work") ?? 0,
+    );
+    expect(AFFINITY_CONFIG.heartWeight).toBeGreaterThan(AFFINITY_CONFIG.authoredWeight);
+  });
+
+  it("counts recent activity above old, with a half-life and a floor", () => {
+    const old = new Date(NOW.getTime() - 14 * 86_400_000);
+    const affinity = buildAffinity(
+      [
+        signal({ category: "work", emotions: [], at: old }),
+        signal({ category: "money", emotions: [], at: NOW }),
+      ],
+      NOW,
+    );
+    // Two weeks is one half-life: money carries twice work's weight.
+    expect(affinity.categories.get("money")).toBeCloseTo(2 / 3, 5);
+
+    const ancient = new Date(NOW.getTime() - 400 * 86_400_000);
+    const faded = buildAffinity([signal({ at: ancient })], NOW);
+    expect(faded.confidence).toBeCloseTo(AFFINITY_CONFIG.decayFloor / AFFINITY_CONFIG.fullConfidenceWeight, 5);
+    expect(faded.categories.has("work")).toBe(true);
+  });
+
+  it("makes one card a hint and five cards a profile", () => {
+    expect(buildAffinity([signal()], NOW).confidence).toBeCloseTo(0.2, 5);
+    expect(buildAffinity(Array.from({ length: 5 }, () => signal()), NOW).confidence).toBe(1);
+    expect(buildAffinity(Array.from({ length: 30 }, () => signal()), NOW).confidence).toBe(1);
+    expect(buildAffinity([], NOW)).toBe(EMPTY_AFFINITY);
+  });
+
+  it("scales the general affinity term by confidence", () => {
+    const subject = card({ category: "work", emotions: ["shame"] });
+    const full = scoreCard(subject, { now: NOW, seed: "s", affinity: themes(["work"], ["shame"], 1) });
+    const hint = scoreCard(subject, { now: NOW, seed: "s", affinity: themes(["work"], ["shame"], 0.2) });
+    expect(hint.terms.affinity).toBeCloseTo(full.terms.affinity * 0.2, 8);
+  });
+});
+
+describe("theme buckets", () => {
+  const work = themes(["work"], ["fear"]);
+
+  it("calls a card on the viewer's own life area core", () => {
+    expect(classifyTheme({ category: "work", emotions: [] }, work)).toBe("core");
+  });
+
+  it("calls a neighbouring life area or a shared mood adjacent", () => {
+    expect(classifyTheme({ category: "money", emotions: [] }, work)).toBe("adjacent");
+    expect(classifyTheme({ category: "romantic", emotions: ["fear"] }, work)).toBe("adjacent");
+    // Overwhelm sits next to the viewer's strongest mood, fear.
+    expect(classifyTheme({ category: "romantic", emotions: ["overwhelm"] }, work)).toBe("adjacent");
+  });
+
+  it("calls everything else explore, and everything explore for a viewer with no themes", () => {
+    expect(classifyTheme({ category: "romantic", emotions: ["anger"] }, work)).toBe("explore");
+    expect(classifyTheme({ category: "work", emotions: ["fear"] }, EMPTY_AFFINITY)).toBe("explore");
+  });
+
+  it("gives a cold viewer no quota and a confident one the full mix", () => {
+    expect(themeMix(0)).toBeNull();
+    expect(themeMix(MIN_MIX_CONFIDENCE - 0.01)).toBeNull();
+    expect(themeMix(1)).toEqual(THEME_MIX);
+    const partial = themeMix(0.5);
+    expect(partial?.core).toBeCloseTo(0.2, 8);
+    expect(partial?.adjacent).toBeCloseTo(0.175, 8);
+    expect((partial?.core ?? 0) + (partial?.adjacent ?? 0) + (partial?.explore ?? 0)).toBeCloseTo(1, 8);
+  });
+
+  it("caps each bucket at its share of the page, rounded up, without leaving a page short", () => {
+    const mix = themeMix(1);
+    if (!mix) {
+      throw new Error("expected a mix");
+    }
+    expect(bucketCaps(mix, 24)).toEqual({ core: 10, adjacent: 9, explore: 6 });
+    const caps = bucketCaps(mix, 24);
+    expect(caps.core + caps.adjacent + caps.explore).toBeGreaterThanOrEqual(24);
+    const soft = themeMix(0.2);
+    if (!soft) {
+      throw new Error("expected a mix");
+    }
+    const softCaps = bucketCaps(soft, 24);
+    expect(softCaps.core).toBeLessThan(caps.core);
+    expect(softCaps.explore).toBeGreaterThan(caps.explore);
+  });
+});
+
+describe("spreadPage with a theme mix", () => {
+  const mix = themeMix(1);
+
+  function bucketed(count: number, bucket: ThemeBucket, prefix: string): SpreadableCard[] {
+    const categories = ["work", "money", "health", "family", "identity", "future"] as const;
+    const styles = STYLES;
+    return Array.from({ length: count }, (_, index) =>
+      spreadable({
+        id: `${prefix}-${index}`,
+        authorId: `${prefix}-author-${index}`,
+        bucket,
+        category: categories[index % categories.length] ?? "work",
+        emotions: [(["fear", "hope", "anger", "envy"] as const)[index % 4] ?? "fear"],
+        spotlightStyle: styles[index % styles.length] ?? "stoic",
+      }),
+    );
+  }
+
+  it("holds a page to about 40 core, 35 adjacent and 25 explore", () => {
+    // Explore is ranked first on purpose: without the quota it would take the page.
+    const ranked = [
+      ...bucketed(40, "explore", "explore"),
+      ...bucketed(40, "adjacent", "adjacent"),
+      ...bucketed(40, "core", "core"),
+    ];
+    const page = spreadPage(ranked, 24, { mix });
+    const counts = { core: 0, adjacent: 0, explore: 0 };
+    for (const item of page) {
+      counts[item.bucket ?? "explore"] += 1;
+    }
+    expect(page).toHaveLength(24);
+    expect(Math.abs(counts.core - 24 * THEME_MIX.core)).toBeLessThanOrEqual(1);
+    expect(Math.abs(counts.adjacent - 24 * THEME_MIX.adjacent)).toBeLessThanOrEqual(1);
+    expect(Math.abs(counts.explore - 24 * THEME_MIX.explore)).toBeLessThanOrEqual(1);
+  });
+
+  it("takes each bucket from the top of its own ranking", () => {
+    const ranked = [
+      ...bucketed(20, "core", "core"),
+      ...bucketed(20, "adjacent", "adjacent"),
+      ...bucketed(20, "explore", "explore"),
+    ];
+    const page = spreadPage(ranked, 24, { mix });
+    for (const prefix of ["core", "adjacent", "explore"]) {
+      const positions = page
+        .filter((item) => item.id.startsWith(prefix))
+        .map((item) => Number(item.id.split("-").at(-1)));
+      // Rhythm rules may step over a card, but never far down the bucket.
+      expect(Math.max(...positions)).toBeLessThanOrEqual(positions.length + 2);
+    }
+  });
+
+  it("falls back to another bucket when one runs dry, and never goes short", () => {
+    const ranked = [...bucketed(2, "core", "core"), ...bucketed(30, "explore", "explore")];
+    const page = spreadPage(ranked, 24, { mix });
+    expect(page).toHaveLength(24);
+    expect(page.filter((item) => item.bucket === "core")).toHaveLength(2);
+    expect(new Set(page.map((item) => item.id)).size).toBe(24);
+  });
+
+  it("is unchanged without a mix", () => {
+    const ranked = [...bucketed(20, "explore", "explore"), ...bucketed(20, "core", "core")];
+    expect(spreadPage(ranked, 24, { mix: null }).map((item) => item.id)).toEqual(
+      spreadPage(ranked, 24).map((item) => item.id),
+    );
+  });
+
+  it("still enforces the author and intensity caps", () => {
+    const loud = Array.from({ length: 10 }, (_, index) =>
+      spreadable({ id: `loud-${index}`, authorId: "loud", bucket: "core", intensity: 5 }),
+    );
+    const crisis = Array.from({ length: 12 }, (_, index) =>
+      spreadable({
+        id: `crisis-${index}`,
+        authorId: `crisis-${index}`,
+        bucket: "core",
+        intensity: 5,
+        category: index % 2 === 0 ? "work" : "health",
+        emotions: [index % 2 === 0 ? "fear" : "sadness"],
+      }),
+    );
+    const calm = bucketed(20, "explore", "calm");
+    const page = spreadPage([...loud, ...crisis, ...calm], 24, { mix });
+    expect(page.filter((item) => item.authorId === "loud").length).toBeLessThanOrEqual(
+      SPREAD_LIMITS.perAuthor,
+    );
+    expect(page.filter((item) => item.intensity >= 5).length).toBeLessThanOrEqual(
+      SPREAD_LIMITS.peakIntensity,
+    );
+  });
+
+  it("lets the viewer's own theme run a beat longer than other themes", () => {
+    const longestRun = (items: readonly SpreadableCard[]): number => {
+      let run = 1;
+      let longest = 1;
+      for (let index = 1; index < items.length; index += 1) {
+        run = items[index]?.category === items[index - 1]?.category ? run + 1 : 1;
+        longest = Math.max(longest, run);
+      }
+      return longest;
+    };
+    const pool = (bucket: ThemeBucket): SpreadableCard[] => [
+      ...Array.from({ length: 6 }, (_, index) =>
+        spreadable({
+          id: `work-${index}`,
+          authorId: `work-author-${index}`,
+          bucket,
+          category: "work",
+          emotions: [(["fear", "hope", "anger", "envy"] as const)[index % 4] ?? "fear"],
+          spotlightStyle: STYLES[index % STYLES.length] ?? "stoic",
+        }),
+      ),
+      ...Array.from({ length: 6 }, (_, index) =>
+        spreadable({
+          id: `other-${index}`,
+          authorId: `other-author-${index}`,
+          bucket: "explore",
+          category: (["money", "health", "family", "identity", "future", "grief_loss"] as const)[index] ?? "money",
+          emotions: [(["sadness", "loneliness", "numbness", "overwhelm", "shame", "hope"] as const)[index] ?? "sadness"],
+          spotlightStyle: STYLES[(index + 2) % STYLES.length] ?? "stoic",
+        }),
+      ),
+    ];
+    expect(SPREAD_LIMITS.coreRun).toBeGreaterThan(SPREAD_LIMITS.run);
+    expect(longestRun(spreadPage(pool("core"), 12))).toBe(SPREAD_LIMITS.coreRun);
+    expect(longestRun(spreadPage(pool("explore"), 12))).toBe(SPREAD_LIMITS.run);
+  });
+
+  it("keeps every card exactly once and one stable order across windows", () => {
+    const pool = [
+      ...bucketed(30, "core", "core"),
+      ...bucketed(30, "adjacent", "adjacent"),
+      ...bucketed(30, "explore", "explore"),
+    ];
+    const first = spreadRanked(pool, 24, { mix });
+    expect(first).toHaveLength(pool.length);
+    expect(new Set(first.map((item) => item.id)).size).toBe(pool.length);
+    expect(spreadRanked(pool, 24, { mix }).map((item) => item.id)).toEqual(first.map((item) => item.id));
+  });
+});
+
+describe("primary tab", () => {
+  const VIEWER = "viewer-1";
+  const coldTabs: StyleTabs = {
+    stoic: { affinity: EMPTY_AFFINITY, hearts: 0 },
+    optimistic: { affinity: EMPTY_AFFINITY, hearts: 0 },
+    humorous: { affinity: EMPTY_AFFINITY, hearts: 0 },
+    tough_love: { affinity: EMPTY_AFFINITY, hearts: 0 },
+  };
+
+  function catalog(count: number): RankableCard[] {
+    const categories = ["work", "money", "health", "family", "identity", "future", "grief_loss"] as const;
+    return Array.from({ length: count }, (_, index) =>
+      card({
+        id: `cccccccc-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        authorId: `author-${index}`,
+        category: categories[index % categories.length] ?? "work",
+        createdAt: hoursAgo(index * 6),
+        // A skewed cover habit must not decide the split.
+        coverStyle: "stoic",
+      }),
+    );
+  }
+
+  function firstPage(
+    pool: readonly RankableCard[],
+    style: Style,
+    tabs: StyleTabs = coldTabs,
+    general: ViewerAffinity = EMPTY_AFFINITY,
+    viewerId = VIEWER,
+  ): string[] {
+    const primaryByCard = assignPrimaryStyles(pool, { viewerId, general, tabs });
+    const ranked = rankCards(pool, {
+      now: NOW,
+      seed: `visit-${style}`,
+      affinity: general,
+      style: { style, affinity: tabs[style].affinity, hearts: tabs[style].hearts, primaryByCard },
+    });
+    const byId = new Map(pool.map((item) => [item.id, item]));
+    const spreadInput = ranked.flatMap((scored, index) => {
+      const source = byId.get(scored.id);
+      return source
+        ? [
+            spreadable({
+              id: source.id,
+              authorId: source.authorId,
+              category: source.category,
+              emotions: source.emotions,
+              spotlightStyle: STYLES[index % STYLES.length] ?? "stoic",
+            }),
+          ]
+        : [];
+    });
+    return spreadRanked(spreadInput, 24)
+      .slice(0, 24)
+      .map((item) => item.id);
+  }
+
+  it("gives a cold viewer four mostly different first pages", () => {
+    const pool = catalog(240);
+    const pages = STYLES.map((style) => firstPage(pool, style));
+    for (let left = 0; left < pages.length; left += 1) {
+      for (let right = left + 1; right < pages.length; right += 1) {
+        const shared = pages[left]?.filter((id) => pages[right]?.includes(id)).length ?? 0;
+        expect(shared / 24).toBeLessThanOrEqual(0.1);
+      }
+    }
+  });
+
+  it("keeps the tabs apart for a viewer with hearts, and pulls a tab's own theme to it", () => {
+    const pool = catalog(240);
+    // The viewer is mostly in Work overall, but hearts Humorous on grief.
+    const general = themes(["work"], ["shame"]);
+    const tabs: StyleTabs = {
+      ...coldTabs,
+      humorous: { affinity: themes(["grief_loss"], ["sadness"]), hearts: 6 },
+    };
+    const pages = STYLES.map((style) => firstPage(pool, style, tabs, general));
+    for (let left = 0; left < pages.length; left += 1) {
+      for (let right = left + 1; right < pages.length; right += 1) {
+        const shared = pages[left]?.filter((id) => pages[right]?.includes(id)).length ?? 0;
+        expect(shared / 24).toBeLessThanOrEqual(0.1);
+      }
+    }
+    const byId = new Map(pool.map((item) => [item.id, item]));
+    const humorousPage = pages[STYLES.indexOf("humorous")] ?? [];
+    const grief = humorousPage.filter((id) => byId.get(id)?.category === "grief_loss").length;
+    expect(grief).toBeGreaterThan(humorousPage.length / 2);
+  });
+
+  it("does not let one tab with hearts claim every card that matches the viewer", () => {
+    const pool = catalog(400);
+    const general = themes(["work"], ["shame"]);
+    // Hearts on Humorous are the same taste as the general one, so they add no pull.
+    const tabs: StyleTabs = { ...coldTabs, humorous: { affinity: general, hearts: 6 } };
+    const primaries = assignPrimaryStyles(pool, { viewerId: VIEWER, general, tabs });
+    const humorous = [...primaries.values()].filter((style) => style === "humorous").length;
+    expect(humorous).toBeLessThan(400 * 0.35);
+  });
+
+  it("splits a cold catalog roughly evenly, whatever covers the authors chose", () => {
+    const pool = catalog(400);
+    const primaries = assignPrimaryStyles(pool, { viewerId: VIEWER, general: EMPTY_AFFINITY, tabs: coldTabs });
+    const counts = new Map<Style, number>();
+    for (const style of primaries.values()) {
+      counts.set(style, (counts.get(style) ?? 0) + 1);
+    }
+    for (const style of STYLES) {
+      expect(counts.get(style) ?? 0).toBeGreaterThan(400 * 0.15);
+      expect(counts.get(style) ?? 0).toBeLessThan(400 * 0.35);
+    }
+  });
+
+  it("is stable for a viewer and different between viewers", () => {
+    const pool = catalog(60);
+    const options = { general: EMPTY_AFFINITY, tabs: coldTabs };
+    const one = assignPrimaryStyles(pool, { viewerId: "viewer-1", ...options });
+    expect([...assignPrimaryStyles(pool, { viewerId: "viewer-1", ...options })]).toEqual([...one]);
+    const two = assignPrimaryStyles(pool, { viewerId: "viewer-2", ...options });
+    expect([...two]).not.toEqual([...one]);
+  });
+
+  it("never assigns an angle the card does not have", () => {
+    const pool = catalog(80).map((item) => ({ ...item, availableStyles: ["humorous"] as const }));
+    const primaries = assignPrimaryStyles(pool, { viewerId: VIEWER, general: EMPTY_AFFINITY, tabs: coldTabs });
+    expect(new Set(primaries.values())).toEqual(new Set(["humorous"]));
+  });
+
+  it("puts a card on the tab strangers hearted it on", () => {
+    const loved = card({ id: "dddddddd-0000-4000-8000-000000000001", angleHeartsByStyle: { humorous: 8 } });
+    expect(PRIMARY_TIE_WEIGHT).toBeLessThan(STYLE_RANKING_WEIGHTS.styleResonance);
+    for (const viewerId of ["viewer-1", "viewer-2", "viewer-3", "viewer-4", "viewer-5"]) {
+      const primaries = assignPrimaryStyles([loved], { viewerId, general: EMPTY_AFFINITY, tabs: coldTabs });
+      expect(primaries.get(loved.id)).toBe("humorous");
+    }
+  });
+
+  it("puts a card on the tab whose hearts match its theme", () => {
+    const tabs: StyleTabs = {
+      ...coldTabs,
+      tough_love: { affinity: themes(["money"], ["envy"]), hearts: 5 },
+    };
+    const subject = card({ id: "dddddddd-0000-4000-8000-000000000002", category: "money", emotions: ["envy"] });
+    for (const viewerId of ["viewer-1", "viewer-2", "viewer-3", "viewer-4", "viewer-5"]) {
+      expect(
+        assignPrimaryStyles([subject], { viewerId, general: EMPTY_AFFINITY, tabs }).get(subject.id),
+      ).toBe("tough_love");
+    }
+  });
+
+  it("penalises an off-tab card without hiding it, so a thin tab still fills", () => {
+    // Old enough to have settled onto a tab.
+    const home = card({ id: "eeeeeeee-0000-4000-8000-000000000001", createdAt: hoursAgo(24) });
+    const away = card({ id: "eeeeeeee-0000-4000-8000-000000000002", createdAt: hoursAgo(24) });
+    const primaryByCard = new Map<string, Style>([
+      [home.id, "stoic"],
+      [away.id, "humorous"],
+    ]);
+    const ranked = rankCards([away, home], {
+      now: NOW,
+      seed: "s",
+      style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0, primaryByCard },
+    });
+    expect(ranked.map((item) => item.id)).toEqual([home.id, away.id]);
+    expect(ranked).toHaveLength(2);
+    const gap = (ranked[0]?.score ?? 0) - (ranked[1]?.score ?? 0);
+    expect(gap).toBeGreaterThan(STYLE_RANKING_WEIGHTS.offTab - RANKING_WEIGHTS.jitter);
+
+    // A much stronger off-tab card can still lead: a penalty, not a wall.
+    const strongAway = { ...away, hearts: 10, createdAt: hoursAgo(1) };
+    const weakHome = { ...home, createdAt: hoursAgo(24 * 20) };
+    expect(
+      rankCards([weakHome, strongAway], {
+        now: NOW,
+        seed: "s",
+        style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0, primaryByCard },
+      })[0]?.id,
+    ).toBe(strongAway.id);
+  });
+
+  it("fades the off-tab penalty in with age, so a fresh post shows on every tab", () => {
+    expect(offTabFade({ createdAt: hoursAgo(0.5) }, NOW)).toBe(0);
+    expect(offTabFade({ createdAt: hoursAgo(1) }, NOW)).toBe(0);
+    expect(offTabFade({ createdAt: hoursAgo(3.5) }, NOW)).toBeCloseTo(0.5, 5);
+    expect(offTabFade({ createdAt: hoursAgo(6) }, NOW)).toBe(1);
+    expect(offTabFade({ createdAt: hoursAgo(200) }, NOW)).toBe(1);
+
+    const primaryByCard = new Map<string, Style>([["ffffffff-0000-4000-8000-000000000001", "humorous"]]);
+    const justPosted = card({ id: "ffffffff-0000-4000-8000-000000000001", createdAt: hoursAgo(1) });
+    const onStoic = scoreCard(justPosted, {
+      now: NOW,
+      seed: "s",
+      style: {
+        style: "stoic",
+        affinity: EMPTY_AFFINITY,
+        hearts: 0,
+        angleHearts: 0,
+        coverMatches: false,
+        offTab: primaryByCard.get(justPosted.id) !== "stoic",
+      },
+    });
+    const noPenalty = scoreCard(justPosted, {
+      now: NOW,
+      seed: "s",
+      style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0, angleHearts: 0, coverMatches: false },
+    });
+    expect(onStoic.score).toBeCloseTo(noPenalty.score, 8);
+  });
+
+  it("leaves All untouched by tab assignment", () => {
+    const subject = card();
+    const plain = scoreCard(subject, { now: NOW, seed: "s" });
+    const ranked = rankCards([subject], { now: NOW, seed: "s" });
+    expect(ranked[0]?.score).toBe(plain.score);
+  });
+});
+
+describe("isKeptOnShelf", () => {
+  it("hides on All once any angle is kept, and on a tab only for that angle", () => {
+    const kept = new Set<Style>(["optimistic"]);
+    expect(isKeptOnShelf(kept, undefined)).toBe(true);
+    expect(isKeptOnShelf(kept, "optimistic")).toBe(true);
+    expect(isKeptOnShelf(kept, "stoic")).toBe(false);
+  });
+
+  it("hides nothing for a card the viewer has not kept", () => {
+    expect(isKeptOnShelf(undefined, undefined)).toBe(false);
+    expect(isKeptOnShelf(new Set<Style>(), "stoic")).toBe(false);
   });
 });

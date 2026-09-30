@@ -1,14 +1,26 @@
-import { and, arrayOverlaps, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, arrayOverlaps, asc, desc, eq, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
-import { rankCards, spreadRanked, type ViewerAffinity } from "../lib/feedRanking.js";
-import type {
-  Category,
-  Emotion,
-  FeedCursor,
-  FeedListQuery,
-  FeedSessionCursor,
-  StoredCard,
-  Style,
+import {
+  assignPrimaryStyles,
+  buildAffinity,
+  classifyTheme,
+  isKeptOnShelf,
+  rankCards,
+  spreadRanked,
+  themeMix,
+  type StyleTabContext,
+  type StyleTabs,
+  type ViewerAffinity,
+} from "../lib/feedRanking.js";
+import {
+  STYLES,
+  type Category,
+  type Emotion,
+  type FeedCursor,
+  type FeedListQuery,
+  type FeedSessionCursor,
+  type StoredCard,
+  type Style,
 } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
 import {
@@ -19,7 +31,7 @@ import {
 } from "./communitySafety.js";
 import { newerThanCursor, olderThanCursor } from "./cursor.js";
 import { followedAuthorIds } from "./follows.js";
-import { loadCardHeartTotals, loadStyleHeartTotals } from "./hearts.js";
+import { loadCardHeartTotals, loadStyleHeartCounts } from "./hearts.js";
 import { storedCardsForViewer, type CardLoaded } from "./mapCard.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
 
@@ -134,7 +146,7 @@ export async function listRankedFeed(
     const filters = feedFilters(db, viewerId, query);
     filters.push(sql`${cards.createdAt} <= ${query.session.startedAt.toISOString()}::timestamptz`);
 
-    const candidates = await db
+    const found = await db
       .select({
         id: cards.id,
         authorId: cards.userId,
@@ -149,54 +161,81 @@ export async function listRankedFeed(
       .orderBy(desc(cards.createdAt), desc(cards.id))
       .limit(RANKING_CANDIDATE_CAP);
 
+    // Angles the viewer already kept are not shown again, only those kept before this
+    // visit began: the candidate set is frozen at `startedAt`, and a heart tapped while
+    // scrolling must not make a card vanish and shift every offset after it.
+    const kept = await loadKeptAngles(
+      viewerId,
+      found.map((row) => row.id),
+      query.session.startedAt,
+      db,
+    );
+    const candidates = found.filter((row) => !isKeptOnShelf(kept.get(row.id), query.style));
+
     if (candidates.length === 0) {
       return [];
     }
 
+    const now = new Date();
     const ids = candidates.map((row) => row.id);
-    const [hearts, followed, affinity, styleHearts, styleShelf] = await Promise.all([
+    // A style shelf also needs every angle's hearts, the angles each card has, and the
+    // viewer's taste on all four tabs, because a card's primary tab is decided across them.
+    const [hearts, followed, affinity, angleHearts, cardStyles, tabs] = await Promise.all([
       loadCardHeartTotals(ids, db),
       followedAuthorIds(
         viewerId,
         candidates.map((row) => row.authorId),
         db,
       ),
-      loadViewerAffinity(viewerId, db),
-      query.style ? loadStyleHeartTotals(ids, query.style, db) : Promise.resolve(null),
-      query.style ? loadViewerStyleShelf(viewerId, query.style, db) : Promise.resolve(null),
+      loadViewerAffinity(viewerId, now, db),
+      query.style ? loadStyleHeartCounts(ids, db) : Promise.resolve(null),
+      query.style ? loadCardStyles(ids, db) : Promise.resolve(null),
+      query.style ? loadViewerStyleTabs(viewerId, now, db) : Promise.resolve(null),
     ]);
 
-    const now = new Date();
-    const ranked = rankCards(
-      candidates.map((row) => ({
-        id: row.id,
-        authorId: row.authorId,
-        createdAt: row.createdAt,
-        category: row.category,
-        emotions: row.emotions,
-        hearts: hearts.get(row.id) ?? 0,
-        followed: followed.has(row.authorId),
-        angleHearts: styleHearts?.get(row.id) ?? 0,
-        coverStyle: row.spotlightStyle,
-      })),
-      {
-        now,
-        seed: query.session.seed,
-        affinity,
-        style:
-          query.style && styleShelf
-            ? { style: query.style, affinity: styleShelf.affinity, hearts: styleShelf.hearts }
-            : undefined,
-      },
-    );
+    const rankable = candidates.map((row) => ({
+      id: row.id,
+      authorId: row.authorId,
+      createdAt: row.createdAt,
+      category: row.category,
+      emotions: row.emotions,
+      hearts: hearts.get(row.id) ?? 0,
+      followed: followed.has(row.authorId),
+      angleHeartsByStyle: Object.fromEntries(angleHearts?.get(row.id) ?? []),
+      availableStyles: cardStyles?.get(row.id),
+      coverStyle: row.spotlightStyle,
+    }));
+    const primaryByCard =
+      query.style && tabs
+        ? assignPrimaryStyles(rankable, { viewerId, general: affinity, tabs })
+        : undefined;
+    const ranked = rankCards(rankable, {
+      now,
+      seed: query.session.seed,
+      affinity,
+      style:
+        query.style && tabs
+          ? {
+              style: query.style,
+              affinity: tabs[query.style].affinity,
+              hearts: tabs[query.style].hearts,
+              primaryByCard,
+            }
+          : undefined,
+    });
 
-    const byId = new Map(candidates.map((row) => [row.id, row]));
+    // Themes come from the general affinity on every tab: the tab's own taste only
+    // reorders cards, while the mix is about what this viewer is mostly in.
+    const byId = new Map(
+      candidates.map((row) => [row.id, { ...row, bucket: classifyTheme(row, affinity) }]),
+    );
     const spread = spreadRanked(
       ranked.flatMap((scored) => {
         const row = byId.get(scored.id);
         return row ? [row] : [];
       }),
       query.limit,
+      { mix: themeMix(affinity.confidence) },
     );
 
     const pageIds = spread
@@ -229,88 +268,193 @@ export async function listRankedFeed(
   }
 }
 
-/**
- * What the viewer has been writing about lately, from their own cards. This is the
- * recognition term: the reason their feed should not read like a stranger's.
- */
-async function loadViewerAffinity(
+/** Recent activity read per source when learning themes. */
+const AFFINITY_SAMPLE = 30;
+
+/** A heart row, reduced to what theme learning needs. */
+type HeartRow = {
+  cardId: string;
+  style: Style;
+  category: Category;
+  emotions: Emotion[];
+  at: Date;
+};
+
+/** The angles this viewer kept: other people's cards they hearted, and their own favorites. */
+async function loadViewerHearts(
   viewerId: string,
   db: ReturnType<typeof getDb>,
-): Promise<ViewerAffinity> {
-  const recent = await db
-    .select({ category: cards.category, emotions: cards.emotions })
-    .from(cards)
-    .where(eq(cards.userId, viewerId))
-    .orderBy(desc(cards.createdAt), desc(cards.id))
-    .limit(AFFINITY_SAMPLE);
+  limit: number,
+): Promise<HeartRow[]> {
+  const [saved, own] = await Promise.all([
+    db
+      .select({
+        cardId: cards.id,
+        style: savedAngles.style,
+        category: cards.category,
+        emotions: cards.emotions,
+        at: savedAngles.favoritedAt,
+      })
+      .from(savedAngles)
+      .innerJoin(cards, eq(cards.id, savedAngles.cardId))
+      .where(eq(savedAngles.userId, viewerId))
+      .orderBy(desc(savedAngles.favoritedAt), desc(cards.id))
+      .limit(limit),
+    db
+      .select({
+        cardId: cards.id,
+        style: cardReframes.style,
+        category: cards.category,
+        emotions: cards.emotions,
+        at: cardReframes.favoritedAt,
+        createdAt: cards.createdAt,
+      })
+      .from(cardReframes)
+      .innerJoin(cards, eq(cards.id, cardReframes.cardId))
+      .where(and(eq(cards.userId, viewerId), eq(cardReframes.isFavorite, true)))
+      .orderBy(desc(cardReframes.favoritedAt), desc(cards.id))
+      .limit(limit),
+  ]);
 
-  return affinityFromRows(recent);
+  return [
+    ...saved,
+    ...own.map(({ createdAt, at, ...row }) => ({ ...row, at: at ?? createdAt })),
+  ];
 }
 
 /**
- * Taste learned from the angles this viewer actually hearted in one style.
- * `hearts` is the sample size, which is enough: confidence saturates at five.
+ * What the viewer is mostly in, from what they wrote and from every angle they hearted on
+ * any tab. This is the recognition term: the reason their feed should not read like a
+ * stranger's. Hearting three angles of one card is one signal about the card's theme.
  */
-async function loadViewerStyleShelf(
+export async function loadViewerAffinity(
   viewerId: string,
-  style: Style,
+  now: Date,
   db: ReturnType<typeof getDb>,
-): Promise<{ affinity: ViewerAffinity; hearts: number }> {
+): Promise<ViewerAffinity> {
+  const [authored, hearts] = await Promise.all([
+    db
+      .select({ category: cards.category, emotions: cards.emotions, at: cards.createdAt })
+      .from(cards)
+      .where(eq(cards.userId, viewerId))
+      .orderBy(desc(cards.createdAt), desc(cards.id))
+      .limit(AFFINITY_SAMPLE),
+    loadViewerHearts(viewerId, db, AFFINITY_SAMPLE * 2),
+  ]);
+
+  const latestHeart = new Map<string, HeartRow>();
+  for (const row of hearts) {
+    const seen = latestHeart.get(row.cardId);
+    if (!seen || row.at > seen.at) {
+      latestHeart.set(row.cardId, row);
+    }
+  }
+
+  return buildAffinity(
+    [
+      ...authored.map((row) => ({ ...row, source: "authored" as const })),
+      ...[...latestHeart.values()].map((row) => ({ ...row, source: "hearted" as const })),
+    ],
+    now,
+  );
+}
+
+/**
+ * Taste learned from the angles this viewer hearted, for each of the four tabs, in one
+ * pass. `hearts` is the sample size, which is enough: confidence saturates at five.
+ */
+async function loadViewerStyleTabs(
+  viewerId: string,
+  now: Date,
+  db: ReturnType<typeof getDb>,
+): Promise<StyleTabs> {
+  const hearts = await loadViewerHearts(viewerId, db, AFFINITY_SAMPLE * STYLES.length);
+  const tab = (style: Style): StyleTabContext => {
+    const rows = hearts
+      .filter((row) => row.style === style)
+      .sort((left, right) => right.at.getTime() - left.at.getTime())
+      .slice(0, AFFINITY_SAMPLE);
+    return {
+      affinity: buildAffinity(
+        rows.map((row) => ({ ...row, source: "hearted" as const })),
+        now,
+      ),
+      hearts: rows.length,
+    };
+  };
+  return {
+    stoic: tab("stoic"),
+    optimistic: tab("optimistic"),
+    humorous: tab("humorous"),
+    tough_love: tab("tough_love"),
+  };
+}
+
+/**
+ * The angles of these cards the viewer hearted up to `before`: strangers' cards through
+ * `saved_angles`, and their own cards through the favorite flag on the angle.
+ */
+async function loadKeptAngles(
+  viewerId: string,
+  cardIds: string[],
+  before: Date,
+  db: ReturnType<typeof getDb>,
+): Promise<Map<string, Set<Style>>> {
+  const kept = new Map<string, Set<Style>>();
+  if (cardIds.length === 0) {
+    return kept;
+  }
   const [saved, own] = await Promise.all([
     db
-      .select({ category: cards.category, emotions: cards.emotions })
+      .select({ cardId: savedAngles.cardId, style: savedAngles.style })
       .from(savedAngles)
-      .innerJoin(cards, eq(cards.id, savedAngles.cardId))
-      .where(and(eq(savedAngles.userId, viewerId), eq(savedAngles.style, style)))
-      .orderBy(desc(savedAngles.favoritedAt), desc(cards.id))
-      .limit(AFFINITY_SAMPLE),
+      .where(
+        and(
+          eq(savedAngles.userId, viewerId),
+          inArray(savedAngles.cardId, cardIds),
+          lte(savedAngles.favoritedAt, before),
+        ),
+      ),
     db
-      .select({ category: cards.category, emotions: cards.emotions })
+      .select({ cardId: cardReframes.cardId, style: cardReframes.style })
       .from(cardReframes)
       .innerJoin(cards, eq(cards.id, cardReframes.cardId))
       .where(
         and(
           eq(cards.userId, viewerId),
-          eq(cardReframes.style, style),
+          inArray(cardReframes.cardId, cardIds),
           eq(cardReframes.isFavorite, true),
+          or(isNull(cardReframes.favoritedAt), lte(cardReframes.favoritedAt, before)),
         ),
-      )
-      .orderBy(desc(cardReframes.favoritedAt), desc(cards.id))
-      .limit(AFFINITY_SAMPLE),
+      ),
   ]);
-
-  const rows = [...saved, ...own];
-  return { affinity: affinityFromRows(rows), hearts: rows.length };
-}
-
-function affinityFromRows(
-  rows: readonly { category: Category; emotions: readonly Emotion[] }[],
-): ViewerAffinity {
-  const categoryCounts = new Map<Category, number>();
-  const emotionCounts = new Map<Emotion, number>();
-  for (const row of rows) {
-    categoryCounts.set(row.category, (categoryCounts.get(row.category) ?? 0) + 1);
-    for (const emotion of row.emotions) {
-      emotionCounts.set(emotion, (emotionCounts.get(emotion) ?? 0) + 1);
-    }
+  for (const row of [...saved, ...own]) {
+    const styles = kept.get(row.cardId) ?? new Set<Style>();
+    styles.add(row.style);
+    kept.set(row.cardId, styles);
   }
-
-  return {
-    categories: new Set(topKeys(categoryCounts, AFFINITY_CATEGORIES)),
-    emotions: new Set(topKeys(emotionCounts, AFFINITY_EMOTIONS)),
-  };
+  return kept;
 }
 
-/** Own cards read for affinity, and how many of each facet survive. */
-const AFFINITY_SAMPLE = 30;
-const AFFINITY_CATEGORIES = 3;
-const AFFINITY_EMOTIONS = 5;
-
-function topKeys<T>(counts: Map<T, number>, keep: number): T[] {
-  return [...counts.entries()]
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, keep)
-    .map(([key]) => key);
+/** The angles each candidate card has, so a card is never assigned a tab it cannot show. */
+async function loadCardStyles(
+  cardIds: string[],
+  db: ReturnType<typeof getDb>,
+): Promise<Map<string, Style[]>> {
+  const styles = new Map<string, Style[]>();
+  if (cardIds.length === 0) {
+    return styles;
+  }
+  const rows = await db
+    .select({ cardId: cardReframes.cardId, style: cardReframes.style })
+    .from(cardReframes)
+    .where(inArray(cardReframes.cardId, cardIds));
+  for (const row of rows) {
+    const list = styles.get(row.cardId) ?? [];
+    list.push(row.style);
+    styles.set(row.cardId, list);
+  }
+  return styles;
 }
 
 /** One author's published cards. Private cards stay out, including their own. */

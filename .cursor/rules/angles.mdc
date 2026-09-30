@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Angles
 
-Paid reframe app. The library is private; community Home shipped, and a card appears there only when it is public. Compose Save defaults to Post; the server stores a card private unless the save says otherwise. With `FEED_RANKING=resonance`, All is a mixed ranked feed and each style tab is its own shelf for that viewer (`BUILD.md` 14 and 15). Unset stays newest-first. Profile, author, and model pages stay unranked lists.
+Paid reframe app. The library is private; community Home shipped, and a card appears there only when it is public. Compose Save defaults to Post; the server stores a card private unless the save says otherwise. With `FEED_RANKING=resonance`, All is a mixed, recency-first ranked feed that hides angles the viewer already kept, and each style tab is its own shelf for that viewer; pages follow a core/adjacent/explore theme mix and each card has one primary tab per viewer (`BUILD.md` 14 and 15). Unset stays newest-first. Profile, author, and model pages stay unranked lists.
 
 - Backend: Hono + Node on Railway (`backend/`). Not Cloudflare Workers.
 - iOS: SwiftUI, iOS 17+, `URLSession` only (`AnglesApp/`). Run on **Joe’s iPhone**, not Simulator.

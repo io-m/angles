@@ -79,6 +79,8 @@ async function jsonOf(response: Response): Promise<unknown> {
 describe("GET /feed", () => {
   beforeEach(() => {
     vi.mocked(listFeed).mockReset();
+    // The developer's .env turns ranking on; these tests are about the unranked path.
+    delete process.env.FEED_RANKING;
   });
 
   it("lists public cards newest first", async () => {

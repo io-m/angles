@@ -18,7 +18,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed-community": "tsx src/scripts/seedCommunity.ts",
-    "db:seed-recent": "tsx src/scripts/seedCommunityRecent.ts"
+    "db:seed-recent": "tsx src/scripts/seedCommunityRecent.ts",
+    "db:seed-realistic": "tsx src/scripts/seedCommunityRealistic.ts",
+    "db:feed-audit": "tsx src/scripts/feedAudit.ts"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.1.0",

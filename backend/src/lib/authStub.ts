@@ -21,6 +21,14 @@ export function getOwnerUserId(): string {
   throw new Error("No authenticated user");
 }
 
+/**
+ * Run `fn` as this user, the way a request does. For scripts that call the same db
+ * functions the routes call; a route never needs it.
+ */
+export function runAsOwner<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  return ownerContext.run(userId, fn);
+}
+
 function testUserIdFromAuthorization(header: string | undefined): string | "none" | undefined {
   if (process.env.VITEST !== "true") {
     return undefined;

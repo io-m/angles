@@ -6,6 +6,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
 import {
+  CATEGORIES,
   STYLES,
   type Category,
   type CreateCardInput,
@@ -1472,8 +1473,11 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
 
     it("ranks the viewer's own subject above a subject they never write about", async () => {
-      // The viewer's library is what affinity reads: work, shame and fear.
-      await createCard(baseInput);
+      // The viewer's library is what affinity reads: work, shame and fear. One card is
+      // only a hint, so they have written enough for the themes to be trusted.
+      for (let index = 0; index < 5; index += 1) {
+        await createCard({ ...baseInput, thought: `Work keeps making me feel small, note ${index}.` });
+      }
       const createdAt = new Date(Date.now() - 7_200_000);
       const stranger = await insertOtherCard({
         thought: "A money worry this viewer has never once written about.",
@@ -1533,6 +1537,158 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
       expect(again.map((card) => card.id)).toEqual(one.map((card) => card.id));
       expect(other.map((card) => card.id)).not.toEqual(one.map((card) => card.id));
+    });
+
+    it("learns the viewer's themes from the angles they hearted, not only what they wrote", async () => {
+      // No cards of their own: their taste is what they chose to keep.
+      const createdAt = new Date(Date.now() - 86_400_000 * 3);
+      for (let index = 0; index < 3; index += 1) {
+        const kept = await insertOtherCard({
+          thought: `A grief thought the viewer keeps ${index}.`,
+          isPublic: true,
+          category: "grief_loss",
+          emotions: [],
+          createdAt,
+        });
+        expect((await saveFeedAngle(kept, "stoic")).ok).toBe(true);
+      }
+
+      const fresh = new Date(Date.now() - 3_600_000);
+      const money = await insertOtherCard({
+        thought: "A money worry from a subject they have never kept.",
+        isPublic: true,
+        category: "money",
+        emotions: [],
+        createdAt: fresh,
+      });
+      const grief = await insertOtherCard({
+        thought: "A new grief thought in the subject they keep hearting.",
+        isPublic: true,
+        category: "grief_loss",
+        emotions: [],
+        createdAt: fresh,
+      });
+
+      const ids = (await listRankedFeed({ limit: 24, session: session() })).map((card) => card.id);
+      expect(ids.indexOf(grief)).toBeLessThan(ids.indexOf(money));
+    });
+
+    it("gives a new viewer style tabs that mostly show different cards", async () => {
+      for (let index = 0; index < 60; index += 1) {
+        await insertOtherCard({
+          thought: `Public thought ${index} for a viewer who has not hearted anything yet.`,
+          isPublic: true,
+          category: CATEGORIES[index % (CATEGORIES.length - 1)] ?? "work",
+          emotions: [],
+          createdAt: new Date(Date.now() - index * 6 * 3_600_000),
+        });
+      }
+
+      const seeded = session();
+      const pages = new Map<Style, string[]>();
+      for (const style of STYLES) {
+        const page = await listRankedFeed({ limit: 12, style, session: seeded });
+        expect(page).toHaveLength(12);
+        pages.set(style, page.map((card) => card.id));
+      }
+      for (const left of STYLES) {
+        for (const right of STYLES) {
+          if (left >= right) {
+            continue;
+          }
+          const shared = (pages.get(left) ?? []).filter((id) => pages.get(right)?.includes(id));
+          // Only a post from the last few hours is allowed on more than one tab.
+          expect(shared.length).toBeLessThanOrEqual(3);
+        }
+      }
+    });
+
+    it("pages a confident viewer's themed mix without repeating or dropping a card", async () => {
+      for (let index = 0; index < 5; index += 1) {
+        await createCard({ ...baseInput, thought: `Work keeps making me feel small, note ${index}.` });
+      }
+      const ids = new Set<string>();
+      for (let index = 0; index < 30; index += 1) {
+        ids.add(
+          await insertOtherCard({
+            thought: `Public thought ${index} for the themed pager.`,
+            isPublic: true,
+            category: CATEGORIES[index % (CATEGORIES.length - 1)] ?? "work",
+            emotions: index % 2 === 0 ? ["shame"] : ["hope"],
+            createdAt: new Date(Date.now() - index * 3_600_000),
+          }),
+        );
+      }
+
+      const seeded = session();
+      const paged: string[] = [];
+      for (const offset of [0, 7, 14, 21, 28]) {
+        const page = await listRankedFeed({ limit: 7, session: { ...seeded, offset } });
+        paged.push(...page.map((card) => card.id));
+      }
+      expect(paged).toHaveLength(ids.size);
+      expect(new Set(paged)).toEqual(ids);
+
+      const again: string[] = [];
+      for (const offset of [0, 7, 14, 21, 28]) {
+        const page = await listRankedFeed({ limit: 7, session: { ...seeded, offset } });
+        again.push(...page.map((card) => card.id));
+      }
+      expect(again).toEqual(paged);
+    });
+
+    it("does not show again an angle the viewer already kept, per shelf", async () => {
+      const createdAt = new Date(Date.now() - 3_600_000);
+      const kept = await insertOtherCard({
+        thought: "A thought the viewer has already kept on one angle.",
+        isPublic: true,
+        createdAt,
+      });
+      const untouched = await insertOtherCard({
+        thought: "A thought the viewer has not kept anything from.",
+        isPublic: true,
+        createdAt,
+      });
+      expect((await saveFeedAngle(kept, "optimistic")).ok).toBe(true);
+      const later = { ...session(), startedAt: new Date(Date.now() + 1_000) };
+
+      const all = (await listRankedFeed({ limit: 24, session: later })).map((card) => card.id);
+      expect(all).not.toContain(kept);
+      expect(all).toContain(untouched);
+
+      const sameAngle = await listRankedFeed({ limit: 24, style: "optimistic", session: later });
+      expect(sameAngle.map((card) => card.id)).not.toContain(kept);
+
+      // Another voice for the same thought is still worth meeting.
+      const otherAngle = await listRankedFeed({ limit: 24, style: "stoic", session: later });
+      expect(otherAngle.map((card) => card.id)).toContain(kept);
+    });
+
+    it("keeps a card that was hearted after the visit began, so paging cannot shift", async () => {
+      const ids: string[] = [];
+      for (let index = 0; index < 6; index += 1) {
+        ids.push(
+          await insertOtherCard({
+            thought: `Public thought ${index} for the frozen heart test.`,
+            isPublic: true,
+            createdAt: new Date(Date.now() - (index + 1) * 60_000),
+          }),
+        );
+      }
+      const startedAt = new Date(Date.now() - 5_000);
+      const before = await listRankedFeed({ limit: 24, session: { seed: "seed-frozen-h", startedAt, offset: 0 } });
+
+      const target = ids[0];
+      if (!target) {
+        throw new Error("no fixture card");
+      }
+      expect((await saveFeedAngle(target, "stoic")).ok).toBe(true);
+
+      const after = await listRankedFeed({ limit: 24, session: { seed: "seed-frozen-h", startedAt, offset: 0 } });
+      // The heart may move the card within the visit's order (its hearts count and the
+      // viewer's themes are live), but it must not drop out of the visit.
+      expect(after.map((card) => card.id).sort()).toEqual(before.map((card) => card.id).sort());
+      expect(after.map((card) => card.id)).toContain(target);
     });
 
     it("honours the facets, privacy, blocks and reports that chronological order honours", async () => {
