@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 **No product work is queued.** Rows 9w through 17 are done. Do not invent screens or features.
 
-What is left is launch setup outside the app: a real server address, published privacy and support pages, Apple production settings, and the App Store listing. The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
+What is left is launch setup outside the app: a real server address, Apple production settings, and the App Store listing. Privacy, terms, and support are live at `https://useangles.app`. The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
 
 ## Core loop
 

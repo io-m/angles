@@ -1,6 +1,6 @@
 # App Store readiness
 
-Current as of **September 25, 2026**.
+Current as of **September 30, 2026**.
 
 ## Release status
 
@@ -28,15 +28,15 @@ These are deployment, operator, Apple, provider, and submission tasks; they are 
 ### Release app configuration
 
 - Set the Release `ANGLES_API_BASE_URL` to the production HTTPS API.
-- Set `ANGLES_PRIVACY_POLICY_URL`, `ANGLES_TERMS_OF_SERVICE_URL`, and either `ANGLES_SUPPORT_URL` or `ANGLES_SUPPORT_EMAIL`.
-- Verify those destinations load from the archived build. They are intentionally empty today.
+- `ANGLES_PRIVACY_POLICY_URL`, `ANGLES_TERMS_OF_SERVICE_URL`, and `ANGLES_SUPPORT_URL` are set to `https://useangles.app/privacy`, `/terms`, and `/support` in Debug and Release.
+- Verify those destinations load from the archived build once `useangles.app` is serving them.
 - Confirm the final Apple team, signing, bundle record, capabilities, and Release archive/export configuration.
 
 ### Hosted legal and support
 
-- Replace all operator placeholders in `docs/legal/privacy.md` and `docs/legal/terms.md`, including legal operator, privacy/support contact, mailing address, and governing law.
-- Complete the provider-retention/training review noted in the privacy policy.
-- Publish both documents at operator-controlled HTTPS URLs and provide a working support destination.
+- Operator details in `docs/legal/privacy.md` and `docs/legal/terms.md` name Bithavn, CVR 46705130, `info@bithavn.app`, the Copenhagen postal address, and Danish law.
+- The privacy policy names Mistral AI, Google Gemini, and DeepSeek and states that provider retention and model-improvement controls can vary. It does not claim a training opt-out.
+- The site is published at `https://useangles.app` (`/privacy`, `/terms`, `/support`). `www` and plain HTTP redirect to that host.
 
 ### Apple production configuration
 

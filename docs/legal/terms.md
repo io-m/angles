@@ -1,12 +1,10 @@
 # Angles Terms of Service
 
-Last updated: September 25, 2026
+Last updated: September 30, 2026
 
-> **HOSTING REQUIRED BEFORE RELEASE:** Publish these terms at the URL configured as `ANGLES_TERMS_OF_SERVICE_URL`.
->
-> **OPERATOR DETAILS REQUIRED BEFORE RELEASE:** Replace `[LEGAL OPERATOR]`, `[SUPPORT CONTACT]`, `[MAILING ADDRESS]`, and `[GOVERNING LAW]` below with the legal operator's real details. Do not publish those placeholders as final contact information.
+Published at `https://useangles.app/terms` (`ANGLES_TERMS_OF_SERVICE_URL`). Support is at `https://useangles.app/support`.
 
-These Terms of Service (“Terms”) govern your use of Angles, operated by **[LEGAL OPERATOR]** (“Angles,” “we,” “us,” or “our”). By using Angles, you agree to these Terms and the Privacy Policy. If you do not agree, do not use the service.
+These Terms of Service (“Terms”) govern your use of Angles, operated by **Bithavn**, an Enkeltmandsvirksomhed in Denmark, CVR 46705130 (“Angles,” “we,” “us,” or “our”). By using Angles, you agree to these Terms and the Privacy Policy. If you do not agree, do not use the service.
 
 ## Eligibility and accounts
 
@@ -90,7 +88,7 @@ Where permitted by law, you will indemnify and hold us harmless from claims aris
 
 ## Governing law and disputes
 
-These Terms are governed by **[GOVERNING LAW AND VENUE — REQUIRED BEFORE HOSTING]**, without regard to conflict-of-law rules. Consumer rights and mandatory local law remain unaffected.
+These Terms are governed by the laws of Denmark, without regard to conflict-of-law rules, and without affecting any mandatory consumer protections that apply where you live. Courts in Denmark have jurisdiction, without limiting your right, if you are a consumer in the EU, to bring proceedings in the courts of your country of residence.
 
 ## Changes
 
@@ -98,6 +96,6 @@ We may update these Terms. We will update the date above and provide notice when
 
 ## Contact
 
-Support: **[SUPPORT CONTACT — REQUIRED BEFORE HOSTING]**
+Support: **info@bithavn.app**
 
-Postal address: **[MAILING ADDRESS — REQUIRED BEFORE HOSTING]**
+Postal address: **c/o Josip Miljak, Hannemanns Allé 4A, st. 3., 2300 København S, Denmark**

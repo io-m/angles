@@ -73,7 +73,7 @@
           "image-name" : "Vector 2.svg",
           "name" : "Vector 2",
           "position" : {
-            "scale" : 0.86,
+            "scale" : 0.88,
             "translation-in-points" : [
               45.93024249999996,
               13.069790000000012
@@ -129,10 +129,10 @@
           "image-name" : "Vector-1 2.svg",
           "name" : "Vector-1 2",
           "position" : {
-            "scale" : 0.86,
+            "scale" : 0.88,
             "translation-in-points" : [
-              -44.24616249999997,
-              -4.9984300000000985
+              -47,
+              -5
             ]
           }
         }

@@ -13,8 +13,8 @@
 ## Release app configuration
 
 - [ ] Set Release `ANGLES_API_BASE_URL` to the operator-owned production HTTPS API.
-- [ ] Set Release `ANGLES_PRIVACY_POLICY_URL` and `ANGLES_TERMS_OF_SERVICE_URL`.
-- [ ] Set either `ANGLES_SUPPORT_URL` or `ANGLES_SUPPORT_EMAIL`.
+- [x] Set Release `ANGLES_PRIVACY_POLICY_URL` and `ANGLES_TERMS_OF_SERVICE_URL` to `https://useangles.app/privacy` and `/terms`.
+- [x] Set `ANGLES_SUPPORT_URL` to `https://useangles.app/support`.
 - [ ] Open all three destinations from the archived app.
 - [ ] Confirm bundle ID, Apple team, signing, Sign in with Apple, In-App Purchase, version/build, export compliance, and privacy manifest.
 
@@ -49,8 +49,8 @@
 
 ## Legal and App Store submission
 
-- [ ] Replace every legal operator/contact/address/governing-law placeholder and complete the provider-retention/training review.
-- [ ] Publish privacy policy and terms at the configured URLs.
+- [x] Replace every legal operator/contact/address/governing-law placeholder. The privacy policy states that provider retention and model-improvement controls can vary, and it does not claim a training opt-out.
+- [x] Publish privacy policy and terms at `https://useangles.app/privacy` and `/terms`. Support is at `/support`.
 - [ ] Complete App Privacy labels from actual app/server behavior.
 - [ ] Complete the age rating for AI-generated content, mental-health themes, and public user-generated content.
 - [ ] Upload final screenshots for required device sizes and any preview media.

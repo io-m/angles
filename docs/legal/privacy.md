@@ -1,12 +1,10 @@
 # Angles Privacy Policy
 
-Last updated: September 25, 2026
+Last updated: September 30, 2026
 
-> **HOSTING REQUIRED BEFORE RELEASE:** Publish this policy at the URL configured as `ANGLES_PRIVACY_POLICY_URL`.
->
-> **OPERATOR DETAILS REQUIRED BEFORE RELEASE:** Replace `[LEGAL OPERATOR]`, `[PRIVACY CONTACT]`, and `[MAILING ADDRESS]` below with the legal operator's real details. Do not publish those placeholders as final contact information.
+Published at `https://useangles.app/privacy` (`ANGLES_PRIVACY_POLICY_URL`).
 
-Angles (“we,” “us,” or “our”) is operated by **[LEGAL OPERATOR]**. This policy explains how Angles handles information when you use the iOS app and its services.
+Angles (“we,” “us,” or “our”) is operated by **Bithavn**, an Enkeltmandsvirksomhed in Denmark, CVR 46705130. This policy explains how Angles handles information when you use the iOS app and its services.
 
 ## Information we handle
 
@@ -34,7 +32,7 @@ We use this information to:
 
 Angles sends the thought text and conversation context needed to generate a response to the configured large-language-model provider. We choose the provider for each step on our servers; it may be Mistral AI, Google Gemini, or DeepSeek, and if the first provider is unavailable the same request may be sent to another of them. Those providers process the content on our behalf or under the service configuration and terms applicable to our account.
 
-Do not use Angles for emergency or highly sensitive information. Provider retention, regional processing, and model-improvement controls can vary by provider and configuration. **[OPERATOR REVIEW REQUIRED BEFORE HOSTING: confirm the production provider contracts, retention settings, and any model-training opt-out, then add links to the applicable provider notices.]**
+Do not use Angles for emergency or highly sensitive information. Provider retention, regional processing, and model-improvement controls can vary by provider and configuration.
 
 ## Private and public content
 
@@ -81,6 +79,6 @@ We may update this policy as Angles changes. We will update the date above and p
 
 ## Contact
 
-Privacy requests: **[PRIVACY CONTACT — REQUIRED BEFORE HOSTING]**
+Privacy requests: **info@bithavn.app**
 
-Postal address: **[MAILING ADDRESS — REQUIRED BEFORE HOSTING]**
+Postal address: **c/o Josip Miljak, Hannemanns Allé 4A, st. 3., 2300 København S, Denmark**
