@@ -1,6 +1,17 @@
 import SwiftUI
 import WidgetKit
 
+/// Home-screen widgets always render as light cards with dark copy, independent of system appearance.
+private enum AnglesWidgetPalette {
+    static let brand = Color(red: 0.968, green: 0.451, blue: 0.037)
+    static let ink = Color(red: 0x14 / 255, green: 0x13 / 255, blue: 0x12 / 255)
+    static let inkMuted = Color(red: 0x3A / 255, green: 0x2E / 255, blue: 0x12 / 255).opacity(0.72)
+    static let composePaper = [
+        Color(red: 0xFD / 255, green: 0xFB / 255, blue: 0xF8 / 255),
+        Color(red: 0xF0 / 255, green: 0xEB / 255, blue: 0xE2 / 255),
+    ]
+}
+
 @main
 struct AnglesWidgetBundle: WidgetBundle {
     var body: some Widget {
@@ -66,8 +77,14 @@ private struct FavoriteAngleView: View {
                 emptyState
             }
         }
+        .environment(\.colorScheme, family == .accessoryRectangular ? .dark : .light)
+        .foregroundStyle(family == .accessoryRectangular ? Color.white : AnglesWidgetPalette.ink)
         .containerBackground(for: .widget) {
-            background(for: entry.item?.style)
+            if family == .accessoryRectangular {
+                AccessoryWidgetBackground()
+            } else {
+                background(for: entry.item?.style)
+            }
         }
         .widgetURL(AnglesWidgetConstants.favoritesURL)
     }
@@ -75,13 +92,17 @@ private struct FavoriteAngleView: View {
     @ViewBuilder
     private func content(_ item: FavoriteAngleWidgetItem) -> some View {
         if family == .accessoryRectangular {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.styleDisplayName)
-                    .font(.caption2.weight(.semibold))
-                Text(item.answer)
-                    .font(.caption)
-                    .lineLimit(2)
-                    .privacySensitive()
+            HStack(alignment: .top, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.styleDisplayName)
+                        .font(.caption2.weight(.semibold))
+                    Text(item.answer)
+                        .font(.caption)
+                        .lineLimit(2)
+                        .privacySensitive()
+                }
+                Spacer(minLength: 0)
+                AnglesWidgetBrandMark(size: 14, emphasis: .accessory)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
@@ -92,8 +113,9 @@ private struct FavoriteAngleView: View {
                     Spacer(minLength: 0)
                     if let lifeAreaLabel = item.lifeAreaLabel, family == .systemMedium {
                         Text(lifeAreaLabel)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AnglesWidgetPalette.inkMuted)
                     }
+                    AnglesWidgetBrandMark(size: family == .systemSmall ? 16 : 18, emphasis: .home)
                 }
                 .font(.caption.weight(.semibold))
 
@@ -111,10 +133,13 @@ private struct FavoriteAngleView: View {
 
     private var emptyState: some View {
         VStack(alignment: family == .accessoryRectangular ? .leading : .center, spacing: 6) {
-            Image(systemName: "heart")
-                .font(.title3)
+            AnglesWidgetBrandMark(
+                size: family == .accessoryRectangular ? 16 : 22,
+                emphasis: family == .accessoryRectangular ? .accessory : .home
+            )
             Text("Heart an angle to keep it close.")
                 .font(.caption.weight(.medium))
+                .foregroundStyle(family == .accessoryRectangular ? Color.white : AnglesWidgetPalette.ink)
                 .multilineTextAlignment(family == .accessoryRectangular ? .leading : .center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -219,55 +244,152 @@ private struct WriteThoughtView: View {
 
     var body: some View {
         Group {
-            if family == .accessoryCircular {
+            switch family {
+            case .accessoryCircular:
                 ZStack {
                     AccessoryWidgetBackground()
-                    AnglesWidgetMark(size: 27)
+                    AnglesWidgetBrandMark(size: 42, emphasis: .accessory)
                 }
-            } else if family == .accessoryRectangular {
+            case .accessoryRectangular:
                 HStack(spacing: 7) {
-                    AnglesWidgetMark(size: 18)
+                    AnglesWidgetBrandMark(size: 18, emphasis: .accessory)
                     Text("Break the spiral")
                         .font(.headline)
                 }
-            } else {
+                .foregroundStyle(.white)
+            default:
                 VStack(spacing: 10) {
-                    AnglesWidgetMark(size: 42)
+                    AnglesWidgetBrandMark(size: 46, emphasis: .home)
                     Text("Break the spiral")
                         .font(.headline)
+                        .foregroundStyle(AnglesWidgetPalette.ink)
                         .multilineTextAlignment(.center)
                     Text("Write a thought")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AnglesWidgetPalette.inkMuted)
                 }
+                .environment(\.colorScheme, .light)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.97, green: 0.94, blue: 0.88),
-                    Color(red: 0.89, green: 0.85, blue: 0.78),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            switch family {
+            case .accessoryCircular, .accessoryRectangular:
+                AccessoryWidgetBackground()
+            default:
+                LinearGradient(
+                    colors: AnglesWidgetPalette.composePaper,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
         }
         .widgetURL(AnglesWidgetConstants.composeURL)
         .accessibilityLabel("Write a thought in Angles")
     }
 }
 
-private struct AnglesWidgetMark: View {
+private enum AnglesWidgetBrandMarkEmphasis {
+    /// Home-screen widget on the warm paper card.
+    case home
+    /// Lock Screen accessory plate: darker back, brighter front, like the orange icon.
+    case accessory
+}
+
+/// Two-layer mark with the same orange gradients as the app icon (`InspireMark`).
+/// Laid out at the requested size so WidgetKit never archives a 1024pt canvas.
+private struct AnglesWidgetBrandMark: View {
     let size: CGFloat
+    var emphasis: AnglesWidgetBrandMarkEmphasis = .home
+
+    private static let canvas: CGFloat = 1024
 
     var body: some View {
-        Image("AnglesMark")
+        ZStack {
+            placedLayer(
+                "InspireMarkBack",
+                style: backGradient,
+                width: 777,
+                height: 754,
+                scale: 0.9,
+                translation: CGSize(width: 45, height: 13)
+            )
+            placedLayer(
+                "InspireMarkFront",
+                style: frontGradient,
+                width: 775,
+                height: 771,
+                scale: 0.9,
+                translation: CGSize(width: -49.66155, height: -5.3726)
+            )
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    private func placedLayer(
+        _ name: String,
+        style: LinearGradient,
+        width: CGFloat,
+        height: CGFloat,
+        scale: CGFloat,
+        translation: CGSize
+    ) -> some View {
+        Image(name)
             .renderingMode(.template)
             .resizable()
-            .scaledToFit()
-            .frame(width: size, height: size)
-            .accessibilityHidden(true)
+            .frame(
+                width: size * width / Self.canvas,
+                height: size * height / Self.canvas
+            )
+            .scaleEffect(scale)
+            .offset(
+                x: size * translation.width / Self.canvas,
+                y: size * translation.height / Self.canvas
+            )
+            .foregroundStyle(style)
+    }
+
+    private var backGradient: LinearGradient {
+        switch emphasis {
+        case .home:
+            return LinearGradient(
+                colors: [
+                    Color(red: 1, green: 0.712, blue: 0),
+                    Color(red: 0.968, green: 0.451, blue: 0.037),
+                ],
+                startPoint: UnitPoint(x: 0.10, y: 0),
+                endPoint: UnitPoint(x: 0.78, y: 1)
+            )
+        case .accessory:
+            // Same stops as the orange body: brighter at the top-left, deeper at the bottom-right.
+            return LinearGradient(
+                colors: [Color(white: 0.62), Color(white: 0.34)],
+                startPoint: UnitPoint(x: 0.10, y: 0),
+                endPoint: UnitPoint(x: 0.78, y: 1)
+            )
+        }
+    }
+
+    private var frontGradient: LinearGradient {
+        switch emphasis {
+        case .home:
+            return LinearGradient(
+                colors: [
+                    Color(red: 1, green: 0.789, blue: 0.370).opacity(0.9),
+                    Color(red: 1, green: 0.578, blue: 0),
+                ],
+                startPoint: UnitPoint(x: 0.13, y: 0),
+                endPoint: UnitPoint(x: 1, y: 1)
+            )
+        case .accessory:
+            // Same stops as the gold highlight: brighter than the back, with a visible falloff.
+            return LinearGradient(
+                colors: [Color.white, Color(white: 0.82)],
+                startPoint: UnitPoint(x: 0.13, y: 0),
+                endPoint: UnitPoint(x: 1, y: 1)
+            )
+        }
     }
 }
 

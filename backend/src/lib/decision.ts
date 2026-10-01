@@ -227,7 +227,8 @@ export function isGenericBounceContinue(message: string): boolean {
     /not\s+(a\s+)?(clear|real|actual)\s+thought/.test(lower) ||
     /no\s+(clear|real|actual)\s+thought/.test(lower) ||
     /\brephrase\b/.test(lower) ||
-    /\btry again\b/.test(lower)
+    /\btry again\b/.test(lower) ||
+    /\bwhat (?:situation )?are you stuck on\b/.test(lower)
   ) {
     return true;
   }
@@ -387,18 +388,29 @@ function normalizeSkipped(values: readonly SkippedStyle[] | null | undefined): S
 }
 
 /**
- * A style the model both chose and skipped counts as skipped. Tough love is held back
- * from someone blaming themselves for a loss even when the model wrote it in.
+ * A style the model both chose and skipped counts as skipped. Stoic and optimistic
+ * are written even if the model tried to skip them. Tough love is held back from
+ * someone blaming themselves for a loss even when the model wrote it in.
  */
 function chooseStyles(
   requested: Style[],
   skipped: SkippedStyle[],
   selfBlameLoss: boolean,
 ): { styles: Style[]; skippedStyles: SkippedStyle[] } {
-  let skippedStyles = skipped;
+  let skippedStyles = skipped.filter((item) => item.style !== "stoic" && item.style !== "optimistic");
   const base =
     requested.length > 0 ? requested : STYLES.filter((style) => !skipped.some((item) => item.style === style));
-  let styles = base.filter((style) => !skipped.some((item) => item.style === style));
+  let styles = base.filter((style) => !skippedStyles.some((item) => item.style === style));
+  let restored = false;
+  for (const style of ["stoic", "optimistic"] as const) {
+    if (skipped.some((item) => item.style === style) && !styles.includes(style)) {
+      styles.push(style);
+      restored = true;
+    }
+  }
+  if (restored) {
+    styles = STYLES.filter((style) => styles.includes(style));
+  }
   if (styles.length === 0) {
     styles = base;
     skippedStyles = skipped.filter((item) => !base.includes(item.style));
@@ -455,7 +467,7 @@ export function parseDecision(raw: string, options: ParseOptions = {}): Decision
   if (wordCount(thought) > maxWords || thought.length > maxChars) {
     throw new DecisionParseError(
       "cleaned thought was far over the card budget",
-      `Your "thought_en" was ${wordCount(thought)} words and ${thought.length} characters. Rewrite it in at most ${THOUGHT_MAX_WORDS} words and ${THOUGHT_MAX_CHARS} characters: keep the sting, drop side details.`,
+      `Your "thought_en" was ${wordCount(thought)} words and ${thought.length} characters. Rewrite it in at most ${THOUGHT_MAX_WORDS} words and ${THOUGHT_MAX_CHARS} characters: keep the sting if there is one, or the gladness if the thought is good news, and drop side details.`,
     );
   }
 

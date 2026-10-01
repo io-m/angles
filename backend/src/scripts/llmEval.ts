@@ -119,7 +119,9 @@ function modelArg(name: string): LlmModelId | undefined {
   return value as LlmModelId;
 }
 
-const JUDGE_PROMPT = `You grade reframes written for Angles, an app where someone types a negative thought and gets it reframed in up to four styles on a small card. Be a demanding editor: 3 is merely acceptable, 5 is something a person would screenshot and share.
+const JUDGE_PROMPT = `You grade reframes written for Angles, an app where someone types a thought, hard or good, and gets angles on it in up to four styles on a small card. Be a demanding editor: 3 is merely acceptable, 5 is something a person would screenshot and share.
+
+If the thought is already good news and names no complaint, grade the card on sharpening and keeping that feeling. Hunting for a hidden problem, warning that it will not last, or pushing a fix they did not ask for lowers specific and kind. On that thought, tough love protects what is working with one concrete move.
 
 Style targets:
 - stoic: austere, calm, unsentimental. Separates the event from their judgment of it, or what they control from what they do not, or takes the long view. No cheerleading.

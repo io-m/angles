@@ -359,6 +359,59 @@ describe("POST /reframe", () => {
     );
   });
 
+  it("repairs a stuck-on continue when the thought is already good news", async () => {
+    stubDecision(
+      continueDecision({
+        message: "That sounds like a positive shift. What situation are you stuck on right now?",
+        options: [
+          "I'm not stuck, I'm just testing",
+          "I'm happy with my unemployment",
+          "I'm unsure about my side projects",
+        ],
+      }),
+      readyDecision({
+        thought_en:
+          "I am happy about being unemployed right now, because I can be with my son and work on side projects.",
+        category: "work",
+        tags: ["unemployment", "son", "side_projects"],
+        intensity: 1,
+        emotions: [],
+        timeframe: "ongoing",
+      }),
+    );
+
+    const response = await post({
+      text: "I am actually very happy about the current state of my unemployment! I can be with my son and work on side projects",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await jsonOf(response)) as ReadyBody;
+    expect(body.kind).toBe("ready");
+    expect(body.thought).toContain("happy");
+    expect(body.thought).toContain("son");
+    expect(body.meta.emotions).toEqual([]);
+    expect(body.results).toHaveLength(4);
+    expect(generateJson).toHaveBeenCalledTimes(3);
+    const repairPrompt = vi.mocked(generateJson).mock.calls[1]?.[0].systemPrompt ?? "";
+    expect(repairPrompt).toContain("already names a situation");
+    expect(repairPrompt).toContain("keep the gladness");
+  });
+
+  it("still asks what they are stuck on when the input is only ugh", async () => {
+    stubDecision(
+      continueDecision({
+        message: "What situation are you stuck on right now?",
+        options: [],
+      }),
+    );
+
+    const body = (await jsonOf(await post({ text: "ugh" }))) as ContinueBody;
+    expect(body.kind).toBe("continue");
+    expect(body.message).toContain("stuck on");
+    expect(generateJson).toHaveBeenCalledTimes(1);
+    expect(generateReframe).not.toHaveBeenCalled();
+  });
+
   it("keeps a continue that names the missing fact", async () => {
     stubDecision(
       continueDecision({

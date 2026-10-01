@@ -65,7 +65,7 @@ struct InspireMark: View {
         case .brand:
             AnyShapeStyle(backGradient)
         case .monochrome(let color):
-            AnyShapeStyle(color)
+            AnyShapeStyle(monochromeBackGradient(color))
         }
     }
 
@@ -74,8 +74,24 @@ struct InspireMark: View {
         case .brand:
             AnyShapeStyle(frontGradient)
         case .monochrome(let color):
-            AnyShapeStyle(color)
+            AnyShapeStyle(monochromeFrontGradient(color))
         }
+    }
+
+    private func monochromeBackGradient(_ color: Color) -> LinearGradient {
+        LinearGradient(
+            colors: [color.opacity(0.75), color.opacity(0.4)],
+            startPoint: UnitPoint(x: 0.10, y: 0),
+            endPoint: UnitPoint(x: 0.78, y: 1)
+        )
+    }
+
+    private func monochromeFrontGradient(_ color: Color) -> LinearGradient {
+        LinearGradient(
+            colors: [color, color.opacity(0.82)],
+            startPoint: UnitPoint(x: 0.13, y: 0),
+            endPoint: UnitPoint(x: 1, y: 1)
+        )
     }
 
     private var backGradient: LinearGradient {

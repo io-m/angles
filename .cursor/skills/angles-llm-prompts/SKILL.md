@@ -8,7 +8,7 @@ description: Edit Angles reframe system prompts and style tone. Use when changin
 All prompt copy lives in `backend/src/lib/prompts.ts`:
 
 - `DECISION_PROMPT` (triage), plus the repair and force-ready fragments.
-- `STYLE_VOICES`, one entry per style: label, voice, technique menu, banned openers, and how it meets a heavy thought.
+- `STYLE_VOICES`, one entry per style: label, voice, technique menu, banned openers, how it meets a heavy thought (`heavy`), and how it meets good news (`savor`).
 - `STYLE_BATCH_PROMPT`: one JSON call that writes a hidden plan and then every chosen style.
 - `SYSTEM_PROMPTS: Record<Style, string>`: single-style recook and lint rewrite.
 - `GOLD_CARDS`: worked examples shared by both writer prompts.
@@ -22,8 +22,9 @@ The one call that decides `continue` vs `ready`, cleans the thought into card co
 
 Load-bearing rules, do not weaken them casually:
 
-- `ready` is the default. Heavy is not the same as unclear: grief, loss, self-hatred and hopelessness get cooked. Styles adapt to a heavy thought (each voice's `heavy` line) rather than being skipped; skip only a real mismatch. `chooseStyles` also removes tough love from a loss the person blames themselves for, whatever the model says.
+- `ready` is the default. Heavy is not the same as unclear: grief, loss, self-hatred and hopelessness get cooked. Styles adapt to a heavy thought (each voice's `heavy` line) rather than being skipped; skip only a real mismatch. `chooseStyles` always writes stoic and optimistic, and removes tough love from a loss the person blames themselves for, whatever the model says.
 - If you can name the situation in one clause, cook it. Broken English, typos, rudeness, and irritation at family are thoughts. Never bounce with "I didn't catch a thought" / "try again".
+- Good news is a thought too. A happy moment with no complaint cooks on the first turn as a savor cook (`SAVOR_RULES` plus each voice's `savor` line): keep the gladness, never hunt for a hidden problem. A glad-and-worried thought cooks the worry and keeps the good fact. On a first turn that already looks like a thought, a "what are you stuck on" continue is rejected as a bounce and repaired.
 - The first turn is framed in English (`They typed: …`) so a short non-English input still gets an English decision.
 - Safety is only suicide, self-harm (including passive wishes not to wake up or to disappear), harm to others, or abuse. They never get a reframe. `safetyScreen.ts` catches explicit and passive self-harm phrasing and overrides a model's `none`. It has lists for English, Croatian/Bosnian/Serbian, German, Spanish, French, Portuguese, Italian, Dutch, Polish, Russian, Ukrainian, Turkish, Indonesian, Swedish, Danish, and Norwegian, and on a ready turn it also reads the model's English `thought`, which covers every other language. Every new phrase needs an idiom test that must not match ("mourir de rire"). Keep the prompt's passive examples and the screen in step. The model never writes a phone number, hotline, or country; `crisisResources.ts` adds the line for the phone's region, and a crisis message containing a digit is replaced with `SAFETY_FALLBACK_MESSAGE`. An unknown safety label is read as `self_harm`.
 - Skip reasons are written as user-facing sentences: a recook of a skipped style returns that reason verbatim.
@@ -89,7 +90,7 @@ The golden thoughts are `backend/eval/thoughts.json`. The report gives kind, cat
 ## Adding a style
 
 1. Add the key to `STYLES` in `backend/src/types/index.ts`.
-2. Add its `STYLE_VOICES` entry (voice, techniques, banned openers, heavy) and a gold answer in every `GOLD_CARDS` card.
+2. Add its `STYLE_VOICES` entry (voice, techniques, banned openers, heavy, savor) and a gold answer in every `GOLD_CARDS` card.
 3. Add the Swift `Style` case with the same raw value.
 4. Teach `DECISION_PROMPT` when it fits.
 5. Extend tests and run the eval. Do not special-case the LLM client per style.

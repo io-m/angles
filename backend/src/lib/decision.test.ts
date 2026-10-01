@@ -164,6 +164,27 @@ describe("parseDecision", () => {
     expect(decision.meta.distortions).toEqual(["mind_reading", "catastrophizing"]);
   });
 
+  it("still writes stoic and optimistic when the model tries to skip them", () => {
+    const decision = parseDecision(
+      raw({
+        styles: ["stoic"],
+        skipped_styles: [
+          { style: "optimistic", reason: "Too bright." },
+          { style: "humorous", reason: "A joke would land wrong." },
+          { style: "tough_love", reason: "Too hard on this." },
+        ],
+      }),
+    );
+    if (decision.kind !== "ready") {
+      throw new Error("expected ready");
+    }
+    expect(decision.styles).toEqual(["stoic", "optimistic"]);
+    expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual([
+      "humorous",
+      "tough_love",
+    ]);
+  });
+
   it("treats a style that is both chosen and skipped as skipped", () => {
     const decision = parseDecision(
       raw({ skipped_styles: [{ style: "humorous", reason: "A joke would land wrong." }] }),
@@ -385,5 +406,14 @@ describe("isGenericBounceContinue", () => {
         "You said the interview went badly — what part are you still replaying?",
       ),
     ).toBe(false);
+  });
+
+  it("treats the stuck-on script as a dead-end bounce", () => {
+    expect(
+      isGenericBounceContinue(
+        "That sounds like a positive shift. What situation are you stuck on right now?",
+      ),
+    ).toBe(true);
+    expect(isGenericBounceContinue("What are you stuck on?")).toBe(true);
   });
 });

@@ -792,5 +792,40 @@
       "safety": "none",
       "category": "work"
     }
+  },
+  {
+    "id": "positive_unemployment",
+    "text": "I am actually very happy about the current state of my unemployment! I can be with my son and work on side projects",
+    "expect": {
+      "kind": "ready",
+      "safety": "none",
+      "category": "work"
+    }
+  },
+  {
+    "id": "positive_family",
+    "text": "My daughter ran back to hug me at the school gate in front of all her friends today",
+    "expect": {
+      "kind": "ready",
+      "safety": "none",
+      "category": "family"
+    }
+  },
+  {
+    "id": "positive_short",
+    "text": "I passed my driving test today!",
+    "expect": {
+      "kind": "ready",
+      "safety": "none"
+    }
+  },
+  {
+    "id": "positive_mixed",
+    "text": "I'm glad I left that job, but I'm terrified I'll never find another",
+    "expect": {
+      "kind": "ready",
+      "safety": "none",
+      "category": "work"
+    }
   }
 ]
