@@ -69,6 +69,7 @@ describe("community fixture", () => {
         expect(wordCount(result.reframe)).toBeLessThanOrEqual(REFRAME_MAX_WORDS);
         expect(result.reframe.length).toBeGreaterThanOrEqual(REFRAME_MIN_CHARS);
         expect(result.reframe.length).toBeLessThanOrEqual(REFRAME_MAX_CHARS);
+        expect(result.reframe[0]).toMatch(/[A-Z]/);
       }
     }
   });

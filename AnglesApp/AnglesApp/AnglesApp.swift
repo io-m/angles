@@ -159,10 +159,12 @@ struct AppRoot: View {
                 GeometryReader { proxy in
                     SaveCelebrationCover(
                         label: saveCoverLabel,
-                        playsAnimation: !reduceMotion
+                        playsAnimation: !reduceMotion,
+                        safeAreaInsets: homeSafeAreaInsets,
+                        size: proxy.size
                     )
                     .frame(width: proxy.size.width, height: proxy.size.height)
-                    .offset(y: saveCoverPresented ? 0 : -proxy.size.height)
+                    .offset(x: saveCoverPresented ? 0 : proxy.size.width)
                 }
                 .ignoresSafeArea()
                 .allowsHitTesting(saveCoverPresented)
@@ -714,8 +716,15 @@ struct AppRoot: View {
         withoutAnimations {
             isComposePresented = false
         }
-        let slide = reduceMotion ? 0.2 : 0.48
-        withAnimation(.easeInOut(duration: slide)) {
+        slideSaveCoverAway {
+            viewModel.highlightSavedCard(cardID)
+        }
+    }
+
+    /// The ride is already moving, so the cover leaves with speed instead of easing in from a stop.
+    private func slideSaveCoverAway(_ completion: @escaping () -> Void) {
+        let slide = reduceMotion ? 0.2 : 0.38
+        withAnimation(.easeOut(duration: slide)) {
             saveCoverPresented = false
         }
         Task { @MainActor in
@@ -724,7 +733,7 @@ struct AppRoot: View {
                 return
             }
             saveCoverLabel = nil
-            viewModel.highlightSavedCard(cardID)
+            completion()
         }
     }
 

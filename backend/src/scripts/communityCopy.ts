@@ -473,48 +473,53 @@ const ORIGINALS: { thoughtOriginal: string; inputLanguage: string }[] = [
   { thoughtOriginal: "Imam osjećaj da sam gost u kući u kojoj sam naučio hodati.", inputLanguage: "hr" },
 ];
 
+/** Sentence-initial scene phrases are stored lowercase so they can sit mid-sentence. */
+function lead(core: string): string {
+  return core.charAt(0).toUpperCase() + core.slice(1);
+}
+
 const STOIC: Array<(core: string) => string> = [
   (core) => `Name ${core} as a fact, not a trial. You do not have to retry the scene until it likes you. Put the verdict down and tend to the next small thing in front of you.`,
   (core) => `The sting of ${core} is allowed. It does not get to appoint itself manager of the rest of the day. Feel it once, then give the afternoon back its own errands.`,
   (core) => `Hold ${core} without adding a second story. What happened is enough; the verdict can wait. One true sentence is plenty; the commentary is optional.`,
   (core) => `You can carry ${core} and still put your feet on the next ordinary task. Endurance is not a performance. Nobody is scoring this; just do the next plain thing.`,
-  (core) => `${core} does not get a gavel. Mark it, breathe once, and return to what is actually in your hands. The docket is closed; the kettle and the inbox are not.`,
+  (core) => `${lead(core)} does not get a gavel. Mark it, breathe once, and return to what is actually in your hands. The docket is closed; the kettle and the inbox are not.`,
   (core) => `Let ${core} be smaller than the whole afternoon. Facts fit in a sentence; spirals do not. Shrink it to its true size and let the rest of the day stay its own.`,
   (core) => `You survived ${core} already. The replay is optional unpaid labor. Set it down when the hour turns. The shift is over; stop volunteering for the night watch.`,
   (core) => `Stay with ${core} long enough to tell the truth, then stop decorating it. Clarity is a kind of mercy. Say the plain part once, then let the garnish go.`,
 ];
 
 const OPTIMISTIC: Array<(core: string) => string> = [
-  (core) => `${core} is a hard chapter, not the whole book. You still get a next page that is not this sting. The story has more rooms than this one.`,
+  (core) => `${lead(core)} is a hard chapter, not the whole book. You still get a next page that is not this sting. The story has more rooms than this one.`,
   (core) => `Nothing about ${core} cancels the person who noticed it. That noticing is already a kind of strength. Keep that witness around; it is on your side.`,
   (core) => `You can want more than ${core} without being ungrateful. Wanting is information, not a character flaw. Let the want point you instead of shaming you.`,
   (core) => `This moment around ${core} is loud, not final. Tomorrow still has room for a kinder move. Loud passes; you get to choose what stays.`,
   (core) => `You found the words for ${core}. That means you are not stuck as a mute extra in your own life. Naming it is already a line of dialogue back.`,
-  (core) => `${core} hurts because you are paying attention. Attention can also pick the next small repair. Aim that same care at one fixable inch.`,
+  (core) => `${lead(core)} hurts because you are paying attention. Attention can also pick the next small repair. Aim that same care at one fixable inch.`,
   (core) => `There is still a version of the day after ${core} where you are not only the wound. Leave a light on for it. It does not have to arrive today to be real.`,
   (core) => `You do not have to believe in a grand arc yet. One honest next step after ${core} still counts as hope. Small and true beats big and performed.`,
 ];
 
 const HUMOROUS: Array<(core: string) => string> = [
-  (core) => `${core} is not a personality. Put the phone down before it starts charging overtime for the spiral. It has already billed enough hours this week.`,
+  (core) => `${lead(core)} is not a personality. Put the phone down before it starts charging overtime for the spiral. It has already billed enough hours this week.`,
   (core) => `If ${core} were a coworker it would be on a performance plan. You do not have to keep it in the group chat. Mute the thread; keep the snacks.`,
   (core) => `Congratulations, your brain made a documentary about ${core} that nobody asked to stream. Credits can roll. No sequel greenlit at this time.`,
-  (core) => `${core} would like a TED talk. Give it ninety seconds, then go drink water like a person with a body. Hydrated people spiral less. Allegedly.`,
-  (core) => `You are not a court. ${core} does not get unlimited closing arguments just because you are still awake. Adjourned. The blanket is the bailiff now.`,
+  (core) => `${lead(core)} would like a TED talk. Give it ninety seconds, then go drink water like a person with a body. Hydrated people spiral less. Allegedly.`,
+  (core) => `You are not a court. ${lead(core)} does not get unlimited closing arguments just because you are still awake. Adjourned. The blanket is the bailiff now.`,
   (core) => `Let ${core} sit in the cheap seats. Front row is for dinner, not for a thought that will not tip. It can heckle from the back all it wants.`,
-  (core) => `${core} is doing jazz hands in a quiet room. You can clap once and still leave at intermission. Polite applause, then the exit.`,
+  (core) => `${lead(core)} is doing jazz hands in a quiet room. You can clap once and still leave at intermission. Polite applause, then the exit.`,
   (core) => `Your inner narrator about ${core} needs an editor with a red pen and a bedtime. Fire the intern. Severance package: one (1) nap.`,
 ];
 
 const TOUGH: Array<(core: string) => string> = [
   (core) => `Stop auditioning for ${core}. Do the next useful thing, even if it is small and unglamorous. Ten honest minutes will tell you the truth.`,
-  (core) => `${core} is not paying rent in your head. Evict the replay and keep the fact. Then move. Today, not someday, not after one more scroll.`,
+  (core) => `${lead(core)} is not paying rent in your head. Evict the replay and keep the fact. Then move. Today, not someday, not after one more scroll.`,
   (core) => `You already know what ${core} costs. Quit romanticizing the loop and pick one adult action today. You know the one. Do that one.`,
   (core) => `Nobody is coming to reverse ${core} with a speech. Close the tab. Send the thing. Go to bed on time. Rescue yourself in that order.`,
   (core) => `If ${core} is true, act like it. If it is a story, stop feeding it snacks at midnight. Either way the next move is yours.`,
   (core) => `You do not get extra credit for suffering ${core} beautifully. Choose the boring repair and do it twice. Twice, so it sticks this time.`,
   (core) => `Enough museum time with ${core}. Put the artifact down. Your life is not a guided tour of the wound. Exit through the gift shop of doing something.`,
-  (core) => `${core} can be real and still not be the assignment. Do the assignment. Feelings can walk beside you. They walk; they do not drive.`,
+  (core) => `${lead(core)} can be real and still not be the assignment. Do the assignment. Feelings can walk beside you. They walk; they do not drive.`,
 ];
 
 /** Experiment tall cards: short seed thoughts get one rotated second sentence so the
@@ -577,6 +582,9 @@ export function buildCommunityFixture(): CommunityFixture {
         REFRAME_MIN_CHARS,
         REFRAME_MAX_CHARS,
       );
+      if (!/^[A-Z]/.test(result.reframe)) {
+        throw new Error(`${result.style} reframe starts lowercase: ${result.reframe}`);
+      }
     }
     const user = users[index % users.length]!;
     const intensity = ((index % 5) + 1) as 1 | 2 | 3 | 4 | 5;

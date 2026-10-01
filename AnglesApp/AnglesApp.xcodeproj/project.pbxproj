@@ -61,6 +61,7 @@
 		DE82C4F9220F52D1290B0658 /* FavoriteAngleWidgetPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6FCF753D2258E381FAEC971 /* FavoriteAngleWidgetPublisher.swift */; };
 		DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */; };
 		E2DC973B158B0229CB1C3AD1 /* StyleTabPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA854E5DFB79BE265F1D553D /* StyleTabPager.swift */; };
+		E75F22C6B72811A97A886E9B /* Go to school.lottie in Resources */ = {isa = PBXBuildFile; fileRef = BE68FEE0F7F06EC666CA46A9 /* Go to school.lottie */; };
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
 		E85F482E086576383A6F83CB /* HomeFeedShelfTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */; };
 		E893FFE90BB36CD6A2D17F5C /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */; };
@@ -152,6 +153,7 @@
 		B3956722F5CD9FC2607E738A /* RootTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabBar.swift; sourceTree = "<group>"; };
 		B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnglesApp.swift; sourceTree = "<group>"; };
 		BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedShelfTests.swift; sourceTree = "<group>"; };
+		BE68FEE0F7F06EC666CA46A9 /* Go to school.lottie */ = {isa = PBXFileReference; path = "Go to school.lottie"; sourceTree = "<group>"; };
 		C17DACFE5A32F9B04674495C /* InspireMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspireMark.swift; sourceTree = "<group>"; };
 		C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		C4B72925153855FD655114F4 /* celebration-checkmark.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "celebration-checkmark.json"; sourceTree = "<group>"; };
@@ -264,6 +266,7 @@
 			isa = PBXGroup;
 			children = (
 				C4B72925153855FD655114F4 /* celebration-checkmark.json */,
+				BE68FEE0F7F06EC666CA46A9 /* Go to school.lottie */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -506,6 +509,7 @@
 			files = (
 				2EB391598577F25425C75DFF /* Angles.icon in Resources */,
 				A72468A7C749E204738C1D2C /* Assets.xcassets in Resources */,
+				E75F22C6B72811A97A886E9B /* Go to school.lottie in Resources */,
 				EE449FD94B007E40F14F28AF /* PrivacyInfo.xcprivacy in Resources */,
 				241F7BC96BA7F87308C06C49 /* celebration-checkmark.json in Resources */,
 			);

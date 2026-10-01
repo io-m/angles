@@ -482,6 +482,12 @@ struct ComposeSheetView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .transition(rowTransition)
+            .task {
+                guard !isOnboardingTaste else {
+                    return
+                }
+                await SaveRide.preload()
+            }
         case .error(let message):
             errorRow(message)
                 .transition(rowTransition)
@@ -910,7 +916,7 @@ struct ComposeSheetView: View {
             viewModel.landSavedCard(savedCard, animated: false)
             onSave(savedCard)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 400 : 1000))
+            try? await Task.sleep(for: .milliseconds(reduceMotion ? 400 : 1600))
             onDismissSaveCover(savedCard.id)
         }
     }
@@ -1020,27 +1026,75 @@ private struct AccessibilityHintIfPresent: ViewModifier {
     }
 }
 
+/// One unzip of the ride, started while the answer is on screen, shared with the cover.
+@MainActor
+private enum SaveRide {
+    private static let name = "Go to school"
+    private static var loading: Task<DotLottieFile?, Never>?
+
+    static func preload() async {
+        _ = await load()
+    }
+
+    static func load() async -> DotLottieFile? {
+        if let loading {
+            return await loading.value
+        }
+        let task = Task { try? await DotLottieFile.named(name) }
+        loading = task
+        return await task.value
+    }
+}
+
 struct SaveCelebrationCover: View {
     let label: String
     var playsAnimation: Bool
+    var safeAreaInsets: EdgeInsets
+    var size: CGSize
 
     @Environment(\.colorScheme) private var colorScheme
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
+    /// The file is a 1200 square. The rider occupies x 228...900, y 424...1029, so the
+    /// artboard center is empty sky. These bounds are the bike, which is what we center.
+    private static let canvas: CGFloat = 1200
+    private static let scene = CGRect(x: 228, y: 424, width: 672, height: 605)
+
     var body: some View {
+        let safeWidth = max(size.width - safeAreaInsets.leading - safeAreaInsets.trailing, 1)
+        let safeHeight = max(size.height - safeAreaInsets.top - safeAreaInsets.bottom, 1)
+        let sceneAspect = Self.scene.width / Self.scene.height
+        let targetWidth = min(safeWidth * 0.86, safeHeight * 0.58 * sceneAspect)
+        let side = targetWidth * (Self.canvas / Self.scene.width)
+        let sceneCenter = CGPoint(
+            x: Self.scene.midX / Self.canvas * side,
+            y: Self.scene.midY / Self.canvas * side
+        )
+        let screenCenter = CGPoint(
+            x: safeAreaInsets.leading + safeWidth / 2,
+            y: safeAreaInsets.top + safeHeight / 2
+        )
+
         ZStack {
             theme.paper
 
             if playsAnimation {
-                LottieView(animation: .named("celebration-checkmark"))
-                    .playing()
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 220, height: 220)
+                LottieView {
+                    await SaveRide.load()
+                }
+                .playing()
+                .resizable()
+                .aspectRatio(1, contentMode: .fit)
+                .frame(width: side, height: side)
+                .position(
+                    x: screenCenter.x - (sceneCenter.x - side / 2),
+                    y: screenCenter.y - (sceneCenter.y - side / 2)
+                )
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: size.width, height: size.height)
+        .clipped()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
     }
