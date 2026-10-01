@@ -17,7 +17,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 ## Next up
 
-**No product work is queued.** Rows 9w through 17 are done. Do not invent screens or features.
+**No product work is queued.** Rows 9w through 18 are done. Do not invent screens or features.
 
 What is left is launch setup outside the app: a real server address, Apple production settings, and the App Store listing. Privacy, terms, and support are live at `https://useangles.app`. The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
 
@@ -87,6 +87,7 @@ Loading and error are **states on Results**, not their own screens.
 | 15 | Home style shelves | feature | done | `feedRanking.ts`; `db/feed.ts`; `db/hearts.ts`; `HomeFeedShelf.swift`; `HomeViewModel.swift`; `HomeView.swift` | Each Home style tab is its own ranked shelf for that viewer, and each card has one primary tab per viewer so the tabs mostly show different cards. For you stays the mixed feed. Hearts, follows, and removals share one card record. |
 | 16 | Pre-release hardening | feature | done | `decision.ts`; `crisisResources.ts`; `prompts.ts`; `reframeReplay.ts`; `metering.ts`; `reframe.ts`; `subscriptions.ts`; `cookSignature.ts`; `cards.ts`; `profile.ts`; `schema.ts`; `0016_chilly_molecule_man.sql`; `ReframeModels.swift`; `ReframeService.swift`; `HomeViewModel.swift`; `ComposeSheetView.swift`; `StoreKitManager.swift` | Safety fails closed with region-picked crisis lines; a dropped `/reframe` response replays instead of charging again; access past a failed renewal is grace only; one card per owner-bound cook; account delete never orphans a photo. |
 | 17 | Reframe engine v2 | feature | done | `prompts.ts`; `decision.ts`; `safetyScreen.ts`; `cook.ts`; `cookSchema.ts`; `reframeLint.ts`; `llmClient.ts`; `llmUsage.ts`; `meteringPolicy.ts`; `cookSignature.ts`; `reframe.ts`; `cards.ts`; `mapCard.ts`; `schema.ts`; `0017_wise_aaron_stack.sql`; `llmEval.ts`; `eval/thoughts.json`; `types/index.ts`; `ReframeModels.swift`; `ReframeService.swift`; `HomeViewModel.swift`; `ComposeSheetView.swift`; `ReframeCardView.swift`; `InspireMark.swift` | The server picks the model per step and every cook costs 1 credit; a sharper voice and technique menu per style, a hidden plan, lint with one targeted rewrite, a recook that changes technique, and answers in the writer's own language for its author. |
+| 18 | Favorite Angle + Write a Thought widgets | feature | done | `project.yml`; `Shared/WidgetSnapshot.swift`; `AnglesWidgets/*`; `FavoriteAngleWidgetPublisher.swift`; `HomeViewModel.swift`; `AnglesApp.swift`; `WidgetTests.swift` | WidgetKit extension with a five-minute scheduled, length-adaptive, privacy-sensitive Favorite Angle and an Angles-mark compose shortcut with native Lock Screen material; App Group snapshots and gated deep links keep model calls and auth in the app. |
 
 ### 1. Compose (home)
 

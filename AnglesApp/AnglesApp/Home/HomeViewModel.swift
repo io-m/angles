@@ -424,7 +424,11 @@ private struct BlockAuthorSnapshot {
 @MainActor
 @Observable
 final class HomeViewModel {
-    private(set) var cards: [HomeCard]
+    private(set) var cards: [HomeCard] {
+        didSet {
+            FavoriteAngleWidgetPublisher.publish(cards: cards)
+        }
+    }
 
     /// Outcome of the last pull-to-refresh, with a token so the banner can
     /// re-announce an identical outcome on a second pull.

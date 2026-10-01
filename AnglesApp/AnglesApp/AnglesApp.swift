@@ -51,6 +51,7 @@ struct AppRoot: View {
     @State private var homeArrivalTimedOut = false
     @State private var saveCoverLabel: String?
     @State private var saveCoverPresented = false
+    @State private var pendingWidgetDeepLink: AnglesDeepLink?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -250,6 +251,9 @@ struct AppRoot: View {
         }
         .onChange(of: destination) { old, new in
             handleDestinationChange(from: old, to: new)
+        }
+        .onOpenURL { url in
+            handleWidgetURL(url)
         }
         .onChange(of: sessionStore.session?.id) { _, _ in
             if let session = sessionStore.session {
@@ -509,6 +513,7 @@ struct AppRoot: View {
                 withAnimation(coveringFrostAnimation) {
                     homeRevealPhase = .visible
                 }
+                applyPendingWidgetDeepLinkIfPossible()
             }
         case .hidden, .animating, .visible:
             return
@@ -640,6 +645,34 @@ struct AppRoot: View {
     }
 
     // MARK: - Compose
+
+    private func handleWidgetURL(_ url: URL) {
+        guard let deepLink = AnglesDeepLink(url: url) else {
+            return
+        }
+        pendingWidgetDeepLink = deepLink
+        applyPendingWidgetDeepLinkIfPossible()
+    }
+
+    private func applyPendingWidgetDeepLinkIfPossible() {
+        guard isHomeRevealed, let deepLink = pendingWidgetDeepLink else {
+            return
+        }
+        pendingWidgetDeepLink = nil
+
+        switch deepLink {
+        case .favorites:
+            withoutAnimations {
+                isComposePresented = false
+                browsePath.removeAll()
+                viewModel.profileGridFilter = .favorites
+                selectedTab = .profile
+                lastContentTab = .profile
+            }
+        case .compose:
+            presentCompose()
+        }
+    }
 
     private func presentCompose() {
         guard destination == .home, !isComposePresented else {
