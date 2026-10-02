@@ -37,7 +37,7 @@ The production feature work is implemented in the repository. The app is not rea
 
 ## Remaining external blockers
 
-The repo changes from the October 1 audit have shipped (see above). What remains is deployment, operator, Apple, provider, and submission work.
+**The current, ordered list of what is left is [release-checklist.md](release-checklist.md) ("Left to do").** On 2 October 2026 the subscriptions, Grace Period, server notifications, pricing and availability, listing, age rating, review details, and TestFlight were set through the App Store Connect API; the notes below are background.
 
 ### Release app configuration
 
