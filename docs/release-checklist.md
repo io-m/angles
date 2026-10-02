@@ -31,7 +31,7 @@
 - [x] Set `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
 - [ ] Configure `RESEND_API_KEY`, `REPORT_ALERT_FROM` (a sender on a domain verified in Resend), and `REPORT_ALERT_TO`. Without them the API logs `report_alerts_disabled` at startup and the 24-hour review promise has no trigger.
 - [ ] Deploy the release-gaps backend (migrations `0018_report_review` and `0019_terms_acceptance` run at startup) before any build 9 reaches TestFlight: build 9 calls `PUT /profile/terms`, and an older API answers 404 there, which keeps a paid account on the Terms screen.
-- [ ] Report a test card from a second account and confirm the alert email arrives; then run `DATABASE_URL="<DATABASE_PUBLIC_URL>" pnpm reports` and `keep <cardId>` it.
+- [ ] Report a test card from a second account and confirm the alert email arrives; then run `railway ssh --service api --environment production node dist/scripts/reports.js` and `... reports.js keep <cardId>` it.
 - [ ] Delete a test account and confirm no `apple_revoke_exchange_failed` or `apple_revoke_failed` in the Railway logs, and that Settings → Apple ID → Sign in with Apple no longer lists Angles.
 - [ ] Deploy and verify runtime migrations, `/health`, Apple login, avatar upload, taste, purchase sync, 600-credit period creation, cook/save, report, block, and account deletion. Deployed 2 October 2026; `/health` is `{"status":"ok","db":"ok"}`. The rest still needs a device pass.
 

@@ -8,8 +8,8 @@
  *   pnpm reports suspend <userId>     stop an account publishing; all its cards go private
  *   pnpm reports unsuspend <userId>   let it publish again
  *
- * Against production, run it with the Railway Postgres public URL:
- *   DATABASE_URL="<DATABASE_PUBLIC_URL>" pnpm reports
+ * Production Postgres has no public URL, so the image ships this script and it runs in the API container:
+ *   railway ssh --service api --environment production node dist/scripts/reports.js [action] [id]
  */
 import { closePool } from "../db/client.js";
 import {

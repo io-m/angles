@@ -51,7 +51,7 @@ The repo changes from the October 1 audit have shipped (see above). What remains
 - Operator details in `docs/legal/privacy.md` and `docs/legal/terms.md` name Bithavn, CVR 46705130, `info@bithavn.app`, the Copenhagen postal address, and Danish law.
 - The privacy policy names Mistral AI (France) and OpenAI (US), and says each is used through a paid API whose terms forbid training on inputs. Confirm both provider accounts before submission; in OpenAI, keep API input/output sharing off.
 - The site is published at `https://useangles.app` (`/privacy`, `/terms`, `/support`). `www` and plain HTTP redirect to that host. The 2 October 2026 Terms and Privacy text is live.
-- Set `RESEND_API_KEY`, `REPORT_ALERT_FROM`, and `REPORT_ALERT_TO` on Railway, and name who acts on a report email within 24 hours during review and launch (`pnpm reports`); the Terms and the review notes promise a 24-hour review.
+- Set `RESEND_API_KEY`, `REPORT_ALERT_FROM`, and `REPORT_ALERT_TO` on Railway, and name who acts on a report email within 24 hours during review and launch (`railway ssh --service api --environment production node dist/scripts/reports.js`); the Terms and the review notes promise a 24-hour review.
 - Deploy the backend with migrations `0018` and `0019` before build 9 goes to TestFlight.
 
 ### Apple production configuration
