@@ -37,8 +37,8 @@ struct AuthorProfileView: View {
             },
             loadState: { _ in viewModel.authorLoadState(for: route.id) },
             footerState: { _ in viewModel.authorFooterState(for: route.id) },
-            emptyCopy: { tab in
-                tab.emptyCopy(appliedFilter: HomeFeedFilter())
+            emptyState: { tab in
+                tab.emptyState(appliedFilter: HomeFeedFilter(), audience: .author)
             },
             onRetry: { _ in viewModel.retryLoadAuthor(route.id) },
             onRefresh: { _ in await viewModel.refreshAuthor(route.id) },

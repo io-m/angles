@@ -1,10 +1,12 @@
 # Angles Privacy Policy
 
-Last updated: September 30, 2026
+Last updated: October 2, 2026
 
 Published at `https://useangles.app/privacy` (`ANGLES_PRIVACY_POLICY_URL`).
 
-Angles (“we,” “us,” or “our”) is operated by **Bithavn**, an Enkeltmandsvirksomhed in Denmark, CVR 46705130. This policy explains how Angles handles information when you use the iOS app and its services.
+Angles (“we,” “us,” or “our”) is operated by **Bithavn**, an Enkeltmandsvirksomhed in Denmark, CVR 46705130. Bithavn is the data controller. This policy explains how Angles handles information when you use the iOS app and its services.
+
+You may also complain to [Datatilsynet](https://www.datatilsynet.dk/), the Danish data protection authority.
 
 ## Information we handle
 
@@ -12,7 +14,7 @@ Angles (“we,” “us,” or “our”) is operated by **Bithavn**, an Enkeltm
 - **Thoughts and reframes.** We process the text you submit, follow-up answers, generated reframes (in English and, when you write in another language, in that language), the AI model used, language, tags, category, mood, intensity, timeframe, safety classification, and related card metadata. Do not submit information you do not want processed.
 - **Cards and community activity.** Saved cards are private unless you choose to post them publicly. Public cards can be seen by other users. We process favorites, follows, blocks, and reports needed to provide and moderate the community.
 - **Profile photos.** If you choose a photo, we upload and store a JPEG avatar. Avatars are displayed with your public cards and profile activity.
-- **Subscription and purchase information.** Apple processes payment. We receive and verify signed product, entitlement, renewal/expiration, transaction, refund/revocation, and purchase-status information needed to bind membership to your Angles account, restore access, and maintain monthly credit periods. We do not receive your full payment-card details.
+- **Subscription and purchase information.** Apple processes payment. We receive and verify signed product, entitlement, renewal/expiration, transaction, refund/revocation, and purchase-status information needed to bind membership to your Angles account, restore access, and maintain monthly credit periods. When you buy, the app gives Apple your Angles account identifier (a random ID, not your name or email) with the purchase so Apple's records can be matched to your account. We do not receive your full payment-card details.
 - **Usage and metering information.** We maintain account-linked monthly credit balances, request identifiers and text-free request fingerprints, operation status, the AI model used, rate/tariff versions, and abuse-limit counters. For each actual AI-provider attempt, including failed attempts, we record available or estimated token counts, provider request identifiers, success/failure status, and calculated company cost. The metering and provider-cost records do not contain your thought or generated reframe text. So that a lost connection does not charge you twice, we keep the finished response to each request for one hour, encrypted under a key that only your device holds and that we do not store; we cannot read it, and it is deleted after that hour or with your account.
 - **Region.** When you compose, your device's region setting (for example "US") is sent so we can show the right crisis contacts if you need them. It is not sent to AI providers.
 - **Technical and security information.** Our authentication and hosting systems may process IP address, user agent, request timing, errors, and similar security or operational records. We do not log the text of your thoughts in application logs.
@@ -23,6 +25,8 @@ We use this information to:
 
 - authenticate accounts and keep sessions secure;
 - generate reframes, save and display cards, and provide community features;
+- check public posts before other people can see them;
+- order Home for you (see "How Home is ordered");
 - provide, verify, restore, and support subscriptions and monthly credits;
 - enforce privacy choices, blocks, reports, safety rules, and our Terms;
 - prevent abuse, troubleshoot failures, and maintain the service; and
@@ -30,9 +34,15 @@ We use this information to:
 
 ## AI processing
 
-Angles sends the thought text and conversation context needed to generate a response to the configured large-language-model provider. We choose the provider for each step on our servers; it may be Mistral AI, Google Gemini, or DeepSeek, and if the first provider is unavailable the same request may be sent to another of them. Those providers process the content on our behalf or under the service configuration and terms applicable to our account.
+Before your first thought leaves your phone, the app shows a **Before you start** screen that names the AI providers and asks you to agree. Nothing is sent to an AI provider until you tap **Agree and continue**.
 
-Do not use Angles for emergency or highly sensitive information. Provider retention, regional processing, and model-improvement controls can vary by provider and configuration.
+Angles sends the thought you write and your answers to follow-up questions to a large-language-model provider. We choose the provider for each step on our servers: **Mistral AI** (France), **Google Gemini** (Google, United States), or **DeepSeek** (China). If the first provider is unavailable, the same request may be sent to another of them. When you post a card publicly, its text is also sent to one of these providers for an automated moderation check before anyone else can see it. Your region, name, email address, and account identifiers are not sent to AI providers.
+
+We use each provider's paid API service, under terms that do not allow the provider to use what you send to train or improve its models. A provider may keep request data for a limited period for abuse monitoring and legal compliance, as its terms allow, and acts on our instructions. Do not use Angles for emergencies.
+
+## How Home is ordered
+
+Home shows public cards in an order chosen for you. The order uses how recent and how hearted each post is, the life areas and moods of the cards you write and the angles you heart, and the people you follow. It does not use how long you look at a card, and it is never used for advertising. Author pages and your Profile are plain lists and are not personalized. Deleting a card or removing a heart takes it out of this order.
 
 ## Private and public content
 
@@ -45,7 +55,7 @@ Favorites of another person's card remain available only while that card remains
 We disclose information only as needed to operate Angles, including to:
 
 - Apple for Sign in with Apple, StoreKit subscriptions, and App Store services;
-- configured AI providers for reframe generation;
+- the AI providers named above, for reframe generation and the moderation check on public posts;
 - hosting, database, object-storage, authentication, and infrastructure providers;
 - professional advisers, authorities, or counterparties when required by law, safety, fraud prevention, or a business transaction.
 
@@ -57,9 +67,18 @@ We keep account data and saved cards while your account is active and as needed 
 
 You can delete individual cards in the app. You can delete your account in Settings; this deletes your Angles account, cards, social relationships, blocks, reports tied to your account, sessions, and stored avatar from active systems. Backups and provider records may persist for a limited period according to provider backup, security, and legal-retention schedules. Account deletion does not cancel an Apple subscription; manage or cancel it through Apple.
 
-## Security and international processing
+## Legal bases (EEA and UK)
 
-We use reasonable administrative and technical safeguards, but no service is completely secure. Angles and its providers may process information in countries other than your own, subject to applicable legal safeguards.
+- **Contract** (GDPR Article 6(1)(b)): your account, saved cards, subscription, credits, and the community features you choose to use.
+- **Explicit consent** (Articles 6(1)(a) and 9(2)(a)): what you write can reveal information about your health or mental state. We process your thoughts, follow-up answers, and the mood and life-area details derived from them, send them to the AI providers, and use them to order Home, only with the consent you give on the **Before you start** screen. You can withdraw it at any time by deleting cards or your account; that does not affect processing that already happened, and Angles cannot write reframes without it.
+- **Legitimate interests** (Article 6(1)(f)): keeping the service secure, preventing abuse, moderating public posts, handling reports and blocks, and using your hearts and follows to order Home.
+- **Legal obligation** (Article 6(1)(c)): accounting and tax records, and answering lawful requests from authorities.
+
+## Security and international transfers
+
+We use reasonable administrative and technical safeguards, but no service is completely secure.
+
+Some providers process information outside the European Economic Area. Google (Gemini) processes it in the United States, under the EU-U.S. Data Privacy Framework or the European Commission's Standard Contractual Clauses. DeepSeek processes it in China, which has no EU adequacy decision; that transfer relies on Standard Contractual Clauses where the provider offers them and on the explicit consent you give on the **Before you start** screen after being told the country (Article 49(1)(a)). Chinese law may allow authorities there to access data more broadly than EU law would. Our hosting, database, and storage providers may also process information outside the EEA, under Standard Contractual Clauses or an adequacy decision. Write to us for a copy of the safeguards that apply.
 
 ## Children
 
@@ -71,7 +90,7 @@ Angles is a reflection and reframing tool, not medical care, therapy, diagnosis,
 
 ## Your choices and rights
 
-You can make cards private, delete cards, remove an avatar, unfollow or block people, and delete your account in Settings. Depending on your location, you may also have rights to access, correct, delete, restrict, or object to processing, or to receive a portable copy of certain information.
+You can make cards private, delete cards, remove an avatar, unfollow or block people, and delete your account in Settings. Depending on your location, you may also have rights to access, correct, delete, restrict, or object to processing, to withdraw consent, or to receive a portable copy of certain information. Write to info@bithavn.app. You may also complain to Datatilsynet, the Danish data protection authority, or the authority where you live.
 
 ## Changes
 

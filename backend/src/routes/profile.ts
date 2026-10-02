@@ -104,7 +104,8 @@ profileRoute.post(
         return c.json(errorBody(error.message, "SUBSCRIPTION_OWNED_BY_ANOTHER_USER"), 409);
       }
       if (error instanceof AppStoreVerificationError) {
-        const status = error.kind === "configuration" ? 503 : 401;
+        // Never 401: the app treats a 401 as a dead session and would sign a paying user out.
+        const status = error.kind === "configuration" ? 503 : 422;
         const code =
           error.kind === "configuration"
             ? "APP_STORE_NOT_CONFIGURED"

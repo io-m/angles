@@ -47,6 +47,8 @@ struct PaywallView: View {
     let storeKitManager: StoreKitManager
     var showsCelebration = false
     var savedCard: HomeCard? = nil
+    var onLogOut: (() -> Void)? = nil
+    var onDeleteAccount: (() async -> Bool)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -59,6 +61,9 @@ struct PaywallView: View {
     @State private var completionHandled: Bool
     @State private var showsInfoSheet = false
     @State private var infoSheetDetent: PresentationDetent = .large
+    @State private var showsDeleteAccount = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountError: String?
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var usesScrollableMembershipContent: Bool {
@@ -68,11 +73,15 @@ struct PaywallView: View {
     init(
         storeKitManager: StoreKitManager,
         showsCelebration: Bool = false,
-        savedCard: HomeCard? = nil
+        savedCard: HomeCard? = nil,
+        onLogOut: (() -> Void)? = nil,
+        onDeleteAccount: (() async -> Bool)? = nil
     ) {
         self.storeKitManager = storeKitManager
         self.showsCelebration = showsCelebration
         self.savedCard = savedCard
+        self.onLogOut = onLogOut
+        self.onDeleteAccount = onDeleteAccount
         let initialPlan = storeKitManager.priorMembershipProductID
             .flatMap { PaywallPlan(productID: $0) } ?? .annual
         _selectedPlan = State(initialValue: initialPlan)
@@ -247,18 +256,27 @@ struct PaywallView: View {
                             title: "Home",
                             detail: "See how others turned it around. You’re not the only one."
                         )
+                        infoIncludedRow(
+                            icon: "sparkles",
+                            title: "600 credits a month",
+                            detail: "Each new thought or new answer uses one credit. Follow-up questions are free. Credits reset every month."
+                        )
                     }
 
                     restoreButton
 
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Membership")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(theme.sub)
-                            .textCase(.uppercase)
-                            .tracking(0.6)
+                        sheetSectionTitle("Membership")
 
                         legalFooter
+                    }
+
+                    if onLogOut != nil || onDeleteAccount != nil {
+                        VStack(alignment: .leading, spacing: 12) {
+                            sheetSectionTitle("Account")
+
+                            accountActions
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -280,6 +298,99 @@ struct PaywallView: View {
         }
         .presentationDetents([.medium, .large], selection: $infoSheetDetent)
         .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(isDeletingAccount)
+        .alert("Delete account?", isPresented: $showsDeleteAccount) {
+            Button("Delete account", role: .destructive) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                Task { await deleteAccount() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your Angles account and cards. It does not cancel an Apple subscription; cancel that in Settings → Apple Account → Subscriptions.")
+        }
+    }
+
+    private func sheetSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(theme.sub)
+            .textCase(.uppercase)
+            .tracking(0.6)
+    }
+
+    private var accountActions: some View {
+        VStack(spacing: 10) {
+            if let onLogOut {
+                accountActionButton(title: "Log out", color: theme.ink) {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showsInfoSheet = false
+                    onLogOut()
+                }
+            }
+
+            if onDeleteAccount != nil {
+                accountActionButton(
+                    title: isDeletingAccount ? "Deleting your account…" : "Delete account",
+                    color: Color(uiColor: .systemRed),
+                    showsSpinner: isDeletingAccount
+                ) {
+                    guard !isDeletingAccount else {
+                        return
+                    }
+                    showsDeleteAccount = true
+                }
+                .disabled(isDeletingAccount)
+
+                Text(deleteAccountError ?? "Removes your Angles account and cards. Does not cancel Apple.")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(deleteAccountError == nil ? theme.faint : theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func accountActionButton(
+        title: String,
+        color: Color,
+        showsSpinner: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if showsSpinner {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(color)
+                }
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 50)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(theme.isDark ? theme.cardHairline : Color.black.opacity(0.08), lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func deleteAccount() async {
+        guard !isDeletingAccount, let onDeleteAccount else {
+            return
+        }
+        deleteAccountError = nil
+        isDeletingAccount = true
+        let deleted = await onDeleteAccount()
+        isDeletingAccount = false
+        if deleted {
+            showsInfoSheet = false
+        } else {
+            deleteAccountError = "Couldn't delete your account. Try again."
+        }
     }
 
     private func infoIncludedRow(icon: String, title: String, detail: String) -> some View {
@@ -364,11 +475,15 @@ struct PaywallView: View {
 
             planRows
 
-            purchaseButton
+            VStack(spacing: 14) {
+                purchaseButton
+
+                purchaseFooter
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 26)
-        .padding(.bottom, 12)
+        .padding(.bottom, 16)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
             infoButton
@@ -500,7 +615,7 @@ struct PaywallView: View {
         switch plan {
         case .annual:
             if let monthly = monthlyEquivalentAmount(for: storeKitManager.annualProduct) {
-                return "\(monthly) a month · billed yearly"
+                return "Billed yearly · about \(monthly) a month"
             }
             return "Billed yearly"
         case .monthly:
@@ -534,6 +649,80 @@ struct PaywallView: View {
         .disabled(storeKitManager.isBusy)
         .opacity(storeKitManager.isBusy && !storeKitManager.isPurchasing ? 0.5 : 1)
         .accessibilityLabel(primaryButtonAccessibilityLabel)
+    }
+
+    /// Apple's subscription disclosures stay on the paywall itself: renewal price and period,
+    /// the allowance, restore, and the legal links. The info sheet repeats them in full.
+    private var purchaseFooter: some View {
+        VStack(spacing: 10) {
+            Text(renewalDisclosure)
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(theme.faint)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 18) {
+                    footerLinks
+                }
+
+                VStack(spacing: 8) {
+                    footerLinks
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(theme.muted)
+        }
+    }
+
+    @ViewBuilder
+    private var footerLinks: some View {
+        Button {
+            Task {
+                await storeKitManager.restorePurchases()
+            }
+        } label: {
+            Text(storeKitManager.isRestoring ? "Restoring…" : "Restore purchases")
+                .frame(minHeight: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(storeKitManager.isBusy)
+        .accessibilityLabel(storeKitManager.isRestoring ? "Restoring purchases" : "Restore purchases")
+
+        if let termsURL = AppConfig.termsOfServiceURL {
+            Link(destination: termsURL) {
+                Text("Terms of Use")
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
+            }
+        }
+
+        if let privacyURL = AppConfig.privacyPolicyURL {
+            Link(destination: privacyURL) {
+                Text("Privacy Policy")
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
+            }
+        }
+    }
+
+    private var renewalDisclosure: String {
+        let allowance = "Includes 600 credits a month."
+        let cancel = "Renews automatically unless canceled in Settings at least 24 hours before the period ends."
+        switch selectedPlan {
+        case .annual:
+            if let price = storeKitManager.annualProduct?.displayPrice {
+                return "\(allowance) \(price) a year, charged to your Apple ID. \(cancel)"
+            }
+        case .monthly:
+            if let price = storeKitManager.monthlyProduct?.displayPrice {
+                return "\(allowance) \(price) a month, charged to your Apple ID. \(cancel)"
+            }
+        }
+        return "\(allowance) Charged to your Apple ID. \(cancel)"
     }
 
     private var restoreFeedbackAnimation: Animation? {
@@ -603,6 +792,8 @@ struct PaywallView: View {
                 .foregroundStyle(theme.faint)
         }
 
+        Link("Apple EULA", destination: AppConfig.appleStandardEULAURL)
+
         if let privacyURL = AppConfig.privacyPolicyURL {
             Link("Privacy Policy", destination: privacyURL)
         } else if !AppConfig.isSubmissionBuild {
@@ -655,11 +846,13 @@ struct PaywallView: View {
         return primaryButtonTitle
     }
 
+    /// The billed amount is always the largest price on screen; the yearly plan's monthly
+    /// equivalent only appears in the caption.
     private var heroPrice: String {
         switch selectedPlan {
         case .annual:
-            if let monthly = monthlyEquivalentAmount(for: storeKitManager.annualProduct) {
-                return monthly
+            if let price = storeKitManager.annualProduct?.displayPrice {
+                return price
             }
         case .monthly:
             if let price = storeKitManager.monthlyProduct?.displayPrice {
@@ -675,10 +868,10 @@ struct PaywallView: View {
     private var heroPriceCaption: String {
         switch selectedPlan {
         case .annual:
-            if let price = storeKitManager.annualProduct?.displayPrice {
-                return "a month, billed yearly at \(price)"
+            if let monthly = monthlyEquivalentAmount(for: storeKitManager.annualProduct) {
+                return "a year, billed yearly (about \(monthly) a month)"
             }
-            return "a month, billed yearly"
+            return "a year, billed yearly"
         case .monthly:
             return "a month, billed monthly"
         }

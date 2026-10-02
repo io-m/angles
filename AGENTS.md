@@ -1,6 +1,6 @@
 # Angles — agent notes
 
-Paid-only reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then returns 1–3 sentences in all 4 styles. The server stores a card private unless the save says otherwise; compose Save defaults to **Post** (public) with a Save privately toggle, and the onboarding taste always saves privately. Publishing a card puts it on Home for everyone, including the author. Onboarding: Continue with Apple, then one free taste while both `tasteConsumedAt` and `tasteCompletedAt` are empty, then a hard paywall.
+Paid-only reframe app (iOS). User submits a negative thought; the backend may ask follow-ups, then returns 1–3 sentences in all 4 styles. The server stores a card private unless the save says otherwise; compose Save defaults to **Post** (public) with a Save privately toggle, and the onboarding taste always saves privately. Publishing a card puts it on Home for everyone, including the author. Onboarding: Continue with Apple, then one free taste while both `tasteConsumedAt` and `tasteCompletedAt` are empty, then a hard paywall. The first Send on an account opens the one-time AI consent sheet.
 
 ## Stack (this repo)
 
@@ -64,6 +64,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library with a fixed compact identity header (avatar, session name), Favorites-first tabs and horizontally paged style lists; Settings gear and Following sheet; opaque style wash chrome
 - `AnglesApp/AnglesApp/Home/AuthorProfileView.swift` — one author's public posts, same five tabs, follow badge; edge-swipe back gate
 - `AnglesApp/AnglesApp/Home/FollowingSheet.swift` — who the viewer follows; unfollow, open, its own write banner
+- `AnglesApp/AnglesApp/Home/AIConsentSheet.swift` — the one-time per-account "Before you start" sheet before the first Send: AI providers, what is sent, community rules, Terms and Privacy acceptance
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — one card per row (`LazyVStack`)
 - `AnglesApp/AnglesApp/Home/ReframeCardView.swift` — stacked thought + selected answer everywhere except equal-height flipping Favorite angles; per-style chips/hearts and shared tap/long-press actions; globe on the author's public cards
 - `AnglesApp/AnglesApp/Home/BlockedPeopleSheet.swift` — Settings block list and unblock actions
@@ -133,7 +134,7 @@ Not used. Native iOS `URLSession` is not a browser. Do not add wildcard CORS.
 
 ## iOS
 
-- API URL is the `ANGLES_API_BASE_URL` build setting in `project.yml` (Info.plist `AnglesAPIBaseURL`). Debug is the Mac's LAN IP (`http://192.168.0.39:8787`); Release is empty until the production host exists, so a Release build fails its requests locally. Never point it at a host we do not own.
+- API URL is the `ANGLES_API_BASE_URL` build setting in `project.yml` (Info.plist `AnglesAPIBaseURL`). Debug is the Mac's LAN IP (`http://192.168.0.39:8787`); Release is the Railway production API (`https://api-production-61c9.up.railway.app`, the `api` service in the `angles` project). Never point it at a host we do not own.
 - The dev API binds `0.0.0.0` so the iPhone can reach it. Product routes need a Better Auth session. Run it only on networks you trust.
 - ATS: `NSAllowsLocalNetworking` only. Never `NSAllowsArbitraryLoads`.
 - No third-party networking libraries.

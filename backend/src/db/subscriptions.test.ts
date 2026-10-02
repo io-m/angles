@@ -31,13 +31,31 @@ function transaction(
 }
 
 describe("subscription ownership", () => {
-  it("rejects an appAccountToken for another authenticated user before touching the DB", async () => {
+  it("rejects a malformed appAccountToken before touching the DB", async () => {
     await expect(
       syncSubscriptionTransaction(
         DEV_USER_ID,
-        transaction({ appAccountToken: "00000000-0000-4000-8000-000000000099" }),
+        transaction({ appAccountToken: "not-a-uuid" }),
       ),
     ).rejects.toBeInstanceOf(SubscriptionOwnershipError);
     expect(getDb).not.toHaveBeenCalled();
+  });
+
+  it("rejects an appAccountToken that belongs to another live account", async () => {
+    const otherUserId = "00000000-0000-4000-8000-000000000099";
+    const tx = {
+      execute: vi.fn().mockResolvedValue(undefined),
+      query: {
+        users: { findFirst: vi.fn().mockResolvedValue({ id: otherUserId }) },
+      },
+    };
+    vi.mocked(getDb).mockReturnValue({
+      transaction: (run: (db: typeof tx) => Promise<unknown>) => run(tx),
+    } as unknown as ReturnType<typeof getDb>);
+
+    await expect(
+      syncSubscriptionTransaction(DEV_USER_ID, transaction({ appAccountToken: otherUserId })),
+    ).rejects.toBeInstanceOf(SubscriptionOwnershipError);
+    expect(tx.query.users.findFirst).toHaveBeenCalledOnce();
   });
 });

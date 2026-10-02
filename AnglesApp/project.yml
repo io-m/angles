@@ -60,9 +60,9 @@ targets:
           ANGLES_SUPPORT_URL: "https://useangles.app/support"
           ANGLES_SUPPORT_EMAIL: ""
           INFOPLIST_FILE: AnglesApp/Info-Debug.plist
-        # Empty until the production host exists; requests fail locally rather than guess a host.
+        # The Railway production API (`api` service in the `angles` project).
         Release:
-          ANGLES_API_BASE_URL: ""
+          ANGLES_API_BASE_URL: "https://api-production-61c9.up.railway.app"
           ANGLES_PRIVACY_POLICY_URL: "https://useangles.app/privacy"
           ANGLES_TERMS_OF_SERVICE_URL: "https://useangles.app/terms"
           ANGLES_SUPPORT_URL: "https://useangles.app/support"

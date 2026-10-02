@@ -17,6 +17,7 @@ struct HomeView: View {
     var isActiveTab: Bool = true
     var onLogOut: (() -> Void)? = nil
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
+    var onInspire: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -31,7 +32,7 @@ struct HomeView: View {
             cards: cards(for:),
             loadState: viewModel.feedLoadState(for:),
             footerState: viewModel.feedFooterState(for:),
-            emptyCopy: viewModel.feedEmptyCopy(for:),
+            emptyState: viewModel.feedEmptyState(for:),
             glimpseCard: glimpseCard,
             scrollToTopToken: viewModel.saveLanding == .home
                 ? viewModel.saveLandingToken
@@ -56,7 +57,8 @@ struct HomeView: View {
             onReport: reportCard,
             onBlock: blockAuthor,
             onOpenAuthor: onOpenAuthor,
-            onToggleFollow: toggleFollow
+            onToggleFollow: toggleFollow,
+            onInspire: onInspire
         ) { pagerState, settledSelection, onSelectTab in
             HomeChrome(
                 safeTop: safeAreaInsets.top,
@@ -150,7 +152,7 @@ struct HomeFeedPager<Chrome: View>: View {
     let cards: (HomeFeedTab) -> [HomeCard]
     let loadState: (HomeFeedTab) -> LibraryLoadState
     let footerState: (HomeFeedTab) -> FeedFooterState
-    let emptyCopy: (HomeFeedTab) -> String
+    let emptyState: (HomeFeedTab) -> HomeFeedEmptyState
     let glimpseCard: HomeCard?
     let scrollToTopToken: Int
     let shiningCardID: UUID?
@@ -175,6 +177,7 @@ struct HomeFeedPager<Chrome: View>: View {
     let onBlock: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
+    let onInspire: () -> Void
     let chrome: (
         StyleTabPagerState<HomeFeedTab>,
         HomeFeedTab,
@@ -192,7 +195,7 @@ struct HomeFeedPager<Chrome: View>: View {
         cards: @escaping (HomeFeedTab) -> [HomeCard],
         loadState: @escaping (HomeFeedTab) -> LibraryLoadState,
         footerState: @escaping (HomeFeedTab) -> FeedFooterState,
-        emptyCopy: @escaping (HomeFeedTab) -> String,
+        emptyState: @escaping (HomeFeedTab) -> HomeFeedEmptyState,
         glimpseCard: HomeCard? = nil,
         scrollToTopToken: Int = 0,
         shiningCardID: UUID? = nil,
@@ -216,6 +219,7 @@ struct HomeFeedPager<Chrome: View>: View {
         onBlock: @escaping (HomeCard) -> Void,
         onOpenAuthor: @escaping (HomeCard) -> Void,
         onToggleFollow: @escaping (HomeCard) -> Void,
+        onInspire: @escaping () -> Void = {},
         @ViewBuilder chrome: @escaping (
             StyleTabPagerState<HomeFeedTab>,
             HomeFeedTab,
@@ -226,7 +230,7 @@ struct HomeFeedPager<Chrome: View>: View {
         self.cards = cards
         self.loadState = loadState
         self.footerState = footerState
-        self.emptyCopy = emptyCopy
+        self.emptyState = emptyState
         self.glimpseCard = glimpseCard
         self.scrollToTopToken = scrollToTopToken
         self.shiningCardID = shiningCardID
@@ -250,6 +254,7 @@ struct HomeFeedPager<Chrome: View>: View {
         self.onBlock = onBlock
         self.onOpenAuthor = onOpenAuthor
         self.onToggleFollow = onToggleFollow
+        self.onInspire = onInspire
         self.chrome = chrome
     }
 
@@ -298,7 +303,7 @@ struct HomeFeedPager<Chrome: View>: View {
                                 cards: cards(tab),
                                 loadState: loadState(tab),
                                 footerState: footerState(tab),
-                                emptyCopy: emptyCopy(tab),
+                                emptyState: emptyState(tab),
                                 chromeHeight: chromeHeight,
                                 glimpseCard: tab == .all ? glimpseCard : nil,
                                 scrollToTopToken: tab == .all
@@ -322,6 +327,7 @@ struct HomeFeedPager<Chrome: View>: View {
                                 onBlock: onBlock,
                                 onOpenAuthor: onOpenAuthor,
                                 onToggleFollow: onToggleFollow,
+                                onInspire: onInspire,
                                 offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
                             )
                             .containerRelativeFrame(.horizontal)
@@ -466,7 +472,7 @@ struct HomeFeedTabPage: View {
     let cards: [HomeCard]
     let loadState: LibraryLoadState
     let footerState: FeedFooterState
-    let emptyCopy: String
+    let emptyState: HomeFeedEmptyState
     let chromeHeight: CGFloat
     let glimpseCard: HomeCard?
     let scrollToTopToken: Int
@@ -487,6 +493,7 @@ struct HomeFeedTabPage: View {
     let onBlock: (HomeCard) -> Void
     let onOpenAuthor: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
+    let onInspire: () -> Void
     let offersOwnerPrivacyMenu: Bool
 
     @Environment(\.colorScheme) private var colorScheme
@@ -598,12 +605,12 @@ struct HomeFeedTabPage: View {
         case .loaded:
             if cards.isEmpty {
                 if footerState == .idle {
-                    Text(emptyCopy)
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(theme.muted)
-                        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                        .padding(.top, 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HomeFeedEmptyCard(
+                        state: emptyState,
+                        symbol: tab.symbolColor(ink: theme.ink),
+                        theme: theme,
+                        onInspire: onInspire
+                    )
                 } else {
                     // Older pages may still carry this angle; the copy waits for them.
                     feedFooter
@@ -658,6 +665,65 @@ struct HomeFeedTabPage: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 44)
+    }
+}
+
+private struct HomeFeedEmptyCard: View {
+    var state: HomeFeedEmptyState
+    var symbol: Color
+    var theme: ColorTokens.Theme
+    var onInspire: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            CircleIcon(
+                systemName: state.systemImage,
+                fill: theme.paper,
+                symbol: symbol,
+                size: .big,
+                hairline: theme.cardHairline
+            )
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(state.title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(state.detail)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if state.offersInspire {
+                Button(action: onInspire) {
+                    HStack(spacing: 8) {
+                        InspireMark(size: 18, rendering: .monochrome(theme.paper))
+                        Text("Inspire me")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(theme.paper)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(theme.ink, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Inspire me")
+                .accessibilityHint("Opens the composer to write a thought")
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(theme.cardHairline, lineWidth: 1)
+        }
+        .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
+        .padding(.top, 10)
+        .accessibilityElement(children: .contain)
     }
 }
 

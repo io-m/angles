@@ -74,7 +74,8 @@ struct AppRoot: View {
                         canLoadFullAppContent: isHomeRevealed,
                         isActiveTab: selectedTab == .home,
                         onLogOut: logOut,
-                        onOpenAuthor: openAuthor
+                        onOpenAuthor: openAuthor,
+                        onInspire: presentCompose
                     )
                     .tabItem { Label("Home", systemImage: "house") }
                     .tag(RootTab.home)
@@ -190,7 +191,9 @@ struct AppRoot: View {
                 PaywallView(
                     storeKitManager: storeKitManager,
                     showsCelebration: paywallShowsCelebration,
-                    savedCard: paywallHeroCard
+                    savedCard: paywallHeroCard,
+                    onLogOut: logOut,
+                    onDeleteAccount: deleteAccount
                 )
                     .transition(.identity)
                     .zIndex(20)
@@ -253,6 +256,16 @@ struct AppRoot: View {
         }
         .onChange(of: destination) { old, new in
             handleDestinationChange(from: old, to: new)
+        }
+        .onChange(of: viewModel.tasteEndedByServer) { _, ended in
+            guard ended, destination == .taste else {
+                return
+            }
+            withoutAnimations {
+                paywallShowsCelebration = false
+                paywallHeroCard = nil
+                membershipRequested = true
+            }
         }
         .onOpenURL { url in
             handleWidgetURL(url)

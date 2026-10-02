@@ -101,6 +101,22 @@ describe("subscription routes", () => {
     expect(await response.json()).toMatchObject({ code: "SUBSCRIPTION_OWNED_BY_ANOTHER_USER" });
   });
 
+  it("answers an unverifiable receipt with 422, never a session-ending 401", async () => {
+    vi.mocked(getAppStoreVerifier).mockReturnValue({
+      verifyTransaction: vi
+        .fn()
+        .mockRejectedValue(new AppStoreVerificationError("invalid signature")),
+      verifyNotification: vi.fn(),
+    });
+    const response = await app.request("/profile/subscription/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signedTransactionInfo: "not-valid" }),
+    });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ code: "APP_STORE_VERIFICATION_FAILED" });
+  });
+
   it("returns 200 for a verified duplicate notification", async () => {
     vi.mocked(processSubscriptionNotification).mockResolvedValue("duplicate");
     const response = await app.request("/app-store/notifications", {

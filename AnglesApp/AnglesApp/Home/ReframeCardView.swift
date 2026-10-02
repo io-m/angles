@@ -954,6 +954,7 @@ struct OverlayProposalCard: View {
     var recookingStyle: Style?
     var identityStore: ProfileIdentityStore? = nil
     @Binding var isPublic: Bool
+    var showsPrivacyToggle: Bool = true
     var allowsRecook: Bool = true
     var onRecook: (Style) -> Void = { _ in }
 
@@ -1085,7 +1086,9 @@ struct OverlayProposalCard: View {
 
             Spacer(minLength: 4)
 
-            overlayPrivacyToggle
+            if showsPrivacyToggle {
+                overlayPrivacyToggle
+            }
 
             if hasOriginal {
                 OriginalToggle(showingOriginal: showingOriginal, ink: theme.ink) {

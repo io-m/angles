@@ -35,10 +35,11 @@ The app waits for both session restoration and StoreKit state before publishing 
 2. The app sends the Apple identity token to Better Auth, stores the bearer token in Keychain, and loads `GET /profile/session`.
 3. StoreKit checks live entitlements for that account.
 4. If the account is not entitled and both taste timestamps are empty, the app opens the normal compose experience as the onboarding taste.
-5. The taste may include decision follow-ups. Only Mistral is available, and server abuse limits bound the number of taste turns.
-6. The ready card's Save is forced private. `POST /cards` stores it for the signed-in user and stamps `tasteCompletedAt`.
-7. The app presents the paywall. Annual is `$39.99/year`; monthly is `$4.99/month`; there is no free trial.
-8. A verified purchase is created with the Angles account UUID as `appAccountToken`, synced to the backend, and then opens Home.
+5. The first Send opens the one-time **Before you start** consent sheet (providers, what is sent, community rules, Terms and Privacy). Nothing is sent until **Agree and continue**.
+6. The taste may include decision follow-ups. The server routes each step to Mistral, DeepSeek, or Gemini, with a fallback provider, and server abuse limits bound the number of taste turns. Once those turns run out (`TASTE_LIMIT_REACHED` or `TASTE_ALREADY_CONSUMED`), the app opens the paywall.
+7. The ready card's Save is forced private (**Save to private library**, no privacy toggle). `POST /cards` stores it for the signed-in user and stamps `tasteCompletedAt`.
+8. The app presents the paywall. Prices come from StoreKit; Yearly leads with its billed yearly price. There is no free trial.
+9. A verified purchase is created with the Angles account UUID as `appAccountToken`, synced to the backend, and then opens Home.
 
 If the app is killed after the server returned a ready taste but before the card saves, `tasteConsumedAt` still routes the next launch to the paywall. The already-visible in-memory ready card remains saveable until that app session ends.
 
@@ -47,7 +48,7 @@ If the app is killed after the server returned a ready taste but before the card
 - Active Apple entitlement: sync/refresh and enter Home.
 - Taste completed but no active entitlement: show the paywall.
 - Taste incomplete and no active entitlement: show the taste.
-- Restore purchases checks Apple, verifies the signed transaction, and binds it to the current Angles account. A transaction already owned by another Angles account is rejected.
+- Restore purchases checks Apple, verifies the signed transaction, and binds it to the current Angles account. A transaction already owned by another live Angles account is rejected; one whose account was deleted moves to the current account.
 - Expired membership stays at Renew/Switch. Cancellation leaves access active until Apple's paid-through date.
 - Logging out clears the local session and returns to Continue with Apple; it does not cancel the Apple subscription.
 - Deleting the account removes the Angles account and its server data; it does not cancel the Apple subscription.

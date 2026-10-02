@@ -1,13 +1,15 @@
 import Foundation
 
 enum AppConfig {
-    /// `ANGLES_API_BASE_URL` in `project.yml`, per configuration. Release stays empty until the
-    /// production host exists, so a Release build fails its requests instead of guessing a host.
+    /// `ANGLES_API_BASE_URL` in `project.yml`, per configuration. An empty value fails every
+    /// request instead of guessing a host.
     static let baseURL = configuredWebURL(for: "AnglesAPIBaseURL")
 
     static let privacyPolicyURL = configuredWebURL(for: "AnglesPrivacyPolicyURL")
     static let termsOfServiceURL = configuredWebURL(for: "AnglesTermsOfServiceURL")
     static let supportURL = configuredWebURL(for: "AnglesSupportURL")
+    /// The app ships under Apple's standard licensed application EULA, not a custom one.
+    static let appleStandardEULAURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
 
     static let supportEmail: String? = {
         guard let raw = configuredString(for: "AnglesSupportEmail"),

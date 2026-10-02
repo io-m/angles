@@ -20,14 +20,14 @@
 
 ## Production backend
 
-- [ ] Create Railway API, Postgres, private avatar bucket, and HTTPS domain.
-- [ ] Configure `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `APPLE_CLIENT_ID`, and a production `APPLE_CLIENT_SECRET`.
-- [ ] Configure `COOK_SIGNING_KEY` and a separate 32+ character `METERING_HMAC_KEY`.
-- [ ] Configure `MISTRAL_API_KEY`, `GEMINI_API_KEY`, and `DEEPSEEK_API_KEY`.
-- [ ] Configure `APPLE_ROOT_CERTIFICATES_BASE64` and numeric `APPLE_APP_ID`.
-- [ ] Configure `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`, `ENDPOINT`, and `S3_URL_STYLE`.
-- [ ] Set `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
-- [ ] Deploy and verify runtime migrations, `/health`, Apple login, avatar upload, taste, purchase sync, 600-credit period creation, cook/save, report, block, and account deletion.
+- [x] Create Railway API, Postgres, private avatar bucket, and HTTPS domain.
+- [x] Configure `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `APPLE_CLIENT_ID`, and a production `APPLE_CLIENT_SECRET`. The secret expires on 3 April 2027.
+- [x] Configure `COOK_SIGNING_KEY` and a separate 32+ character `METERING_HMAC_KEY`.
+- [x] Configure `MISTRAL_API_KEY`, `GEMINI_API_KEY`, and `DEEPSEEK_API_KEY`.
+- [x] Configure `APPLE_ROOT_CERTIFICATES_BASE64` and numeric `APPLE_APP_ID` (`6811873869`).
+- [x] Configure `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`, `ENDPOINT`, and `S3_URL_STYLE`.
+- [x] Set `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
+- [ ] Deploy and verify runtime migrations, `/health`, Apple login, avatar upload, taste, purchase sync, 600-credit period creation, cook/save, report, block, and account deletion. Deployed 2 October 2026; `/health` is `{"status":"ok","db":"ok"}`. The rest still needs a device pass.
 
 ## Apple and subscriptions
 
@@ -49,8 +49,8 @@
 
 ## Legal and App Store submission
 
-- [x] Replace every legal operator/contact/address/governing-law placeholder. The privacy policy states that provider retention and model-improvement controls can vary, and it does not claim a training opt-out.
-- [x] Publish privacy policy and terms at `https://useangles.app/privacy` and `/terms`. Support is at `/support`.
+- [x] Replace every legal operator/contact/address/governing-law placeholder. The 2 October 2026 privacy policy names the providers and countries, and says paid API terms do not allow training on inputs. Confirm that against the provider accounts before submission.
+- [x] Publish privacy policy and terms at `https://useangles.app/privacy` and `/terms`. Support is at `/support`. Republished 2 October 2026.
 - [ ] Complete App Privacy labels from actual app/server behavior.
 - [ ] Complete the age rating for AI-generated content, mental-health themes, and public user-generated content.
 - [ ] Upload final screenshots for required device sizes and any preview media.

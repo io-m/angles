@@ -10,32 +10,34 @@ Angles requires Sign in with Apple before the core experience because the free t
 
 1. Launch Angles.
 2. Tap **Continue with Apple** and complete Apple's native sign-in sheet.
-3. For a new Angles account with no active subscription, the app opens one free onboarding taste.
-4. Enter a thought and tap Send. If Angles asks a follow-up, choose an answer or type a response.
-5. When the four-angle result appears, tap **Save**. The onboarding taste is always saved privately.
-6. The membership paywall appears. Select **Yearly — $39.99/year** or **Monthly — $4.99/month** and complete the Apple sandbox purchase.
-7. After Apple verifies the transaction and the server syncs the entitlement, the app opens **Home**. The center sparkle button opens Compose; **Profile** contains the private library and Settings.
+3. For a new Angles account with no active subscription, the taste composer opens ("Break the spiral.").
+4. Type a thought into "Tell me what's on your mind..." and tap **Send** (the arrow).
+5. The first Send opens **Before you start**, which names the AI providers (Mistral AI, Google Gemini, DeepSeek), says what is sent, states the community rules, and links the Terms of Use and Privacy Policy. Tap **Agree and continue**. It appears once per account.
+6. If a follow-up question appears, tap any chip or type in "Say more..." and send. The server forces a result by the third turn.
+7. Four angles appear (Stoic, Optimistic, Humorous, Tough love). Tap **Save to private library**. The taste is always saved privately.
+8. "Saved privately" plays, then the paywall opens. Choose **Yearly** or **Monthly** (prices come from the App Store; Yearly shows the yearly price it bills), tap **Continue**, and approve the sandbox purchase. Each plan includes 600 credits a month.
+9. After Apple verifies the transaction and the server syncs the entitlement, **Home** opens. The tab bar is **Home**, **Inspire me** (compose), and **Profile**. Inspire me opens the full composer, where Save is **Post** by default, with a **Save privately** option. Profile holds the private library and Settings (gear).
 
-An existing entitled review account skips the taste and paywall after Apple sign-in. An account that already used its taste but is not entitled goes directly to the paywall.
+An existing entitled account skips the taste and paywall after Apple sign-in. An account that already used its taste but is not entitled goes directly to the paywall. The taste is used as soon as its first result appears, so quitting before Save also lands on the paywall.
 
 ## Subscription restore and management
 
-- From the paywall, use **Restore purchases** in the information sheet.
-- From the full app: **Profile → Settings gear → Subscription → Restore purchases**.
+- On the paywall: **Restore purchases** under the **Continue** button, or in the (i) "What's included" sheet.
+- In the app: **Profile → Settings gear → Subscription → Restore purchases**.
 - **Change plan** and **Cancel** open Apple's subscription-management sheet.
 - Logging out or deleting the Angles account does not cancel an Apple subscription.
 
 ## User-generated content safety
 
-Home contains user-posted public cards. A user's own onboarding taste is private.
+Home contains user-posted public cards. A user's own onboarding taste is private. Before submitting, the operator posts real public cards from a second account so Home shows another author.
 
 ### Report a card
 
-1. On **Home**, open the **⋯** menu on another person's public card, or long-press that card.
-2. Tap **Report**.
+1. On **Home**, tap the life-area badge with "…" (accessibility label "Card actions") on another person's card, or long-press that card.
+2. Tap **Report**. It asks "Why are you reporting this card?".
 3. Choose a reason: Spam, Harassment or bullying, Hate speech, Sexual content, Illegal activity, Personal information, or Something else.
 
-The reported card is removed from that reviewer's in-app surfaces. Reports are stored for moderation, and repeated reports can automatically make a card private.
+The reported card leaves that reviewer's Home and library. Reports are reviewed within 24 hours, and repeated reports make a card private automatically.
 
 ### Block a person
 
@@ -51,12 +53,10 @@ Saving privately does not publish a card. Posting a new card or changing a priva
 
 ## Account deletion
 
-1. Open **Profile**.
-2. Tap the **Settings gear**.
-3. Tap **Delete account**.
-4. Confirm **Delete account**.
+- **Profile → Settings gear → Delete account**, then confirm **Delete account**.
+- Or, on the paywall, the (i) sheet → **Account → Delete account**, then confirm.
 
-The app waits for server confirmation, deletes the Angles account and associated active data, and returns to Continue with Apple. Deletion does not cancel the Apple subscription; cancellation is handled through Apple.
+The app waits for server confirmation, deletes the Angles account and associated active data, and returns to Continue with Apple. Deletion does not cancel the Apple subscription; cancellation is handled through Apple. Signing in again with the same Apple ID creates a new account; its still-active sandbox purchase moves to that new account on restore.
 
 ## Reviewer environment
 
@@ -64,3 +64,39 @@ The app waits for server confirmation, deletes the Angles account and associated
 - Use Apple's normal Sign in with Apple review flow.
 - Use an Apple sandbox purchase for either subscription product.
 - The production API, privacy policy, terms, and support URLs must be live in the submitted Release build.
+
+## Paste-ready notes for App Store Connect
+
+The "reviewed within 24 hours" line is only true once someone checks reports at least daily. If nobody does, remove that line before pasting.
+
+```text
+Sign-in: Angles uses Sign in with Apple only. There is no email or password login, so there is no demo account. Please tap "Continue with Apple" with your own Apple ID. The account, free taste, subscription, credits, reports and blocks are tied to that Apple sign-in on our server.
+
+First run:
+1. Tap "Continue with Apple".
+2. You get one free taste. Type this thought and tap Send:
+   "I froze in a meeting today when my manager asked about my project, and now I keep replaying it and feel stupid."
+3. The first Send shows "Before you start", which names our AI providers and links the Terms and Privacy Policy. Tap "Agree and continue".
+4. If a follow-up question appears, tap any answer chip.
+5. Four angles appear. Tap "Save to private library".
+6. The paywall opens. Choose Yearly or Monthly, tap Continue, and approve the sandbox purchase. Each membership includes 600 credits per month; one result uses one credit.
+7. Home opens. "Inspire me" in the tab bar writes a new thought; "Profile" holds your private library and Settings (gear).
+
+If the app ever opens directly on the paywall, this Apple ID already used its taste. Purchase or restore to continue.
+
+Restore: on the paywall, "Restore purchases" under the Continue button (also in the (i) sheet), or Profile -> Settings -> Subscription -> "Restore purchases".
+
+Community safety (Home shows public cards from other people):
+- Report: tap "..." on another person's card (or long-press it) -> Report -> choose a reason. The card disappears for you; reports are reviewed within 24 hours and repeated reports make a card private automatically.
+- Block: same menu -> "Block [initials]" -> Block. Undo in Profile -> Settings -> Blocked people -> Unblock.
+- Every post is screened by an automated moderation check before it becomes public; if the check is unavailable, nothing is published.
+- Users agree to the Terms, which have a zero-tolerance policy for objectionable content and abusive users, on the "Before you start" screen.
+
+Safety: Angles is a self-reflection tool, not therapy. If a thought suggests self-harm, Angles does not reframe it and shows a crisis line chosen by the device region.
+
+AI: thoughts are processed on our server by Mistral AI, Google Gemini, or DeepSeek, only after the user agrees on "Before you start". No AI runs on the device and no keys are in the app.
+
+Account deletion: Profile -> Settings -> Delete account -> Delete account, or from the paywall (i) sheet -> Delete account. Deleting does not cancel the Apple subscription.
+
+Contact: info@bithavn.app
+```

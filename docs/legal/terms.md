@@ -1,6 +1,6 @@
 # Angles Terms of Service
 
-Last updated: September 30, 2026
+Last updated: October 2, 2026
 
 Published at `https://useangles.app/terms` (`ANGLES_TERMS_OF_SERVICE_URL`). Support is at `https://useangles.app/support`.
 
@@ -12,7 +12,9 @@ You must be at least 13, or the higher minimum age required where you live, and 
 
 ## The service
 
-Angles accepts a thought and uses configured AI providers to generate reframes in several styles. You can save cards privately or choose to post them publicly, view public cards, favorite angles, follow people, and use blocks and reports.
+Angles accepts a thought and uses AI providers to generate reframes in several styles. You can save cards privately or choose to post them publicly, view public cards, favorite angles, follow people, and use blocks and reports.
+
+Before your first thought is sent, the app asks you to agree to these Terms and the Privacy Policy and to allow what you write to be sent to our AI providers. Tapping **Agree and continue** records that agreement.
 
 The service may change, experience interruptions, or produce incomplete, inaccurate, offensive, or unsuitable output. You are responsible for evaluating and deciding whether to use any output.
 
@@ -42,7 +44,9 @@ You may not:
 
 ## Community moderation
 
-We may review reports and use automated or human moderation to reject, limit, make private, remove, or preserve content; restrict features; suspend or terminate accounts; and cooperate with authorities where appropriate. Blocking changes what you see but does not guarantee that another person cannot encounter public content elsewhere. We do not guarantee that all objectionable content will be detected or removed immediately.
+Angles has zero tolerance for objectionable content and abusive users. Do not post content that is hateful, harassing, sexual, violent, threatening, or otherwise objectionable, and do not abuse other people. Every card you post is checked automatically before anyone else can see it. We review reported content within 24 hours, remove content that breaks these Terms, and remove the accounts of users who post it.
+
+We may also review reports and use automated or human moderation to reject, limit, make private, remove, or preserve content; restrict features; suspend or terminate accounts; and cooperate with authorities where appropriate. Blocking changes what you see but does not guarantee that another person cannot encounter public content elsewhere. We do not guarantee that all objectionable content will be detected or removed immediately.
 
 ## Subscriptions, billing, and cancellation
 
@@ -65,6 +69,10 @@ We do not sell separate credit packs. Each monthly membership period currently i
 ## Intellectual property
 
 Angles, its software, design, branding, and service content other than user content are owned by us or our licensors. These Terms grant you a personal, limited, revocable, nonexclusive, nontransferable license to use the app for its intended purpose. No other rights are granted.
+
+## Apple App Store
+
+If you downloaded Angles from Apple's App Store, Apple's [Standard Licensed Application End User License Agreement](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) also applies to your use of the app. Where it conflicts with these Terms about the license to the app itself, the Apple agreement controls. Apple is not responsible for Angles or its content and has no obligation to provide support for it.
 
 ## Third-party services
 

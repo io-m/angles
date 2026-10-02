@@ -290,16 +290,65 @@ enum HomeFeedTab: Equatable, Hashable, CaseIterable {
         return CardStyleAppearance(style: style).ink
     }
 
-    func emptyCopy(appliedFilter: HomeFeedFilter) -> String {
-        if let style = matchingStyle {
-            return appliedFilter.appliedCount == 0
-                ? "No published \(style.displayName) angles yet."
-                : "No cards match these filters."
+    func emptyState(
+        appliedFilter: HomeFeedFilter,
+        audience: HomeFeedEmptyAudience
+    ) -> HomeFeedEmptyState {
+        if appliedFilter.appliedCount > 0 {
+            return HomeFeedEmptyState(
+                systemImage: "line.3.horizontal.decrease",
+                title: "Nothing matches",
+                detail: "Try another life area or mood."
+            )
         }
-        return appliedFilter.appliedCount == 0
-            ? "No published thoughts yet."
-            : "No cards match these filters."
+        let canInspire = audience == .community
+        if let style = matchingStyle {
+            let name = style.displayName
+            switch audience {
+            case .community:
+                return HomeFeedEmptyState(
+                    systemImage: systemImage,
+                    title: "No \(name) angles yet",
+                    detail: "When someone shares a \(name) angle, it shows up here.",
+                    offersInspire: canInspire
+                )
+            case .author:
+                return HomeFeedEmptyState(
+                    systemImage: systemImage,
+                    title: "No \(name) angles yet",
+                    detail: "A \(name) angle they share will show up here."
+                )
+            }
+        }
+        switch audience {
+        case .community:
+            return HomeFeedEmptyState(
+                systemImage: systemImage,
+                title: "Nothing here yet",
+                detail: "When someone shares a thought, it shows up here.",
+                offersInspire: canInspire
+            )
+        case .author:
+            return HomeFeedEmptyState(
+                systemImage: systemImage,
+                title: "No posts yet",
+                detail: "When they share a thought, it shows up here."
+            )
+        }
     }
+}
+
+enum HomeFeedEmptyAudience: Equatable {
+    case community
+    case author
+}
+
+struct HomeFeedEmptyState: Equatable {
+    var systemImage: String
+    var title: String
+    var detail: String
+    /// Community boards can open compose. An author's empty page cannot.
+    var offersInspire: Bool = false
 }
 
 enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
@@ -449,6 +498,9 @@ final class HomeViewModel {
     private(set) var usageBanner: String?
     private(set) var usageFeedback: String?
     private(set) var composeErrorAllowsRetry = true
+    /// The server refused a cook because this account's free taste is spent. AppRoot moves a
+    /// taste destination to the paywall so the composer is never a dead end.
+    private(set) var tasteEndedByServer = false
     var profileGridFilter: ProfileGridFilter = .favorites {
         didSet {
             if profileGridFilter != oldValue {
@@ -529,6 +581,7 @@ final class HomeViewModel {
     private var pendingRecookStyle: Style?
 
     private static let lowWarningPeriodKeyPrefix = "angles.lowCreditWarningPeriod"
+    private static let aiConsentKeyPrefix = "angles.aiConsentAcceptedAt"
     private static let writeErrorDuration: Duration = .seconds(3)
     private static let initialLoadRetryDelays: [Duration] = [
         .milliseconds(400),
@@ -644,8 +697,8 @@ final class HomeViewModel {
         feedBoard.shelf(tab).footerState
     }
 
-    func feedEmptyCopy(for tab: HomeFeedTab) -> String {
-        tab.emptyCopy(appliedFilter: appliedFilter)
+    func feedEmptyState(for tab: HomeFeedTab) -> HomeFeedEmptyState {
+        tab.emptyState(appliedFilter: appliedFilter, audience: .community)
     }
 
     /// The composer stays alive for every turn that is not a finished cook.
@@ -1056,6 +1109,7 @@ final class HomeViewModel {
     /// Log out starts over on this iPhone: nothing the last session loaded stays in memory, and
     /// the next unlock loads Home and the library from scratch.
     func resetForSignOut() {
+        tasteEndedByServer = false
         writeSessionGeneration &+= 1
         refineGeneration &+= 1
         libraryTask?.cancel()
@@ -2521,6 +2575,20 @@ final class HomeViewModel {
         "\(lowWarningPeriodKeyPrefix).\(userID.lowercased())"
     }
 
+    /// Thoughts go to third-party AI providers, so each account agrees once on this phone
+    /// before its first send (App Review 5.1.2(i)).
+    var needsAIConsent: Bool {
+        UserDefaults.standard.object(forKey: Self.aiConsentDefaultsKey(userID: usageAccountID)) == nil
+    }
+
+    func recordAIConsent(at date: Date = Date()) {
+        UserDefaults.standard.set(date, forKey: Self.aiConsentDefaultsKey(userID: usageAccountID))
+    }
+
+    static func aiConsentDefaultsKey(userID: String?) -> String {
+        "\(aiConsentKeyPrefix).\(userID?.lowercased() ?? "signed-out")"
+    }
+
     private static func usageWarning(remaining: Int) -> UsageWarning {
         if remaining <= 0 {
             return .empty
@@ -2546,13 +2614,15 @@ final class HomeViewModel {
 
         switch payload.code {
         case "SUBSCRIPTION_REQUIRED":
+            tasteEndedByServer = true
             return ("Membership is required. Open Profile → Settings → Subscription.", false)
         case "INSUFFICIENT_CREDITS":
             return ("You’re out of credits\(reset).", false)
         case "TASTE_RECOOK_UNAVAILABLE":
             return ("New answers aren't available during your free taste.", false)
-        case "TASTE_LIMIT_REACHED":
-            return ("Your free taste is finished. View membership to keep cooking.", false)
+        case "TASTE_LIMIT_REACHED", "TASTE_ALREADY_CONSUMED":
+            tasteEndedByServer = true
+            return ("Your free taste is finished. Membership keeps it going.", false)
         case "DAILY_OPERATION_LIMIT":
             return ("You've reached today's cooking limit. Try again tomorrow.", true)
         case "OPERATION_RATE_LIMIT":

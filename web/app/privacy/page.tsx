@@ -31,8 +31,8 @@ export default function PrivacyPage() {
   return (
     <LegalPageShell title="Privacy policy" updated={LEGAL_EFFECTIVE_DATE}>
       <p>
-        Angles (“we,” “us,” or “our”) is operated by <OperatorIdentity />. This
-        policy explains how Angles handles information when you use the iOS app
+        Angles (“we,” “us,” or “our”) is operated by <OperatorIdentity />, the
+        data controller. This policy explains how Angles handles information when you use the iOS app
         and its services. The terms of service are at{' '}
         <Link href={TERMS_PATH}>useangles.app/terms</Link>.
       </p>
@@ -81,8 +81,11 @@ export default function PrivacyPage() {
           processes payment. We receive and verify signed product, entitlement,
           renewal and expiration, transaction, refund and revocation, and
           purchase-status information needed to bind membership to your Angles
-          account, restore access, and maintain monthly credit periods. We do
-          not receive your full payment-card details.
+          account, restore access, and maintain monthly credit periods. When
+          you buy, the app gives Apple your Angles account identifier (a random
+          ID, not your name or email) with the purchase so Apple’s records can
+          be matched to your account. We do not receive your full payment-card
+          details.
         </li>
         <li>
           <strong>Usage and metering information.</strong> We maintain
@@ -120,6 +123,8 @@ export default function PrivacyPage() {
           generate reframes, save and display cards, and provide community
           features;
         </li>
+        <li>check public posts before other people can see them;</li>
+        <li>order Home for you (see “How Home is ordered”);</li>
         <li>
           provide, verify, restore, and support subscriptions and monthly
           credits;
@@ -134,18 +139,40 @@ export default function PrivacyPage() {
 
       <h2>AI processing</h2>
       <p>
-        Angles sends the thought text and conversation context needed to
-        generate a response to the configured large-language-model provider. We
-        choose the provider for each step on our servers. It may be Mistral AI,
-        Google Gemini, or DeepSeek, and if the first provider is unavailable
-        the same request may be sent to another of them. Those providers
-        process the content on our behalf or under the service configuration
-        and terms applicable to our account.
+        Before your first thought leaves your phone, the app shows a{' '}
+        <strong>Before you start</strong> screen that names the AI providers and
+        asks you to agree. Nothing is sent to an AI provider until you tap{' '}
+        <strong>Agree and continue</strong>.
       </p>
       <p>
-        Do not use Angles for emergency or highly sensitive information.
-        Provider retention, regional processing, and model-improvement controls
-        can vary by provider and configuration.
+        Angles sends the thought you write and your answers to follow-up
+        questions to a large-language-model provider. We choose the provider for
+        each step on our servers: <strong>Mistral AI</strong> (France),{' '}
+        <strong>Google Gemini</strong> (Google, United States), or{' '}
+        <strong>DeepSeek</strong> (China). If the first provider is unavailable,
+        the same request may be sent to another of them. When you post a card
+        publicly, its text is also sent to one of these providers for an
+        automated moderation check before anyone else can see it. Your region,
+        name, email address, and account identifiers are not sent to AI
+        providers.
+      </p>
+      <p>
+        We use each provider’s paid API service, under terms that do not allow
+        the provider to use what you send to train or improve its models. A
+        provider may keep request data for a limited period for abuse
+        monitoring and legal compliance, as its terms allow, and acts on our
+        instructions. Do not use Angles for emergencies.
+      </p>
+
+      <h2>How Home is ordered</h2>
+      <p>
+        Home shows public cards in an order chosen for you. The order uses how
+        recent and how hearted each post is, the life areas and moods of the
+        cards you write and the angles you heart, and the people you follow. It
+        does not use how long you look at a card, and it is never used for
+        advertising. Author pages and your Profile are plain lists and are not
+        personalized. Deleting a card or removing a heart takes it out of this
+        order.
       </p>
 
       <h2>Private and public content</h2>
@@ -175,7 +202,10 @@ export default function PrivacyPage() {
           Apple for Sign in with Apple, StoreKit subscriptions, and App Store
           services;
         </li>
-        <li>configured AI providers for reframe generation;</li>
+        <li>
+          the AI providers named above, for reframe generation and the
+          moderation check on public posts;
+        </li>
         <li>
           hosting, database, object-storage, authentication, and infrastructure
           providers;
@@ -210,12 +240,53 @@ export default function PrivacyPage() {
         Apple subscription. Manage or cancel it through Apple.
       </p>
 
-      <h2>Security and international processing</h2>
+      <h2>Legal bases (EEA and UK)</h2>
+      <ul>
+        <li>
+          <strong>Contract</strong> (GDPR Article 6(1)(b)): your account, saved
+          cards, subscription, credits, and the community features you choose
+          to use.
+        </li>
+        <li>
+          <strong>Explicit consent</strong> (Articles 6(1)(a) and 9(2)(a)): what
+          you write can reveal information about your health or mental state.
+          We process your thoughts, follow-up answers, and the mood and
+          life-area details derived from them, send them to the AI providers,
+          and use them to order Home, only with the consent you give on the{' '}
+          <strong>Before you start</strong> screen. You can withdraw it at any
+          time by deleting cards or your account; that does not affect
+          processing that already happened, and Angles cannot write reframes
+          without it.
+        </li>
+        <li>
+          <strong>Legitimate interests</strong> (Article 6(1)(f)): keeping the
+          service secure, preventing abuse, moderating public posts, handling
+          reports and blocks, and using your hearts and follows to order Home.
+        </li>
+        <li>
+          <strong>Legal obligation</strong> (Article 6(1)(c)): accounting and
+          tax records, and answering lawful requests from authorities.
+        </li>
+      </ul>
+
+      <h2>Security and international transfers</h2>
       <p>
         We use reasonable administrative and technical safeguards, but no
-        service is completely secure. Angles and its providers may process
-        information in countries other than your own, subject to applicable
-        legal safeguards.
+        service is completely secure.
+      </p>
+      <p>
+        Some providers process information outside the European Economic Area.
+        Google (Gemini) processes it in the United States, under the EU-U.S.
+        Data Privacy Framework or the European Commission’s Standard
+        Contractual Clauses. DeepSeek processes it in China, which has no EU
+        adequacy decision; that transfer relies on Standard Contractual Clauses
+        where the provider offers them and on the explicit consent you give on
+        the <strong>Before you start</strong> screen after being told the
+        country (Article 49(1)(a)). Chinese law may allow authorities there to
+        access data more broadly than EU law would. Our hosting, database, and
+        storage providers may also process information outside the EEA, under
+        Standard Contractual Clauses or an adequacy decision. Write to us for a
+        copy of the safeguards that apply.
       </p>
 
       <h2>Children</h2>
@@ -240,9 +311,12 @@ export default function PrivacyPage() {
         You can make cards private, delete cards, remove an avatar, unfollow or
         block people, and delete your account in Settings. Depending on your
         location, you may also have rights to access, correct, delete,
-        restrict, or object to processing, or to receive a portable copy of
-        certain information. Write to{' '}
-        <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>.
+        restrict, or object to processing, to withdraw consent, or to receive a
+        portable copy of certain information. Write to{' '}
+        <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>. You may also
+        complain to{' '}
+        <a href={SUPERVISORY_AUTHORITY_URL}>{SUPERVISORY_AUTHORITY_NAME}</a> or
+        the authority where you live.
       </p>
 
       <h2>Changes</h2>

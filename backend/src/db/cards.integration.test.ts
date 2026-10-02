@@ -219,6 +219,30 @@ describe.skipIf(!testUrl)("cards integration", () => {
     await getDb().delete(users).where(eq(users.id, otherUserId));
   });
 
+  it("lets a deleted account's purchase move to the same Apple ID's new account, never a live one's", async () => {
+    const liveOwnerId = "00000000-0000-4000-8000-000000000197";
+    await getDb().insert(users).values({
+      id: liveOwnerId,
+      name: "Live",
+      email: "live-owner@angles.invalid",
+      initials: "LV",
+    });
+    await expect(
+      syncSubscriptionTransaction(
+        DEV_USER_ID,
+        appStoreTransaction({ appAccountToken: liveOwnerId }),
+      ),
+    ).rejects.toBeInstanceOf(SubscriptionOwnershipError);
+
+    await getDb().delete(users).where(eq(users.id, liveOwnerId));
+    const adopted = await syncSubscriptionTransaction(
+      DEV_USER_ID,
+      appStoreTransaction({ appAccountToken: liveOwnerId }),
+      new Date("2026-09-25T10:00:02.000Z"),
+    );
+    expect(adopted.isEntitled).toBe(true);
+  });
+
   it("serializes concurrent claims by user and original transaction", async () => {
     const otherUserId = "00000000-0000-4000-8000-000000000198";
     await getDb().insert(users).values({

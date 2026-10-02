@@ -54,6 +54,9 @@ final class StoreKitManager {
     @ObservationIgnored private var accountGeneration: UInt64 = 0
     @ObservationIgnored private var activeEnvironment: String?
     @ObservationIgnored private var pendingSignedTransactions: [String] = []
+    /// Receipts minted for a deleted Angles account that the server moved to this one.
+    @ObservationIgnored private var adoptedOriginalTransactionIDs: Set<UInt64> = []
+    @ObservationIgnored private var refusedOriginalTransactionIDs: Set<UInt64> = []
     @ObservationIgnored private let profileService = ProfileService()
 
     private var transactionListener: Task<Void, Never>?
@@ -570,8 +573,14 @@ final class StoreKitManager {
         let transaction = try verified(result)
         Self.logTransaction(isFreshPurchase ? "purchased" : "incoming", transaction)
         guard isCurrent(context) else { return }
-        guard isForConfiguredAccount(transaction, context: context) else {
-            errorMessage = "This purchase is linked to another Angles account."
+        guard await claimForConfiguredAccount(
+            transaction,
+            signedTransactionInfo: result.jwsRepresentation,
+            context: context
+        ) else {
+            if isCurrent(context), errorMessage != Self.serverSyncError {
+                errorMessage = "This purchase is linked to another Angles account."
+            }
             return
         }
 
@@ -833,9 +842,16 @@ final class StoreKitManager {
             }
             guard let transaction = try? verified(status.transaction),
                   Self.productIDs.contains(transaction.productID),
-                  isAppStoreBacked(transaction),
-                  isForConfiguredAccount(transaction, context: context) else {
+                  isAppStoreBacked(transaction) else {
                 Self.debugLog("ignored non-App Store status")
+                continue
+            }
+            guard await claimForConfiguredAccount(
+                transaction,
+                signedTransactionInfo: status.transaction.jwsRepresentation,
+                context: context
+            ) else {
+                Self.debugLog("ignored status for another account")
                 continue
             }
             Self.logTransaction("status", transaction)
@@ -864,7 +880,11 @@ final class StoreKitManager {
             }
             Self.logTransaction("current entitlement", transaction)
             guard isActiveAnglesEntitlement(transaction, now: now),
-                  isForConfiguredAccount(transaction, context: context) else {
+                  await claimForConfiguredAccount(
+                      transaction,
+                      signedTransactionInfo: result.jwsRepresentation,
+                      context: context
+                  ) else {
                 continue
             }
             let syncResult = await syncWithServer(result.jwsRepresentation, context: context)
@@ -1002,6 +1022,37 @@ final class StoreKitManager {
             return true
         }
         return transactionToken == context.token
+            || adoptedOriginalTransactionIDs.contains(transaction.originalID)
+    }
+
+    /// A receipt bound to another account token unlocks only once the server accepts it,
+    /// which it does only when that token's account no longer exists.
+    private func claimForConfiguredAccount(
+        _ transaction: Transaction,
+        signedTransactionInfo: String,
+        context: AccountContext
+    ) async -> Bool {
+        if isForConfiguredAccount(transaction, context: context) {
+            return true
+        }
+        guard isCurrent(context),
+              !refusedOriginalTransactionIDs.contains(transaction.originalID) else {
+            return false
+        }
+        let result = await syncWithServer(signedTransactionInfo, context: context)
+        guard isCurrent(context) else {
+            return false
+        }
+        switch result {
+        case .confirmed:
+            adoptedOriginalTransactionIDs.insert(transaction.originalID)
+            return true
+        case .rejected:
+            refusedOriginalTransactionIDs.insert(transaction.originalID)
+            return false
+        case .retryable, .stale:
+            return false
+        }
     }
 
     private func syncWithServer(
@@ -1065,6 +1116,8 @@ final class StoreKitManager {
         expiryTask?.cancel()
         expiryTask = nil
         pendingSignedTransactions = []
+        adoptedOriginalTransactionIDs = []
+        refusedOriginalTransactionIDs = []
         serverSyncPending = false
         isProbingSubscription = false
         isPurchasing = false

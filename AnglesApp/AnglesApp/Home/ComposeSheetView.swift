@@ -61,6 +61,7 @@ struct ComposeSheetView: View {
     @State private var showLeaveAlert = false
     @State private var leaveKind: LeaveKind = .discard
     @State private var isCelebratingSave = false
+    @State private var showsAIConsent = false
 
     private var isComposing: Bool {
         viewModel.phase == .composing
@@ -123,6 +124,19 @@ struct ComposeSheetView: View {
                 }
             } message: {
                 Text(leaveMessage)
+            }
+            .sheet(isPresented: $showsAIConsent) {
+                AIConsentSheet(
+                    onAgree: {
+                        viewModel.recordAIConsent()
+                        showsAIConsent = false
+                        submit()
+                    },
+                    onCancel: {
+                        showsAIConsent = false
+                    }
+                )
+                .interactiveDismissDisabled()
             }
     }
 
@@ -458,6 +472,7 @@ struct ComposeSheetView: View {
                         recookingStyle: viewModel.recookingStyle,
                         identityStore: identityStore,
                         isPublic: $viewModel.composeIsPublic,
+                        showsPrivacyToggle: !isOnboardingTaste,
                         allowsRecook: !isOnboardingTaste && viewModel.hasCreditsForCook,
                         onRecook: { style in
                             viewModel.recookStyle(style)
@@ -943,6 +958,10 @@ struct ComposeSheetView: View {
         }
 
         composerFocused = false
+        if viewModel.needsAIConsent {
+            showsAIConsent = true
+            return
+        }
         viewModel.sendComposer()
     }
 

@@ -7,6 +7,7 @@ import {
   OperatorPostal,
 } from '@/components/legal/OperatorIdentity';
 import {
+  APPLE_STANDARD_EULA_URL,
   LEGAL_EFFECTIVE_DATE,
   MINIMUM_AGE,
   PRIVACY_PATH,
@@ -46,10 +47,16 @@ export default function TermsPage() {
 
       <h2>The service</h2>
       <p>
-        Angles accepts a thought and uses configured AI providers to generate
-        reframes in several styles. You can save cards privately or choose to
-        post them publicly, view public cards, favorite angles, follow people,
-        and use blocks and reports.
+        Angles accepts a thought and uses AI providers to generate reframes in
+        several styles. You can save cards privately or choose to post them
+        publicly, view public cards, favorite angles, follow people, and use
+        blocks and reports.
+      </p>
+      <p>
+        Before your first thought is sent, the app asks you to agree to these
+        Terms and the Privacy Policy and to allow what you write to be sent to
+        our AI providers. Tapping <strong>Agree and continue</strong> records
+        that agreement.
       </p>
       <p>
         The service may change, experience interruptions, or produce incomplete,
@@ -111,7 +118,15 @@ export default function TermsPage() {
 
       <h2>Community moderation</h2>
       <p>
-        We may review reports and use automated or human moderation to reject,
+        Angles has zero tolerance for objectionable content and abusive users.
+        Do not post content that is hateful, harassing, sexual, violent,
+        threatening, or otherwise objectionable, and do not abuse other people.
+        Every card you post is checked automatically before anyone else can see
+        it. We review reported content within 24 hours, remove content that
+        breaks these Terms, and remove the accounts of users who post it.
+      </p>
+      <p>
+        We may also review reports and use automated or human moderation to reject,
         limit, make private, remove, or preserve content; restrict features;
         suspend or terminate accounts; and cooperate with authorities where
         appropriate. Blocking changes what you see but does not guarantee that
@@ -178,6 +193,18 @@ export default function TermsPage() {
         user content are owned by us or our licensors. These Terms grant you a
         personal, limited, revocable, nonexclusive, nontransferable license to
         use the app for its intended purpose. No other rights are granted.
+      </p>
+
+      <h2>Apple App Store</h2>
+      <p>
+        If you downloaded Angles from Apple’s App Store, Apple’s{' '}
+        <a href={APPLE_STANDARD_EULA_URL}>
+          Standard Licensed Application End User License Agreement
+        </a>{' '}
+        also applies to your use of the app. Where it conflicts with these Terms
+        about the license to the app itself, the Apple agreement controls.
+        Apple is not responsible for Angles or its content and has no
+        obligation to provide support for it.
       </p>
 
       <h2>Third-party services</h2>

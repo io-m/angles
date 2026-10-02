@@ -1,6 +1,6 @@
 # App Store readiness
 
-Current as of **September 30, 2026**.
+Current as of **October 2, 2026**.
 
 ## Release status
 
@@ -18,16 +18,25 @@ The production feature work is implemented in the repository. The app is not rea
 - Public/private cards, community Home, follows, per-angle favorites, reporting, blocking/unblocking, and pre-publication moderation.
 - Production hardening: runtime migrations before schema checks, production configuration fail-fast validation, a production seed guard, a non-root container with a health check, and Postgres-backed backend CI.
 - Source privacy/terms documents, privacy manifest, Release-safe plist split, and centralized API/legal/support configuration.
+- App Review readiness (`BUILD.md` row 19, October 2, 2026):
+  - The Release API URL points at the Railway production API.
+  - Both privacy manifests declare UserDefaults (CA92.1 app, 1C8F.1 app group) and the collected Health and Product Interaction types.
+  - The paywall leads with the billed price, shows the renewal terms, Restore, Terms of Use, and Privacy under Continue, and links Apple's EULA in the (i) sheet.
+  - A one-time **Before you start** sheet names the AI providers and carries the Terms acceptance before the first Send.
+  - Log out and Delete account are in the paywall's (i) sheet.
+  - A used-up taste routes to the paywall.
+  - The subscription sync never answers 401, and a deleted account's purchase moves to the same Apple ID's new account.
+  - The Terms have the zero-tolerance and 24-hour report text plus the Apple EULA clause. The privacy policy has the providers, moderation, Home ordering, legal bases, transfers, and the Datatilsynet line.
 
 `POST /reframe` does not store cards or plaintext thought text. It does write text-free operation, idempotency, usage, token, and company-cost metadata, plus an hour-long replay of the finished response encrypted under a key only the device holds. A card is stored only when the signed cook is sent to `POST /cards`.
 
 ## Remaining external blockers
 
-These are deployment, operator, Apple, provider, and submission tasks; they are not missing product implementations.
+The repo changes from the October 1 audit have shipped (see above). What remains is deployment, operator, Apple, provider, and submission work.
 
 ### Release app configuration
 
-- Set the Release `ANGLES_API_BASE_URL` to the production HTTPS API.
+- The Release `ANGLES_API_BASE_URL` is `https://api-production-61c9.up.railway.app` (the `api` service in the Railway `angles` project).
 - `ANGLES_PRIVACY_POLICY_URL`, `ANGLES_TERMS_OF_SERVICE_URL`, and `ANGLES_SUPPORT_URL` are set to `https://useangles.app/privacy`, `/terms`, and `/support` in Debug and Release.
 - Verify those destinations load from the archived build once `useangles.app` is serving them.
 - Confirm the final Apple team, signing, bundle record, capabilities, and Release archive/export configuration.
@@ -35,24 +44,23 @@ These are deployment, operator, Apple, provider, and submission tasks; they are 
 ### Hosted legal and support
 
 - Operator details in `docs/legal/privacy.md` and `docs/legal/terms.md` name Bithavn, CVR 46705130, `info@bithavn.app`, the Copenhagen postal address, and Danish law.
-- The privacy policy names Mistral AI, Google Gemini, and DeepSeek and states that provider retention and model-improvement controls can vary. It does not claim a training opt-out.
-- The site is published at `https://useangles.app` (`/privacy`, `/terms`, `/support`). `www` and plain HTTP redirect to that host.
+- The privacy policy names Mistral AI (France), Google Gemini (US), and DeepSeek (China), and says each is used through a paid API whose terms forbid training on inputs. Confirm that in each provider account before submission. If DeepSeek cannot confirm it, move the writer off it with `LLM_WRITER_MODEL` / `LLM_WRITER_FALLBACK_MODEL` on Railway and drop DeepSeek from the policy and the **Before you start** sheet.
+- The site is published at `https://useangles.app` (`/privacy`, `/terms`, `/support`). `www` and plain HTTP redirect to that host. The 2 October 2026 Terms and Privacy text is live.
+- Someone checks the `card_reports` table at least daily during review and launch; the Terms and the review notes promise a 24-hour review.
 
 ### Apple production configuration
 
-- Put the public Apple root certificates in production `APPLE_ROOT_CERTIFICATES_BASE64`. The local `backend/.env` already has them, so sandbox receipt sync works on this machine. That file is not in git, so a new machine or the production host still needs the same value.
-- Set the numeric App Store Connect `APPLE_APP_ID`.
-- Create the production Sign in with Apple and App Store configuration, including a valid `APPLE_CLIENT_SECRET`, product/subscription-group availability, agreements, tax, banking, and any App Store Server API issuer/key/private-key setup used by release operations.
+- Production `APPLE_ROOT_CERTIFICATES_BASE64` is set. The local `backend/.env` has the same certificates, so sandbox receipt sync works on this machine. That file is not in git.
+- Production `APPLE_APP_ID` is `6811873869` (Angles: Reframe Thoughts).
+- Production `APPLE_CLIENT_SECRET` is a Sign in with Apple JWT for key `W4R8326VMT`, team `36U79UTZM9`, client `app.angles.ios`. It expires on 3 April 2027. Renew it from `~/Downloads/AuthKey_W4R8326VMT.p8` before then. Still open: product and subscription-group availability, agreements, tax, banking, and any App Store Server API issuer/key/private-key setup used by release operations.
 - Configure App Store Server Notifications V2 for the production API endpoint `POST /app-store/notifications` and send/verify Apple's test notification.
 - Confirm the production bundle ID and product IDs are exactly `app.angles.ios`, `app.angles.ios.monthly`, and `app.angles.ios.annual`.
 
 ### Railway and infrastructure
 
-- Create the Railway project, API service, production Postgres database, and private `angles-avatars` bucket.
-- Assign the final HTTPS domain and set `BETTER_AUTH_URL` to that origin.
-- Configure every required production secret from `backend/.env.example`: database, Better Auth/Apple, cook signing, metering HMAC, all three model providers, Apple verification, and bucket credentials.
-- Set both `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
-- Deploy, confirm packaged migrations complete, and verify `/health`, authentication, purchase sync, notification delivery, avatar storage, and a full cook/save cycle.
+- The Railway `angles` project, `api` service, production Postgres, and private `angles-avatars` bucket exist. The API is deployed at `https://api-production-61c9.up.railway.app` and `/health` returns `{"status":"ok","db":"ok"}`.
+- Production has the database URL, Better Auth secret and URL, cook signing key, metering HMAC, all three model provider keys, Apple verification material, bucket credentials, and both `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
+- Still to confirm on a real device: authentication, purchase sync, notification delivery, avatar storage, and a full cook/save cycle.
 - Never run the destructive community seed against production; the production guard must remain enabled.
 
 ### Provider operations

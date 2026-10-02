@@ -187,19 +187,34 @@ export async function hasActiveEntitlement(userId: string, date: Date): Promise<
   }
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export async function syncSubscriptionTransaction(
   userId: string,
   transaction: VerifiedAppStoreTransaction,
   now: Date = new Date(),
 ): Promise<SubscriptionBody> {
   const token = transaction.appAccountToken?.toLowerCase();
-  if (token && token !== userId.toLowerCase()) {
+  const foreignToken = token !== undefined && token !== userId.toLowerCase();
+  if (foreignToken && !UUID_PATTERN.test(token)) {
     throw new SubscriptionOwnershipError();
   }
 
   try {
     return await getDb().transaction(async (db) => {
       await lockSubscriptionClaim(db, userId, transaction.originalTransactionId);
+
+      // Apple keeps the token of the account that bought it. Once that account is deleted
+      // nobody else can claim the purchase, so the same Apple ID may carry it to its new account.
+      if (foreignToken) {
+        const tokenOwner = await db.query.users.findFirst({
+          where: eq(users.id, token),
+          columns: { id: true },
+        });
+        if (tokenOwner) {
+          throw new SubscriptionOwnershipError();
+        }
+      }
 
       const claimed = await existingOwner(
         db,
