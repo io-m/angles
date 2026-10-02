@@ -74,7 +74,7 @@ struct SafetyContractTests {
         let body = RecookRequestBody(
             recook: RecookRequest(
                 style: .toughLove,
-                cook: RecookSource(thought: "I froze.", thoughtOriginal: nil, meta: meta, model: "deepseek-flash", signature: "c"),
+                cook: RecookSource(thought: "I froze.", thoughtOriginal: nil, meta: meta, model: "gpt-4.1-mini", signature: "c"),
                 previous: RecookPrevious(reframe: "It passed.", signature: "r")
             ),
             region: "HR"
@@ -87,7 +87,7 @@ struct SafetyContractTests {
         #expect(recook?["style"] as? String == "tough_love")
         #expect(cook?["thought"] as? String == "I froze.")
         #expect(cook?["thoughtOriginal"] == nil)
-        #expect(cook?["model"] as? String == "deepseek-flash")
+        #expect(cook?["model"] as? String == "gpt-4.1-mini")
         #expect(cook?["signature"] as? String == "c")
         #expect((cook?["meta"] as? [String: Any])?["distortions"] as? [String] == ["mind_reading"])
         #expect((recook?["previous"] as? [String: Any])?["signature"] as? String == "r")
@@ -96,13 +96,13 @@ struct SafetyContractTests {
     @Test func readyCarriesTheModelTheServerRoutedTo() throws {
         let meta = #"{"category":"work","tags":[],"intensity":3,"timeframe":"past","emotions":[],"safety":"none","inputLanguage":"en","skippedStyles":[],"matching":{"category":"work","tags":[],"intensityBand":"mid"}}"#
         let response = try decode(
-            #"{"kind":"ready","thought":"I froze.","results":[{"style":"stoic","reframe":"It passed.","signature":"r"}],"meta":\#(meta),"model":"deepseek-flash","signature":"c","usage":\#(usage)}"#
+            #"{"kind":"ready","thought":"I froze.","results":[{"style":"stoic","reframe":"It passed.","signature":"r"}],"meta":\#(meta),"model":"gpt-4.1-mini","signature":"c","usage":\#(usage)}"#
         )
         guard case .ready(_, _, let results, _, let model, let signature, _) = response else {
             Issue.record("Expected a ready cook")
             return
         }
-        #expect(model == "deepseek-flash")
+        #expect(model == "gpt-4.1-mini")
         #expect(signature == "c")
         #expect(results.count == 1)
     }

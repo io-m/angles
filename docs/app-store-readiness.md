@@ -44,7 +44,7 @@ The repo changes from the October 1 audit have shipped (see above). What remains
 ### Hosted legal and support
 
 - Operator details in `docs/legal/privacy.md` and `docs/legal/terms.md` name Bithavn, CVR 46705130, `info@bithavn.app`, the Copenhagen postal address, and Danish law.
-- The privacy policy names Mistral AI (France), Google Gemini (US), and DeepSeek (China), and says each is used through a paid API whose terms forbid training on inputs. Confirm that in each provider account before submission. If DeepSeek cannot confirm it, move the writer off it with `LLM_WRITER_MODEL` / `LLM_WRITER_FALLBACK_MODEL` on Railway and drop DeepSeek from the policy and the **Before you start** sheet.
+- The privacy policy names Mistral AI (France) and OpenAI (US), and says each is used through a paid API whose terms forbid training on inputs. Confirm both provider accounts before submission; in OpenAI, keep API input/output sharing off.
 - The site is published at `https://useangles.app` (`/privacy`, `/terms`, `/support`). `www` and plain HTTP redirect to that host. The 2 October 2026 Terms and Privacy text is live.
 - Someone checks the `card_reports` table at least daily during review and launch; the Terms and the review notes promise a 24-hour review.
 
@@ -59,14 +59,14 @@ The repo changes from the October 1 audit have shipped (see above). What remains
 ### Railway and infrastructure
 
 - The Railway `angles` project, `api` service, production Postgres, and private `angles-avatars` bucket exist. The API is deployed at `https://api-production-61c9.up.railway.app` and `/health` returns `{"status":"ok","db":"ok"}`.
-- Production has the database URL, Better Auth secret and URL, cook signing key, metering HMAC, all three model provider keys, Apple verification material, bucket credentials, and both `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
+- Production has the database URL, Better Auth secret and URL, cook signing key, metering HMAC, both model provider keys, Apple verification material, bucket credentials, and both `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
 - Still to confirm on a real device: authentication, purchase sync, notification delivery, avatar storage, and a full cook/save cycle.
 - Never run the destructive community seed against production; the production guard must remain enabled.
 
 ### Provider operations
 
 - Configure production keys separately from local/CI keys.
-- Set Mistral organization/workspace spend limits, a Gemini project/prepay cap, and a deliberately small DeepSeek prepaid balance.
+- Set Mistral organization/workspace spend limits and OpenAI project budget and usage alerts.
 - Configure spend/balance alerts and operational handling for a provider pause or outage.
 - Recheck current provider prices against `LLM_RATE_VERSION` before launch and bump the version when rates change.
 

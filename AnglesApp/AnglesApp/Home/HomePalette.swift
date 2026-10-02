@@ -65,48 +65,47 @@ struct CardStyleAppearance {
 
     init(style: Style) {
         self.style = style
-        // Four hue families spaced on the wheel so chips and washes never blur together:
-        // stoic = cool slate-blue, optimistic = amber, humorous = jade, tough_love = brick.
+        // Stoic blue, optimistic orange, humorous green, tough love red.
         switch style {
         case .stoic:
             systemImage = "mountain.2.fill"
             ink = Color.adaptive(
-                light: UIColor(red: 0.18, green: 0.37, blue: 0.47, alpha: 1),
-                dark: UIColor(red: 0.47, green: 0.66, blue: 0.78, alpha: 1)
+                light: UIColor(red: 0.12, green: 0.40, blue: 0.85, alpha: 1),
+                dark: UIColor(red: 0.45, green: 0.65, blue: 1.0, alpha: 1)
             )
             responseInk = Color.adaptive(
-                light: UIColor(red: 0.11, green: 0.27, blue: 0.34, alpha: 1),
-                dark: UIColor(red: 0.82, green: 0.89, blue: 0.93, alpha: 1)
+                light: UIColor(red: 0.08, green: 0.28, blue: 0.62, alpha: 1),
+                dark: UIColor(red: 0.82, green: 0.90, blue: 1.0, alpha: 1)
             )
         case .optimistic:
             systemImage = "sun.max.fill"
             ink = Color.adaptive(
-                light: UIColor(red: 0.71, green: 0.47, blue: 0.08, alpha: 1),
-                dark: UIColor(red: 0.88, green: 0.71, blue: 0.34, alpha: 1)
+                light: UIColor(red: 0.92, green: 0.45, blue: 0.05, alpha: 1),
+                dark: UIColor(red: 1.0, green: 0.62, blue: 0.22, alpha: 1)
             )
             responseInk = Color.adaptive(
-                light: UIColor(red: 0.47, green: 0.31, blue: 0.05, alpha: 1),
-                dark: UIColor(red: 0.94, green: 0.86, blue: 0.70, alpha: 1)
+                light: UIColor(red: 0.58, green: 0.28, blue: 0.02, alpha: 1),
+                dark: UIColor(red: 1.0, green: 0.88, blue: 0.72, alpha: 1)
             )
         case .humorous:
             systemImage = "theatermasks.fill"
             ink = Color.adaptive(
-                light: UIColor(red: 0.09, green: 0.51, blue: 0.40, alpha: 1),
-                dark: UIColor(red: 0.28, green: 0.78, blue: 0.63, alpha: 1)
+                light: UIColor(red: 0.10, green: 0.62, blue: 0.22, alpha: 1),
+                dark: UIColor(red: 0.35, green: 0.82, blue: 0.45, alpha: 1)
             )
             responseInk = Color.adaptive(
-                light: UIColor(red: 0.05, green: 0.35, blue: 0.27, alpha: 1),
-                dark: UIColor(red: 0.78, green: 0.94, blue: 0.88, alpha: 1)
+                light: UIColor(red: 0.06, green: 0.42, blue: 0.14, alpha: 1),
+                dark: UIColor(red: 0.78, green: 0.95, blue: 0.82, alpha: 1)
             )
         case .toughLove:
             systemImage = "flame.fill"
             ink = Color.adaptive(
-                light: UIColor(red: 0.73, green: 0.23, blue: 0.19, alpha: 1),
-                dark: UIColor(red: 0.91, green: 0.55, blue: 0.43, alpha: 1)
+                light: UIColor(red: 0.86, green: 0.15, blue: 0.12, alpha: 1),
+                dark: UIColor(red: 1.0, green: 0.42, blue: 0.38, alpha: 1)
             )
             responseInk = Color.adaptive(
-                light: UIColor(red: 0.47, green: 0.13, blue: 0.11, alpha: 1),
-                dark: UIColor(red: 0.96, green: 0.84, blue: 0.80, alpha: 1)
+                light: UIColor(red: 0.55, green: 0.08, blue: 0.06, alpha: 1),
+                dark: UIColor(red: 1.0, green: 0.82, blue: 0.78, alpha: 1)
             )
         }
     }

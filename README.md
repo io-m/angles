@@ -48,7 +48,7 @@ API listens on `http://localhost:8787` (bind `0.0.0.0`). A physical device must 
 
 Other scripts: `pnpm test`, `pnpm typecheck`, `pnpm build`.
 
-The LLM lives behind `backend/src/lib/llmClient.ts` (`generateReframe` / `generateJson`). The three public metered models are `mistral-small-latest`, `gemini-3.8-flash`, and `deepseek-flash`; `deepseek-v4-pro` remains catalog-only. The iOS app must never call an LLM with a client-side key.
+The LLM lives behind `backend/src/lib/llmClient.ts` (`generateReframe` / `generateJson`). The only catalog models are `mistral-small-latest` and `gpt-4.1-mini`: Mistral is primary for every step and OpenAI is the single provider fallback. The iOS app must never call an LLM with a client-side key.
 
 Native `URLSession` does not use browser CORS. This API does not send CORS headers.
 
@@ -69,7 +69,7 @@ Do not add `railway.json` / `railway.toml` (Config as Code is deprecated for new
 - Health check path: `/health`
 - Bind `PORT` (the server already reads `process.env.PORT`)
 - Startup applies packaged migrations before serving and fails fast on incomplete production configuration.
-- Better Auth is Sign in with Apple. Set every production variable documented in `backend/.env.example`, including Apple verification, subscription/usage enforcement, all three provider keys, and avatar-bucket credentials.
+- Better Auth is Sign in with Apple. Set every production variable documented in `backend/.env.example`, including Apple verification, subscription/usage enforcement, both provider keys, and avatar-bucket credentials.
 - Project-level IaC, when you need it, is `.railway/railway.ts` via the Railway CLI
 
 Release status and external submission work are tracked in [`docs/app-store-readiness.md`](docs/app-store-readiness.md) and [`docs/release-checklist.md`](docs/release-checklist.md).

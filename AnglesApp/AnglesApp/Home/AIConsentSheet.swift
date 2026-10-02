@@ -35,7 +35,7 @@ struct AIConsentSheet: View {
                         consentRow(
                             icon: "cpu",
                             title: "Who processes it",
-                            detail: "Mistral AI (France), Google Gemini (United States), or DeepSeek (China). Each request goes to one of them, and to another if the first is unavailable."
+                            detail: "Mistral AI (France) or OpenAI (United States). Each request goes to one of them, and to the other if the first is unavailable."
                         )
                         consentRow(
                             icon: "globe",

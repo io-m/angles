@@ -8,9 +8,8 @@ import {
   LLM_RATE_VERSION,
   companyCostNanoUsd,
   estimateUsage,
-  parseDeepSeekUsage,
-  parseGeminiUsage,
   parseMistralUsage,
+  parseOpenAIUsage,
   type LlmCallKind,
   type LlmUsageEvent,
   type NormalizedLlmUsage,
@@ -26,33 +25,23 @@ export const COOK_DEADLINE_MS = 13_000;
 export const MIN_LLM_CALL_MS = 800;
 export const DEFAULT_LLM_MODEL: LlmModelId = "mistral-small-latest";
 const DEFAULT_MAX_IN_FLIGHT = 32;
-/**
- * Gemini counts thinking against maxOutputTokens, so the visible budget gets this on top.
- * `low` is the floor for gemini-3.8-flash; `minimal` is rejected with a 400.
- */
-export const GEMINI_THINKING_HEADROOM = 1024;
 
 export const LLM_MODEL_IDS = [
   "mistral-small-latest",
-  "gemini-3.8-flash",
-  "deepseek-flash",
-  "deepseek-v4-pro",
+  "gpt-4.1-mini",
 ] as const;
 
 export type LlmModelId = (typeof LLM_MODEL_IDS)[number];
-type LlmProvider = "mistral" | "gemini" | "deepseek";
+type LlmProvider = "mistral" | "openai";
 
 export const LLM_MODELS: Record<LlmModelId, { provider: LlmProvider }> = {
   "mistral-small-latest": { provider: "mistral" },
-  "gemini-3.8-flash": { provider: "gemini" },
-  "deepseek-flash": { provider: "deepseek" },
-  "deepseek-v4-pro": { provider: "deepseek" },
+  "gpt-4.1-mini": { provider: "openai" },
 };
 
 export const LLM_PROVIDER_KEY_ENV: Record<LlmProvider, string> = {
   mistral: "MISTRAL_API_KEY",
-  gemini: "GEMINI_API_KEY",
-  deepseek: "DEEPSEEK_API_KEY",
+  openai: "OPENAI_API_KEY",
 };
 
 /** The server picks the model for each step of a cook; the phone never does. */
@@ -68,15 +57,14 @@ const STEP_ENV: Record<LlmStep, { model: string; fallback: string }> = {
 /** Chosen with `pnpm llm:eval`. Move a default only with a fresh eval run behind it. */
 export const STEP_DEFAULT_MODELS: Record<LlmStep, LlmModelId> = {
   decision: "mistral-small-latest",
-  writer: "deepseek-flash",
+  writer: "mistral-small-latest",
   moderation: "mistral-small-latest",
 };
 
 /** A different provider, so one outage cannot take a step down on its own. */
 const DEFAULT_FALLBACK: Record<LlmProvider, LlmModelId> = {
-  mistral: "deepseek-flash",
-  deepseek: "mistral-small-latest",
-  gemini: "mistral-small-latest",
+  mistral: "gpt-4.1-mini",
+  openai: "mistral-small-latest",
 };
 
 export type StepModels = { primary: LlmModelId; fallback?: LlmModelId };
@@ -107,12 +95,12 @@ export function modelsForStep(
   return fallback === primary ? { primary } : { primary, fallback };
 }
 
-const CHAT_COMPLETIONS_URL: Record<Exclude<LlmProvider, "gemini">, string> = {
+const CHAT_COMPLETIONS_URL: Record<LlmProvider, string> = {
   mistral: "https://api.mistral.ai/v1/chat/completions",
-  deepseek: "https://api.deepseek.com/chat/completions",
+  openai: "https://api.openai.com/v1/chat/completions",
 };
 
-/** A JSON Schema the provider enforces where it can (Mistral, Gemini). DeepSeek gets JSON mode. */
+/** A JSON Schema enforced by both configured providers. */
 export type JsonSchema = {
   name: string;
   schema: Record<string, unknown>;
@@ -126,7 +114,7 @@ export type LlmCallOptions = {
   callKind?: LlmCallKind;
   attempt?: number;
   temperature?: number;
-  /** Tried once when the primary provider fails (HTTP, timeout, network), never on a bad reply. */
+  /** Tried once when the primary provider call fails for any reason. */
   fallbackModel?: LlmModelId;
   /** Which model actually answered, primary or fallback. */
   onAnsweredBy?: (model: LlmModelId) => void;
@@ -382,20 +370,6 @@ async function callProvider(
     throw new LlmError("Cannot reframe empty text");
   }
 
-  if (provider === "gemini") {
-    return requestGemini({
-      model,
-      apiKey,
-      systemPrompt: input.systemPrompt,
-      text: trimmed,
-      signal,
-      maxOutputTokens: input.maxOutputTokens,
-      json: input.json,
-      jsonSchema: input.jsonSchema,
-      temperature: input.temperature,
-    });
-  }
-
   return requestChatCompletions({
     url: CHAT_COMPLETIONS_URL[provider],
     apiKey,
@@ -405,20 +379,17 @@ async function callProvider(
     signal,
     maxOutputTokens: input.maxOutputTokens,
     extraBody: {
-      ...(provider === "mistral"
-        ? { reasoning_effort: "none" }
-        : { thinking: { type: "disabled" } }),
+      ...(provider === "mistral" ? { reasoning_effort: "none" } : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
-      ...(input.json ? { response_format: chatResponseFormat(provider, input.jsonSchema) } : {}),
+      ...(input.json ? { response_format: chatResponseFormat(input.jsonSchema) } : {}),
     },
   });
 }
 
 function chatResponseFormat(
-  provider: Exclude<LlmProvider, "gemini">,
   jsonSchema: JsonSchema | undefined,
 ): Record<string, unknown> {
-  if (provider === "mistral" && jsonSchema) {
+  if (jsonSchema) {
     return {
       type: "json_schema",
       json_schema: { name: jsonSchema.name, schema: jsonSchema.schema, strict: true },
@@ -444,24 +415,8 @@ type ChatCompletionResponse = {
   }>;
 };
 
-type GeminiPart = {
-  text?: string;
-  thought?: boolean;
-};
-
-type GeminiGenerateResponse = {
-  responseId?: string;
-  modelVersion?: string;
-  usageMetadata?: unknown;
-  candidates?: Array<{
-    content?: {
-      parts?: GeminiPart[];
-    };
-  }>;
-};
-
 function httpError(status: number): LlmError {
-  return new LlmError(`LLM HTTP ${status}`, { retryable: status === 408 || status === 429 || status >= 500 });
+  return new LlmError(`LLM HTTP ${status}`, { retryable: true });
 }
 
 async function requestChatCompletions(options: {
@@ -510,60 +465,7 @@ async function requestChatCompletions(options: {
     usage:
       provider === "mistral"
         ? parseMistralUsage(payload.usage)
-        : parseDeepSeekUsage(payload.usage),
-  };
-}
-
-async function requestGemini(options: {
-  model: string;
-  apiKey: string;
-  systemPrompt: string;
-  text: string;
-  signal: AbortSignal;
-  maxOutputTokens: number;
-  json: boolean;
-  jsonSchema: JsonSchema | undefined;
-  temperature: number | undefined;
-}): Promise<ProviderCallResult> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${options.model}:generateContent`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": options.apiKey,
-    },
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: options.systemPrompt }],
-      },
-      contents: [{ role: "user", parts: [{ text: options.text }] }],
-      generationConfig: {
-        maxOutputTokens: options.maxOutputTokens + GEMINI_THINKING_HEADROOM,
-        thinkingConfig: {
-          thinkingLevel: "low",
-        },
-        ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-        ...(options.json ? { responseMimeType: "application/json" } : {}),
-        ...(options.json && options.jsonSchema ? { responseJsonSchema: options.jsonSchema.schema } : {}),
-      },
-    }),
-    signal: options.signal,
-  });
-
-  if (!response.ok) {
-    throw httpError(response.status);
-  }
-
-  const payload = (await response.json()) as GeminiGenerateResponse;
-  const content = extractGeminiText(payload.candidates?.[0]?.content?.parts);
-  if (content.length === 0) {
-    throw new LlmError("LLM returned an empty reframe", { retryable: true });
-  }
-  return {
-    content,
-    returnedModel: payload.modelVersion ?? options.model,
-    ...(payload.responseId ? { providerRequestId: payload.responseId } : {}),
-    usage: parseGeminiUsage(payload.usageMetadata),
+        : parseOpenAIUsage(payload.usage),
   };
 }
 
@@ -578,18 +480,6 @@ function extractChatContent(content: ChatMessageContent): string {
 
   return content
     .map((part) => (typeof part.text === "string" ? part.text : ""))
-    .join("")
-    .trim();
-}
-
-function extractGeminiText(parts: GeminiPart[] | undefined): string {
-  if (!parts) {
-    return "";
-  }
-
-  return parts
-    .filter((part) => part.thought !== true)
-    .map((part) => part.text ?? "")
     .join("")
     .trim();
 }

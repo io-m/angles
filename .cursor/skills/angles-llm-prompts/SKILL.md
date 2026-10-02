@@ -81,11 +81,11 @@ Each voice has banned openers; `reframeLint.ts` reads `SHARED_BANNED_OPENERS` an
 
 ```bash
 cd backend
-pnpm llm:eval --label=my-change --decision=mistral-small-latest --writer=deepseek-flash
+pnpm llm:eval --label=my-change --decision=mistral-small-latest --writer=gpt-4.1-mini
 pnpm llm:eval --compare=eval/out/<before>.json,eval/out/<after>.json
 ```
 
-The golden thoughts are `backend/eval/thoughts.json`. The report gives kind, category, and safety accuracy, styles per cook, answers in their language, lint and rewrite rates, overlap, cost per cook, and judge scores per style (judge `gemini-3.8-flash` by default, so a Gemini writer may be flattered). Run one eval at a time: parallel runs share the Mistral rate limit, and the eval has no fallbacks, so a 429 becomes an error case.
+The golden thoughts are `backend/eval/thoughts.json`. The report gives kind, category, and safety accuracy, styles per cook, answers in their language, lint and rewrite rates, overlap, cost per cook, and judge scores per style (judge `gpt-4.1-mini` by default). Run one eval at a time: parallel runs share the provider rate limits, and the eval has no fallbacks, so a 429 becomes an error case.
 
 ## Adding a style
 

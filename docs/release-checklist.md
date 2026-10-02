@@ -23,7 +23,8 @@
 - [x] Create Railway API, Postgres, private avatar bucket, and HTTPS domain.
 - [x] Configure `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `APPLE_CLIENT_ID`, and a production `APPLE_CLIENT_SECRET`. The secret expires on 3 April 2027.
 - [x] Configure `COOK_SIGNING_KEY` and a separate 32+ character `METERING_HMAC_KEY`.
-- [x] Configure `MISTRAL_API_KEY`, `GEMINI_API_KEY`, and `DEEPSEEK_API_KEY`.
+- [x] Configure `MISTRAL_API_KEY`.
+- [x] Configure `OPENAI_API_KEY`; remove the retired provider keys.
 - [x] Configure `APPLE_ROOT_CERTIFICATES_BASE64` and numeric `APPLE_APP_ID` (`6811873869`).
 - [x] Configure `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`, `ENDPOINT`, and `S3_URL_STYLE`.
 - [x] Set `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
@@ -42,8 +43,8 @@
 
 - [ ] Use production-only provider keys.
 - [ ] Set Mistral organization/workspace caps and alerts.
-- [ ] Set a Gemini project/prepay cap and bounded reload.
-- [ ] Keep the DeepSeek prepaid balance deliberately small and monitored.
+- [ ] Set an OpenAI project budget and usage alerts.
+- [ ] Confirm OpenAI API input/output sharing is off.
 - [ ] Verify current provider prices against `LLM_RATE_VERSION`.
 - [ ] Define who responds when a provider cap, Railway alert, failed migration, or notification failure occurs.
 

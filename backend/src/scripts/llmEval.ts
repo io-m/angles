@@ -2,7 +2,7 @@
  * Offline eval of the cook pipeline against a synthetic golden set.
  *
  *   pnpm llm:eval --label=baseline --model=mistral-small-latest
- *   pnpm llm:eval --label=split --decision=mistral-small-latest --writer=deepseek-flash
+ *   pnpm llm:eval --label=split --decision=mistral-small-latest --writer=gpt-4.1-mini
  *   pnpm llm:eval --compare=eval/out/a.json,eval/out/b.json
  *
  * `--model` sets both steps; `--decision` and `--writer` override one each. With none,
@@ -477,7 +477,7 @@ async function main(): Promise<void> {
   };
   const modelLabel =
     models.decision === models.writer ? models.writer : `${models.decision}+${models.writer}`;
-  const judgeModel = flag("no-judge") ? null : (modelArg("judge") ?? "gemini-3.8-flash");
+  const judgeModel = flag("no-judge") ? null : (modelArg("judge") ?? "gpt-4.1-mini");
   const label = arg("label") ?? `run-${modelLabel}`;
   const only = arg("only")?.split(",");
   const limit = Number(arg("limit") ?? "0");

@@ -147,10 +147,9 @@ export default function PrivacyPage() {
       <p>
         Angles sends the thought you write and your answers to follow-up
         questions to a large-language-model provider. We choose the provider for
-        each step on our servers: <strong>Mistral AI</strong> (France),{' '}
-        <strong>Google Gemini</strong> (Google, United States), or{' '}
-        <strong>DeepSeek</strong> (China). If the first provider is unavailable,
-        the same request may be sent to another of them. When you post a card
+        each step on our servers: <strong>Mistral AI</strong> (France) or{' '}
+        <strong>OpenAI</strong> (United States). If the first provider is unavailable,
+        the same request may be sent to the other. When you post a card
         publicly, its text is also sent to one of these providers for an
         automated moderation check before anyone else can see it. Your region,
         name, email address, and account identifiers are not sent to AI
@@ -276,17 +275,12 @@ export default function PrivacyPage() {
       </p>
       <p>
         Some providers process information outside the European Economic Area.
-        Google (Gemini) processes it in the United States, under the EU-U.S.
+        OpenAI processes it in the United States, under the EU-U.S.
         Data Privacy Framework or the European Commission’s Standard
-        Contractual Clauses. DeepSeek processes it in China, which has no EU
-        adequacy decision; that transfer relies on Standard Contractual Clauses
-        where the provider offers them and on the explicit consent you give on
-        the <strong>Before you start</strong> screen after being told the
-        country (Article 49(1)(a)). Chinese law may allow authorities there to
-        access data more broadly than EU law would. Our hosting, database, and
-        storage providers may also process information outside the EEA, under
-        Standard Contractual Clauses or an adequacy decision. Write to us for a
-        copy of the safeguards that apply.
+        Contractual Clauses. Our hosting, database, and storage providers may
+        also process information outside the EEA, under Standard Contractual
+        Clauses or an adequacy decision. Write to us for a copy of the
+        safeguards that apply.
       </p>
 
       <h2>Children</h2>

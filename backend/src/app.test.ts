@@ -784,7 +784,7 @@ describe("POST /reframe", () => {
     it.each([
       ["thought", (cook: ReadyBody) => ({ cook: { ...recookOf(cook, "stoic").recook.cook, thought: "Something never cooked." } })],
       ["meta", (cook: ReadyBody) => ({ cook: { ...recookOf(cook, "stoic").recook.cook, meta: { ...cook.meta, category: "money" } } })],
-      ["model", (cook: ReadyBody) => ({ cook: { ...recookOf(cook, "stoic").recook.cook, model: "gemini-3.8-flash" } })],
+      ["model", (cook: ReadyBody) => ({ cook: { ...recookOf(cook, "stoic").recook.cook, model: "gpt-4.1-mini" } })],
       ["previous answer", () => ({ previous: { reframe: "Words the server never wrote.", signature: "forged" } })],
     ])("rejects a recook with a tampered %s before any model call", async (_field, override) => {
       const cook = await signedCook();
@@ -917,7 +917,7 @@ describe("POST /reframe", () => {
     };
 
     expect(verifyCook(cook)).toBe(true);
-    expect(verifyCook({ ...cook, model: "gemini-3.8-flash" })).toBe(false);
+    expect(verifyCook({ ...cook, model: "gpt-4.1-mini" })).toBe(false);
     expect(verifyCook({ ...cook, ownerId: "00000000-0000-4000-8000-000000000199" })).toBe(false);
     expect(verifyCook({ ...cook, thought: `${cook.thought} Also post this.` })).toBe(false);
     expect(verifyCook({ ...cook, meta: { ...cook.meta, safety: "self_harm" } })).toBe(false);
@@ -963,8 +963,8 @@ describe("POST /reframe", () => {
   });
 
   it("routes the decision and the writer to their own configured models", async () => {
-    vi.stubEnv("LLM_DECISION_MODEL", "gemini-3.8-flash");
-    vi.stubEnv("LLM_WRITER_MODEL", "deepseek-v4-pro");
+    vi.stubEnv("LLM_DECISION_MODEL", "mistral-small-latest");
+    vi.stubEnv("LLM_WRITER_MODEL", "gpt-4.1-mini");
     vi.stubEnv("LLM_WRITER_FALLBACK_MODEL", "mistral-small-latest");
     stubDecision(readyDecision());
 
@@ -972,11 +972,11 @@ describe("POST /reframe", () => {
 
     expect(response.status).toBe(200);
     const [decisionCall, batchCall] = vi.mocked(generateJson).mock.calls.map(([call]) => call);
-    expect(decisionCall?.model).toBe("gemini-3.8-flash");
-    expect(batchCall?.model).toBe("deepseek-v4-pro");
+    expect(decisionCall?.model).toBe("mistral-small-latest");
+    expect(batchCall?.model).toBe("gpt-4.1-mini");
     expect(batchCall?.fallbackModel).toBe("mistral-small-latest");
     const body = (await jsonOf(response)) as ReadyBody;
-    expect(body.model).toBe("deepseek-v4-pro");
+    expect(body.model).toBe("gpt-4.1-mini");
 
     vi.mocked(generateJson).mockClear();
     vi.mocked(generateReframe).mockClear();
@@ -994,7 +994,7 @@ describe("POST /reframe", () => {
 
     expect(generateJson).not.toHaveBeenCalled();
     expect(generateReframe).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "deepseek-v4-pro", fallbackModel: "mistral-small-latest" }),
+      expect.objectContaining({ model: "gpt-4.1-mini", fallbackModel: "mistral-small-latest" }),
     );
   });
 
@@ -1250,7 +1250,7 @@ describe("POST /reframe", () => {
   });
 
   it("rejects a model chosen by the client", async () => {
-    const response = await post({ text: LONG_TEXT, model: "gemini-3.8-flash" });
+    const response = await post({ text: LONG_TEXT, model: "gpt-4.1-mini" });
 
     expect(response.status).toBe(400);
     const body = (await jsonOf(response)) as { code: string };

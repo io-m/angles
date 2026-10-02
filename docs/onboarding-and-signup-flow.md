@@ -36,7 +36,7 @@ The app waits for both session restoration and StoreKit state before publishing 
 3. StoreKit checks live entitlements for that account.
 4. If the account is not entitled and both taste timestamps are empty, the app opens the normal compose experience as the onboarding taste.
 5. The first Send opens the one-time **Before you start** consent sheet (providers, what is sent, community rules, Terms and Privacy). Nothing is sent until **Agree and continue**.
-6. The taste may include decision follow-ups. The server routes each step to Mistral, DeepSeek, or Gemini, with a fallback provider, and server abuse limits bound the number of taste turns. Once those turns run out (`TASTE_LIMIT_REACHED` or `TASTE_ALREADY_CONSUMED`), the app opens the paywall.
+6. The taste may include decision follow-ups. The server routes each step to Mistral, with one OpenAI fallback on a provider failure, and server abuse limits bound the number of taste turns. Once those turns run out (`TASTE_LIMIT_REACHED` or `TASTE_ALREADY_CONSUMED`), the app opens the paywall.
 7. The ready card's Save is forced private (**Save to private library**, no privacy toggle). `POST /cards` stores it for the signed-in user and stamps `tasteCompletedAt`.
 8. The app presents the paywall. Prices come from StoreKit; Yearly leads with its billed yearly price. There is no free trial.
 9. A verified purchase is created with the Angles account UUID as `appAccountToken`, synced to the backend, and then opens Home.

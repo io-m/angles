@@ -551,7 +551,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       ownerId: DEV_USER_ID,
       clientRequestId: "00000000-0000-4000-8000-000000000201",
       requestFingerprint: "ready-fingerprint",
-      model: "deepseek-flash",
+      model: "gpt-4.1-mini",
       kind: "full",
       now: new Date("2026-09-25T12:00:00.000Z"),
     });
@@ -565,12 +565,12 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
     expect(afterReady.creditsRemaining).toBe(599);
 
-    // The routed model is recorded, not priced: a Gemini-routed cook costs the same one credit.
+    // The routed model is recorded, not priced: an OpenAI-routed cook costs the same one credit.
     const continued = await startMeterOperation({
       ownerId: DEV_USER_ID,
       clientRequestId: "00000000-0000-4000-8000-000000000202",
       requestFingerprint: "continue-fingerprint",
-      model: "gemini-3.8-flash",
+      model: "gpt-4.1-mini",
       kind: "full",
       now: new Date("2026-09-25T12:01:01.000Z"),
     });
@@ -652,7 +652,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       ownerId: DEV_USER_ID,
       clientRequestId: "00000000-0000-4000-8000-000000000221",
       requestFingerprint: "replayed",
-      model: "deepseek-flash",
+      model: "gpt-4.1-mini",
       kind: "full",
       now: new Date("2026-09-25T12:00:00.000Z"),
     });
@@ -691,7 +691,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       ownerId: DEV_USER_ID,
       clientRequestId: "00000000-0000-4000-8000-000000000222",
       requestFingerprint: "failed",
-      model: "deepseek-flash",
+      model: "gpt-4.1-mini",
       kind: "full",
       now: new Date("2026-09-25T13:00:02.000Z"),
     });
@@ -713,7 +713,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       ownerId: DEV_USER_ID,
       clientRequestId: "00000000-0000-4000-8000-000000000221",
       requestFingerprint: "stale",
-      model: "gemini-3.8-flash",
+      model: "gpt-4.1-mini",
       kind: "full",
       now: new Date("2026-09-25T12:00:00.000Z"),
     });
@@ -746,7 +746,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         ownerId: DEV_USER_ID,
         clientRequestId: "00000000-0000-4000-8000-000000000231",
         requestFingerprint: "final-a",
-        model: "deepseek-flash",
+        model: "gpt-4.1-mini",
         kind: "full",
         now: new Date("2026-09-25T12:01:01.000Z"),
       }),
@@ -754,7 +754,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         ownerId: DEV_USER_ID,
         clientRequestId: "00000000-0000-4000-8000-000000000232",
         requestFingerprint: "final-b",
-        model: "deepseek-flash",
+        model: "gpt-4.1-mini",
         kind: "full",
         now: new Date("2026-09-25T12:01:01.000Z"),
       }),
@@ -779,7 +779,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         ownerId: DEV_USER_ID,
         clientRequestId: "00000000-0000-4000-8000-000000000233",
         requestFingerprint: "empty",
-        model: "deepseek-flash",
+        model: "gpt-4.1-mini",
         kind: "full",
         now: new Date("2026-09-25T12:02:04.000Z"),
       }),
@@ -795,7 +795,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       ownerId: DEV_USER_ID,
       clientRequestId: "00000000-0000-4000-8000-000000000234",
       requestFingerprint: "refilled",
-      model: "gemini-3.8-flash",
+      model: "gpt-4.1-mini",
       kind: "full",
       now: new Date("2026-09-25T12:02:06.000Z"),
     });

@@ -12,7 +12,7 @@ Angles requires Sign in with Apple before the core experience because the free t
 2. Tap **Continue with Apple** and complete Apple's native sign-in sheet.
 3. For a new Angles account with no active subscription, the taste composer opens ("Break the spiral.").
 4. Type a thought into "Tell me what's on your mind..." and tap **Send** (the arrow).
-5. The first Send opens **Before you start**, which names the AI providers (Mistral AI, Google Gemini, DeepSeek), says what is sent, states the community rules, and links the Terms of Use and Privacy Policy. Tap **Agree and continue**. It appears once per account.
+5. The first Send opens **Before you start**, which names the AI providers (Mistral AI and OpenAI), says what is sent, states the community rules, and links the Terms of Use and Privacy Policy. Tap **Agree and continue**. It appears once per account.
 6. If a follow-up question appears, tap any chip or type in "Say more..." and send. The server forces a result by the third turn.
 7. Four angles appear (Stoic, Optimistic, Humorous, Tough love). Tap **Save to private library**. The taste is always saved privately.
 8. "Saved privately" plays, then the paywall opens. Choose **Yearly** or **Monthly** (prices come from the App Store; Yearly shows the yearly price it bills), tap **Continue**, and approve the sandbox purchase. Each plan includes 600 credits a month.
@@ -94,7 +94,7 @@ Community safety (Home shows public cards from other people):
 
 Safety: Angles is a self-reflection tool, not therapy. If a thought suggests self-harm, Angles does not reframe it and shows a crisis line chosen by the device region.
 
-AI: thoughts are processed on our server by Mistral AI, Google Gemini, or DeepSeek, only after the user agrees on "Before you start". No AI runs on the device and no keys are in the app.
+AI: thoughts are processed on our server by Mistral AI or OpenAI, only after the user agrees on "Before you start". No AI runs on the device and no keys are in the app.
 
 Account deletion: Profile -> Settings -> Delete account -> Delete account, or from the paywall (i) sheet -> Delete account. Deleting does not cancel the Apple subscription.
 

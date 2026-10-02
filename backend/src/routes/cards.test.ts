@@ -249,7 +249,7 @@ describe("POST /cards", () => {
 
   it.each([
     ["thought", { thought: "Something the server never cooked." }],
-    ["model", { model: "deepseek-flash" }],
+    ["model", { model: "gpt-4.1-mini" }],
     ["meta", { meta: { ...cookBody.meta, category: "money" } }],
     ["safety", { meta: { ...cookBody.meta, safety: "self_harm" } }],
     ["distortions", { meta: { ...cookBody.meta, distortions: ["labeling"] } }],
@@ -295,7 +295,7 @@ describe("POST /cards", () => {
 
   it("rejects a cook whose model was changed after signing", async () => {
     const response = await app.request(
-      jsonRequest("/cards", "POST", { ...cookBody, model: "gemini-3.8-flash" }),
+      jsonRequest("/cards", "POST", { ...cookBody, model: "gpt-4.1-mini" }),
     );
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });

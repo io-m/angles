@@ -86,10 +86,7 @@ const nullable = (schema: Record<string, unknown>): Record<string, unknown> => (
   anyOf: [schema, { type: "null" }],
 });
 
-/**
- * Enforced by providers that support it. The parser below still normalises and fails
- * closed, because DeepSeek only gets plain JSON mode.
- */
+/** Enforced by both providers. The parser below still normalises and fails closed. */
 export const DECISION_JSON_SCHEMA: JsonSchema = {
   name: "decision",
   schema: {

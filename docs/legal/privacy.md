@@ -36,7 +36,7 @@ We use this information to:
 
 Before your first thought leaves your phone, the app shows a **Before you start** screen that names the AI providers and asks you to agree. Nothing is sent to an AI provider until you tap **Agree and continue**.
 
-Angles sends the thought you write and your answers to follow-up questions to a large-language-model provider. We choose the provider for each step on our servers: **Mistral AI** (France), **Google Gemini** (Google, United States), or **DeepSeek** (China). If the first provider is unavailable, the same request may be sent to another of them. When you post a card publicly, its text is also sent to one of these providers for an automated moderation check before anyone else can see it. Your region, name, email address, and account identifiers are not sent to AI providers.
+Angles sends the thought you write and your answers to follow-up questions to a large-language-model provider. We choose the provider for each step on our servers: **Mistral AI** (France) or **OpenAI** (United States). If the first provider is unavailable, the same request may be sent to the other. When you post a card publicly, its text is also sent to one of these providers for an automated moderation check before anyone else can see it. Your region, name, email address, and account identifiers are not sent to AI providers.
 
 We use each provider's paid API service, under terms that do not allow the provider to use what you send to train or improve its models. A provider may keep request data for a limited period for abuse monitoring and legal compliance, as its terms allow, and acts on our instructions. Do not use Angles for emergencies.
 
@@ -78,7 +78,7 @@ You can delete individual cards in the app. You can delete your account in Setti
 
 We use reasonable administrative and technical safeguards, but no service is completely secure.
 
-Some providers process information outside the European Economic Area. Google (Gemini) processes it in the United States, under the EU-U.S. Data Privacy Framework or the European Commission's Standard Contractual Clauses. DeepSeek processes it in China, which has no EU adequacy decision; that transfer relies on Standard Contractual Clauses where the provider offers them and on the explicit consent you give on the **Before you start** screen after being told the country (Article 49(1)(a)). Chinese law may allow authorities there to access data more broadly than EU law would. Our hosting, database, and storage providers may also process information outside the EEA, under Standard Contractual Clauses or an adequacy decision. Write to us for a copy of the safeguards that apply.
+Some providers process information outside the European Economic Area. OpenAI processes it in the United States, under the EU-U.S. Data Privacy Framework or the European Commission's Standard Contractual Clauses. Our hosting, database, and storage providers may also process information outside the EEA, under Standard Contractual Clauses or an adequacy decision. Write to us for a copy of the safeguards that apply.
 
 ## Children
 
