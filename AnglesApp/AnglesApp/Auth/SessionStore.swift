@@ -196,7 +196,7 @@ final class SessionStore {
             return
         }
         do {
-            let body = try await profileService.session()
+            let body = try await retryingNetworkFailures { try await profileService.session() }
             if preparingAccess {
                 await prepareAccountAccess?(body)
             }
@@ -224,13 +224,18 @@ final class SessionStore {
 
         let token: String
         do {
-            token = try await authService.signInWithApple(
-                idToken: idToken,
-                nonce: nonce,
-                firstName: firstName,
-                lastName: lastName,
-                email: email
-            )
+            token = try await retryingNetworkFailures {
+                try await authService.signInWithApple(
+                    idToken: idToken,
+                    nonce: nonce,
+                    firstName: firstName,
+                    lastName: lastName,
+                    email: email
+                )
+            }
+        } catch APIError.network(_) {
+            errorMessage = "Couldn't reach Angles. Check your connection and try again."
+            return
         } catch {
             errorMessage = "Couldn't sign in. Try again."
             return
@@ -239,7 +244,7 @@ final class SessionStore {
         KeychainStore.write(token)
         AuthCredentials.shared.bearerToken = token
         do {
-            let body = try await profileService.session()
+            let body = try await retryingNetworkFailures { try await profileService.session() }
             await prepareAccountAccess?(body)
             guard AuthCredentials.shared.bearerToken == token else {
                 errorMessage = "Couldn't sign in. Try again."
@@ -252,6 +257,22 @@ final class SessionStore {
         } catch {
             // The token is valid; Try again re-reads the session without another Apple sheet.
             errorMessage = "Couldn't reach Angles. Try again."
+        }
+    }
+
+    private static let networkRetryDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(3)]
+
+    /// A request with no answer at all is retried before the user sees an error: right after
+    /// iOS grants local network access, or on a dropped connection. HTTP answers are final.
+    private func retryingNetworkFailures<T>(_ operation: () async throws -> T) async throws -> T {
+        var attempt = 0
+        while true {
+            do {
+                return try await operation()
+            } catch APIError.network(_) where attempt < Self.networkRetryDelays.count {
+                try await Task.sleep(for: Self.networkRetryDelays[attempt])
+                attempt += 1
+            }
         }
     }
 
