@@ -218,7 +218,13 @@ export type SessionBody = {
   name: string;
   tasteCompletedAt: string | null;
   tasteConsumedAt: string | null;
+  /** When this account agreed to the Terms (zero tolerance for abuse) and AI processing. */
+  termsAcceptedAt: string | null;
   avatarUrl?: string;
+};
+
+export type TermsAcceptanceBody = {
+  termsAcceptedAt: string;
 };
 
 export type SubscriptionBody = {

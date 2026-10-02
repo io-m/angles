@@ -49,6 +49,8 @@ struct ComposeSheetView: View {
     var onSave: (HomeCard) -> Void = { _ in }
     var onPresentSaveCover: (String) -> Void = { _ in }
     var onDismissSaveCover: (UUID) -> Void = { _ in }
+    var needsTermsAcceptance: Bool = false
+    var onAcceptTerms: () async -> Bool = { true }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -128,9 +130,12 @@ struct ComposeSheetView: View {
             .sheet(isPresented: $showsAIConsent) {
                 AIConsentSheet(
                     onAgree: {
-                        viewModel.recordAIConsent()
+                        guard await onAcceptTerms() else {
+                            return false
+                        }
                         showsAIConsent = false
-                        submit()
+                        submit(termsJustAccepted: true)
+                        return true
                     },
                     onCancel: {
                         showsAIConsent = false
@@ -853,7 +858,9 @@ struct ComposeSheetView: View {
                 .accessibilityLabel("Dismiss keyboard")
             }
 
-            Button(action: submit) {
+            Button {
+                submit()
+            } label: {
                 CircleIcon(
                     systemName: "arrow.up",
                     fill: theme.ink,
@@ -952,13 +959,15 @@ struct ComposeSheetView: View {
         }
     }
 
-    private func submit() {
+    /// `termsJustAccepted` because this view's copy of `needsTermsAcceptance` is the one from
+    /// before the agreement landed.
+    private func submit(termsJustAccepted: Bool = false) {
         guard viewModel.canSubmit else {
             return
         }
 
         composerFocused = false
-        if viewModel.needsAIConsent {
+        if needsTermsAcceptance, !termsJustAccepted {
             showsAIConsent = true
             return
         }

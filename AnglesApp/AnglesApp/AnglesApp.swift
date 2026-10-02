@@ -144,7 +144,9 @@ struct AppRoot: View {
                 onShowMembership: presentMembershipPaywall,
                 onSave: handleSavedCard,
                 onPresentSaveCover: presentSaveCover,
-                onDismissSaveCover: dismissSaveCover
+                onDismissSaveCover: dismissSaveCover,
+                needsTermsAcceptance: !sessionStore.hasAcceptedTerms,
+                onAcceptTerms: { await sessionStore.acceptTerms() }
             )
             .opacity(isComposeActive ? 1 : 0)
             .animation(
@@ -197,6 +199,16 @@ struct AppRoot: View {
                 )
                     .transition(.identity)
                     .zIndex(20)
+            }
+
+            if destination == .terms {
+                AIConsentSheet(
+                    cancelTitle: "Log out",
+                    onAgree: { await sessionStore.acceptTerms() },
+                    onCancel: logOut
+                )
+                .transition(.opacity)
+                .zIndex(22)
             }
 
             if showsHomeArrivalStatus {
@@ -328,7 +340,8 @@ struct AppRoot: View {
             isSignedIn: sessionStore.isSignedIn,
             isEntitled: storeKitManager.isEntitledForGate,
             serverTasteCompleted: sessionStore.hasCompletedTaste,
-            membershipRequested: membershipRequested
+            membershipRequested: membershipRequested,
+            termsAccepted: sessionStore.hasAcceptedTerms
         )
     }
 
@@ -558,12 +571,12 @@ struct AppRoot: View {
         endSession(.logOut)
     }
 
-    private func deleteAccount() async -> Bool {
-        guard await sessionStore.deleteAccount() else {
-            return false
+    private func deleteAccount() async -> AccountDeletion {
+        let result = await sessionStore.deleteAccount()
+        if result == .deleted {
+            endSession(.deleted)
         }
-        endSession(.deleted)
-        return true
+        return result
     }
 
     /// Logout, account deletion, and a rejected session all end here. Nothing awaits before the

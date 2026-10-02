@@ -27,6 +27,11 @@ The production feature work is implemented in the repository. The app is not rea
   - A used-up taste routes to the paywall.
   - The subscription sync never answers 401, and a deleted account's purchase moves to the same Apple ID's new account.
   - The Terms have the zero-tolerance and 24-hour report text plus the Apple EULA clause. The privacy policy has the providers, moderation, Home ordering, legal bases, transfers, and the Datatilsynet line.
+- Release gaps (`BUILD.md` row 20, October 2, 2026; build 9):
+  - Each new report emails the operator through Resend (ids and reason only). `pnpm reports` lists open reports and hides, keeps, or deletes a card, or suspends an author's publishing.
+  - Delete account confirms with Apple first and the server revokes the Sign in with Apple grant (guideline 5.1.1(v)).
+  - Terms acceptance is stored on the server (`users.terms_accepted_at`). A paid account that has not accepted it sees **Before you start** before Home, on any device.
+  - **Before you start** says Angles is not therapy or a crisis service. Settings has Email support. The empty `AppIcon.appiconset` is gone (the icon is `Angles.icon`).
 
 `POST /reframe` does not store cards or plaintext thought text. It does write text-free operation, idempotency, usage, token, and company-cost metadata, plus an hour-long replay of the finished response encrypted under a key only the device holds. A card is stored only when the signed cook is sent to `POST /cards`.
 
@@ -46,7 +51,8 @@ The repo changes from the October 1 audit have shipped (see above). What remains
 - Operator details in `docs/legal/privacy.md` and `docs/legal/terms.md` name Bithavn, CVR 46705130, `info@bithavn.app`, the Copenhagen postal address, and Danish law.
 - The privacy policy names Mistral AI (France) and OpenAI (US), and says each is used through a paid API whose terms forbid training on inputs. Confirm both provider accounts before submission; in OpenAI, keep API input/output sharing off.
 - The site is published at `https://useangles.app` (`/privacy`, `/terms`, `/support`). `www` and plain HTTP redirect to that host. The 2 October 2026 Terms and Privacy text is live.
-- Someone checks the `card_reports` table at least daily during review and launch; the Terms and the review notes promise a 24-hour review.
+- Set `RESEND_API_KEY`, `REPORT_ALERT_FROM`, and `REPORT_ALERT_TO` on Railway, and name who acts on a report email within 24 hours during review and launch (`pnpm reports`); the Terms and the review notes promise a 24-hour review.
+- Deploy the backend with migrations `0018` and `0019` before build 9 goes to TestFlight.
 
 ### Apple production configuration
 

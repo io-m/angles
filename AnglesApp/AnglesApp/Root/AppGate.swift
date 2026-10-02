@@ -6,6 +6,9 @@ enum AppDestination: Equatable, CustomStringConvertible {
     case login
     case taste
     case paywall
+    /// An entitled account that has not agreed to the Terms. Home shows other people's posts,
+    /// so the agreement comes first (App Review 1.2).
+    case terms
     case home
 
     var description: String {
@@ -14,6 +17,7 @@ enum AppDestination: Equatable, CustomStringConvertible {
         case .login: return "login"
         case .taste: return "taste"
         case .paywall: return "paywall"
+        case .terms: return "terms"
         case .home: return "home"
         }
     }
@@ -32,6 +36,8 @@ struct AppGateInputs: Equatable {
     var serverTasteCompleted: Bool
     /// Taste "Renew membership" opened the paywall before the taste was saved.
     var membershipRequested: Bool
+    /// The server's `termsAcceptedAt` for this account.
+    var termsAccepted: Bool
 }
 
 enum AppGate {
@@ -43,7 +49,7 @@ enum AppGate {
             return .login
         }
         if inputs.isEntitled {
-            return .home
+            return inputs.termsAccepted ? .home : .terms
         }
         if inputs.serverTasteCompleted || inputs.membershipRequested {
             return .paywall

@@ -9,6 +9,10 @@ private struct DisplayNameBody: Encodable {
     let displayName: String
 }
 
+private struct DeleteAccountBody: Encodable {
+    let appleAuthorizationCode: String
+}
+
 private struct SubscriptionSyncBody: Encodable {
     let signedTransactionInfo: String
 }
@@ -59,6 +63,10 @@ struct ProfileService: Sendable {
         try await client.get(path: "profile/session")
     }
 
+    func acceptTerms() async throws -> TermsAcceptanceBody {
+        try await client.put(path: "profile/terms", timeout: Self.writeTimeout)
+    }
+
     func subscription() async throws -> SubscriptionBody {
         try await client.get(path: "profile/subscription", timeout: Self.writeTimeout)
     }
@@ -75,7 +83,11 @@ struct ProfileService: Sendable {
         )
     }
 
-    func deleteAccount() async throws {
-        try await client.delete(path: "profile")
+    func deleteAccount(appleAuthorizationCode: String) async throws {
+        try await client.delete(
+            path: "profile",
+            body: DeleteAccountBody(appleAuthorizationCode: appleAuthorizationCode),
+            timeout: 20
+        )
     }
 }

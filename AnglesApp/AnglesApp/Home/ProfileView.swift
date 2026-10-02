@@ -46,7 +46,7 @@ struct ProfileView: View {
     var displayName: String? = nil
     var onInspire: () -> Void = {}
     var onLogOut: (() -> Void)? = nil
-    var onDeleteAccount: (() async -> Bool)? = nil
+    var onDeleteAccount: (() async -> AccountDeletion)? = nil
     var canLoadFullAppContent = false
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
     var onOpenFollowed: (FollowedPerson) -> Void = { _ in }
@@ -128,11 +128,11 @@ struct ProfileView: View {
                     showSettings = false
                 },
                 onDeleteAccount: {
-                    guard await onDeleteAccount?() == true else {
-                        return false
+                    let result = await onDeleteAccount?() ?? .failed
+                    if result == .deleted {
+                        showSettings = false
                     }
-                    showSettings = false
-                    return true
+                    return result
                 },
                 blockedPeople: viewModel.blockedPeople,
                 blocksLoadState: viewModel.blocksLoadState,

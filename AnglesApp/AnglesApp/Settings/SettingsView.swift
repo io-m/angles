@@ -11,7 +11,7 @@ struct SettingsView: View {
 
     var onLogOut: (() -> Void)? = nil
     /// Returns whether the server deleted the account. The sheet stays up until it answers.
-    var onDeleteAccount: (() async -> Bool)? = nil
+    var onDeleteAccount: (() async -> AccountDeletion)? = nil
     var blockedPeople: [BlockedPerson] = []
     var blocksLoadState: LibraryLoadState = .loading
     var onLoadBlocks: () async -> Void = {}
@@ -98,6 +98,16 @@ struct SettingsView: View {
                                 symbol: "questionmark.bubble",
                                 title: "Support",
                                 destination: AppConfig.supportContactURL
+                            )
+                        }
+
+                        if let supportMailURL = AppConfig.supportMailURL,
+                           supportMailURL != AppConfig.supportContactURL {
+                            rowDivider
+                            externalRow(
+                                symbol: "envelope",
+                                title: "Email support",
+                                destination: supportMailURL
                             )
                         }
                     }
@@ -224,9 +234,9 @@ struct SettingsView: View {
         }
         deleteAccountError = nil
         isDeletingAccount = true
-        let deleted = await onDeleteAccount()
+        let result = await onDeleteAccount()
         isDeletingAccount = false
-        if !deleted {
+        if result == .failed {
             deleteAccountError = "Couldn't delete your account. Try again."
         }
     }

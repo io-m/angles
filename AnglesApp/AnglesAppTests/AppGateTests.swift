@@ -28,7 +28,8 @@ private func inputs(
     isSignedIn: Bool = true,
     isEntitled: Bool = false,
     serverTasteCompleted: Bool = false,
-    membershipRequested: Bool = false
+    membershipRequested: Bool = false,
+    termsAccepted: Bool = true
 ) -> AppGateInputs {
     AppGateInputs(
         sessionRestored: sessionRestored,
@@ -36,7 +37,8 @@ private func inputs(
         isSignedIn: isSignedIn,
         isEntitled: isEntitled,
         serverTasteCompleted: serverTasteCompleted,
-        membershipRequested: membershipRequested
+        membershipRequested: membershipRequested,
+        termsAccepted: termsAccepted
     )
 }
 
@@ -77,6 +79,7 @@ struct AppGateTests {
             name: "Josip",
             tasteCompletedAt: nil,
             tasteConsumedAt: "2026-09-25T12:00:00.000Z",
+            termsAcceptedAt: nil,
             avatarUrl: nil
         )
         #expect(session.hasUsedTaste)
@@ -100,6 +103,40 @@ struct AppGateTests {
                 #expect(result == .home)
             }
         }
+    }
+
+    /// A restored or second-phone subscriber who never agreed sees the Terms before Home's posts.
+    @Test func entitledWithoutTermsGetsTermsBeforeHome() {
+        #expect(AppGate.resolve(inputs(isEntitled: true, termsAccepted: false)) == .terms)
+        #expect(
+            AppGate.resolve(inputs(isEntitled: true, serverTasteCompleted: true, termsAccepted: false))
+                == .terms
+        )
+        #expect(AppGate.resolve(inputs(isSignedIn: false, isEntitled: true, termsAccepted: false)) == .login)
+    }
+
+    /// The taste and paywall show no one else's posts; the taste asks at its first send.
+    @Test func termsDoNotGateTasteOrPaywall() {
+        #expect(AppGate.resolve(inputs(termsAccepted: false)) == .taste)
+        #expect(AppGate.resolve(inputs(serverTasteCompleted: true, termsAccepted: false)) == .paywall)
+    }
+
+    @Test func sessionReadsTermsAcceptance() {
+        let accepted = SessionBody(
+            id: "00000000-0000-4000-8000-000000000001",
+            initials: "JM",
+            name: "Josip",
+            tasteCompletedAt: nil,
+            tasteConsumedAt: nil,
+            termsAcceptedAt: "2026-10-02T12:00:00.000Z",
+            avatarUrl: nil
+        )
+        #expect(accepted.hasAcceptedTerms)
+        let decoded = try? JSONDecoder().decode(
+            SessionBody.self,
+            from: Data(#"{"id":"u","initials":"JM","name":"J","tasteCompletedAt":null,"tasteConsumedAt":null,"termsAcceptedAt":null}"#.utf8)
+        )
+        #expect(decoded?.hasAcceptedTerms == false)
     }
 
     /// An ended membership never unlocks: expiry lands on paywall, or taste if the account is new.

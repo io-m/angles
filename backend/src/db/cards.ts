@@ -9,7 +9,12 @@ import {
   type StoredCard,
 } from "../types/index.js";
 import { getDb, wrapDbError, DbError } from "./client.js";
-import { notBlockedBetween, notReportedBy } from "./communitySafety.js";
+import {
+  cardPublicationLocked,
+  notBlockedBetween,
+  notReportedBy,
+  publishingSuspended,
+} from "./communitySafety.js";
 import { olderThanCursor } from "./cursor.js";
 import { loadStyleHeartCounts } from "./hearts.js";
 import { storedCardsForViewer, toStoredCard } from "./mapCard.js";
@@ -266,16 +271,23 @@ export async function getCard(id: string): Promise<StoredCard | null> {
 
 export async function hasPublicationReportLock(id: string): Promise<boolean> {
   try {
-    const [reports] = await getDb()
-      .select({ value: count() })
-      .from(cardReports)
-      .where(eq(cardReports.cardId, id));
-    return (reports?.value ?? 0) >= 3;
+    return await cardPublicationLocked(id);
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
     }
     throw wrapDbError(error, "hasPublicationReportLock");
+  }
+}
+
+export async function ownerPublishingSuspended(): Promise<boolean> {
+  try {
+    return await publishingSuspended(getOwnerUserId());
+  } catch (error) {
+    if (error instanceof DbError) {
+      throw error;
+    }
+    throw wrapDbError(error, "ownerPublishingSuspended");
   }
 }
 
@@ -306,14 +318,11 @@ export async function patchCard(id: string, patch: PatchCardInput): Promise<Patc
         return { ok: false, reason: "not_found" };
       }
 
-      if (patch.isPublic === true) {
-        const [reports] = await tx
-          .select({ value: count() })
-          .from(cardReports)
-          .where(eq(cardReports.cardId, id));
-        if ((reports?.value ?? 0) >= 3) {
-          return { ok: false, reason: "publication_blocked" };
-        }
+      if (
+        patch.isPublic === true &&
+        ((await cardPublicationLocked(id, tx)) || (await publishingSuspended(getOwnerUserId(), tx)))
+      ) {
+        return { ok: false, reason: "publication_blocked" };
       }
 
       if (patch.isFavorite !== undefined) {

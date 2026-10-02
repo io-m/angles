@@ -59,7 +59,7 @@ if (testUrl) {
 const { closePool, getDb, getSql } = await import("./client.js");
 const { createCard, deleteCard, findOwnCardByCookSignature, getCard, listCards, patchCard } =
   await import("./cards.js");
-const { deleteOwnerAccount } = await import("./users.js");
+const { acceptOwnerTerms, deleteOwnerAccount } = await import("./users.js");
 const { blockUser, reportCard, unblockUser } = await import("./communitySafety.js");
 const {
   SubscriptionOwnershipError,
@@ -81,6 +81,13 @@ const {
 const { openReplay, parseReplayKey, sealReplay } = await import("../lib/reframeReplay.js");
 const { clearFeedSaves, listFeed, listRankedFeed, saveFeedAngle } = await import("./feed.js");
 const { followUser, unfollowUser } = await import("./follows.js");
+const {
+  deleteReportedCard,
+  listPendingReports,
+  resolveCardReports,
+  restorePublishing,
+  suspendPublishing,
+} = await import("./reportReview.js");
 const { createApp } = await import("../app.js");
 const {
   cardReframes,
@@ -189,7 +196,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     `;
     await getDb()
       .update(users)
-      .set({ tasteCompletedAt: null, tasteConsumedAt: null })
+      .set({ tasteCompletedAt: null, tasteConsumedAt: null, publishingSuspendedAt: null })
       .where(eq(users.id, DEV_USER_ID));
   });
 
@@ -2052,7 +2059,11 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
 
     expect(await saveFeedAngle(reported, "stoic")).toMatchObject({ ok: true });
-    expect(await reportCard(reported, "spam")).toEqual({ ok: true, created: true });
+    expect(await reportCard(reported, "spam")).toEqual({
+      ok: true,
+      created: true,
+      madePrivate: false,
+    });
     expect(await reportCard(reported, "hate")).toEqual({ ok: true, created: false });
     expect((await listFeed({ limit: 50 })).map((card) => card.id)).not.toContain(reported);
     expect((await listCards({ limit: 50 })).map((card) => card.id)).not.toContain(reported);
@@ -2114,6 +2125,108 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(await patchCard(owned.id, { isPublic: true })).toEqual({
       ok: false,
       reason: "publication_blocked",
+    });
+  });
+
+  it("keeps the first Terms acceptance", async () => {
+    await getDb().update(users).set({ termsAcceptedAt: null }).where(eq(users.id, DEV_USER_ID));
+    const first = await acceptOwnerTerms(new Date("2026-10-02T10:00:00.000Z"));
+    const again = await acceptOwnerTerms(new Date("2026-10-03T10:00:00.000Z"));
+    expect(first.toISOString()).toBe("2026-10-02T10:00:00.000Z");
+    expect(again.toISOString()).toBe("2026-10-02T10:00:00.000Z");
+  });
+
+  describe("operator review", () => {
+    const reviewerIds = [
+      "00000000-0000-4000-8000-000000000077",
+      "00000000-0000-4000-8000-000000000088",
+      "00000000-0000-4000-8000-0000000000c1",
+    ];
+
+    async function reportFromAll(cardId: string): Promise<void> {
+      await getDb()
+        .insert(users)
+        .values(
+          reviewerIds.map((id) => ({
+            id,
+            initials: "RP",
+            name: "Reporter",
+            email: `seed-${id}@angles.invalid`,
+          })),
+        )
+        .onConflictDoNothing();
+      await getDb().insert(cardReports).values(
+        reviewerIds.map((reporterId) => ({ reporterId, cardId, reason: "spam" as const })),
+      );
+    }
+
+    it("lists open reports with the card and its reasons", async () => {
+      const reported = await insertOtherCard({ thought: "A card under review.", isPublic: true });
+      expect(await reportCard(reported, "harassment")).toMatchObject({ ok: true, created: true });
+
+      const [pending] = await listPendingReports();
+      expect(pending).toMatchObject({
+        cardId: reported,
+        reportCount: 1,
+        reasons: { harassment: 1 },
+        thought: "A card under review.",
+        isPublic: true,
+        authorSuspended: false,
+      });
+      expect(pending?.reframes.length).toBeGreaterThan(0);
+    });
+
+    it("keep dismisses reports so they stop locking the card", async () => {
+      const owned = await createCard({ ...baseInput, isPublic: false });
+      await reportFromAll(owned.id);
+      expect(await patchCard(owned.id, { isPublic: true })).toMatchObject({ ok: false });
+
+      expect(await resolveCardReports(owned.id, "kept")).toBe("ok");
+      expect(await listPendingReports()).toEqual([]);
+      expect(await patchCard(owned.id, { isPublic: true })).toMatchObject({ ok: true });
+    });
+
+    it("hide makes a card private and keeps it from coming back after one report", async () => {
+      const owned = await createCard({ ...baseInput, isPublic: true });
+      await getDb()
+        .insert(users)
+        .values({ id: reviewerIds[0], initials: "RP", name: "Reporter", email: `seed-${reviewerIds[0]}@angles.invalid` })
+        .onConflictDoNothing();
+      await getDb()
+        .insert(cardReports)
+        .values({ reporterId: reviewerIds[0] as string, cardId: owned.id, reason: "hate" });
+
+      expect(await resolveCardReports(owned.id, "hidden")).toBe("ok");
+      const row = await getDb().query.cards.findFirst({ where: eq(cards.id, owned.id) });
+      expect(row?.isPublic).toBe(false);
+      expect(await patchCard(owned.id, { isPublic: true })).toEqual({
+        ok: false,
+        reason: "publication_blocked",
+      });
+    });
+
+    it("suspend makes every card private and blocks publishing until restored", async () => {
+      const first = await createCard({ ...baseInput, isPublic: true });
+      const second = await createCard({ ...baseInput, thought: "Another public one.", isPublic: true });
+
+      expect(await suspendPublishing(DEV_USER_ID)).toBe("ok");
+      const rows = await getDb().query.cards.findMany({ where: eq(cards.userId, DEV_USER_ID) });
+      expect(rows.every((row) => !row.isPublic)).toBe(true);
+      expect(await patchCard(first.id, { isPublic: true })).toEqual({
+        ok: false,
+        reason: "publication_blocked",
+      });
+
+      expect(await restorePublishing(DEV_USER_ID)).toBe("ok");
+      expect(await patchCard(second.id, { isPublic: true })).toMatchObject({ ok: true });
+    });
+
+    it("delete removes the card and its reports", async () => {
+      const reported = await insertOtherCard({ thought: "Delete me.", isPublic: true });
+      await reportCard(reported, "spam");
+      expect(await deleteReportedCard(reported)).toBe(true);
+      expect(await getDb().select().from(cardReports)).toHaveLength(0);
+      expect(await deleteReportedCard(reported)).toBe(false);
     });
   });
 });

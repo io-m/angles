@@ -24,7 +24,7 @@ import {
   TIMEFRAMES,
   type SkippedStyle,
 } from "../types/index.js";
-import { REPORT_REASONS } from "../lib/communitySafetyTypes.js";
+import { REPORT_REASONS, REPORT_RESOLUTIONS } from "../lib/communitySafetyTypes.js";
 
 export const styleEnum = pgEnum("style", [...STYLES]);
 export const categoryEnum = pgEnum("category", [...CATEGORIES]);
@@ -33,6 +33,7 @@ export const timeframeEnum = pgEnum("timeframe", [...TIMEFRAMES]);
 export const safetyFlagEnum = pgEnum("safety_flag", [...SAFETY_FLAGS]);
 export const intensityBandEnum = pgEnum("intensity_band", [...INTENSITY_BANDS]);
 export const reportReasonEnum = pgEnum("report_reason", [...REPORT_REASONS]);
+export const reportResolutionEnum = pgEnum("report_resolution", [...REPORT_RESOLUTIONS]);
 export const subscriptionEnvironmentEnum = pgEnum("subscription_environment", [
   "sandbox",
   "production",
@@ -75,6 +76,10 @@ export const users = pgTable(
     avatarKey: text("avatar_key"),
     tasteCompletedAt: timestamp("taste_completed_at", { withTimezone: true, mode: "date" }),
     tasteConsumedAt: timestamp("taste_consumed_at", { withTimezone: true, mode: "date" }),
+    /** First "Agree and continue" on the Terms and AI processing. Never cleared. */
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true, mode: "date" }),
+    /** Set by an operator (`pnpm reports suspend`). The account keeps its private library but cannot publish. */
+    publishingSuspendedAt: timestamp("publishing_suspended_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
@@ -558,10 +563,17 @@ export const cardReports = pgTable(
       .references(() => cards.id, { onDelete: "cascade" }),
     reason: reportReasonEnum("reason").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "date" }),
+    resolution: reportResolutionEnum("resolution"),
   },
   (table) => [
     primaryKey({ columns: [table.reporterId, table.cardId] }),
     index("card_reports_card_idx").on(table.cardId),
+    index("card_reports_pending_idx").on(table.createdAt).where(sql`${table.reviewedAt} is null`),
+    check(
+      "card_reports_review_pair",
+      sql`(${table.reviewedAt} is null) = (${table.resolution} is null)`,
+    ),
   ],
 );
 

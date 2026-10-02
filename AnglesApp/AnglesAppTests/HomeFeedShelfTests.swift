@@ -124,6 +124,35 @@ struct HomeFeedShelfTests {
         #expect(!board.shelf(.all).isRotated)
     }
 
+    @Test("a pull ends even when its generation moved, so the next pull starts")
+    func pullEndsAfterGenerationMoved() {
+        var board = HomeFeedBoard()
+        _ = board.replace(
+            [card(.stoic, day: 1)], on: .all, before: "all", hasMore: true,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+
+        let first = board.beginRefresh(on: .all) ?? -1
+        _ = board.bump(.all)
+        board.endRefresh(on: .all, refreshID: first)
+        #expect(!board.shelf(.all).isRefreshing)
+        #expect(board.beginRefresh(on: .all) != nil)
+    }
+
+    @Test("an old pull's end does not clear a newer pull")
+    func stalePullLeavesNewerOne() {
+        var board = HomeFeedBoard()
+        let first = board.beginRefresh(on: .all) ?? -1
+        board.invalidate(blank: false)
+        let second = board.beginRefresh(on: .all)
+        #expect(second != nil)
+
+        board.endRefresh(on: .all, refreshID: first)
+        #expect(board.shelf(.all).isRefreshing)
+        board.endRefresh(on: .all, refreshID: second ?? -1)
+        #expect(!board.shelf(.all).isRefreshing)
+    }
+
     @Test("a new post lands on loaded shelves that contain its angle")
     func publishedCardJoinsLoadedShelves() {
         var board = HomeFeedBoard()

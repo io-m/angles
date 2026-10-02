@@ -9,6 +9,7 @@ import {
   getCard,
   hasPublicationReportLock,
   listCards,
+  ownerPublishingSuspended,
   patchCard,
 } from "../db/cards.js";
 import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
@@ -19,6 +20,7 @@ import { errorBody, validationErrorMessage } from "../lib/http.js";
 import { LLM_MODEL_IDS } from "../lib/llmClient.js";
 import { REPORT_REASONS } from "../lib/communitySafetyTypes.js";
 import { moderatePublicCard } from "../lib/publicModeration.js";
+import { announceReport } from "../lib/reportAlerts.js";
 import { CATEGORIES, STYLES } from "../types/index.js";
 
 const MAX_THOUGHT_LENGTH = 2000;
@@ -124,6 +126,12 @@ cardsRoute.post(
       return c.json(existing, 200);
     }
     if (rest.isPublic === true) {
+      if (await ownerPublishingSuspended()) {
+        return c.json(
+          errorBody("This card cannot be published", "PUBLIC_CONTENT_NOT_ALLOWED"),
+          400,
+        );
+      }
       let allowed: boolean;
       try {
         allowed = await moderatePublicCard({
@@ -214,7 +222,7 @@ cardsRoute.patch(
       if (!card) {
         return c.json(errorBody("Not found", "NOT_FOUND"), 404);
       }
-      if (await hasPublicationReportLock(id)) {
+      if ((await hasPublicationReportLock(id)) || (await ownerPublishingSuspended())) {
         return c.json(
           errorBody("This card cannot be published", "PUBLIC_CONTENT_NOT_ALLOWED"),
           400,
@@ -282,6 +290,9 @@ cardsRoute.post(
           ? "You cannot report your own card"
           : "Private cards cannot be reported";
       return c.json(errorBody(message, "VALIDATION_ERROR"), 400);
+    }
+    if (result.created) {
+      announceReport({ cardId: id, reason, madePrivate: result.madePrivate });
     }
     return c.json({ reported: true });
   },

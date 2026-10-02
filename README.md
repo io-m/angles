@@ -56,7 +56,7 @@ Native `URLSession` does not use browser CORS. This API does not send CORS heade
 
 The overlay cooks through `ReframeService` / `POST /reframe`. Save uses `CardsService` / `POST /cards`. Profile loads the library from `GET /cards`.
 
-`AppConfig.baseURL` comes from the `ANGLES_API_BASE_URL` build setting in `AnglesApp/project.yml`: the Mac LAN IP on port 8787 for Debug (devices cannot use localhost), empty for Release until a production host exists. `NSAllowsLocalNetworking` is enabled; do not turn on `NSAllowsArbitraryLoads`.
+`AppConfig.baseURL` comes from the `ANGLES_API_BASE_URL` build setting in `AnglesApp/project.yml`: the Mac LAN IP on port 8787 for Debug (devices cannot use localhost), and the Railway production API (`https://api-production-61c9.up.railway.app`) for Release. `NSAllowsLocalNetworking` is on in Debug only (`Info-Debug.plist`); do not turn on `NSAllowsArbitraryLoads`.
 
 Bundle ID: `app.angles.ios`. Attach the correct Apple team in Xcode before device runs.
 

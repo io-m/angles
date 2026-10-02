@@ -15,6 +15,8 @@
 		1C5A8915F3447627232F0B0D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D63A3C056314A252917F965 /* PaywallView.swift */; };
 		1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3956722F5CD9FC2607E738A /* RootTabBar.swift */; };
 		1DDD3EBC27953342A162D134 /* AnglesWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA72C92F4982795D86D0E015 /* AnglesWidgets.swift */; };
+		2040896C35F90189E3FBB9BD /* ForYouCoversTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C07632E47BCD7EC8BB5F033 /* ForYouCoversTests.swift */; };
+		21764DF278A00D1C7C01FFE0 /* AppleReauthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 061BB33F2FBF3FC8D3579D69 /* AppleReauthorization.swift */; };
 		23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */; };
 		241F7BC96BA7F87308C06C49 /* celebration-checkmark.json in Resources */ = {isa = PBXBuildFile; fileRef = C4B72925153855FD655114F4 /* celebration-checkmark.json */; };
 		24D8AC03A338F125B60DBCB7 /* AnglesWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CFC1E4A1063AFDE75D437AE8 /* AnglesWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -25,6 +27,7 @@
 		327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05847EC66A8A1B53179B539 /* ReframeCardView.swift */; };
 		3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D55F6643C769B38928FD8B /* ReframeModels.swift */; };
 		3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */; };
+		3AC3B1905991BF3CE20A9601 /* ForYouCovers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C43E1D6BE1E7EBC18B58660A /* ForYouCovers.swift */; };
 		44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */; };
 		475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */; };
 		48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */; };
@@ -110,10 +113,12 @@
 /* Begin PBXFileReference section */
 		01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshBanner.swift; sourceTree = "<group>"; };
 		01BEA95023B9310D87B3474C /* AppGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGate.swift; sourceTree = "<group>"; };
+		061BB33F2FBF3FC8D3579D69 /* AppleReauthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleReauthorization.swift; sourceTree = "<group>"; };
 		0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderChrome.swift; sourceTree = "<group>"; };
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
 		152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshPlan.swift; sourceTree = "<group>"; };
 		1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorProfileView.swift; sourceTree = "<group>"; };
+		1C07632E47BCD7EC8BB5F033 /* ForYouCoversTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForYouCoversTests.swift; sourceTree = "<group>"; };
 		1FFD1F9D62B1D72EFFFBFEAE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallCardMarquee.swift; sourceTree = "<group>"; };
 		245774EE58FAD79304953B8A /* AuthNonce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthNonce.swift; sourceTree = "<group>"; };
@@ -159,6 +164,7 @@
 		BE68FEE0F7F06EC666CA46A9 /* Go to school.lottie */ = {isa = PBXFileReference; path = "Go to school.lottie"; sourceTree = "<group>"; };
 		C17DACFE5A32F9B04674495C /* InspireMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspireMark.swift; sourceTree = "<group>"; };
 		C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		C43E1D6BE1E7EBC18B58660A /* ForYouCovers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForYouCovers.swift; sourceTree = "<group>"; };
 		C4B72925153855FD655114F4 /* celebration-checkmark.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "celebration-checkmark.json"; sourceTree = "<group>"; };
 		C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeStore.swift; sourceTree = "<group>"; };
 		CB09EE79B4A27D757AD2944A /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
@@ -256,6 +262,7 @@
 		55885B68E6C816ED0A1419B9 /* Auth */ = {
 			isa = PBXGroup;
 			children = (
+				061BB33F2FBF3FC8D3579D69 /* AppleReauthorization.swift */,
 				4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */,
 				245774EE58FAD79304953B8A /* AuthNonce.swift */,
 				CB09EE79B4A27D757AD2944A /* AuthService.swift */,
@@ -342,6 +349,7 @@
 				01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */,
 				152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */,
 				4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */,
+				C43E1D6BE1E7EBC18B58660A /* ForYouCovers.swift */,
 				0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */,
 				81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */,
 				926E1968DC6C213D5BAAAF2E /* HomeFeedPullRefresh.swift */,
@@ -385,6 +393,7 @@
 			children = (
 				9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */,
 				38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */,
+				1C07632E47BCD7EC8BB5F033 /* ForYouCoversTests.swift */,
 				BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */,
 				9147DA97E362AE10C8A58A59 /* ReframeContractTests.swift */,
 				B0D5F569663CAAFC626FF889 /* WidgetTests.swift */,
@@ -531,6 +540,7 @@
 			files = (
 				FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */,
 				BBDCFC5DAA64296BE09CD43A /* FeedRefreshPlanTests.swift in Sources */,
+				2040896C35F90189E3FBB9BD /* ForYouCoversTests.swift in Sources */,
 				E85F482E086576383A6F83CB /* HomeFeedShelfTests.swift in Sources */,
 				07C7B3E2F8C3F83F1A83C0B0 /* ReframeContractTests.swift in Sources */,
 				E92BDD00E9E6E12F499CEE70 /* WidgetTests.swift in Sources */,
@@ -548,6 +558,7 @@
 				9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */,
 				77767A426BAC877733A44558 /* AppGate.swift in Sources */,
 				7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */,
+				21764DF278A00D1C7C01FFE0 /* AppleReauthorization.swift in Sources */,
 				44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */,
 				8717B2AC854FC7A03D4101DF /* AuthNonce.swift in Sources */,
 				B9938F536C7B31B2B2AB7059 /* AuthService.swift in Sources */,
@@ -563,6 +574,7 @@
 				EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */,
 				057F225336671B92CC069930 /* FeedRefreshPlan.swift in Sources */,
 				DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */,
+				3AC3B1905991BF3CE20A9601 /* ForYouCovers.swift in Sources */,
 				02995E8655495BCA8665D82E /* HeaderChrome.swift in Sources */,
 				2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */,
 				BD5651910EFAA74B0C7C11AD /* HomeFeedPullRefresh.swift in Sources */,
@@ -721,7 +733,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -745,7 +757,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -832,14 +844,14 @@
 			buildSettings = {
 				ANGLES_API_BASE_URL = "http://192.168.0.39:8787";
 				ANGLES_PRIVACY_POLICY_URL = "https://useangles.app/privacy";
-				ANGLES_SUPPORT_EMAIL = "";
+				ANGLES_SUPPORT_EMAIL = "info@bithavn.app";
 				ANGLES_SUPPORT_URL = "https://useangles.app/support";
 				ANGLES_TERMS_OF_SERVICE_URL = "https://useangles.app/terms";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Angles;
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "AnglesApp/Info-Debug.plist";
@@ -860,14 +872,14 @@
 			buildSettings = {
 				ANGLES_API_BASE_URL = "https://api-production-61c9.up.railway.app";
 				ANGLES_PRIVACY_POLICY_URL = "https://useangles.app/privacy";
-				ANGLES_SUPPORT_EMAIL = "";
+				ANGLES_SUPPORT_EMAIL = "info@bithavn.app";
 				ANGLES_SUPPORT_URL = "https://useangles.app/support";
 				ANGLES_TERMS_OF_SERVICE_URL = "https://useangles.app/terms";
 				ASSETCATALOG_COMPILER_APPICON_NAME = Angles;
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesApp/Info.plist;

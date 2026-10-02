@@ -12,7 +12,8 @@
 
 ## Release app configuration
 
-- [ ] Set Release `ANGLES_API_BASE_URL` to the operator-owned production HTTPS API.
+- [x] Set Release `ANGLES_API_BASE_URL` to the operator-owned production HTTPS API (`https://api-production-61c9.up.railway.app`).
+- [x] Set `ANGLES_SUPPORT_EMAIL` to `info@bithavn.app`.
 - [x] Set Release `ANGLES_PRIVACY_POLICY_URL` and `ANGLES_TERMS_OF_SERVICE_URL` to `https://useangles.app/privacy` and `/terms`.
 - [x] Set `ANGLES_SUPPORT_URL` to `https://useangles.app/support`.
 - [ ] Open all three destinations from the archived app.
@@ -28,6 +29,10 @@
 - [x] Configure `APPLE_ROOT_CERTIFICATES_BASE64` and numeric `APPLE_APP_ID` (`6811873869`).
 - [x] Configure `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `REGION`, `ENDPOINT`, and `S3_URL_STYLE`.
 - [x] Set `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
+- [ ] Configure `RESEND_API_KEY`, `REPORT_ALERT_FROM` (a sender on a domain verified in Resend), and `REPORT_ALERT_TO`. Without them the API logs `report_alerts_disabled` at startup and the 24-hour review promise has no trigger.
+- [ ] Deploy the release-gaps backend (migrations `0018_report_review` and `0019_terms_acceptance` run at startup) before any build 9 reaches TestFlight: build 9 calls `PUT /profile/terms`, and an older API answers 404 there, which keeps a paid account on the Terms screen.
+- [ ] Report a test card from a second account and confirm the alert email arrives; then run `DATABASE_URL="<DATABASE_PUBLIC_URL>" pnpm reports` and `keep <cardId>` it.
+- [ ] Delete a test account and confirm no `apple_revoke_exchange_failed` or `apple_revoke_failed` in the Railway logs, and that Settings → Apple ID → Sign in with Apple no longer lists Angles.
 - [ ] Deploy and verify runtime migrations, `/health`, Apple login, avatar upload, taste, purchase sync, 600-credit period creation, cook/save, report, block, and account deletion. Deployed 2 October 2026; `/health` is `{"status":"ok","db":"ok"}`. The rest still needs a device pass.
 
 ## Apple and subscriptions

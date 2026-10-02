@@ -1,12 +1,17 @@
 import SwiftUI
 
-/// Shown once per account before its first thought leaves the phone. Names the AI providers,
-/// says what is sent, and carries the Terms acceptance that community posting relies on.
+/// Shown once per account before its first thought leaves the phone, and before Home for an
+/// account that never agreed. Names the AI providers, says what is sent, and carries the Terms
+/// acceptance that community posting relies on. The server records the agreement.
 struct AIConsentSheet: View {
-    var onAgree: () -> Void
+    var cancelTitle: String = "Not now"
+    /// False when the server did not record it; the sheet stays up with an error.
+    var onAgree: () async -> Bool
     var onCancel: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isAgreeing = false
+    @State private var agreeFailed = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -47,6 +52,11 @@ struct AIConsentSheet: View {
                             title: "Community rules",
                             detail: "There is no tolerance for objectionable content or abusive users. Reported posts are reviewed within 24 hours, and offending accounts are removed."
                         )
+                        consentRow(
+                            icon: "cross.case",
+                            title: "Not therapy",
+                            detail: "Angles is a self-reflection tool, not medical or mental-health care. If you might hurt yourself, contact local emergency services."
+                        )
                     }
 
                     Text("By tapping Agree and continue, you allow Angles to send what you write to these providers and agree to the Terms of Use and Privacy Policy.")
@@ -68,17 +78,33 @@ struct AIConsentSheet: View {
 
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        onAgree()
+                        agree()
                     } label: {
-                        Text("Agree and continue")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(theme.paper)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(theme.ink, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        ZStack {
+                            Text("Agree and continue")
+                                .opacity(isAgreeing ? 0 : 1)
+                            if isAgreeing {
+                                ProgressView()
+                                    .tint(theme.paper)
+                            }
+                        }
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(theme.paper)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(theme.ink, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     }
                     .buttonStyle(.plain)
+                    .disabled(isAgreeing)
                     .padding(.top, 4)
+
+                    if agreeFailed {
+                        Text("Couldn't reach Angles. Check your connection and try again.")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(theme.ink)
+                            .frame(maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24)
@@ -89,14 +115,28 @@ struct AIConsentSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Not now", action: onCancel)
+                    Button(cancelTitle, action: onCancel)
                         .font(.system(size: 16, weight: .regular))
                         .foregroundStyle(theme.muted)
+                        .disabled(isAgreeing)
                 }
             }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+
+    private func agree() {
+        guard !isAgreeing else {
+            return
+        }
+        isAgreeing = true
+        agreeFailed = false
+        Task {
+            let recorded = await onAgree()
+            isAgreeing = false
+            agreeFailed = !recorded
+        }
     }
 
     private func consentRow(icon: String, title: String, detail: String) -> some View {

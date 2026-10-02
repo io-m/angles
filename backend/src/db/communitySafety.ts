@@ -41,6 +41,41 @@ export function notReportedBy(viewerId: string, cardId: AnyPgColumn): SQL {
   )`;
 }
 
+/** Unique open or upheld reports that make a card private and keep it private. */
+export const AUTO_PRIVATE_REPORTS = 3;
+
+/**
+ * A card cannot be (re)published once an operator hid it, or while it has
+ * `AUTO_PRIVATE_REPORTS` reports an operator has not dismissed.
+ */
+export async function cardPublicationLocked(
+  cardId: string,
+  db: Selectable = getDb(),
+): Promise<boolean> {
+  const [row] = await db
+    .select({
+      counting: sql<number>`count(*) filter (where ${cardReports.resolution} is distinct from 'kept')`.mapWith(
+        Number,
+      ),
+      hidden: sql<number>`count(*) filter (where ${cardReports.resolution} = 'hidden')`.mapWith(Number),
+    })
+    .from(cardReports)
+    .where(eq(cardReports.cardId, cardId));
+  return (row?.hidden ?? 0) > 0 || (row?.counting ?? 0) >= AUTO_PRIVATE_REPORTS;
+}
+
+export async function publishingSuspended(
+  userId: string,
+  db: Selectable = getDb(),
+): Promise<boolean> {
+  const [row] = await db
+    .select({ suspendedAt: users.publishingSuspendedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.suspendedAt != null;
+}
+
 export async function usersAreBlocked(
   firstUserId: string,
   secondUserId: string,
@@ -176,7 +211,8 @@ export async function listBlockedUsers(): Promise<StoredCardAuthor[]> {
 }
 
 export type ReportCardResult =
-  | { ok: true; created: boolean }
+  | { ok: true; created: false }
+  | { ok: true; created: true; madePrivate: boolean }
   | { ok: false; reason: "not_found" | "own_card" | "private_card" };
 
 export async function reportCard(cardId: string, reason: ReportReason): Promise<ReportCardResult> {
@@ -212,14 +248,11 @@ export async function reportCard(cardId: string, reason: ReportReason): Promise<
         .delete(savedAngles)
         .where(and(eq(savedAngles.userId, reporterId), eq(savedAngles.cardId, cardId)));
 
-      const [total] = await tx
-        .select({ value: count() })
-        .from(cardReports)
-        .where(eq(cardReports.cardId, cardId));
-      if ((total?.value ?? 0) >= 3) {
+      const madePrivate = await cardPublicationLocked(cardId, tx);
+      if (madePrivate) {
         await tx.update(cards).set({ isPublic: false }).where(eq(cards.id, cardId));
       }
-      return { ok: true, created: true };
+      return { ok: true, created: true, madePrivate };
     });
   } catch (error) {
     if (error instanceof DbError) {

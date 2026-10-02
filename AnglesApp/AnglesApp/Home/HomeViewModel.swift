@@ -581,7 +581,6 @@ final class HomeViewModel {
     private var pendingRecookStyle: Style?
 
     private static let lowWarningPeriodKeyPrefix = "angles.lowCreditWarningPeriod"
-    private static let aiConsentKeyPrefix = "angles.aiConsentAcceptedAt"
     private static let writeErrorDuration: Duration = .seconds(3)
     private static let initialLoadRetryDelays: [Duration] = [
         .milliseconds(400),
@@ -1246,7 +1245,7 @@ final class HomeViewModel {
             return
         }
         cancelFeedTask(tab)
-        defer { feedBoard.endRefresh(on: tab, generation: generation) }
+        defer { feedBoard.endRefresh(on: tab, refreshID: generation) }
 
         let filter = appliedFilter
         let shelf = feedBoard.shelf(tab)
@@ -1267,14 +1266,19 @@ final class HomeViewModel {
         guard feedBoard.shelf(tab).generation == generation else {
             return
         }
-        if case .discarded = head {
-            return
-        }
-        if case .discarded = tail {
+        // The shelf is still this pull's, so a half that did not land is just a miss:
+        // the other half still applies. Only both missing stays silent.
+        if case .discarded = head, case .discarded = tail {
             return
         }
 
-        await applyRefresh(head: head, tail: tail, filter: filter, tab: tab, generation: generation)
+        await applyRefresh(
+            head: head.landedOrFailed,
+            tail: tail.landedOrFailed,
+            filter: filter,
+            tab: tab,
+            generation: generation
+        )
     }
 
     private func fetchFeedTail(
@@ -1549,6 +1553,14 @@ final class HomeViewModel {
                 return true
             }
             return false
+        }
+
+        /// A half of a pull that was cut off counts as one that failed.
+        var landedOrFailed: FeedPageOutcome {
+            if case .discarded = self {
+                return .failed
+            }
+            return self
         }
     }
 
@@ -2573,20 +2585,6 @@ final class HomeViewModel {
 
     static func lowWarningDefaultsKey(userID: String) -> String {
         "\(lowWarningPeriodKeyPrefix).\(userID.lowercased())"
-    }
-
-    /// Thoughts go to third-party AI providers, so each account agrees once on this phone
-    /// before its first send (App Review 5.1.2(i)).
-    var needsAIConsent: Bool {
-        UserDefaults.standard.object(forKey: Self.aiConsentDefaultsKey(userID: usageAccountID)) == nil
-    }
-
-    func recordAIConsent(at date: Date = Date()) {
-        UserDefaults.standard.set(date, forKey: Self.aiConsentDefaultsKey(userID: usageAccountID))
-    }
-
-    static func aiConsentDefaultsKey(userID: String?) -> String {
-        "\(aiConsentKeyPrefix).\(userID?.lowercased() ?? "signed-out")"
     }
 
     private static func usageWarning(remaining: Int) -> UsageWarning {

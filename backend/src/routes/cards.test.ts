@@ -29,8 +29,13 @@ vi.mock("../db/cards.js", () => ({
   listCards: vi.fn(),
   getCard: vi.fn(),
   hasPublicationReportLock: vi.fn(async () => false),
+  ownerPublishingSuspended: vi.fn(async () => false),
   patchCard: vi.fn(),
   deleteCard: vi.fn(),
+}));
+
+vi.mock("../lib/reportAlerts.js", () => ({
+  announceReport: vi.fn(),
 }));
 
 vi.mock("../db/communitySafety.js", () => ({
@@ -53,9 +58,11 @@ const {
   getCard,
   hasPublicationReportLock,
   listCards,
+  ownerPublishingSuspended,
   patchCard,
 } = await import("../db/cards.js");
 const { reportCard } = await import("../db/communitySafety.js");
+const { announceReport } = await import("../lib/reportAlerts.js");
 const { moderatePublicCard } = await import("../lib/publicModeration.js");
 
 const app = createApp();
@@ -537,6 +544,17 @@ describe("PATCH /cards/:id", () => {
     expect(patchCard).not.toHaveBeenCalled();
   });
 
+  it("prevents a suspended author publishing", async () => {
+    vi.mocked(ownerPublishingSuspended).mockResolvedValueOnce(true);
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPublic: true }),
+    );
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toMatchObject({ code: "PUBLIC_CONTENT_NOT_ALLOWED" });
+    expect(moderatePublicCard).not.toHaveBeenCalled();
+    expect(patchCard).not.toHaveBeenCalled();
+  });
+
   it("rejects a pin patch now that pins are gone", async () => {
     const response = await app.request(
       jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isPinned: true }),
@@ -584,6 +602,7 @@ describe("PATCH /cards/:id", () => {
 describe("POST /cards/:id/report", () => {
   beforeEach(() => {
     vi.mocked(reportCard).mockReset();
+    vi.mocked(announceReport).mockReset();
   });
 
   it("reports a public card idempotently", async () => {
@@ -594,6 +613,20 @@ describe("POST /cards/:id/report", () => {
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual({ reported: true });
     expect(reportCard).toHaveBeenCalledWith(CARD_ID, "harassment");
+    expect(announceReport).not.toHaveBeenCalled();
+  });
+
+  it("alerts the operator once for a new report", async () => {
+    vi.mocked(reportCard).mockResolvedValue({ ok: true, created: true, madePrivate: true });
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}/report`, "POST", { reason: "hate" }),
+    );
+    expect(response.status).toBe(200);
+    expect(announceReport).toHaveBeenCalledWith({
+      cardId: CARD_ID,
+      reason: "hate",
+      madePrivate: true,
+    });
   });
 
   it("rejects reporting an own or private card", async () => {

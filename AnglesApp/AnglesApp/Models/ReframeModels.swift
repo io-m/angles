@@ -547,6 +547,7 @@ struct SessionBody: Decodable, Equatable, Sendable {
     let name: String
     let tasteCompletedAt: String?
     let tasteConsumedAt: String?
+    let termsAcceptedAt: String?
     let avatarUrl: String?
 
     var hasUsedTaste: Bool {
@@ -555,6 +556,14 @@ struct SessionBody: Decodable, Equatable, Sendable {
             return !value.isEmpty
         }
     }
+
+    var hasAcceptedTerms: Bool {
+        termsAcceptedAt?.isEmpty == false
+    }
+}
+
+struct TermsAcceptanceBody: Decodable, Equatable, Sendable {
+    let termsAcceptedAt: String
 }
 
 struct SubscriptionBody: Decodable, Equatable, Sendable {

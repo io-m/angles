@@ -7,6 +7,7 @@ import { assertBetterAuthSecret } from "./auth.js";
 import { assertMeteringConfiguration } from "./lib/meteringPolicy.js";
 import { assertProductionConfiguration } from "./lib/productionConfig.js";
 import { runProductionMigrations } from "./db/productionMigrations.js";
+import { reportAlertConfig } from "./lib/reportAlerts.js";
 
 loadLocalEnvFile();
 
@@ -25,6 +26,9 @@ async function main(): Promise<void> {
   assertMeteringConfiguration();
   await runProductionMigrations();
   await assertSchemaCurrent();
+  if (process.env.NODE_ENV === "production" && !reportAlertConfig()) {
+    console.warn("report_alerts_disabled: set RESEND_API_KEY, REPORT_ALERT_FROM and REPORT_ALERT_TO");
+  }
 
   const port = parsePort(process.env.PORT);
   const server = serve(

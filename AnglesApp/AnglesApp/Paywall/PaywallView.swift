@@ -48,7 +48,7 @@ struct PaywallView: View {
     var showsCelebration = false
     var savedCard: HomeCard? = nil
     var onLogOut: (() -> Void)? = nil
-    var onDeleteAccount: (() async -> Bool)? = nil
+    var onDeleteAccount: (() async -> AccountDeletion)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -75,7 +75,7 @@ struct PaywallView: View {
         showsCelebration: Bool = false,
         savedCard: HomeCard? = nil,
         onLogOut: (() -> Void)? = nil,
-        onDeleteAccount: (() async -> Bool)? = nil
+        onDeleteAccount: (() async -> AccountDeletion)? = nil
     ) {
         self.storeKitManager = storeKitManager
         self.showsCelebration = showsCelebration
@@ -384,11 +384,14 @@ struct PaywallView: View {
         }
         deleteAccountError = nil
         isDeletingAccount = true
-        let deleted = await onDeleteAccount()
+        let result = await onDeleteAccount()
         isDeletingAccount = false
-        if deleted {
+        switch result {
+        case .deleted:
             showsInfoSheet = false
-        } else {
+        case .cancelled:
+            break
+        case .failed:
             deleteAccountError = "Couldn't delete your account. Try again."
         }
     }

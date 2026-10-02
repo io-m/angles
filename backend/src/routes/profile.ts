@@ -10,7 +10,20 @@ import {
   SubscriptionOwnershipError,
   syncSubscriptionTransaction,
 } from "../db/subscriptions.js";
-import { getUserById, setOwnerAvatar, updateOwnerInitials, deleteOwnerAccount } from "../db/users.js";
+import {
+  acceptOwnerTerms,
+  deleteOwnerAccount,
+  getOwnerAppleSubject,
+  getUserById,
+  setOwnerAvatar,
+  updateOwnerInitials,
+} from "../db/users.js";
+import {
+  AppleRevokeError,
+  exchangeAppleAuthorizationCode,
+  revokeAppleGrant,
+  type AppleGrant,
+} from "../lib/appleRevoke.js";
 import {
   AppStoreVerificationError,
   getAppStoreVerifier,
@@ -24,12 +37,21 @@ import {
   putAvatar,
   StorageUnavailableError,
 } from "../lib/objectStorage.js";
-import type { FollowingListResponse, ProfileBody, SessionBody } from "../types/index.js";
+import type {
+  FollowingListResponse,
+  ProfileBody,
+  SessionBody,
+  TermsAcceptanceBody,
+} from "../types/index.js";
 
 const MAX_AVATAR_BYTES = Math.floor(1.5 * 1024 * 1024);
 
 const patchProfileSchema = z.object({
   displayName: z.string().max(40),
+});
+
+const deleteAccountSchema = z.object({
+  appleAuthorizationCode: z.string().min(1).max(4096).optional(),
 });
 
 const syncSubscriptionSchema = z.object({
@@ -69,11 +91,19 @@ profileRoute.get("/session", requireAuth, async (c) => {
     name: user.name,
     tasteCompletedAt: user.tasteCompletedAt ? user.tasteCompletedAt.toISOString() : null,
     tasteConsumedAt: user.tasteConsumedAt ? user.tasteConsumedAt.toISOString() : null,
+    termsAcceptedAt: user.termsAcceptedAt ? user.termsAcceptedAt.toISOString() : null,
   };
   const avatarUrl = avatarUrlFor(user.id, user.avatarKey);
   if (avatarUrl) {
     body.avatarUrl = avatarUrl;
   }
+  return c.json(body);
+});
+
+profileRoute.put("/terms", requireAuth, async (c) => {
+  const body: TermsAcceptanceBody = {
+    termsAcceptedAt: (await acceptOwnerTerms()).toISOString(),
+  };
   return c.json(body);
 });
 
@@ -118,11 +148,51 @@ profileRoute.post(
 );
 
 profileRoute.delete("/", requireAuth, async (c) => {
+  // The body is optional: builds before Apple revocation send none.
+  const raw = await c.req.text();
+  let json: unknown = {};
+  if (raw.trim().length > 0) {
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      return c.json(errorBody("Invalid JSON body", "INVALID_JSON"), 400);
+    }
+  }
+  const parsed = deleteAccountSchema.safeParse(json);
+  if (!parsed.success) {
+    return c.json(errorBody(validationErrorMessage(parsed.error), "VALIDATION_ERROR"), 400);
+  }
+
   const ownerId = getOwnerUserId();
   const current = await getUserById(ownerId);
   if (!current) {
     return c.json(errorBody("Profile was not found", "NOT_FOUND"), 404);
   }
+
+  // Apple's code is single-use and short-lived, so it is traded before anything is deleted. An
+  // Apple outage never blocks deletion; a code for a different Apple ID does.
+  let appleGrant: AppleGrant | null = null;
+  const code = parsed.data.appleAuthorizationCode;
+  if (code) {
+    try {
+      appleGrant = await exchangeAppleAuthorizationCode(code);
+    } catch (error) {
+      console.error("apple_revoke_exchange_failed", {
+        step: error instanceof AppleRevokeError ? error.step : "exchange",
+        name: error instanceof Error ? error.name : "error",
+      });
+    }
+    if (appleGrant) {
+      const expected = await getOwnerAppleSubject();
+      if (expected && expected !== appleGrant.subject) {
+        return c.json(
+          errorBody("That Apple ID does not own this account", "VALIDATION_ERROR"),
+          400,
+        );
+      }
+    }
+  }
+
   // The photo goes first: once the row is gone nothing points at it and it would outlive the account.
   if (current.avatarKey && !(await deleteAvatarWithRetry(current.avatarKey))) {
     return c.json(
@@ -131,6 +201,16 @@ profileRoute.delete("/", requireAuth, async (c) => {
     );
   }
   await deleteOwnerAccount();
+  if (appleGrant) {
+    try {
+      await revokeAppleGrant(appleGrant);
+    } catch (error) {
+      console.error("apple_revoke_failed", {
+        name: error instanceof Error ? error.name : "error",
+        message: error instanceof Error ? error.message : "",
+      });
+    }
+  }
   return c.body(null, 204);
 });
 

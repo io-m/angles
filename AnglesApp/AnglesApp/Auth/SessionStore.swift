@@ -2,6 +2,13 @@ import AuthenticationServices
 import Foundation
 import Observation
 
+enum AccountDeletion: Equatable, Sendable {
+    case deleted
+    /// The user closed Apple's confirmation sheet. Not an error.
+    case cancelled
+    case failed
+}
+
 @MainActor
 @Observable
 final class SessionStore {
@@ -97,17 +104,27 @@ final class SessionStore {
         }
     }
 
-    /// Server delete only. The caller ends the local session in the same frame as the rest of
-    /// the app state.
-    func deleteAccount() async -> Bool {
+    /// Apple confirms first so the server can revoke the app's Sign in with Apple grant; closing
+    /// that sheet deletes nothing. Server delete only: the caller ends the local session in the
+    /// same frame as the rest of the app state.
+    func deleteAccount() async -> AccountDeletion {
         isBusy = true
         defer { isBusy = false }
+        let code: String
         do {
-            try await profileService.deleteAccount()
-            return true
+            code = try await AppleReauthorization().authorizationCode()
+        } catch AppleReauthorizationError.canceled {
+            return .cancelled
+        } catch {
+            errorMessage = "Couldn't confirm with Apple. Try again."
+            return .failed
+        }
+        do {
+            try await profileService.deleteAccount(appleAuthorizationCode: code)
+            return .deleted
         } catch {
             errorMessage = "Couldn't delete your account. Try again."
-            return false
+            return .failed
         }
     }
 
@@ -121,8 +138,42 @@ final class SessionStore {
             name: current.name,
             tasteCompletedAt: ISO8601Dates.string(from: Date()),
             tasteConsumedAt: current.tasteConsumedAt,
+            termsAcceptedAt: current.termsAcceptedAt,
             avatarUrl: current.avatarUrl
         )
+    }
+
+    var hasAcceptedTerms: Bool {
+        session?.hasAcceptedTerms == true
+    }
+
+    /// Records "Agree and continue" on the server, which is the record that counts; Home and the
+    /// first send both wait for it.
+    func acceptTerms() async -> Bool {
+        guard let current = session else {
+            return false
+        }
+        if current.hasAcceptedTerms {
+            return true
+        }
+        do {
+            let accepted = try await profileService.acceptTerms()
+            guard session?.id == current.id, let latest = session else {
+                return false
+            }
+            session = SessionBody(
+                id: latest.id,
+                initials: latest.initials,
+                name: latest.name,
+                tasteCompletedAt: latest.tasteCompletedAt,
+                tasteConsumedAt: latest.tasteConsumedAt,
+                termsAcceptedAt: accepted.termsAcceptedAt,
+                avatarUrl: latest.avatarUrl
+            )
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// True only when the server rejected the session that is live now.

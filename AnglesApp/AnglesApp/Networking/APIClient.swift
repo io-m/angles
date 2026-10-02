@@ -139,6 +139,10 @@ final class APIClient: @unchecked Sendable {
         _ = try await send(path: path, method: "DELETE", timeout: timeout)
     }
 
+    func delete<Body: Encodable>(path: String, body: Body, timeout: TimeInterval? = nil) async throws {
+        _ = try await send(path: path, method: "DELETE", body: body, timeout: timeout)
+    }
+
     func deleteJSON<Response: Decodable>(path: String, timeout: TimeInterval? = nil) async throws -> Response {
         try decode(try await send(path: path, method: "DELETE", timeout: timeout))
     }

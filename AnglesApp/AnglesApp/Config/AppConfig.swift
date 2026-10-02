@@ -21,10 +21,7 @@ enum AppConfig {
         return raw
     }()
 
-    static let supportContactURL: URL? = {
-        if let supportURL {
-            return supportURL
-        }
+    static let supportMailURL: URL? = {
         guard let supportEmail else {
             return nil
         }
@@ -33,6 +30,8 @@ enum AppConfig {
         components.path = supportEmail
         return components.url
     }()
+
+    static let supportContactURL: URL? = supportURL ?? supportMailURL
 
     #if DEBUG
     static let isSubmissionBuild = false

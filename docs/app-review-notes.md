@@ -12,13 +12,13 @@ Angles requires Sign in with Apple before the core experience because the free t
 2. Tap **Continue with Apple** and complete Apple's native sign-in sheet.
 3. For a new Angles account with no active subscription, the taste composer opens ("Break the spiral.").
 4. Type a thought into "Tell me what's on your mind..." and tap **Send** (the arrow).
-5. The first Send opens **Before you start**, which names the AI providers (Mistral AI and OpenAI), says what is sent, states the community rules, and links the Terms of Use and Privacy Policy. Tap **Agree and continue**. It appears once per account.
+5. The first Send opens **Before you start**, which names the AI providers (Mistral AI and OpenAI), says what is sent, says Angles is not therapy or a crisis service, states the community rules, and links the Terms of Use and Privacy Policy. Tap **Agree and continue**. The acceptance is stored on the server, so it appears once per account on any device.
 6. If a follow-up question appears, tap any chip or type in "Say more..." and send. The server forces a result by the third turn.
 7. Four angles appear (Stoic, Optimistic, Humorous, Tough love). Tap **Save to private library**. The taste is always saved privately.
 8. "Saved privately" plays, then the paywall opens. Choose **Yearly** or **Monthly** (prices come from the App Store; Yearly shows the yearly price it bills), tap **Continue**, and approve the sandbox purchase. Each plan includes 600 credits a month.
 9. After Apple verifies the transaction and the server syncs the entitlement, **Home** opens. The tab bar is **Home**, **Inspire me** (compose), and **Profile**. Inspire me opens the full composer, where Save is **Post** by default, with a **Save privately** option. Profile holds the private library and Settings (gear).
 
-An existing entitled account skips the taste and paywall after Apple sign-in. An account that already used its taste but is not entitled goes directly to the paywall. The taste is used as soon as its first result appears, so quitting before Save also lands on the paywall.
+An existing entitled account skips the taste and paywall after Apple sign-in; if it has not accepted the Terms yet (for example, it subscribed without sending), **Before you start** opens before Home, with **Log out** as the only other choice. An account that already used its taste but is not entitled goes directly to the paywall. The taste is used as soon as its first result appears, so quitting before Save also lands on the paywall.
 
 ## Subscription restore and management
 
@@ -37,7 +37,7 @@ Home contains user-posted public cards. A user's own onboarding taste is private
 2. Tap **Report**. It asks "Why are you reporting this card?".
 3. Choose a reason: Spam, Harassment or bullying, Hate speech, Sexual content, Illegal activity, Personal information, or Something else.
 
-The reported card leaves that reviewer's Home and library. Reports are reviewed within 24 hours, and repeated reports make a card private automatically.
+The reported card leaves that reviewer's Home and library. Each new report emails the operator (ids and reason only), who reviews it within 24 hours with `pnpm reports` and can hide or delete the card or stop the author publishing. Three open reports make a card private automatically.
 
 ### Block a person
 
@@ -56,7 +56,7 @@ Saving privately does not publish a card. Posting a new card or changing a priva
 - **Profile → Settings gear → Delete account**, then confirm **Delete account**.
 - Or, on the paywall, the (i) sheet → **Account → Delete account**, then confirm.
 
-The app waits for server confirmation, deletes the Angles account and associated active data, and returns to Continue with Apple. Deletion does not cancel the Apple subscription; cancellation is handled through Apple. Signing in again with the same Apple ID creates a new account; its still-active sandbox purchase moves to that new account on restore.
+Apple's sheet asks to confirm with the Apple ID first, so the server can revoke the app's Sign in with Apple access; closing that sheet deletes nothing. The app then waits for server confirmation, deletes the Angles account and associated active data, and returns to Continue with Apple. Deletion does not cancel the Apple subscription; cancellation is handled through Apple. Signing in again with the same Apple ID creates a new account; its still-active sandbox purchase moves to that new account on restore.
 
 ## Reviewer environment
 
@@ -67,7 +67,7 @@ The app waits for server confirmation, deletes the Angles account and associated
 
 ## Paste-ready notes for App Store Connect
 
-The "reviewed within 24 hours" line is only true once someone checks reports at least daily. If nobody does, remove that line before pasting.
+The "reviewed within 24 hours" line is only true when the report email reaches someone who acts on it daily (`RESEND_API_KEY`, `REPORT_ALERT_FROM`, `REPORT_ALERT_TO` on Railway; the API logs `report_alerts_disabled` at startup without them). If nobody does, remove that line before pasting.
 
 ```text
 Sign-in: Angles uses Sign in with Apple only. There is no email or password login, so there is no demo account. Please tap "Continue with Apple" with your own Apple ID. The account, free taste, subscription, credits, reports and blocks are tied to that Apple sign-in on our server.
@@ -96,7 +96,7 @@ Safety: Angles is a self-reflection tool, not therapy. If a thought suggests sel
 
 AI: thoughts are processed on our server by Mistral AI or OpenAI, only after the user agrees on "Before you start". No AI runs on the device and no keys are in the app.
 
-Account deletion: Profile -> Settings -> Delete account -> Delete account, or from the paywall (i) sheet -> Delete account. Deleting does not cancel the Apple subscription.
+Account deletion: Profile -> Settings -> Delete account -> Delete account, or from the paywall (i) sheet -> Delete account. Apple's sheet confirms the Apple ID first so we can revoke Sign in with Apple access. Deleting does not cancel the Apple subscription.
 
 Contact: info@bithavn.app
 ```

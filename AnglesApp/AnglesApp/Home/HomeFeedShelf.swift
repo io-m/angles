@@ -15,6 +15,9 @@ struct HomeFeedShelfState {
     var hasLoaded = false
     var generation = 0
     var isRefreshing = false
+    /// The pull that set `isRefreshing`. Its end clears the flag even after the
+    /// generation moved; otherwise the next pull would never start.
+    var refreshID: Int?
     var refreshOutcome: FeedRefreshOutcome?
     var refreshToken = 0
 }
@@ -177,6 +180,7 @@ struct HomeFeedBoard {
         }
         shelf.isRefreshing = true
         shelf.generation &+= 1
+        shelf.refreshID = shelf.generation
         shelf.footerState = .idle
         shelf.loadState = shelf.order.isEmpty ? .loading : .loaded
         shelves[tab] = shelf
@@ -188,14 +192,18 @@ struct HomeFeedBoard {
             return
         }
         shelf.isRefreshing = false
+        shelf.refreshID = nil
         shelves[tab] = shelf
     }
 
-    mutating func endRefresh(on tab: HomeFeedTab, generation: Int) {
-        guard var shelf = shelves[tab], shelf.generation == generation else {
+    /// Ends the pull `beginRefresh` returned `refreshID` for. A later pull owns
+    /// the flag once it has started, so this leaves that one alone.
+    mutating func endRefresh(on tab: HomeFeedTab, refreshID: Int) {
+        guard var shelf = shelves[tab], shelf.refreshID == refreshID else {
             return
         }
         shelf.isRefreshing = false
+        shelf.refreshID = nil
         shelves[tab] = shelf
     }
 
@@ -238,7 +246,10 @@ struct HomeFeedBoard {
             return .stale
         }
 
-        let next = mergingAnchors(into: page, on: tab, filter: filter, pageSize: pageSize)
+        let next = facedForYou(
+            mergingAnchors(into: page, on: tab, filter: filter, pageSize: pageSize),
+            on: tab
+        )
         for card in next {
             records[card.id] = card
         }
@@ -265,8 +276,10 @@ struct HomeFeedBoard {
         guard var shelf = shelves[tab], shelf.generation == generation else {
             return .stale
         }
+        let lastFace = shelf.order.last.flatMap { records[$0]?.spotlightStyle }
+        let faced = facedNewcomers(page, on: tab, shelf: shelf, above: lastFace, below: nil)
         var arrived: [HomeCard] = []
-        for card in page {
+        for card in faced {
             records[card.id] = card
             anchors[card.id] = nil
             guard shelf.ids.insert(card.id).inserted else {
@@ -295,8 +308,10 @@ struct HomeFeedBoard {
         guard var shelf = shelves[tab], shelf.generation == generation else {
             return .stale
         }
+        let topFace = shelf.order.first.flatMap { records[$0]?.spotlightStyle }
+        let faced = facedNewcomers(cards, on: tab, shelf: shelf, above: nil, below: topFace)
         var fresh: [HomeCard] = []
-        for card in cards {
+        for card in faced {
             records[card.id] = card
             guard shelf.ids.insert(card.id).inserted else {
                 continue
@@ -325,7 +340,10 @@ struct HomeFeedBoard {
         guard var shelf = shelves[tab], shelf.generation == generation else {
             return .stale
         }
-        let next = mergingAnchors(into: page, on: tab, filter: filter, pageSize: pageSize)
+        let next = facedForYou(
+            mergingAnchors(into: page, on: tab, filter: filter, pageSize: pageSize),
+            on: tab
+        )
         for card in next {
             records[card.id] = card
         }
@@ -448,6 +466,7 @@ struct HomeFeedBoard {
             shelf.isRotated = false
             shelf.footerState = .idle
             shelf.isRefreshing = false
+            shelf.refreshID = nil
             if tab != .all {
                 shelf.order = []
                 shelf.ids = []
@@ -506,6 +525,39 @@ struct HomeFeedBoard {
             next.insert(anchor, at: index)
         }
         return next
+    }
+
+    /// A whole For you page, faced from the top. Style shelves open on their own angle,
+    /// so their cards are left as they came.
+    private func facedForYou(_ page: [HomeCard], on tab: HomeFeedTab) -> [HomeCard] {
+        tab == .all ? ForYouCovers.assign(page) : page
+    }
+
+    /// Faces only the cards that are new to this For you shelf. A card already on it
+    /// keeps the angle it opened with.
+    private func facedNewcomers(
+        _ page: [HomeCard],
+        on tab: HomeFeedTab,
+        shelf: HomeFeedShelfState,
+        above: Style?,
+        below: Style?
+    ) -> [HomeCard] {
+        guard tab == .all else {
+            return page
+        }
+        var seen = shelf.ids
+        let newcomers = page.filter { seen.insert($0.id).inserted }
+        let faces = Dictionary(
+            ForYouCovers.assign(newcomers, above: above, below: below).map { ($0.id, $0.spotlightStyle) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return page.map { card in
+            var card = card
+            if let face = faces[card.id] {
+                card.spotlightStyle = face
+            }
+            return card
+        }
     }
 
     private func note(_ shelf: inout HomeFeedShelfState, _ cards: [HomeCard]) {

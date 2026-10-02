@@ -76,6 +76,8 @@ function userRow(overrides: { id?: string; initials?: string; avatarKey?: string
     avatarKey: overrides.avatarKey ?? null,
     tasteCompletedAt: null as Date | null,
     tasteConsumedAt: null as Date | null,
+    termsAcceptedAt: null as Date | null,
+    publishingSuspendedAt: null as Date | null,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
   };

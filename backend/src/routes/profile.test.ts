@@ -26,7 +26,18 @@ vi.mock("../db/users.js", () => ({
   setOwnerAvatar: vi.fn(),
   updateOwnerInitials: vi.fn(),
   deleteOwnerAccount: vi.fn(),
+  getOwnerAppleSubject: vi.fn(async () => "apple-sub-owner"),
+  acceptOwnerTerms: vi.fn(),
 }));
+
+vi.mock("../lib/appleRevoke.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/appleRevoke.js")>();
+  return {
+    ...actual,
+    exchangeAppleAuthorizationCode: vi.fn(),
+    revokeAppleGrant: vi.fn(),
+  };
+});
 
 vi.mock("../db/follows.js", () => ({
   followUser: vi.fn(),
@@ -66,8 +77,12 @@ const { createApp } = await import("../app.js");
 const { listBlockedUsers } = await import("../db/communitySafety.js");
 const { listFollowing } = await import("../db/follows.js");
 const { getUsageSummary } = await import("../db/metering.js");
-const { getUserById, setOwnerAvatar, updateOwnerInitials, deleteOwnerAccount } = await import("../db/users.js");
+const { acceptOwnerTerms, getUserById, setOwnerAvatar, updateOwnerInitials, deleteOwnerAccount } =
+  await import("../db/users.js");
 const { deleteAvatar, getAvatar, putAvatar, StorageUnavailableError } = await import("../lib/objectStorage.js");
+const { AppleRevokeError, exchangeAppleAuthorizationCode, revokeAppleGrant } = await import(
+  "../lib/appleRevoke.js"
+);
 
 const app = createApp();
 
@@ -81,6 +96,8 @@ const owner = {
   avatarKey: null as string | null,
   tasteCompletedAt: null as Date | null,
   tasteConsumedAt: null as Date | null,
+  termsAcceptedAt: null as Date | null,
+  publishingSuspendedAt: null as Date | null,
   createdAt: new Date("2026-09-10T12:00:00.000Z"),
   updatedAt: new Date("2026-09-10T12:00:00.000Z"),
 };
@@ -235,7 +252,20 @@ describe("profile avatar", () => {
       name: "JM",
       tasteCompletedAt: tasted.toISOString(),
       tasteConsumedAt: null,
+      termsAcceptedAt: null,
     });
+  });
+
+  it("records the Terms acceptance and reports it in the session", async () => {
+    const accepted = new Date("2026-10-02T12:00:00.000Z");
+    vi.mocked(acceptOwnerTerms).mockResolvedValueOnce(accepted);
+    const put = await app.request("/profile/terms", { method: "PUT" });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({ termsAcceptedAt: accepted.toISOString() });
+
+    vi.mocked(getUserById).mockResolvedValue(user({ termsAcceptedAt: accepted }));
+    const session = await app.request("/profile/session");
+    expect(await session.json()).toMatchObject({ termsAcceptedAt: accepted.toISOString() });
   });
 
   it("returns taste consumption before the ready card is saved", async () => {
@@ -308,5 +338,77 @@ describe("profile avatar", () => {
     expect(deleteAvatar).toHaveBeenCalledTimes(3);
     expect(deleteOwnerAccount).not.toHaveBeenCalled();
     errorLog.mockRestore();
+  });
+
+  describe("Sign in with Apple revocation", () => {
+    const grant = { subject: "apple-sub-owner", token: "r.token", tokenTypeHint: "refresh_token" as const };
+    const deleteWith = (body: string) =>
+      app.request("/profile", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+
+    beforeEach(() => {
+      vi.mocked(deleteOwnerAccount).mockReset();
+      vi.mocked(deleteOwnerAccount).mockResolvedValue(undefined);
+      vi.mocked(exchangeAppleAuthorizationCode).mockReset();
+      vi.mocked(revokeAppleGrant).mockReset();
+    });
+
+    it("trades the code first, deletes, then revokes", async () => {
+      vi.mocked(exchangeAppleAuthorizationCode).mockResolvedValue(grant);
+      vi.mocked(revokeAppleGrant).mockResolvedValue(undefined);
+
+      const response = await deleteWith(JSON.stringify({ appleAuthorizationCode: "c.code" }));
+
+      expect(response.status).toBe(204);
+      expect(exchangeAppleAuthorizationCode).toHaveBeenCalledWith("c.code");
+      expect(revokeAppleGrant).toHaveBeenCalledWith(grant);
+      expect(vi.mocked(deleteOwnerAccount).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(revokeAppleGrant).mock.invocationCallOrder[0] ?? 0,
+      );
+    });
+
+    it("refuses a code for another Apple ID and deletes nothing", async () => {
+      vi.mocked(exchangeAppleAuthorizationCode).mockResolvedValue({ ...grant, subject: "someone-else" });
+
+      const response = await deleteWith(JSON.stringify({ appleAuthorizationCode: "c.code" }));
+
+      expect(response.status).toBe(400);
+      expect(deleteOwnerAccount).not.toHaveBeenCalled();
+      expect(revokeAppleGrant).not.toHaveBeenCalled();
+    });
+
+    it("still deletes when Apple is unreachable", async () => {
+      vi.mocked(exchangeAppleAuthorizationCode).mockRejectedValue(new AppleRevokeError("exchange", 503));
+      const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const response = await deleteWith(JSON.stringify({ appleAuthorizationCode: "c.code" }));
+
+      expect(response.status).toBe(204);
+      expect(deleteOwnerAccount).toHaveBeenCalledOnce();
+      expect(revokeAppleGrant).not.toHaveBeenCalled();
+      errorLog.mockRestore();
+    });
+
+    it("keeps the deletion when revoke fails afterwards", async () => {
+      vi.mocked(exchangeAppleAuthorizationCode).mockResolvedValue(grant);
+      vi.mocked(revokeAppleGrant).mockRejectedValue(new AppleRevokeError("revoke", 500));
+      const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const response = await deleteWith(JSON.stringify({ appleAuthorizationCode: "c.code" }));
+
+      expect(response.status).toBe(204);
+      expect(deleteOwnerAccount).toHaveBeenCalledOnce();
+      errorLog.mockRestore();
+    });
+
+    it("rejects malformed JSON before touching anything", async () => {
+      const response = await deleteWith("{nope");
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code: "INVALID_JSON" });
+      expect(deleteOwnerAccount).not.toHaveBeenCalled();
+    });
   });
 });
