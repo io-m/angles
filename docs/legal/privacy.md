@@ -38,7 +38,7 @@ Before your first thought leaves your phone, the app shows a **Before you start*
 
 Angles sends the thought you write and your answers to follow-up questions to a large-language-model provider. We choose the provider for each step on our servers: **Mistral AI** (France) or **OpenAI** (United States). If the first provider is unavailable, the same request may be sent to the other. When you post a card publicly, its text is also sent to one of these providers for an automated moderation check before anyone else can see it. Your region, name, email address, and account identifiers are not sent to AI providers.
 
-We use each provider's paid API service, under terms that do not allow the provider to use what you send to train or improve its models. A provider may keep request data for a limited period for abuse monitoring and legal compliance, as its terms allow, and acts on our instructions. Do not use Angles for emergencies.
+Angles does not use what you write to train or improve any model. We send it only to generate your angles and, if you post a card, to check that post. We use each provider's paid API, and those terms do not allow Mistral AI or OpenAI to use what you send to train or improve their models. A provider may keep a request for a limited time for abuse monitoring and legal compliance, as its terms allow. Do not use Angles for emergencies.
 
 ## How Home is ordered
 
