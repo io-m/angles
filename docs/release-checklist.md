@@ -1,6 +1,6 @@
 # Release checklist
 
-Current as of **2 October 2026**. Version **1.0**, build **10** is uploaded, in TestFlight, and attached to the version in App Store Connect. The App Store Connect record is `6811873869` (Angles: Reframe Thoughts).
+Current as of **2 October 2026**. Version **1.0**, build **11** is uploaded, in TestFlight, and attached to the version in App Store Connect. The App Store Connect record is `6811873869` (Angles: Reframe Thoughts).
 
 Everything under "Left to do" needs you: a dashboard the API cannot reach, your phone, or your judgement. Everything under "Done" was checked through the App Store Connect API, Railway, or the device.
 
@@ -41,9 +41,9 @@ The Terms and the review notes promise a review of every report within 24 hours.
 
 To review reports: `railway ssh --service api --environment production node dist/scripts/reports.js` lists open reports; add `hide <cardId>`, `keep <cardId>`, `delete <cardId>`, `suspend <userId>`, or `unsuspend <userId>`.
 
-### 3. Walk the reviewer path on TestFlight build 10 (about 20 minutes)
+### 3. Walk the reviewer path on TestFlight build 11 (about 20 minutes)
 
-Delete Angles from the phone first, then install build 10 from TestFlight (internal group "Angles team"). The production database was emptied on 2 October 2026, so this is a brand-new account.
+The same path already worked on the local build on 2 October 2026. This run checks it against production. Delete Angles from the phone first, then install build 11 from TestFlight (internal group "Angles team"). The production database was emptied on 2 October 2026, so this is a brand-new account.
 
 1. Continue with Apple. The taste opens on "Welcome to Angles … Your first thought is free."
 2. Type a thought and tap Send. "Before you start" appears; tap Agree and continue.
@@ -58,7 +58,7 @@ Delete Angles from the phone first, then install build 10 from TestFlight (inter
 - **App screenshots:** App Store Connect → version 1.0 → iPhone 6.9" Display. 3 to 10 images at 1320 × 2868 or 1290 × 2796 portrait (Joe's iPhone 14 Pro Max takes 1290 × 2796). Show real use, not only login or the paywall (guideline 2.3): Home with cards, the four angles of one thought, a card opened, Profile, the widget.
 - **Subscription review screenshot:** one paywall screenshot uploaded on **each** subscription ([Angles Yearly and Angles Monthly](https://appstoreconnect.apple.com/apps/6811873869/distribution/subscriptions)). Until both have one they stay "Missing Metadata" and cannot be submitted.
 
-The agent can take these on the phone if it is unlocked and on the screen asked for.
+The agent can take these on the phone and upload them through the API once Home has public cards (step 3). Keep the phone unlocked and on Wi-Fi while it does.
 
 ### 5. Provider and operations safety (about 15 minutes)
 
@@ -72,7 +72,7 @@ The agent can take these on the phone if it is unlocked and on the screen asked 
 
 App Store Connect → Angles → version 1.0:
 
-1. Check that the build is **10**.
+1. Check that the build is **11**.
 2. Under "In-App Purchases and Subscriptions", select **both** Angles Yearly and Angles Monthly. First subscriptions must be submitted with the binary.
 3. Re-read the review notes. Keep "reports are reviewed within 24 hours" only if step 2 is done and someone acts on the emails.
 4. **Add for Review**, then **Submit for Review**.
@@ -95,7 +95,7 @@ Release is set to **manual**: after approval, press Release yourself.
 - Age rating **13+** (matches the Terms' minimum age): user-generated content, social features, health and wellness topics, mild mature themes, mild crude humour.
 - Version 1.0 listing: description (no medical claims; Terms and Privacy links; full auto-renew text), keywords, promotional text, support `https://useangles.app/support`, marketing `https://useangles.app`, copyright "2026 Bithavn", release type manual.
 - App Review details: Josip Miljak, `info@bithavn.app`, +45 50 65 97 20, no demo account, notes from [app-review-notes.md](app-review-notes.md).
-- TestFlight internal group **Angles team** (all builds) with `miljak.josip@outlook.com`. Builds 9 and 10 uploaded; 10 is `APP_STORE_ELIGIBLE` (not built with beta tools) and attached to 1.0.
+- TestFlight internal group **Angles team** (all builds) with `miljak.josip@outlook.com`. Builds 9, 10, and 11 uploaded; 11 is attached to 1.0.
 
 ### Code and backend (BUILD.md row 20)
 
@@ -105,6 +105,8 @@ Release is set to **manual**: after approval, press Release yourself.
 - "Not therapy" row on Before you start, Email support in Settings, empty app icon set removed, README fixed.
 - Free taste fixed in production: it used to read as 0 credits, so "You're out of credits" showed and Send was disabled. The taste screen now welcomes new accounts.
 - A reinstall starts at Continue with Apple instead of resuming the old Keychain session.
+- Build 11: sign-in retries a request that got no answer instead of failing on the first try. The checkout spinner no longer stays up forever for a member who has not accepted the Terms. Agree and continue is pinned to the bottom of Before you start.
+- The full new-user path (Continue with Apple, free thought, Before you start, paywall, sandbox purchase, Home) worked end to end on the local build on 2 October 2026.
 - Backend: typecheck, 614 tests pass. iOS: 62 tests pass on Joe's iPhone. Release builds 9 and 10 installed and launched on the phone.
 - Production deployed with migrations `0018` and `0019`; `/health` is ok. Production data was emptied on 2 October 2026 (migration history kept).
 - Provider rates in `LLM_RATE_VERSION` `2026-10-providers-v1` match current prices (Mistral Small $0.15 / $0.60, gpt-4.1-mini $0.40 / $1.60 per million tokens).
