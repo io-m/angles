@@ -18,16 +18,21 @@ flowchart TD
     Restore -->|No session| Login[Continue with Apple]
     Login --> Session[Load server profile and Apple entitlement]
     Restore -->|Session found| Session
-    Session -->|Active entitlement| Home[Home and Profile]
+    Session -->|Active entitlement, Terms accepted| Home[Home and Profile]
+    Session -->|Active entitlement, Terms never accepted| Terms[Before you start]
+    Terms -->|Agree and continue| Home
     Session -->|No entitlement and taste unused| Taste[One private onboarding taste]
     Session -->|No entitlement and taste consumed or saved| Paywall[Membership paywall]
     Taste -->|Successful private save| Mark[Server stamps tasteCompletedAt]
     Mark --> Paywall
     Paywall -->|Verified purchase or restore| Sync[Sync signed transaction to server]
     Sync --> Home
+    Sync -->|Terms never accepted| Terms
 ```
 
 The app waits for both session restoration and StoreKit state before publishing a destination, so login, taste, paywall, and Home do not flash through each other.
+
+The screen depends on the account, not on the install. A new Apple ID gets the taste; an Apple ID that already used its taste goes to the paywall (Renew when it had a membership that ended). A reinstall always starts at Continue with Apple, because the first launch of an install discards a session token left in the Keychain by an earlier install.
 
 ## First account
 

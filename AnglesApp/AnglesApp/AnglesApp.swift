@@ -439,6 +439,9 @@ struct AppRoot: View {
         if new == .home, old != .home {
             enterHome()
         }
+        if new == .terms {
+            releaseCheckoutLockForTerms()
+        }
         if new == .taste, old != .taste {
             viewModel.resetCompose()
             viewModel.composeIsPublic = false
@@ -488,7 +491,19 @@ struct AppRoot: View {
         if isHomeRevealed, !storeKitManager.isCheckoutOperationInFlight {
             storeKitManager.releaseCheckoutLock()
         }
+        if destination == .terms {
+            releaseCheckoutLockForTerms()
+        }
         advanceHomeRevealIfPossible()
+    }
+
+    /// A purchase holds the lock until Home, but an account without Terms stops at the Terms
+    /// screen first, which sits under the lock.
+    private func releaseCheckoutLockForTerms() {
+        guard !storeKitManager.isCheckoutOperationInFlight else {
+            return
+        }
+        storeKitManager.releaseCheckoutLock()
     }
 
     private func advanceHomeRevealIfPossible() {
