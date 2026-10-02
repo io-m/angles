@@ -1,0 +1,25 @@
+# Tap one style chip, wait until the card shows that style, hold, and read it.
+# Env: STYLE_KEY (wire value), STYLE_NAME (display name), HOLD_MS.
+appId: app.angles.ios
+---
+- evalScript: ${output.demo.marks.push(['chip_' + STYLE_KEY, Date.now()])}
+- tapOn:
+    id: "chip.${STYLE_KEY}"
+    childOf:
+      id: "compose.card"
+- extendedWaitUntil:
+    visible:
+      id: "compose.card"
+      text: ".*${STYLE_NAME} answer\\..*"
+    timeout: 5000
+- evalScript: ${output.demo.marks.push(['shown_' + STYLE_KEY, Date.now()])}
+- runFlow:
+    file: hold.yaml
+    env:
+      HOLD_MS: ${HOLD_MS}
+- copyTextFrom:
+    id: "compose.card"
+- runScript:
+    file: read_answer.js
+    env:
+      STYLE_KEY: ${STYLE_KEY}

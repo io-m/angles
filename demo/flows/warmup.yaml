@@ -1,0 +1,34 @@
+# Runs before the recording starts. make_video.sh has already launched the app
+# with the demo launch arguments; this clears any system alert, opens compose
+# once so the keyboard's first-use tip is dismissed, and ends back on Home.
+appId: app.angles.ios
+---
+- tapOn:
+    text: "Allow"
+    optional: true
+- extendedWaitUntil:
+    visible: "Inspire me"
+    timeout: 45000
+- extendedWaitUntil:
+    notVisible: "Loading Home"
+    timeout: 20000
+- tapOn: "Inspire me"
+- extendedWaitUntil:
+    visible:
+      id: "compose.input"
+    timeout: 10000
+- runFlow:
+    file: hold.yaml
+    env:
+      HOLD_MS: 1500
+- tapOn:
+    text: "Continue"
+    optional: true
+- tapOn: "Close without saving"
+- extendedWaitUntil:
+    visible: "Inspire me"
+    timeout: 10000
+- runFlow:
+    file: hold.yaml
+    env:
+      HOLD_MS: 1000

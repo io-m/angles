@@ -1471,6 +1471,7 @@ private struct StyleChipRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(style.displayName) answer")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("chip.\(style.rawValue)")
     }
 }
 

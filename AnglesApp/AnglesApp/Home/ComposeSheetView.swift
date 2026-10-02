@@ -501,6 +501,7 @@ struct ComposeSheetView: View {
                         }
                     )
                     .id("overlay-proposal")
+                    .accessibilityIdentifier("compose.card")
 
                     if let notice = viewModel.recookNotice {
                         Text(notice)
@@ -523,7 +524,7 @@ struct ComposeSheetView: View {
                 guard !isOnboardingTaste else {
                     return
                 }
-                await SaveRide.preload()
+                await SaveRide.preload(dark: colorScheme == .dark)
             }
         case .error(let message):
             errorRow(message)
@@ -549,12 +550,14 @@ struct ComposeSheetView: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("compose.crisis")
                 } else if !turn.isAnswered, !turn.options.isEmpty {
                     VStack(spacing: 8) {
-                        ForEach(turn.options, id: \.self) { option in
+                        ForEach(Array(turn.options.enumerated()), id: \.element) { index, option in
                             optionRow(option) {
                                 viewModel.chooseOption(option)
                             }
+                            .accessibilityIdentifier("compose.option.\(index)")
                         }
                     }
                 }
@@ -572,6 +575,7 @@ struct ComposeSheetView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(turn.message)
+        .accessibilityIdentifier(turn.isAnswered ? "compose.answeredFollowup" : "compose.followup")
     }
 
     private func optionRow(_ title: String, action: @escaping () -> Void) -> some View {
@@ -655,6 +659,7 @@ struct ComposeSheetView: View {
             .shadow(color: theme.shadowSoft, radius: 10, y: 3)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(message)
+            .accessibilityIdentifier("compose.error")
         }
     }
 
@@ -837,6 +842,7 @@ struct ComposeSheetView: View {
             .foregroundStyle(theme.ink)
             .textInputAutocapitalization(.sentences)
             .focused($composerFocused)
+            .accessibilityIdentifier("compose.input")
             .lineLimit(1...4)
             .frame(minHeight: 28, alignment: .leading)
             .padding(.leading, 18)
@@ -889,6 +895,7 @@ struct ComposeSheetView: View {
             .disabled(!viewModel.canSubmit)
             .opacity(viewModel.canSubmit ? 1 : 0.35)
             .accessibilityLabel("Send")
+            .accessibilityIdentifier("compose.send")
         }
         .padding(8)
     }
@@ -1038,6 +1045,7 @@ private struct CookingLine: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(stem)
+        .accessibilityIdentifier("compose.cooking")
     }
 
     private var visibleLineIndex: Int {
@@ -1071,22 +1079,23 @@ private struct AccessibilityHintIfPresent: ViewModifier {
     }
 }
 
-/// One unzip of the ride, started while the answer is on screen, shared with the cover.
+/// One unzip of the ride per appearance, started while the answer is on screen, shared with
+/// the cover. The dark file is the same animation recolored by `scripts/lottie-dark-variant.mjs`.
 @MainActor
 private enum SaveRide {
-    private static let name = "Go to school"
-    private static var loading: Task<DotLottieFile?, Never>?
+    private static var loading: [Bool: Task<DotLottieFile?, Never>] = [:]
 
-    static func preload() async {
-        _ = await load()
+    static func preload(dark: Bool) async {
+        _ = await load(dark: dark)
     }
 
-    static func load() async -> DotLottieFile? {
-        if let loading {
-            return await loading.value
+    static func load(dark: Bool) async -> DotLottieFile? {
+        if let task = loading[dark] {
+            return await task.value
         }
+        let name = dark ? "Go to school dark" : "Go to school"
         let task = Task { try? await DotLottieFile.named(name) }
-        loading = task
+        loading[dark] = task
         return await task.value
     }
 }
@@ -1098,8 +1107,6 @@ struct SaveCelebrationCover: View {
     var size: CGSize
 
     @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     /// The file is a 1200 square. The rider occupies x 228...900, y 424...1029, so the
     /// artboard center is empty sky. These bounds are the bike, which is what we center.
@@ -1122,16 +1129,18 @@ struct SaveCelebrationCover: View {
         )
 
         ZStack {
-            theme.paper
+            StyleWash.headerGlassFill(fromInk: .clear, toInk: .clear, progress: 0)
 
             if playsAnimation {
+                let dark = colorScheme == .dark
                 LottieView {
-                    await SaveRide.load()
+                    await SaveRide.load(dark: dark)
                 }
                 .playing()
                 .resizable()
                 .aspectRatio(1, contentMode: .fit)
                 .frame(width: side, height: side)
+                .id(dark)
                 .position(
                     x: screenCenter.x - (sceneCenter.x - side / 2),
                     y: screenCenter.y - (sceneCenter.y - side / 2)

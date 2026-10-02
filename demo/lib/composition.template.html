@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Angles demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Anton";
+        src: url("fonts/Anton-Regular.woff2") format("woff2");
+        font-weight: 400;
+        font-style: normal;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        font-family: "Anton", sans-serif;
+        font-weight: 400;
+      }
+      .layer {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+      }
+
+      /* ---------- hook ---------- */
+      #hook {
+        z-index: 30;
+        background: #000;
+      }
+      #hook-stage {
+        transform-origin: 50% 40%;
+      }
+      .hk {
+        position: absolute;
+        left: 60px;
+        width: 960px;
+        text-align: center;
+        text-transform: uppercase;
+        color: #ffd21f;
+        line-height: 1;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        opacity: 0;
+      }
+      .hk.small {
+        color: #fff;
+      }
+
+      /* ---------- app ---------- */
+      #app {
+        z-index: 10;
+        background: #0a0908;
+        overflow: hidden;
+      }
+      #glow {
+        position: absolute;
+        left: -260px;
+        top: 260px;
+        width: 1600px;
+        height: 1500px;
+        background: radial-gradient(closest-side, rgba(255, 122, 24, 0.34), rgba(255, 122, 24, 0.1) 55%, rgba(255, 122, 24, 0) 100%);
+      }
+      #cam-punch,
+      #cam-outer,
+      #cam-inner {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        transform-origin: 540px 960px;
+      }
+      #phone {
+        position: absolute;
+        overflow: hidden;
+        background: #000;
+        box-shadow:
+          0 0 0 12px #141414,
+          0 0 0 14px #3b3a39,
+          0 50px 140px rgba(0, 0, 0, 0.7);
+      }
+      #screen {
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform-origin: 0 0;
+      }
+      .shot {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+      }
+      .tap {
+        position: absolute;
+        width: 0;
+        height: 0;
+        z-index: 5;
+      }
+      .tap .dot,
+      .tap .ring {
+        position: absolute;
+        left: -60px;
+        top: -60px;
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        opacity: 0;
+      }
+      .tap .dot {
+        background: rgba(255, 255, 255, 0.42);
+      }
+      .tap .ring {
+        border: 6px solid rgba(255, 255, 255, 0.85);
+      }
+      #scrim {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 620px;
+        background: linear-gradient(rgba(10, 9, 8, 0.94), rgba(10, 9, 8, 0.8) 62%, rgba(10, 9, 8, 0));
+        opacity: 0;
+        z-index: 6;
+      }
+      .chapter {
+        position: absolute;
+        pointer-events: none;
+        left: 70px;
+        top: 168px;
+        width: 860px;
+        z-index: 7;
+        opacity: 0;
+      }
+      .chapter .num {
+        display: block;
+        color: #fff;
+        font-size: 50px;
+        letter-spacing: 0.22em;
+        line-height: 1;
+      }
+      .chapter .name {
+        display: block;
+        margin-top: 14px;
+        color: #ffd21f;
+        font-size: 168px;
+        line-height: 1;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+      }
+      .chapter .note {
+        display: block;
+        margin-top: 18px;
+        color: #fff;
+        font-size: 52px;
+        letter-spacing: 0.06em;
+        line-height: 1;
+        white-space: nowrap;
+        opacity: 0;
+      }
+
+      /* ---------- end card ---------- */
+      #end {
+        z-index: 40;
+        background: #000;
+        opacity: 0;
+      }
+      #end-glow {
+        position: absolute;
+        left: -160px;
+        top: 160px;
+        width: 1400px;
+        height: 1100px;
+        background: radial-gradient(closest-side, rgba(255, 140, 20, 0.3), rgba(255, 140, 20, 0) 100%);
+        opacity: 0;
+      }
+      #icon {
+        position: absolute;
+        left: 410px;
+        top: 380px;
+        width: 260px;
+        height: 260px;
+        border-radius: 58px;
+        background: linear-gradient(160deg, #1d1007, #0b0603);
+        box-shadow:
+          0 0 0 2px rgba(255, 190, 90, 0.18),
+          0 30px 90px rgba(255, 120, 10, 0.35);
+        opacity: 0;
+      }
+      #icon svg {
+        position: absolute;
+        left: 30px;
+        top: 30px;
+        width: 200px;
+        height: 200px;
+      }
+      #wordmark {
+        position: absolute;
+        left: 60px;
+        top: 690px;
+        width: 960px;
+        text-align: center;
+        color: #ffd21f;
+        font-size: 250px;
+        line-height: 1;
+        letter-spacing: 0.02em;
+        opacity: 0;
+      }
+      #tagline {
+        position: absolute;
+        left: 60px;
+        top: 975px;
+        width: 960px;
+        text-align: center;
+        color: #fff;
+        font-size: 60px;
+        letter-spacing: 0.04em;
+        line-height: 1;
+        opacity: 0;
+      }
+      #soon {
+        position: absolute;
+        left: 150px;
+        top: 1100px;
+        width: 780px;
+        height: 104px;
+        border-radius: 52px;
+        background: #ffd21f;
+        color: #000;
+        font-size: 52px;
+        letter-spacing: 0.04em;
+        line-height: 104px;
+        text-align: center;
+        opacity: 0;
+      }
+      #follow {
+        position: absolute;
+        left: 60px;
+        top: 1268px;
+        width: 960px;
+        text-align: center;
+        color: #fff;
+        font-size: 64px;
+        letter-spacing: 0.08em;
+        line-height: 1;
+        opacity: 0;
+      }
+      #follow .arrow {
+        display: inline-block;
+        color: #ffd21f;
+        margin-left: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1080" data-height="1920" data-duration="__DURATION__">
+      <div id="app" class="layer">
+        <div id="glow"></div>
+        <div id="cam-punch" data-layout-allow-overflow>
+          <div id="cam-outer" data-layout-allow-overflow>
+            <div id="cam-inner" data-layout-allow-overflow>
+              <div id="phone" data-layout-allow-overflow>
+                <div id="screen" data-layout-allow-overflow>
+                  <!--SHOTS-->
+                  <!--TAPS-->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="scrim"></div>
+        <!--CHAPTERS-->
+      </div>
+
+      <div id="hook" class="layer">
+        <div id="hook-stage" class="layer">
+          <!--HOOK-->
+        </div>
+      </div>
+
+      <div id="end" class="layer">
+        <div id="end-glow"></div>
+        <div id="icon">
+          <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="angles-back" x1="0.1" x2="0.78" y1="0" y2="1">
+                <stop offset="0" stop-color="rgb(255, 182, 0)" />
+                <stop offset="1" stop-color="rgb(247, 115, 9)" />
+              </linearGradient>
+              <linearGradient id="angles-front" x1="0.13" x2="1" y1="0" y2="1">
+                <stop offset="0" stop-color="rgb(255, 201, 94)" stop-opacity="0.9" />
+                <stop offset="1" stop-color="rgb(255, 147, 0)" />
+              </linearGradient>
+            </defs>
+            <g transform="translate(557 525) scale(0.9) translate(-388.5 -377)">
+              <path
+                d="M678.563 161.906H244.75L342.547 331.203H776.359L678.563 161.906ZM367.125 377.438L296.656 499.469L150.047 753.328H345.641L394.453 668.766L515.625 459.078L562.547 377.438H367.125ZM314.703 375.719L244.406 253.859L97.7969 0L0 169.297L48.8125 253.859L169.813 463.547L216.906 545.016L314.703 375.719Z"
+                fill="url(#angles-back)"
+              />
+            </g>
+            <g transform="translate(462.34 506.63) scale(0.9) translate(-387.5 -385.5)">
+              <path
+                d="M463.375 0L392.906 116.875L348.391 190.953H543.812L611.703 78.2031L658.797 0H463.375ZM222.75 404.766L86.4531 402.188L0 400.641L97.7969 569.938L229.453 572.344L320.547 574.062L222.75 404.766ZM568.562 575.953L634.563 695.234L676.328 770.859L774.125 601.562L710.359 486.406L666.359 406.484L568.562 575.953Z"
+                fill="url(#angles-front)"
+              />
+            </g>
+          </svg>
+        </div>
+        <div id="wordmark" data-layout-allow-overlap style="font-size: __WORDMARK_SIZE__px">__WORDMARK__</div>
+        <div id="tagline" style="font-size: __TAGLINE_SIZE__px">__TAGLINE__</div>
+        <div id="soon" style="font-size: __BADGE_SIZE__px">__BADGE__</div>
+        <div id="follow" style="font-size: __FOLLOW_SIZE__px">__FOLLOW__<span class="arrow">→</span></div>
+      </div>
+    </div>
+
+    <script>
+      // Filled in by demo/edit.mjs from the take: shot ranges, tap points, beat times, camera targets.
+      const D = /*DEMO_DATA*/;
+
+      const tl = gsap.timeline({ paused: true });
+
+      // ---- phone geometry (source pixels → frame) ----
+      const SRC_W = D.source.width;
+      const SRC_H = D.source.height;
+      const PH = 1640;
+      const B = PH / SRC_H;
+      const PW = SRC_W * B;
+      const PX0 = 540 - PW / 2;
+      const PY0 = 980 - PH / 2;
+      gsap.set("#phone", { left: PX0, top: PY0, width: PW, height: PH, borderRadius: D.cornerPx * B });
+      gsap.set("#screen", { width: SRC_W, height: SRC_H, scale: B });
+
+      // Nested camera: #cam-outer scales around the frame center, #cam-inner counter-translates.
+      // A source point (sx, sy) lands at frame (540, ly) at scale S.
+      function camTarget(key) {
+        const fx = PX0 + B * key.sx;
+        const fy = PY0 + B * key.sy;
+        return { x: -(fx - 540), y: (key.ly - 960) / key.S - (fy - 960), S: key.S };
+      }
+      function cam(at, key, dur, ease) {
+        const c = camTarget(key);
+        tl.to("#cam-outer", { scale: c.S, duration: dur, ease }, at);
+        tl.to("#cam-inner", { x: c.x, y: c.y, duration: dur, ease }, at);
+      }
+      const start = camTarget(D.cam.wide);
+      tl.set("#cam-outer", { scale: start.S }, 0);
+      tl.set("#cam-inner", { x: start.x, y: start.y }, 0);
+
+      // ---- hook: one entrance per line on one beat grid, then a zoom-through into the app ----
+      function shake(at, amp) {
+        tl.to("#hook-stage", { x: amp, y: -amp * 0.5, duration: 0.035, ease: "none" }, at);
+        tl.to("#hook-stage", { x: -amp * 0.7, y: amp * 0.4, duration: 0.035, ease: "none" }, at + 0.035);
+        tl.to("#hook-stage", { x: amp * 0.35, y: 0, duration: 0.035, ease: "none" }, at + 0.07);
+        tl.to("#hook-stage", { x: 0, y: 0, duration: 0.05, ease: "power1.out" }, at + 0.105);
+      }
+      // Small lines rotate through three entrances so no two in a row move alike.
+      const SMALL_IN = [
+        [{ opacity: 0, y: 110 }, { opacity: 1, y: 0, duration: 0.34, ease: "expo.out" }],
+        [{ opacity: 0, x: -360 }, { opacity: 1, x: 0, duration: 0.3, ease: "expo.out" }],
+        [{ opacity: 0, y: 90, rotation: 5 }, { opacity: 1, y: 0, rotation: 0, duration: 0.34, ease: "circ.out" }],
+      ];
+      let smallCount = 0;
+      D.hook.cards.forEach((card, ci) => {
+        if (ci > 0) {
+          tl.set(D.hook.cards[ci - 1].map((l) => `#${l.id}`), { opacity: 0 }, card[0].at);
+        }
+        for (const line of card) {
+          const el = `#${line.id}`;
+          if (line.look === "small") {
+            const [from, to] = SMALL_IN[smallCount++ % SMALL_IN.length];
+            tl.fromTo(el, from, to, line.at);
+          } else if (line.look === "slam") {
+            tl.fromTo(el, { opacity: 0, scale: 2.4 }, { opacity: 1, scale: 1, duration: 0.3, ease: "power4.out" }, line.at);
+            shake(line.at + 0.2, 24);
+          } else {
+            tl.fromTo(el, { opacity: 0, scale: 1.8 }, { opacity: 1, scale: 1, duration: 0.26, ease: "power4.out" }, line.at);
+            shake(line.at + 0.18, 16);
+          }
+        }
+      });
+
+      const TH = D.hookOut;
+      tl.to("#hook-stage", { scale: 2.6, opacity: 0, filter: "blur(8px)", duration: 0.36, ease: "power3.in" }, TH);
+      tl.to("#hook", { backgroundColor: "rgba(0,0,0,0)", duration: 0.3, ease: "power2.in" }, TH + 0.08);
+      tl.fromTo(
+        "#app",
+        { scale: 0.62, opacity: 0, filter: "blur(8px)" },
+        { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.42, ease: "power3.out" },
+        TH + 0.12,
+      );
+      tl.set("#hook", { opacity: 0 }, TH + 0.5);
+
+      // ---- app ambient glow ----
+      tl.fromTo("#glow", { scale: 0.92, opacity: 0.7 }, { scale: 1.08, opacity: 1, duration: D.appEnd - TH, ease: "sine.inOut" }, TH);
+
+      // ---- camera journey ----
+      for (const move of D.moves) {
+        cam(move.at, D.cam[move.key] ?? move.target, move.dur, move.ease);
+      }
+
+      // ---- taps the recording cannot show ----
+      for (const t of D.taps) {
+        const dot = `#${t.id} .dot`;
+        const rings = `#${t.id} .ring`;
+        tl.fromTo(dot, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.08, ease: "power2.out" }, t.at);
+        tl.to(dot, { opacity: 0, scale: 0.8, duration: 0.22, ease: "power2.in" }, t.at + 0.16);
+        tl.fromTo(
+          rings,
+          { opacity: 0.9, scale: 0.5 },
+          { opacity: 0, scale: 2.3, duration: 0.55, ease: "power2.out", stagger: 0.08, immediateRender: false },
+          t.at + 0.04,
+        );
+      }
+
+      // ---- punch on every new angle ----
+      for (const at of D.punches) {
+        tl.to("#cam-punch", { scale: 1.035, duration: 0.09, ease: "power2.out" }, at);
+        tl.to("#cam-punch", { scale: 1, duration: 0.32, ease: "power2.inOut" }, at + 0.09);
+      }
+
+      // ---- chapter cards ----
+      tl.fromTo("#scrim", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, D.chapters[0].at - 0.1);
+      D.chapters.forEach((c, i) => {
+        const el = `#chapter-${i}`;
+        tl.fromTo(`${el} .num`, { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.28, ease: "expo.out" }, c.at);
+        tl.fromTo(
+          `${el} .name`,
+          { opacity: 0, scale: 1.45, transformOrigin: "0% 50%" },
+          { opacity: 1, scale: 1, duration: 0.3, ease: "power4.out" },
+          c.at + 0.06,
+        );
+        tl.set(el, { opacity: 1 }, c.at);
+        if (i + 1 < D.chapters.length) {
+          tl.set(el, { opacity: 0 }, D.chapters[i + 1].at);
+        }
+        if (c.note) {
+          tl.fromTo(`${el} .note`, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, c.at + c.noteAfter);
+        }
+      });
+
+      // ---- end card: dip to black, then the brand lands ----
+      const TE = D.appEnd;
+      tl.to("#end", { opacity: 1, duration: 0.45, ease: "power2.in" }, TE);
+      tl.fromTo("#end-glow", { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 1.2, ease: "sine.out" }, TE + 0.45);
+      tl.fromTo("#icon", { opacity: 0, scale: 0 }, { opacity: 1, scale: 1, duration: 0.55, ease: "back.out(1.8)" }, TE + 0.5);
+      tl.fromTo("#wordmark", { opacity: 0, scale: 1.6 }, { opacity: 1, scale: 1, duration: 0.32, ease: "power4.out" }, TE + 0.85);
+      tl.fromTo("#tagline", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, TE + 1.2);
+      tl.fromTo("#soon", { opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.6)" }, TE + 1.6);
+      tl.fromTo("#follow", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 0.4, ease: "expo.out" }, TE + 2.0);
+      tl.to("#follow .arrow", { x: 16, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 3 }, TE + 2.45);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

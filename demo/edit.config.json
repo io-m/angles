@@ -1,0 +1,48 @@
+{
+  "screenWidthPt": 402,
+  "targetTotalSeconds": [
+    25,
+    35
+  ],
+  "typingOutSeconds": 3.5,
+  "typingMaxSpeed": 3.5,
+  "cookingSpeed": 1.5,
+  "cookingMaxOutSeconds": 4,
+  "firstAnswerSeconds": 2.4,
+  "chipSeconds": 1.5,
+  "bestSeconds": 7,
+  "bestMaxSeconds": 9,
+  "endCardSeconds": 3.6,
+  "musicVolume": 0.18,
+  "camera": {
+    "composeScale": 1.3,
+    "cookScale": 1.3,
+    "cardScale": 1.3,
+    "bestScale": 1.34,
+    "cardCenterXPt": 210
+  },
+  "layoutPt": {
+    "screenCorner": 55,
+    "composer": {
+      "x": 201,
+      "y": 471
+    },
+    "send": {
+      "x": 355,
+      "y": 471
+    },
+    "bubble": {
+      "x": 201,
+      "y": 205
+    },
+    "chipRowY": 561,
+    "chipCircle": 40,
+    "chipGap": 4,
+    "chipPill": {
+      "stoic": 84,
+      "optimistic": 106,
+      "humorous": 112,
+      "tough_love": 111
+    }
+  }
+}

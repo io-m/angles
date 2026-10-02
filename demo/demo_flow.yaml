@@ -1,0 +1,180 @@
+# The recorded take. Starts on Home (warmup.yaml got it there), cooks DEMO_LINE
+# for real, walks the four style chips, and ends holding the best answer.
+# Never taps Post, Save, or New answer.
+#
+# Env (make_video.sh passes these):
+#   DEMO_LINE       the thought to type
+#   FOLLOWUP_REPLY  honest answer if Angles asks one follow-up
+#   BEST_STYLE      auto | stoic | optimistic | humorous | tough_love
+appId: app.angles.ios
+---
+- evalScript: "${output.demo = { marks: [], followups: 0, answers: {}, options: [] }}"
+- evalScript: ${output.demo.marks.push(['flow_start', Date.now()])}
+
+# 1. Sparkle opens compose with the keyboard up.
+- tapOn: "Inspire me"
+- evalScript: ${output.demo.marks.push(['compose_tap', Date.now()])}
+- extendedWaitUntil:
+    visible:
+      id: "compose.input"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 3000
+- evalScript: ${output.demo.marks.push(['keyboard_up', Date.now()])}
+
+# 2. Type at a natural pace, then send.
+- runScript:
+    file: flows/split_line.js
+    env:
+      DEMO_LINE: ${DEMO_LINE}
+- evalScript: ${output.demo.marks.push(['type_start', Date.now()])}
+- repeat:
+    while:
+      true: ${output.demo.chunkIndex < output.demo.chunks.length}
+    commands:
+      - inputText: ${output.demo.chunks[output.demo.chunkIndex]}
+      - evalScript: ${output.demo.chunkIndex = output.demo.chunkIndex + 1}
+- evalScript: ${output.demo.marks.push(['type_end', Date.now()])}
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 600
+- evalScript: ${output.demo.marks.push(['send', Date.now()])}
+- tapOn:
+    id: "compose.send"
+    waitToSettleTimeoutMs: 200
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "compose.cooking"
+    timeout: 3000
+    optional: true
+- evalScript: ${output.demo.marks.push(['cooking', Date.now()])}
+
+# 3 and 4. Let it cook. Answer at most one follow-up; stop on a crisis turn or an error.
+- repeat:
+    times: 150
+    while:
+      notVisible:
+        id: "compose.card"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "compose.crisis"
+          commands:
+            - evalScript: ${output.demo.crisis = true}
+            - runScript:
+                file: flows/report.js
+            - assertTrue:
+                condition: ${false}
+                label: "Angles answered with a crisis line. That is not a video."
+      - runFlow:
+          when:
+            visible:
+              id: "compose.error"
+          commands:
+            - copyTextFrom:
+                id: "compose.error"
+            - evalScript: ${output.demo.error = maestro.copiedText}
+            - runScript:
+                file: flows/report.js
+            - assertTrue:
+                condition: ${false}
+                label: "The cook failed with an error bubble."
+      - runFlow:
+          when:
+            visible:
+              id: "compose.followup"
+          file: flows/answer_followup.yaml
+      - runFlow:
+          when:
+            true: ${output.demo.followups > 0 && !output.demo.cookingAgain}
+            visible:
+              id: "compose.cooking"
+          commands:
+            - evalScript: ${output.demo.cookingAgain = true}
+            - evalScript: ${output.demo.marks.push(['cooking_after_followup', Date.now()])}
+      - extendedWaitUntil:
+          visible:
+            id: "compose.card"
+          timeout: 1000
+          optional: true
+- extendedWaitUntil:
+    visible:
+      id: "compose.card"
+    timeout: 1000
+- evalScript: ${output.demo.marks.push(['card', Date.now()])}
+
+# 5. Hold on the first answer.
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 2000
+- copyTextFrom:
+    id: "compose.card"
+- runScript:
+    file: flows/read_answer.js
+    env:
+      STYLE_KEY: auto
+
+# 6. Each chip, 2 s each.
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: optimistic
+      STYLE_NAME: Optimistic
+      HOLD_MS: 2000
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: humorous
+      STYLE_NAME: Humorous
+      HOLD_MS: 2000
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: stoic
+      STYLE_NAME: Stoic
+      HOLD_MS: 2000
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: tough_love
+      STYLE_NAME: Tough Love
+      HOLD_MS: 2000
+
+# 7. Back to the best answer and hold it long enough to read (the edit keeps ~8 s).
+- runScript:
+    file: flows/pick_best.js
+    env:
+      BEST_STYLE: ${BEST_STYLE}
+- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', optimistic: 'Optimistic', humorous: 'Humorous', tough_love: 'Tough Love' })[output.demo.best]}"
+- runFlow:
+    when:
+      true: ${output.demo.best !== 'tough_love'}
+    commands:
+      - runFlow:
+          file: flows/hold.yaml
+          env:
+            HOLD_MS: 300
+      - evalScript: ${output.demo.marks.push(['best_tap', Date.now()])}
+      - tapOn:
+          id: "chip.${output.demo.best}"
+          childOf:
+            id: "compose.card"
+- extendedWaitUntil:
+    visible:
+      id: "compose.card"
+      text: ".*${output.demo.bestName} answer\\..*"
+    timeout: 5000
+- evalScript: ${output.demo.marks.push(['best_shown', Date.now()])}
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 8000
+- evalScript: ${output.demo.marks.push(['best_end', Date.now()])}
+
+# 8. End here. Report for make_video.sh.
+- runScript:
+    file: flows/report.js

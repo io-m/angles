@@ -22,6 +22,7 @@
     "db:seed-realistic": "tsx src/scripts/seedCommunityRealistic.ts",
     "db:feed-audit": "tsx src/scripts/feedAudit.ts",
     "reports": "tsx src/scripts/reports.ts",
+    "demo:session": "tsx src/scripts/demoSession.ts",
     "llm:eval": "tsx src/scripts/llmEval.ts"
   },
   "dependencies": {

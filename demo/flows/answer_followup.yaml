@@ -1,0 +1,72 @@
+# One unanswered follow-up is on screen. Tap the chip closest to FOLLOWUP_REPLY,
+# or type FOLLOWUP_REPLY when the question has no chips. A second follow-up
+# fails the take: the typed line needs to be more specific.
+appId: app.angles.ios
+---
+- evalScript: ${output.demo.followups = output.demo.followups + 1}
+- evalScript: ${output.demo.marks.push(['followup_' + output.demo.followups, Date.now()])}
+- assertTrue:
+    condition: ${output.demo.followups <= 1}
+    label: "Angles asked more than one follow-up. Use a more specific DEMO_LINE."
+- copyTextFrom:
+    id: "compose.followup"
+- evalScript: ${output.demo.followupQuestion = maestro.copiedText}
+- evalScript: ${output.demo.options = []}
+- runFlow:
+    when:
+      visible:
+        id: "compose.option.0"
+    commands:
+      - copyTextFrom:
+          id: "compose.option.0"
+      - evalScript: ${output.demo.options.push(maestro.copiedText)}
+- runFlow:
+    when:
+      visible:
+        id: "compose.option.1"
+    commands:
+      - copyTextFrom:
+          id: "compose.option.1"
+      - evalScript: ${output.demo.options.push(maestro.copiedText)}
+- runFlow:
+    when:
+      visible:
+        id: "compose.option.2"
+    commands:
+      - copyTextFrom:
+          id: "compose.option.2"
+      - evalScript: ${output.demo.options.push(maestro.copiedText)}
+- runFlow:
+    when:
+      visible:
+        id: "compose.option.3"
+    commands:
+      - copyTextFrom:
+          id: "compose.option.3"
+      - evalScript: ${output.demo.options.push(maestro.copiedText)}
+- runScript:
+    file: pick_option.js
+    env:
+      FOLLOWUP_REPLY: ${FOLLOWUP_REPLY}
+- runFlow:
+    file: hold.yaml
+    env:
+      HOLD_MS: 1200
+- runFlow:
+    when:
+      true: ${output.demo.optionIndex >= 0}
+    commands:
+      - evalScript: ${output.demo.marks.push(['followup_answer', Date.now()])}
+      - tapOn:
+          id: "compose.option.${output.demo.optionIndex}"
+- runFlow:
+    when:
+      true: ${output.demo.optionIndex < 0}
+    commands:
+      - tapOn:
+          id: "compose.input"
+      - inputText: ${FOLLOWUP_REPLY}
+      - evalScript: ${output.demo.marks.push(['followup_answer', Date.now()])}
+      - tapOn:
+          id: "compose.send"
+- evalScript: "${output.demo.followupAnswer = output.demo.optionIndex >= 0 ? output.demo.options[output.demo.optionIndex] : FOLLOWUP_REPLY}"

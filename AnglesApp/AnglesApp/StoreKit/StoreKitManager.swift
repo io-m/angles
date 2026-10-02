@@ -187,6 +187,13 @@ final class StoreKitManager {
         if hasAccountSession, isSignedOut {
             signIn()
         }
+        #if DEBUG && targetEnvironment(simulator)
+        if DemoLaunch.isEntitled {
+            hasUnlockedFullApp = true
+            entitlementsReady = true
+            return
+        }
+        #endif
         let context = currentAccountContext
         if context != nil {
             unfinishedProcessingTask?.cancel()
@@ -415,6 +422,11 @@ final class StoreKitManager {
     /// Fast local probe. Reads Apple's status and `currentEntitlements` only — never
     /// `AppStore.sync()`, so it cannot raise a password sheet.
     func probeSubscriptionOffer() async {
+        #if DEBUG && targetEnvironment(simulator)
+        if DemoLaunch.isEntitled {
+            return
+        }
+        #endif
         guard let context = currentAccountContext,
               !isProbingSubscription,
               !hasUnlockedFullApp else {
@@ -672,6 +684,11 @@ final class StoreKitManager {
         lockWhenEmpty: Bool,
         context: AccountContext?
     ) async {
+        #if DEBUG && targetEnvironment(simulator)
+        if DemoLaunch.isEntitled {
+            return
+        }
+        #endif
         guard let context else {
             if currentAccountContext == nil {
                 clearActiveEntitlement()

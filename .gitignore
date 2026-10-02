@@ -45,3 +45,15 @@ playground.xcworkspace
 *.swp
 *~
 .idea/
+
+# Demo video (raw takes, renders, output)
+demo/raw/
+demo/build/
+demo/output/
+demo/keep/
+demo/video/index.html
+demo/video/media/
+demo/video/renders/
+demo/video/snapshots/
+demo/video/node_modules/
+demo/video/.hyperframes/

@@ -58,3 +58,22 @@ enum AppConfig {
         return url
     }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+/// Launch arguments for the Simulator demo recording (`demo/make_video.sh`). Device and
+/// Release builds do not contain this, so they always go through Apple sign-in and StoreKit.
+enum DemoLaunch {
+    /// `-AnglesDemoSessionToken <token>`: a Better Auth session minted by `pnpm demo:session`
+    /// against the local database. It is still validated by `GET /profile/session`.
+    static var sessionToken: String? {
+        let raw = UserDefaults.standard.string(forKey: "AnglesDemoSessionToken")
+        let token = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return token.isEmpty ? nil : token
+    }
+
+    /// `-AnglesDemoEntitled YES`: treat the Simulator as subscribed without asking Apple.
+    static var isEntitled: Bool {
+        UserDefaults.standard.bool(forKey: "AnglesDemoEntitled")
+    }
+}
+#endif

@@ -187,7 +187,11 @@ final class SessionStore {
     private func restore(preparingAccess: Bool) async {
         errorMessage = nil
         KeychainStore.discardTokenFromEarlierInstall()
+        #if DEBUG && targetEnvironment(simulator)
+        let token = DemoLaunch.sessionToken ?? KeychainStore.read()
+        #else
         let token = KeychainStore.read()
+        #endif
         AuthCredentials.shared.bearerToken = token
         defer { isRestored = true }
         guard let token, !token.isEmpty else {

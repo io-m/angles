@@ -494,6 +494,8 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-02 — The save ride has a dark-mode copy (`Go to school dark.lottie`, from `scripts/lottie-dark-variant.mjs`): light outlines and light grey tires on the dark paper, dark grey where the light file is white, the same orange. Light mode is unchanged.
+- 2026-10-02 — Tooling, not a product row: `demo/make_video.sh` records a real cook on a Simulator and edits it into the 9:16 showcase video (`demo/README.md`). It uses test IDs on compose and the chips, `DemoLaunch` launch arguments that exist only in Debug Simulator builds, and the local-only `pnpm demo:session`.
 - 2026-10-02 — For you never opens two cards in a row on the same angle when a card has another one. Order, ranking, and style shelves are unchanged.
 - 2026-10-02 — Pull-to-refresh calls the server again. The refresh action reads a live callback instead of a Bool captured before Home is revealed, the fetch is detached so a shelf update cannot cancel it, a pull always clears its own refreshing flag, and the half of a pull that landed still applies.
 - 2026-10-02 — Two-provider LLM routing. Mistral Small is the primary for decision, writer, and moderation; GPT-4.1 mini is the only one-hop fallback on provider failure. The server catalog, metering, production configuration, consent, and privacy copy no longer route to or name the removed providers.

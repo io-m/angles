@@ -1,0 +1,9 @@
+# Deliberate on-screen hold of ${HOLD_MS} ms. Maestro has no sleep, so this
+# waits for an element that never exists and lets the timeout pass.
+appId: app.angles.ios
+---
+- extendedWaitUntil:
+    visible:
+      id: "demo.never"
+    timeout: ${HOLD_MS}
+    optional: true

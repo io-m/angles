@@ -1,0 +1,24 @@
+{
+  "line": "5 months after I lost my job, I'm still waiting to be rejected by something I haven't even applied to.",
+  "followupReply": "I haven't applied anywhere yet",
+  "bestStyle": "auto",
+  "hook": [
+    [
+      { "text": "I lost", "look": "big" },
+      { "text": "my job", "look": "big" },
+      { "text": "5 months ago.", "look": "small" }
+    ],
+    [
+      { "text": "So I asked AI", "look": "small" },
+      { "text": "to see it", "look": "small" },
+      { "text": "4 ways.", "look": "slam" }
+    ]
+  ],
+  "bestNote": "The one that hit hardest.",
+  "end": {
+    "wordmark": "Angles",
+    "tagline": "One thought. Four ways to see it.",
+    "badge": "Coming soon to the App Store",
+    "follow": "Follow for more"
+  }
+}
