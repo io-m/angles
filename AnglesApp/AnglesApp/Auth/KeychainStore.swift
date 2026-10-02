@@ -4,6 +4,17 @@ import Security
 enum KeychainStore {
     private static let service = "app.angles.ios.auth"
     private static let account = "session-token"
+    private static let installMarkerKey = "angles.installMarker"
+
+    /// iOS keeps Keychain items when the app is deleted, but not UserDefaults. A token found
+    /// without the marker belongs to an earlier install, so a reinstall starts at Continue with Apple.
+    static func discardTokenFromEarlierInstall(defaults: UserDefaults = .standard) {
+        guard !defaults.bool(forKey: installMarkerKey) else {
+            return
+        }
+        delete()
+        defaults.set(true, forKey: installMarkerKey)
+    }
 
     static func read() -> String? {
         let query: [String: Any] = [

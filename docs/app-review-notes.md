@@ -10,7 +10,7 @@ Angles requires Sign in with Apple before the core experience because the free t
 
 1. Launch Angles.
 2. Tap **Continue with Apple** and complete Apple's native sign-in sheet.
-3. For a new Angles account with no active subscription, the taste composer opens ("Break the spiral.").
+3. For a new Angles account with no active subscription, the taste composer opens on "Welcome to Angles" with "Your first thought is free."
 4. Type a thought into "Tell me what's on your mind..." and tap **Send** (the arrow).
 5. The first Send opens **Before you start**, which names the AI providers (Mistral AI and OpenAI), says what is sent, says Angles is not therapy or a crisis service, states the community rules, and links the Terms of Use and Privacy Policy. Tap **Agree and continue**. The acceptance is stored on the server, so it appears once per account on any device.
 6. If a follow-up question appears, tap any chip or type in "Say more..." and send. The server forces a result by the third turn.

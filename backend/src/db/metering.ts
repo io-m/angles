@@ -96,19 +96,26 @@ function summaryForPeriod(period: PeriodRow): UsageSummary {
     resetsAt: asDate(period.ends_at).toISOString(),
     warning: usageWarning(remaining),
     creditCost: COOK_CREDIT_COST,
+    plan: "membership",
   };
 }
 
-function tasteSummary(): UsageSummary {
+/** The free taste reads as one credit while it is unused, so the phone never shows it as spent. */
+function tasteSummary(available: boolean): UsageSummary {
   return {
-    creditsGranted: 0,
-    creditsRemaining: 0,
+    creditsGranted: COOK_CREDIT_COST,
+    creditsRemaining: available ? COOK_CREDIT_COST : 0,
     periodStart: null,
     periodEnd: null,
     resetsAt: null,
-    warning: "empty",
+    warning: available ? "normal" : "empty",
     creditCost: COOK_CREDIT_COST,
+    plan: "taste",
   };
+}
+
+function tasteAvailable(context: EntitlementContext): boolean {
+  return context.taste_completed_at === null && context.taste_consumed_at === null;
 }
 
 async function expireStaleForOwner(
@@ -308,10 +315,7 @@ export async function startMeterOperation(input: {
       }
 
       const period = await ensurePeriod(tx, input.ownerId, context, now);
-      const taste =
-        period === null &&
-        context.taste_completed_at === null &&
-        context.taste_consumed_at === null;
+      const taste = period === null && tasteAvailable(context);
       if (!period && !taste) {
         if (
           context.taste_consumed_at !== null &&
@@ -321,7 +325,7 @@ export async function startMeterOperation(input: {
             "Free taste was already consumed",
             "TASTE_ALREADY_CONSUMED",
             402,
-            tasteSummary(),
+            tasteSummary(false),
           );
         }
         throw new MeteringError(
@@ -334,7 +338,7 @@ export async function startMeterOperation(input: {
       let reservedCredits = 0;
       let usage: UsageSummary;
       if (taste) {
-        usage = tasteSummary();
+        usage = tasteSummary(true);
         if (input.kind === "recook") {
           throw new MeteringError(
             "Recook is unavailable during the free taste",
@@ -354,7 +358,7 @@ export async function startMeterOperation(input: {
             "Free taste limit reached",
             "TASTE_LIMIT_REACHED",
             402,
-            tasteSummary(),
+            tasteSummary(false),
           );
         }
         await tx`
@@ -569,7 +573,7 @@ export async function finishMeterOperation(input: {
             "Free taste was already consumed",
             "TASTE_ALREADY_CONSUMED",
             402,
-            tasteSummary(),
+            tasteSummary(false),
           );
         }
         await tx`
@@ -679,7 +683,7 @@ async function getUsageSummaryInTransaction(
     throw new MeteringError("Sign in required", "UNAUTHENTICATED", 400);
   }
   const period = await ensurePeriod(tx, ownerId, context, now);
-  return period ? summaryForPeriod(period) : tasteSummary();
+  return period ? summaryForPeriod(period) : tasteSummary(tasteAvailable(context));
 }
 
 export async function getUsageSummary(

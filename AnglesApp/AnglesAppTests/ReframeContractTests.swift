@@ -4,10 +4,19 @@ import Testing
 @testable import Angles
 
 struct SafetyContractTests {
-    private let usage = #"{"creditsUsed":0,"remaining":599,"granted":600,"resetsAt":null,"warning":"normal","creditCost":1}"#
+    private let usage = #"{"creditsUsed":0,"remaining":599,"granted":600,"resetsAt":null,"warning":"normal","creditCost":1,"plan":"membership"}"#
 
     private func decode(_ json: String) throws -> ReframeResponse {
         try JSONDecoder().decode(ReframeResponse.self, from: Data(json.utf8))
+    }
+
+    @Test func unusedTasteReadsAsOneFreeCredit() throws {
+        let summary = try JSONDecoder().decode(
+            UsageSummary.self,
+            from: Data(#"{"creditsGranted":1,"creditsRemaining":1,"periodStart":null,"periodEnd":null,"resetsAt":null,"warning":"normal","creditCost":1,"plan":"taste"}"#.utf8)
+        )
+        #expect(summary.plan == .taste)
+        #expect(summary.creditsRemaining >= summary.creditCost)
     }
 
     @Test func unknownSafetyLabelIsTreatedAsSelfHarm() throws {

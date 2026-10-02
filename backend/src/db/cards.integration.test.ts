@@ -877,6 +877,12 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
   it("consumes one taste exactly once at ready settlement and blocks another request", async () => {
     process.env.USAGE_ENFORCEMENT = "required";
+    expect(await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T02:59:00.000Z"))).toMatchObject({
+      plan: "taste",
+      creditsRemaining: 1,
+      creditsGranted: 1,
+      warning: "normal",
+    });
     const operation = await startMeterOperation({
       ownerId: DEV_USER_ID,
       clientRequestId: "00000000-0000-4000-8000-000000000271",
@@ -909,6 +915,11 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
     expect(tasted?.tasteConsumedAt).toEqual(new Date("2026-09-25T03:00:01.000Z"));
     expect((await getDb().select().from(tasteUsage))[0]?.readyCount).toBe(1);
+    expect(await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T03:00:02.000Z"))).toMatchObject({
+      plan: "taste",
+      creditsRemaining: 0,
+      warning: "empty",
+    });
     await expect(
       startMeterOperation({
         ownerId: DEV_USER_ID,

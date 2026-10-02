@@ -125,6 +125,7 @@ describe("profile avatar", () => {
       resetsAt: "2026-10-01T00:00:00.000Z",
       warning: "normal",
       creditCost: 1,
+      plan: "membership",
     });
     vi.mocked(putAvatar).mockResolvedValue(undefined);
     vi.mocked(deleteAvatar).mockResolvedValue(undefined);

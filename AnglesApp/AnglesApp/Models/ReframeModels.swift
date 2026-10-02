@@ -252,6 +252,12 @@ enum UsageWarning: String, Codable, Equatable, Sendable {
     case empty
 }
 
+/// `taste` is the one free thought before a membership: 1 credit until it is used, then 0.
+enum UsagePlan: String, Codable, Equatable, Sendable {
+    case taste
+    case membership
+}
+
 struct UsageSummary: Codable, Equatable, Sendable {
     let creditsGranted: Int
     let creditsRemaining: Int
@@ -261,6 +267,7 @@ struct UsageSummary: Codable, Equatable, Sendable {
     let warning: UsageWarning
     /// What one cook or recook costs. Flat: the server picks the model.
     let creditCost: Int
+    let plan: UsagePlan
 
     var resetDate: Date? {
         resetsAt.flatMap(ISO8601Dates.date(from:))
@@ -275,6 +282,7 @@ struct ReframeUsage: Codable, Equatable, Sendable {
     let warning: UsageWarning
     /// What one cook or recook costs. Flat: the server picks the model.
     let creditCost: Int
+    let plan: UsagePlan
 }
 
 struct APIErrorPayload: Decodable, Equatable, Sendable {

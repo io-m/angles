@@ -186,6 +186,7 @@ final class SessionStore {
 
     private func restore(preparingAccess: Bool) async {
         errorMessage = nil
+        KeychainStore.discardTokenFromEarlierInstall()
         let token = KeychainStore.read()
         AuthCredentials.shared.bearerToken = token
         defer { isRestored = true }

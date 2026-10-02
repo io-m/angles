@@ -612,8 +612,9 @@ final class HomeViewModel {
         return usageSummary.creditsRemaining >= usageSummary.creditCost
     }
 
+    /// The free taste is welcomed on the compose screen itself, never counted as a balance.
     var usageStatus: String? {
-        guard let usageSummary else {
+        guard let usageSummary, usageSummary.plan == .membership else {
             return nil
         }
         switch usageSummary.warning {
@@ -2545,7 +2546,8 @@ final class HomeViewModel {
                 periodEnd: previous?.periodEnd,
                 resetsAt: usage.resetsAt,
                 warning: usage.warning,
-                creditCost: usage.creditCost
+                creditCost: usage.creditCost,
+                plan: usage.plan
             ),
             creditsUsed: usage.creditsUsed
         )
@@ -2565,7 +2567,8 @@ final class HomeViewModel {
                 periodEnd: previous?.periodEnd,
                 resetsAt: payload.resetsAt,
                 warning: Self.usageWarning(remaining: creditsRemaining),
-                creditCost: previous?.creditCost ?? 1
+                creditCost: previous?.creditCost ?? 1,
+                plan: previous?.plan ?? .membership
             )
         )
     }

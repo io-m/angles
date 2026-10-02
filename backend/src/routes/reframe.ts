@@ -209,6 +209,7 @@ function responseUsage(summary: UsageSummary, creditsUsed: number): ReframeUsage
     resetsAt: summary.resetsAt,
     warning: summary.warning,
     creditCost: summary.creditCost,
+    plan: summary.plan,
   };
 }
 

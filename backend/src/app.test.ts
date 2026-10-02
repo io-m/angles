@@ -31,6 +31,7 @@ vi.mock("./db/metering.js", () => {
     resetsAt: "2026-10-01T00:00:00.000Z",
     warning: "normal" as const,
     creditCost: 1,
+    plan: "membership" as const,
   };
   return {
     MeteringError,

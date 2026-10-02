@@ -137,6 +137,9 @@ export type ContinueResponse = {
   usage: ReframeUsage;
 };
 
+/** `taste` is the one free thought before a membership: 1 credit until it is used, then 0. */
+export type UsagePlan = "taste" | "membership";
+
 export type ReframeUsage = {
   creditsUsed: number;
   remaining: number;
@@ -145,6 +148,7 @@ export type ReframeUsage = {
   warning: "normal" | "low" | "critical" | "empty";
   /** What one cook or recook costs. Flat: the server picks the model. */
   creditCost: number;
+  plan: UsagePlan;
 };
 
 /** A reframe the server produced. `POST /cards` only accepts results it signed. */
@@ -173,6 +177,7 @@ export type ProfileUsageBody = {
   resetsAt: string | null;
   warning: ReframeUsage["warning"];
   creditCost: number;
+  plan: UsagePlan;
 };
 
 export type ReframeResponse = ContinueResponse | ReadyResponse;

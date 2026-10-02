@@ -202,7 +202,12 @@ struct SubscriptionView: View {
                 }
             }
 
-            if let usage {
+            if let usage, usage.plan == .taste {
+                Text("Credits start with your membership: 600 every month.")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let usage {
                 Text("\(usage.creditsRemaining) of \(usage.creditsGranted) credits")
                     .font(.system(size: 22, weight: .semibold, design: .rounded))
                     .foregroundStyle(theme.ink)

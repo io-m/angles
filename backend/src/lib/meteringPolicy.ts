@@ -20,6 +20,7 @@ export type UsageSummary = {
   resetsAt: string | null;
   warning: UsageWarning;
   creditCost: number;
+  plan: "taste" | "membership";
 };
 
 export function isUsageEnforcementRequired(): boolean {
