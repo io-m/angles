@@ -75,41 +75,14 @@ struct AIConsentSheet: View {
                     }
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(theme.ink)
-
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        agree()
-                    } label: {
-                        ZStack {
-                            Text("Agree and continue")
-                                .opacity(isAgreeing ? 0 : 1)
-                            if isAgreeing {
-                                ProgressView()
-                                    .tint(theme.paper)
-                            }
-                        }
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(theme.paper)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(theme.ink, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isAgreeing)
-                    .padding(.top, 4)
-
-                    if agreeFailed {
-                        Text("Couldn't reach Angles. Check your connection and try again.")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(theme.ink)
-                            .frame(maxWidth: .infinity)
-                            .multilineTextAlignment(.center)
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
-                .padding(.bottom, 28)
+                .padding(.bottom, 12)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                agreeBar
             }
             .background(AnglesCanvasBackground())
             .navigationBarTitleDisplayMode(.inline)
@@ -124,6 +97,51 @@ struct AIConsentSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+
+    private var agreeBar: some View {
+        VStack(spacing: 10) {
+            if agreeFailed {
+                Text("Couldn't reach Angles. Check your connection and try again.")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(theme.ink)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                agree()
+            } label: {
+                ZStack {
+                    Text("Agree and continue")
+                        .opacity(isAgreeing ? 0 : 1)
+                    if isAgreeing {
+                        ProgressView()
+                            .tint(theme.paper)
+                    }
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(theme.paper)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(theme.ink, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isAgreeing)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(alignment: .top) {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [theme.grey.opacity(0), theme.grey], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 24)
+                theme.grey
+            }
+            .padding(.top, -24)
+            .ignoresSafeArea(edges: .bottom)
+        }
     }
 
     private func agree() {

@@ -479,6 +479,7 @@ The pre-submission audit (2 October 2026) found three promises the app made with
 - **Reinstall starts at login.** iOS keeps Keychain items when the app is deleted, so a reinstall resumed the old session and skipped Continue with Apple. The first launch of an install (no `angles.installMarker` in UserDefaults) deletes the stored token (`KeychainStore.discardTokenFromEarlierInstall`). Builds 9 and earlier never wrote the marker, so updating to build 10 signs out once.
 - **Checkout to Terms.** A purchase or restore keeps the checkout lock up until Home. An entitled account that never accepted the Terms stops at Before you start instead, so the root also releases the lock on `.terms` (`AnglesApp.swift`); before this, the spinner stayed over the Terms screen forever.
 - **Sign-in survives a missed request.** The Apple sign-in POST and the session read retry a request that got no answer (`APIError.network`) three times over about six seconds before the login shows an error (`SessionStore.retryingNetworkFailures`). The first request after iOS grants local network access to a Debug build fails this way, and so does a dropped connection. HTTP answers are not retried.
+- **Before you start keeps Agree visible.** Agree and continue (and its error line) is pinned under the scrolling consent text (`AIConsentSheet.agreeBar`), so a small screen or large text never hides it. Build 11.
 
 ## Postponed (do not start)
 
