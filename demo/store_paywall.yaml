@@ -1,0 +1,17 @@
+# Prices are on screen only once the purchase button is "Continue, $…".
+# "Unavailable" and "Retry" mean StoreKit did not load the plans.
+appId: app.angles.ios
+---
+- extendedWaitUntil:
+    visible: "Yearly"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Continue, .*"
+    timeout: 25000
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 1200
+- assertNotVisible: "Unavailable"
+- takeScreenshot:
+    path: ${SHOT_DIR}/paywall.png

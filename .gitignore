@@ -57,3 +57,6 @@ demo/video/renders/
 demo/video/snapshots/
 demo/video/node_modules/
 demo/video/.hyperframes/
+
+# App Store capture (raw takes, composed frames, preview)
+store/

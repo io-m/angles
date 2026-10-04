@@ -1,0 +1,24 @@
+{
+  "line": "Every morning for 3 months, the jobs I can already do have been asking for AI instead of me.",
+  "followupReply": "Writing and research, work I could do a year ago",
+  "bestStyle": "auto",
+  "hook": [
+    [
+      { "text": "The jobs", "look": "big" },
+      { "text": "want AI", "look": "big" },
+      { "text": "instead of me.", "look": "small" }
+    ],
+    [
+      { "text": "So I asked AI", "look": "small" },
+      { "text": "to see it", "look": "small" },
+      { "text": "4 ways.", "look": "slam" }
+    ]
+  ],
+  "bestNote": "The one that hit hardest.",
+  "end": {
+    "wordmark": "Angles",
+    "tagline": "One thought. Four ways to see it.",
+    "badge": "Coming soon to the App Store",
+    "follow": "Follow for more"
+  }
+}

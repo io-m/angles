@@ -53,12 +53,15 @@ The same path already worked on the local build on 2 October 2026. This run chec
 6. From a second Apple ID (or ask a friend on TestFlight), report one of your cards. Check that the alert email arrives (needs step 2), then run the reports script above and `keep` it.
 7. Settings → Delete account on a test account. Apple's sheet asks to confirm; afterwards Settings → Apple ID → Sign in with Apple must no longer list Angles. Railway logs must show no `apple_revoke_exchange_failed` or `apple_revoke_failed`.
 
-### 4. Screenshots (about 20 minutes)
+### 4. Screenshots — done 4 October 2026
 
-- **App screenshots:** App Store Connect → version 1.0 → iPhone 6.9" Display. 3 to 10 images at 1320 × 2868 or 1290 × 2796 portrait (Joe's iPhone 14 Pro Max takes 1290 × 2796). Show real use, not only login or the paywall (guideline 2.3): Home with cards, the four angles of one thought, a card opened, Profile, the widget.
-- **Subscription review screenshot:** one paywall screenshot uploaded on **each** subscription ([Angles Yearly and Angles Monthly](https://appstoreconnect.apple.com/apps/6811873869/distribution/subscriptions)). Until both have one they stay "Missing Metadata" and cannot be submitted.
+Uploaded to version 1.0, English, iPhone 6.9" only. Previews sit before the screenshots. Not submitted.
 
-The agent can take these on the phone and upload them through the API once Home has public cards (step 3). Keep the phone unlocked and on Wi-Fi while it does.
+- **Preview** (~20s, 886 × 1920): the lost-job line being typed, cooking, then Stoic, Optimistic, Humorous, and Tough Love, ending on a hearted angle. Small zooms and crossfades. Poster frame is the Stoic answer (5 seconds).
+- **Screenshots** (1320 × 2868): Four ways to see it, Write the hard thought, Angles from other people (two different posts), A shelf for each voice (Humorous), Keep the one that fits (a different kept angle). No Home Screen widget shot.
+- **Subscription review screenshot:** the paywall with both prices, on Angles Yearly and Angles Monthly. Both subscriptions are Ready to Submit.
+
+Files are in `store/` (gitignored). Rebuild with `node demo/store_edit.mjs store/raw/take-…`, then `node demo/store_upload.mjs`.
 
 ### 5. Provider and operations safety (about 15 minutes)
 

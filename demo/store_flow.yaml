@@ -1,0 +1,249 @@
+# Store capture. Starts on Home after warmup.yaml. Screenshots the feed, the
+# composer, and each angle, then saves privately and hearts the new card so
+# Favorites has something real. The screen recording of this same run is the
+# App Store preview.
+#
+# Env: DEMO_LINE, FOLLOWUP_REPLY, BEST_STYLE, SHOT_DIR (absolute, no trailing slash)
+appId: app.angles.ios
+---
+- evalScript: "${output.demo = { marks: [], followups: 0, answers: {}, options: [] }}"
+- evalScript: ${output.demo.marks.push(['flow_start', Date.now()])}
+
+- extendedWaitUntil:
+    visible: "For you"
+    timeout: 20000
+- extendedWaitUntil:
+    notVisible: "Loading Home"
+    timeout: 20000
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 1200
+- takeScreenshot:
+    path: ${SHOT_DIR}/home.png
+
+- tapOn: "Inspire me"
+- evalScript: ${output.demo.marks.push(['compose_tap', Date.now()])}
+- extendedWaitUntil:
+    visible:
+      id: "compose.input"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 3000
+- evalScript: ${output.demo.marks.push(['keyboard_up', Date.now()])}
+
+- runScript:
+    file: flows/split_line.js
+    env:
+      DEMO_LINE: ${DEMO_LINE}
+- evalScript: ${output.demo.marks.push(['type_start', Date.now()])}
+- repeat:
+    while:
+      true: ${output.demo.chunkIndex < output.demo.chunks.length}
+    commands:
+      - inputText: ${output.demo.chunks[output.demo.chunkIndex]}
+      - evalScript: ${output.demo.chunkIndex = output.demo.chunkIndex + 1}
+- evalScript: ${output.demo.marks.push(['type_end', Date.now()])}
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 700
+- takeScreenshot:
+    path: ${SHOT_DIR}/composer.png
+- evalScript: ${output.demo.marks.push(['send', Date.now()])}
+- tapOn:
+    id: "compose.send"
+    waitToSettleTimeoutMs: 200
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "compose.cooking"
+    timeout: 3000
+    optional: true
+- evalScript: ${output.demo.marks.push(['cooking', Date.now()])}
+
+- repeat:
+    times: 150
+    while:
+      notVisible:
+        id: "compose.card"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "compose.crisis"
+          commands:
+            - evalScript: ${output.demo.crisis = true}
+            - runScript:
+                file: flows/report.js
+            - assertTrue:
+                condition: ${false}
+                label: "Angles answered with a crisis line."
+      - runFlow:
+          when:
+            visible:
+              id: "compose.error"
+          commands:
+            - copyTextFrom:
+                id: "compose.error"
+            - evalScript: ${output.demo.error = maestro.copiedText}
+            - runScript:
+                file: flows/report.js
+            - assertTrue:
+                condition: ${false}
+                label: "The cook failed with an error bubble."
+      - runFlow:
+          when:
+            visible:
+              id: "compose.followup"
+          file: flows/answer_followup.yaml
+      - runFlow:
+          when:
+            true: ${output.demo.followups > 0 && !output.demo.cookingAgain}
+            visible:
+              id: "compose.cooking"
+          commands:
+            - evalScript: ${output.demo.cookingAgain = true}
+            - evalScript: ${output.demo.marks.push(['cooking_after_followup', Date.now()])}
+      - extendedWaitUntil:
+          visible:
+            id: "compose.card"
+          timeout: 1000
+          optional: true
+- extendedWaitUntil:
+    visible:
+      id: "compose.card"
+    timeout: 1000
+- evalScript: ${output.demo.marks.push(['card', Date.now()])}
+- hideKeyboard
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 800
+- copyTextFrom:
+    id: "compose.card"
+- runScript:
+    file: flows/read_answer.js
+    env:
+      STYLE_KEY: auto
+- takeScreenshot:
+    path: ${SHOT_DIR}/style-initial.png
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 3200
+
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: optimistic
+      STYLE_NAME: Optimistic
+      HOLD_MS: 400
+- takeScreenshot:
+    path: ${SHOT_DIR}/style-optimistic.png
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 3000
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: humorous
+      STYLE_NAME: Humorous
+      HOLD_MS: 400
+- takeScreenshot:
+    path: ${SHOT_DIR}/style-humorous.png
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 3000
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: stoic
+      STYLE_NAME: Stoic
+      HOLD_MS: 400
+- takeScreenshot:
+    path: ${SHOT_DIR}/style-stoic.png
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 3000
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: tough_love
+      STYLE_NAME: "Tough Love"
+      HOLD_MS: 400
+- takeScreenshot:
+    path: ${SHOT_DIR}/style-tough-love.png
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 3000
+
+- runScript:
+    file: flows/pick_best.js
+    env:
+      BEST_STYLE: ${BEST_STYLE}
+- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', optimistic: 'Optimistic', humorous: 'Humorous', tough_love: 'Tough Love' })[output.demo.best]}"
+- runFlow:
+    when:
+      true: ${output.demo.best !== 'tough_love'}
+    commands:
+      - tapOn:
+          id: "chip.${output.demo.best}"
+          childOf:
+            id: "compose.card"
+      - extendedWaitUntil:
+          visible:
+            id: "compose.card"
+            text: ".*${output.demo.bestName} answer\\..*"
+          timeout: 5000
+- evalScript: ${output.demo.marks.push(['best_shown', Date.now()])}
+- takeScreenshot:
+    path: ${SHOT_DIR}/style-best.png
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 1200
+
+# Private save, then heart the card Profile just opened.
+- tapOn:
+    text: "Public"
+    childOf:
+      id: "compose.card"
+- extendedWaitUntil:
+    visible: "Save privately"
+    timeout: 5000
+- evalScript: ${output.demo.marks.push(['save_tap', Date.now()])}
+- tapOn: "Save privately"
+- extendedWaitUntil:
+    notVisible: "Saved privately"
+    timeout: 12000
+- extendedWaitUntil:
+    visible: "Add to favorite angles"
+    timeout: 15000
+- evalScript: ${output.demo.marks.push(['heart_tap', Date.now()])}
+- tapOn:
+    text: "Add to favorite angles"
+    index: 0
+- extendedWaitUntil:
+    visible: "Remove from favorite angles"
+    timeout: 8000
+- evalScript: ${output.demo.marks.push(['heart_shown', Date.now()])}
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 1800
+- tapOn: "Favorites"
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 1500
+- takeScreenshot:
+    path: ${SHOT_DIR}/favorites.png
+- evalScript: ${output.demo.marks.push(['favorites', Date.now()])}
+
+- runScript:
+    file: flows/report.js

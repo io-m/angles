@@ -2,6 +2,21 @@
   "line": "5 months after I lost my job, I'm still waiting to be rejected by something I haven't even applied to.",
   "followupReply": "I haven't applied anywhere yet",
   "bestStyle": "auto",
+  "storeHook": [
+    [
+      { "text": "Angles", "look": "big" },
+      { "text": "Reframe your mind", "look": "slam" }
+    ]
+  ],
+  "storeEnd": [
+    [
+      { "text": "Keep the one", "look": "big" },
+      { "text": "that fits.", "look": "slam" }
+    ],
+    [
+      { "text": "One thought. Four ways to see it.", "look": "small" }
+    ]
+  ],
   "hook": [
     [
       { "text": "I lost", "look": "big" },

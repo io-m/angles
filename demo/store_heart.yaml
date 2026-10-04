@@ -1,0 +1,63 @@
+# Find the card the private save just opened, heart it, then show Favorites.
+appId: app.angles.ios
+---
+- evalScript: "${output.demo = { marks: [], followups: 0, answers: {}, options: [] }}"
+- tapOn: "Stoic"
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 800
+- takeScreenshot: tab-stoic
+- runFlow:
+    when:
+      notVisible: "Add to favorite angles"
+    commands:
+      - tapOn: "Optimistic"
+      - runFlow:
+          file: flows/hold.yaml
+          env:
+            HOLD_MS: 600
+      - takeScreenshot: tab-optimistic
+- runFlow:
+    when:
+      notVisible: "Add to favorite angles"
+    commands:
+      - tapOn: "Humorous"
+      - runFlow:
+          file: flows/hold.yaml
+          env:
+            HOLD_MS: 600
+      - takeScreenshot: tab-humorous
+- runFlow:
+    when:
+      notVisible: "Add to favorite angles"
+    commands:
+      - tapOn: "Tough Love"
+      - runFlow:
+          file: flows/hold.yaml
+          env:
+            HOLD_MS: 600
+      - takeScreenshot: tab-tough
+- extendedWaitUntil:
+    visible: "Add to favorite angles"
+    timeout: 8000
+- evalScript: ${output.demo.marks.push(['heart_tap', Date.now()])}
+- tapOn:
+    text: "Add to favorite angles"
+    index: 0
+- extendedWaitUntil:
+    visible: "Remove from favorite angles"
+    timeout: 8000
+- evalScript: ${output.demo.marks.push(['heart_shown', Date.now()])}
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 1600
+- tapOn: "Favorites"
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 1400
+- takeScreenshot: favorites
+- runScript:
+    file: flows/report.js

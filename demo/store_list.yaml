@@ -1,0 +1,66 @@
+# Continues on Home. Scrolls until two life areas can be grabbed, opens the
+# Humorous shelf by its tab position, then hearts a public card for Favorites.
+# Env: SHOT_DIR
+appId: app.angles.ios
+---
+- extendedWaitUntil:
+    visible: "For you"
+    timeout: 15000
+- swipe:
+    start: 50%, 74%
+    end: 50%, 40%
+    duration: 350
+- takeScreenshot:
+    path: ${SHOT_DIR}/feed-1.png
+- swipe:
+    start: 50%, 74%
+    end: 50%, 40%
+    duration: 350
+- takeScreenshot:
+    path: ${SHOT_DIR}/feed-2.png
+- swipe:
+    start: 50%, 74%
+    end: 50%, 40%
+    duration: 350
+- takeScreenshot:
+    path: ${SHOT_DIR}/feed-3.png
+- tapOn:
+    point: "50%,9%"
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 900
+- takeScreenshot:
+    path: ${SHOT_DIR}/shelf.png
+- tapOn:
+    point: "14%,9%"
+- extendedWaitUntil:
+    visible: "For you"
+    timeout: 8000
+- extendedWaitUntil:
+    visible: "Add to favorite angles"
+    timeout: 8000
+- tapOn:
+    text: "Add to favorite angles"
+    index: 0
+- extendedWaitUntil:
+    visible: "Remove from favorite angles"
+    timeout: 8000
+- tapOn: "Profile"
+- extendedWaitUntil:
+    visible: "Favorite angles"
+    timeout: 8000
+- tapOn: "Favorite angles"
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 800
+- tapOn:
+    text: "Show thought"
+    optional: true
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 500
+- takeScreenshot:
+    path: ${SHOT_DIR}/flip.png
