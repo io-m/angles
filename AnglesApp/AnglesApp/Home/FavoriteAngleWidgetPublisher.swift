@@ -38,14 +38,23 @@ enum FavoriteAngleWidgetPublisher {
         )
     }
 
+    /// What this process last wrote or read, so an unchanged library skips the disk.
+    @MainActor private static var lastPublishedItems: [FavoriteAngleWidgetItem]?
+
+    @MainActor
     static func publish(cards: [HomeCard]) {
+        let next = makeSnapshot(from: cards)
+        guard next.items != lastPublishedItems else {
+            return
+        }
         guard let store = WidgetSnapshotStore() else {
             return
         }
-        let next = makeSnapshot(from: cards)
         guard store.loadFavoriteAngles().items != next.items else {
+            lastPublishedItems = next.items
             return
         }
+        lastPublishedItems = next.items
         if next.items.isEmpty {
             store.clearFavoriteAngles()
         } else {

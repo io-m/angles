@@ -129,17 +129,36 @@ export async function resolveCardReports(
   });
 }
 
-/** Puts a card back on Home and lifts the operator hide. The report history stays. */
+/**
+ * Puts a card back on Home and lifts the operator hide. Reports still open are reviewed
+ * as `kept`, so they stop locking publication and the author can make it private and
+ * public again; every report row stays as history. An operator decision: no classifier,
+ * and it works for a suspended account, which still cannot publish anything itself.
+ */
 export async function publishHiddenCard(
   cardId: string,
+  now: Date = new Date(),
   db: Db = getDb(),
 ): Promise<"ok" | "not_found"> {
-  const [card] = await db
-    .update(cards)
-    .set({ isPublic: true, moderationHiddenAt: null })
-    .where(eq(cards.id, cardId))
-    .returning({ id: cards.id });
-  return card ? "ok" : "not_found";
+  return db.transaction(async (tx) => {
+    const [card] = await tx
+      .select({ id: cards.id })
+      .from(cards)
+      .where(eq(cards.id, cardId))
+      .for("update");
+    if (!card) {
+      return "not_found";
+    }
+    await tx
+      .update(cards)
+      .set({ isPublic: true, moderationHiddenAt: null })
+      .where(eq(cards.id, cardId));
+    await tx
+      .update(cardReports)
+      .set({ reviewedAt: now, resolution: "kept" })
+      .where(and(eq(cardReports.cardId, cardId), isNull(cardReports.reviewedAt)));
+    return "ok";
+  });
 }
 
 export async function deleteReportedCard(cardId: string, db: Db = getDb()): Promise<boolean> {

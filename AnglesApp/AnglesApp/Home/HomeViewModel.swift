@@ -654,6 +654,9 @@ final class HomeViewModel {
     /// would be wasted bytes on every pull.
     static let feedHeadLimit = 8
     static let libraryPageSize = 200
+    /// A For you pull waits for the visibility read before it commits, so a slow one is
+    /// dropped and the page lands without it.
+    private static let ownerVisibilityTimeout: TimeInterval = 4
     /// Profile keeps paging a thin style tab until it has something to show.
     private static let tabFillMinimum = 6
 
@@ -1032,6 +1035,7 @@ final class HomeViewModel {
         if showsLoading, cards.isEmpty {
             libraryLoadState = .loading
         }
+        let writes = publicGeneration
         do {
             let response = try await cardsService.list(limit: Self.libraryPageSize)
             guard !Task.isCancelled else {
@@ -1043,7 +1047,9 @@ final class HomeViewModel {
             libraryFooterState = .idle
             hasLoadedLibrary = true
             libraryLoadState = .loaded
-            evictPrivatedOwnerCards(against: response.cards)
+            withoutAnimation {
+                applyOwnerVisibility(OwnerVisibilityPayload(cards: response.cards, publicWrites: writes))
+            }
             ensureProfileTabFilled()
             return .success
         } catch {
@@ -1093,44 +1099,92 @@ final class HomeViewModel {
         }
     }
 
-    /// The library is the only response that carries the server's `isPublic`
-    /// for our own cards. A card made private behind our back (operator Hide)
-    /// never reappears in `GET /feed`, so without this the stale feed copy —
-    /// and its anchor, which `mergingAnchors` would otherwise re-insert on
-    /// every refresh — would live on forever.
-    private func evictPrivatedOwnerCards(against stored: [StoredCard]) {
-        let ownerCards = stored.compactMap(HomeCard.init(stored:)).filter(\.isOwner)
-        feedBoard.reconcileOwnerLibraryCards(ownerCards)
-        for card in ownerCards where !card.isPublic {
-            removeFromAuthorFeeds(card.id)
+    /// Library cards plus the privacy writes this phone had made when they were requested.
+    struct OwnerVisibilityPayload {
+        let cards: [StoredCard]
+        let publicWrites: [UUID: Int]
+    }
+
+    /// The first library page, read on a For you pull for which of our cards are public.
+    /// Nil when it did not land, and the pull then applies without it.
+    private func fetchOwnerVisibility(when needed: Bool) async -> OwnerVisibilityPayload? {
+        guard needed else {
+            return nil
+        }
+        let writes = publicGeneration
+        do {
+            let response = try await cardsService.list(
+                limit: Self.libraryPageSize,
+                timeout: Self.ownerVisibilityTimeout
+            )
+            guard !Task.isCancelled else {
+                return nil
+            }
+            return OwnerVisibilityPayload(cards: response.cards, publicWrites: writes)
+        } catch {
+            return nil
         }
     }
 
-    /// First library page merged in place, without disturbing deeper pages.
-    /// Runs on For-you pull so a card the server made private leaves Home
-    /// even if Profile is never opened. Visibility-only: failures keep the
-    /// current feed untouched.
-    private func refreshLibraryVisibility() async {
-        do {
-            let response = try await cardsService.list(limit: Self.libraryPageSize)
-            guard !Task.isCancelled else {
-                return
+    /// The library is the only response that reports our private cards, so this is where a
+    /// card an operator hid leaves Home and where it returns once it is public again.
+    /// A card whose privacy this phone changed after the payload was requested is skipped:
+    /// the payload predates that write. Assigns nothing unless something changed, and a
+    /// caller on Home runs it inside the same no-animation commit as its feed page.
+    private func applyOwnerVisibility(_ payload: OwnerVisibilityPayload, syncsLibrary: Bool = false) {
+        let current = payload.cards.filter { item in
+            guard let id = UUID(uuidString: item.id) else {
+                return false
             }
-            var mergedCards = merged(cards, with: response.cards)
-            let mergedIDs = Set(mergedCards.map(\.id))
-            mergedCards.append(contentsOf: cards.filter { !mergedIDs.contains($0.id) })
-            cards = mergedCards
-            libraryBefore = response.page.nextCursor
-            libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
-            hasLoadedLibrary = true
-            libraryLoadState = .loaded
-            evictPrivatedOwnerCards(against: response.cards)
-            ensureProfileTabFilled()
-        } catch {
-            guard !Task.isCancelled, !Self.isCancellation(error) else {
-                return
-            }
+            return publicTasks[id] == nil && publicGeneration[id] == payload.publicWrites[id]
         }
+        let owners = current.compactMap(HomeCard.init(stored:)).filter(\.isOwner)
+        var board = feedBoard
+        let filter = appliedFilter
+        let change = board.reconcileOwnerVisibility(owners) { matchesFeedFilter($0, filter) }
+        if change.changed {
+            feedBoard = board
+        }
+        for card in owners where !card.isPublic {
+            removeFromAuthorFeeds(card.id)
+        }
+        for card in change.republished {
+            insertPublicCardIntoLoadedAuthorFeed(change.placed.first { $0.id == card.id } ?? card)
+        }
+        if syncsLibrary {
+            syncLoadedLibrary(with: current)
+        }
+    }
+
+    /// Brings library entries already loaded up to date with one page, in place, with one
+    /// assignment and only when an entry differs. Paging, order, and the widget stay as
+    /// they are when nothing moved.
+    private func syncLoadedLibrary(with stored: [StoredCard]) {
+        guard hasLoadedLibrary, !stored.isEmpty else {
+            return
+        }
+        var fresh: [UUID: HomeCard] = [:]
+        for card in merged(cards, with: stored) {
+            fresh[card.id] = card
+        }
+        var next = cards
+        var changed = false
+        for index in next.indices {
+            guard let card = fresh[next[index].id], card != next[index] else {
+                continue
+            }
+            next[index] = card
+            changed = true
+        }
+        if changed {
+            cards = next
+        }
+    }
+
+    private func withoutAnimation(_ body: () -> Void) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction, body)
     }
 
     func loadMoreLibrary() {
@@ -1145,6 +1199,7 @@ final class HomeViewModel {
         }
 
         libraryFooterState = .loading
+        let writes = publicGeneration
         libraryPageTask = Task { @MainActor in
             do {
                 let response = try await cardsService.list(limit: Self.libraryPageSize, before: before)
@@ -1159,7 +1214,9 @@ final class HomeViewModel {
                 libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
                 libraryFooterState = .idle
                 libraryPageTask = nil
-                evictPrivatedOwnerCards(against: response.cards)
+                withoutAnimation {
+                    applyOwnerVisibility(OwnerVisibilityPayload(cards: response.cards, publicWrites: writes))
+                }
                 ensureProfileTabFilled()
             } catch {
                 guard !Task.isCancelled, !Self.isCancellation(error) else {
@@ -1344,8 +1401,12 @@ final class HomeViewModel {
             generation: generation
         )
         async let tailFetch = fetchFeedTail(on: tab, filter: filter, generation: generation)
+        // For you also reads which of our cards are public, in parallel, so a card an
+        // operator hid or published moves in the same commit as the page.
+        async let visibilityFetch = fetchOwnerVisibility(when: tab == .all)
         let head = await headFetch
         let tail = await tailFetch
+        let visibility = await visibilityFetch
 
         guard feedBoard.shelf(tab).generation == generation else {
             return
@@ -1353,19 +1414,22 @@ final class HomeViewModel {
         // The shelf is still this pull's, so a half that did not land is just a miss:
         // the other half still applies. Only both missing stays silent.
         if case .discarded = head, case .discarded = tail {
+            if let visibility {
+                withoutAnimation {
+                    applyOwnerVisibility(visibility, syncsLibrary: true)
+                }
+            }
             return
         }
 
         await applyRefresh(
             head: head.landedOrFailed,
             tail: tail.landedOrFailed,
+            visibility: visibility,
             filter: filter,
             tab: tab,
             generation: generation
         )
-        if tab == .all {
-            await refreshLibraryVisibility()
-        }
     }
 
     private func fetchFeedTail(
@@ -1386,15 +1450,27 @@ final class HomeViewModel {
         )
     }
 
+    /// Every visible change of one pull lands in one no-animation commit: the page, our
+    /// cards' visibility, and the banner. A reload commits inside `fetchFeedPage`, and the
+    /// banner follows in the same main-actor turn.
     private func applyRefresh(
         head: FeedPageOutcome,
         tail: FeedPageOutcome,
+        visibility: OwnerVisibilityPayload?,
         filter: HomeFeedFilter,
         tab: HomeFeedTab,
         generation: Int
     ) async {
+        let applyVisibility = {
+            if let visibility {
+                self.applyOwnerVisibility(visibility, syncsLibrary: true)
+            }
+        }
         if case .failed = head, case .failed = tail {
-            publishFeedRefresh(.failed, on: tab, generation: generation)
+            withoutAnimation {
+                applyVisibility()
+                publishFeedRefresh(.failed, on: tab, generation: generation)
+            }
             return
         }
 
@@ -1412,27 +1488,40 @@ final class HomeViewModel {
 
         switch plan {
         case let .prepend(arrivals):
-            prependFeedCards(arrivals, on: tab, generation: generation)
-            publishFeedRefresh(.newItems(arrivals.count), on: tab, generation: generation)
+            withoutAnimation {
+                _ = feedBoard.prepend(arrivals, on: tab, generation: generation)
+                applyVisibility()
+                publishFeedRefresh(.newItems(arrivals.count), on: tab, generation: generation)
+            }
         case let .catchUp(newCount):
-            await reloadNewestFeedPage(on: tab, generation: generation)
-            publishFeedRefresh(.newItems(newCount), on: tab, generation: generation)
+            await reloadNewestFeedPage(on: tab, generation: generation, visibility: visibility)
+            withoutAnimation {
+                publishFeedRefresh(.newItems(newCount), on: tab, generation: generation)
+            }
         case let .rotate(rotation):
-            _ = feedBoard.rotate(
-                rotation.page,
-                on: tab,
-                before: tail.serverCursor ?? rotation.nextBefore,
-                hasMore: rotation.consumedWholeTail ? tail.hasMore : true,
-                generation: generation,
-                filter: { matchesFeedFilter($0, filter) },
-                pageSize: Self.feedPageSize
-            )
-            publishFeedRefresh(.rotated, on: tab, generation: generation)
+            withoutAnimation {
+                _ = feedBoard.rotate(
+                    rotation.page,
+                    on: tab,
+                    before: tail.serverCursor ?? rotation.nextBefore,
+                    hasMore: rotation.consumedWholeTail ? tail.hasMore : true,
+                    generation: generation,
+                    filter: { matchesFeedFilter($0, filter) },
+                    pageSize: Self.feedPageSize
+                )
+                applyVisibility()
+                publishFeedRefresh(.rotated, on: tab, generation: generation)
+            }
         case .restart:
-            await reloadNewestFeedPage(on: tab, generation: generation)
-            publishFeedRefresh(.restarted, on: tab, generation: generation)
+            await reloadNewestFeedPage(on: tab, generation: generation, visibility: visibility)
+            withoutAnimation {
+                publishFeedRefresh(.restarted, on: tab, generation: generation)
+            }
         case .unchanged:
-            publishFeedRefresh(tail.didFail ? .failed : .upToDate, on: tab, generation: generation)
+            withoutAnimation {
+                applyVisibility()
+                publishFeedRefresh(tail.didFail ? .failed : .upToDate, on: tab, generation: generation)
+            }
         }
     }
 
@@ -1458,20 +1547,16 @@ final class HomeViewModel {
         }
     }
 
-    private func prependFeedCards(_ arrivals: [HomeCard], on tab: HomeFeedTab, generation: Int) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            _ = feedBoard.prepend(arrivals, on: tab, generation: generation)
-        }
-    }
-
     /// Back to the top of this shelf's rotation: the newest page, with its visit history cleared.
-    private func reloadNewestFeedPage(on tab: HomeFeedTab, generation: Int) async {
+    private func reloadNewestFeedPage(
+        on tab: HomeFeedTab,
+        generation: Int,
+        visibility: OwnerVisibilityPayload? = nil
+    ) async {
         guard feedBoard.clearVisitHistory(on: tab, generation: generation) == .applied else {
             return
         }
-        await fetchFeedPage(on: tab, replacing: true, generation: generation)
+        await fetchFeedPage(on: tab, replacing: true, generation: generation, visibility: visibility)
     }
 
     func loadMoreFeed(_ tab: HomeFeedTab = .all) {
@@ -1543,7 +1628,8 @@ final class HomeViewModel {
         on tab: HomeFeedTab,
         replacing: Bool,
         generation: Int,
-        reportsFailure: Bool = true
+        reportsFailure: Bool = true,
+        visibility: OwnerVisibilityPayload? = nil
     ) async -> PageFetchResult {
         let filter = appliedFilter
         let before = replacing ? nil : feedBoard.shelf(tab).before
@@ -1584,6 +1670,9 @@ final class HomeViewModel {
                         generation: generation
                     )
                 }
+                if let visibility {
+                    applyOwnerVisibility(visibility, syncsLibrary: true)
+                }
             }
             return commit == .stale ? .discarded : .success
         } catch {
@@ -1591,13 +1680,18 @@ final class HomeViewModel {
                 return .discarded
             }
 
-            if reportsFailure {
-                _ = feedBoard.fail(
-                    on: tab,
-                    generation: generation,
-                    replacing: replacing,
-                    message: "Couldn't load Home."
-                )
+            withoutAnimation {
+                if reportsFailure {
+                    _ = feedBoard.fail(
+                        on: tab,
+                        generation: generation,
+                        replacing: replacing,
+                        message: "Couldn't load Home."
+                    )
+                }
+                if let visibility {
+                    applyOwnerVisibility(visibility, syncsLibrary: true)
+                }
             }
             return .failure
         }
@@ -1815,11 +1909,10 @@ final class HomeViewModel {
     }
 
     private func removeFromAuthorFeeds(_ id: UUID) {
-        for authorId in Array(authorFeeds.keys) {
+        for (authorId, feed) in authorFeeds
+        where feed.cardIDs.contains(id) || feed.cards.contains(where: { $0.id == id }) {
             mutateAuthor(authorId) { feed in
-                guard feed.cardIDs.remove(id) != nil || feed.cards.contains(where: { $0.id == id }) else {
-                    return
-                }
+                feed.cardIDs.remove(id)
                 feed.cards.removeAll { $0.id == id }
             }
         }

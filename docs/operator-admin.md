@@ -37,7 +37,7 @@ The marketing site is a static export. It does not talk to Postgres. `web/worker
 | GET | `/admin/reports/:cardId` | Thought, reframes, and author. Works with zero open reports. |
 | POST | `/admin/reports/:cardId/keep` | Dismisses open reports. Does not republish. |
 | POST | `/admin/reports/:cardId/hide` | Private. The author sees that Angles hid it, and cannot publish it until an operator does. |
-| POST | `/admin/reports/:cardId/publish` | Public again. Lifts the operator hide. Report history stays. |
+| POST | `/admin/reports/:cardId/publish` | Public again. Lifts the operator hide and reviews any open reports as kept, so the author can make it private and public again. Report history stays. Works on a suspended account, which still cannot publish anything itself. |
 | POST | `/admin/reports/:cardId/delete` | Deletes the card. |
 | GET | `/admin/users/:userId` | Email, suspended flag, public card count. |
 | GET | `/admin/users/:userId/cards` | That account's public cards, as excerpts. |

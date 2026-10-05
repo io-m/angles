@@ -27,12 +27,30 @@ struct HomeFeedPlacement: Equatable {
     var index: Int
 }
 
+/// What one library payload changed on Home. Empty means the board is untouched.
+struct OwnerVisibilityChange: Equatable {
+    /// Cards that left Home because the library says they are private.
+    var removed: [UUID] = []
+    /// Every card remembered as private that the library now reports public.
+    var republished: [HomeCard] = []
+    /// The republished cards that were placed back on Home, as placed.
+    var placed: [HomeCard] = []
+    /// The remembered private set moved, even if no shelf did.
+    var tracked = false
+
+    var changed: Bool {
+        tracked || !removed.isEmpty || !placed.isEmpty
+    }
+}
+
 /// Shared card records plus one ordered shelf per Home tab.
 struct HomeFeedBoard {
     private(set) var records: [UUID: HomeCard] = [:]
     private(set) var shelves: [HomeFeedTab: HomeFeedShelfState]
     /// Public cards inserted locally that a replacing page must not drop.
     private(set) var anchors: [UUID: HomeCard] = [:]
+    /// Our own cards the library last reported as private.
+    private(set) var privateOwnerIDs: Set<UUID> = []
 
     init() {
         var shelves: [HomeFeedTab: HomeFeedShelfState] = [:]
@@ -96,20 +114,88 @@ struct HomeFeedBoard {
         }
     }
 
-    /// Reconciles Home's cached owner cards with the authoritative library page.
-    /// A confirmed-private card also loses its anchor, so later feed replacements
-    /// cannot resurrect the stale public copy. Public anchors keep their position.
-    mutating func reconcileOwnerLibraryCards(_ cards: [HomeCard]) {
-        for card in cards where card.isOwner {
+    /// Applies the library's word on which of our own cards are public. The library is
+    /// the only payload that reports our private cards, so this is where a card an
+    /// operator hid leaves Home, and where it comes back once it is public again.
+    ///
+    /// A private card leaves every shelf with its anchor and is remembered. Only a card
+    /// remembered as private and now public is placed again: the pull that follows a
+    /// publish asks for arrivals and the tail, and an older card is neither. A public
+    /// card that is not such a transition is left exactly as it is, so the library never
+    /// rewrites a Home record, its face, its order, or its anchor. Applying the same
+    /// payload twice changes nothing.
+    mutating func reconcileOwnerVisibility(
+        _ owners: [HomeCard],
+        admits: (HomeCard) -> Bool
+    ) -> OwnerVisibilityChange {
+        var change = OwnerVisibilityChange()
+        for card in owners where card.isOwner {
             if card.isPublic {
-                guard records[card.id] != nil || anchors[card.id] != nil else {
+                guard privateOwnerIDs.remove(card.id) != nil else {
                     continue
                 }
-                remember(card)
+                change.tracked = true
+                change.republished.append(card)
+                if !isShown(card.id), admits(card), let placed = insertRepublished(card) {
+                    change.placed.append(placed)
+                }
             } else {
-                remove(card.id)
+                if isShown(card.id) {
+                    remove(card.id)
+                    change.removed.append(card.id)
+                }
+                if privateOwnerIDs.insert(card.id).inserted {
+                    change.tracked = true
+                }
             }
         }
+        return change
+    }
+
+    private func isShown(_ id: UUID) -> Bool {
+        records[id] != nil
+            || anchors[id] != nil
+            || shelves.values.contains { $0.ids.contains(id) }
+    }
+
+    /// Newest-first among the loaded cards on every loaded shelf that has its angle, even
+    /// past the loaded tail, and anchored until a server page returns it.
+    private mutating func insertRepublished(_ card: HomeCard) -> HomeCard? {
+        var placed = card
+        if let forYou = shelves[.all], forYou.hasLoaded {
+            let index = newestFirstIndex(of: card, in: forYou.order)
+            let above = index > 0 ? records[forYou.order[index - 1]]?.spotlightStyle : nil
+            let below = index < forYou.order.count ? records[forYou.order[index]]?.spotlightStyle : nil
+            placed = ForYouCovers.assign([card], above: above, below: below).first ?? card
+        }
+
+        var inserted = false
+        for tab in HomeFeedTab.allCases {
+            guard var shelf = shelves[tab], shelf.hasLoaded, includes(placed, on: tab),
+                  !shelf.ids.contains(placed.id) else {
+                continue
+            }
+            shelf.order.insert(placed.id, at: newestFirstIndex(of: placed, in: shelf.order))
+            shelf.ids.insert(placed.id)
+            note(&shelf, [placed])
+            shelves[tab] = shelf
+            inserted = true
+        }
+        guard inserted else {
+            return nil
+        }
+        records[placed.id] = placed
+        anchors[placed.id] = placed
+        return placed
+    }
+
+    private func newestFirstIndex(of card: HomeCard, in order: [UUID]) -> Int {
+        order.firstIndex { id in
+            guard let other = records[id] else {
+                return false
+            }
+            return FeedOrder.isBefore(card, other)
+        } ?? order.endIndex
     }
 
     @discardableResult
@@ -409,6 +495,7 @@ struct HomeFeedBoard {
     mutating func insertPublishedAtFront(_ card: HomeCard) {
         records[card.id] = card
         anchors[card.id] = card
+        privateOwnerIDs.remove(card.id)
         for tab in HomeFeedTab.allCases {
             guard var shelf = shelves[tab] else {
                 continue
@@ -430,6 +517,7 @@ struct HomeFeedBoard {
     /// A card that became public lands in newest-first position on loaded shelves.
     mutating func insertPublishedInOrder(_ card: HomeCard) {
         records[card.id] = card
+        privateOwnerIDs.remove(card.id)
         for tab in HomeFeedTab.allCases {
             guard var shelf = shelves[tab], shelf.hasLoaded, includes(card, on: tab) else {
                 continue
@@ -498,6 +586,7 @@ struct HomeFeedBoard {
     mutating func reset() {
         records = [:]
         anchors = [:]
+        privateOwnerIDs = []
         for tab in HomeFeedTab.allCases {
             shelves[tab] = HomeFeedShelfState()
         }

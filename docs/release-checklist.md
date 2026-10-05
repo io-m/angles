@@ -1,6 +1,6 @@
 # Release checklist
 
-Current as of **5 October 2026**. Version **1.0**. Latest iOS upload: build **15** (other people's profile photos on cards). App Store Connect app `6811873869` (Angles: Reframe Thoughts).
+Current as of **5 October 2026**. Version **1.0**. Latest iOS upload: build **17** (operator Make public unlocks reported cards; Home pull applies hide and publish in one stable update). App Store Connect app `6811873869` (Angles: Reframe Thoughts).
 
 Everything under "Left to do" needs you: a dashboard the API cannot reach, your phone, or your judgement.
 
@@ -26,7 +26,7 @@ To review reports: [https://useangles.app/admin](https://useangles.app/admin) af
 
 1. **Report + email (wife’s phone):** She installs TestFlight (same internal group or external tester), signs in with **her** Apple ID, opens Home, reports **one of your** public cards (⋯ or long-press → Report). You check `info@bithavn.app`, then `keep` that card at [https://useangles.app/admin](https://useangles.app/admin) (or SSH `pnpm reports` and `keep <cardId>`).
 2. **Delete account (optional throwaway):** On a test account you do not need, Settings → Delete account → confirm Apple sheet. Confirm Sign in with Apple no longer lists Angles; Railway logs show no `apple_revoke_failed`.
-3. **Latest build:** Use TestFlight build **15** (other people's photos). Attach that build to version 1.0 before submit.
+3. **Latest build:** Use TestFlight build **17**. Attach that build to version 1.0 before submit.
 
 Apple Review does not need you to have two Apple IDs; they test Report on your public posts with their account.
 
@@ -45,7 +45,7 @@ Uploaded to version 1.0, English, iPhone 6.9". Not submitted yet.
 
 App Store Connect → Angles → version 1.0:
 
-1. Select TestFlight build **15**.
+1. Select TestFlight build **17**.
 2. Under subscriptions, attach **both** Angles Yearly and Angles Monthly.
 3. Paste review notes from [app-review-notes.md](app-review-notes.md) (as soon as possible report wording).
 4. **Add for Review** → **Submit for Review**. Release stays **manual**.

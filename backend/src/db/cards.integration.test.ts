@@ -2247,7 +2247,104 @@ describe.skipIf(!testUrl)("cards integration", () => {
       expect(feedBody.cards.map((card) => card.id)).not.toContain(owned.id);
     });
 
-    it("operator publish clears the hide, preserves history, and can override suspension", async () => {
+    async function feedIdsFor(viewerId: string): Promise<string[]> {
+      const response = await safetyApp.request("/feed?limit=50", {
+        headers: { Authorization: `Bearer test:${viewerId}` },
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { cards: { id: string }[] };
+      return body.cards.map((card) => card.id);
+    }
+
+    it("operator publish from three open reports reviews them as kept and unlocks the author", async () => {
+      const owned = await createCard({ ...baseInput, isPublic: true });
+      await getDb()
+        .insert(users)
+        .values(
+          reviewerIds.map((id) => ({
+            id,
+            initials: "RP",
+            name: "Reporter",
+            email: `seed-${id}@angles.invalid`,
+          })),
+        )
+        .onConflictDoNothing();
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network disabled"));
+      try {
+        for (const reporterId of reviewerIds) {
+          const response = await safetyApp.request(`/cards/${owned.id}/report`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer test:${reporterId}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ reason: "spam" }),
+          });
+          expect(response.status).toBe(200);
+        }
+
+        const autoPrivate = await getDb().query.cards.findFirst({ where: eq(cards.id, owned.id) });
+        expect(autoPrivate?.isPublic).toBe(false);
+        expect(autoPrivate?.moderationHiddenAt).toBeNull();
+        expect((await getCard(owned.id))?.moderationHidden).toBeUndefined();
+        expect(await cardPublicationLocked(owned.id)).toBe(true);
+
+        const reviewedAt = new Date("2026-10-05T17:00:00.000Z");
+        expect(await publishHiddenCard(owned.id, reviewedAt)).toBe("ok");
+        const row = await getDb().query.cards.findFirst({ where: eq(cards.id, owned.id) });
+        expect(row?.isPublic).toBe(true);
+        expect(row?.moderationHiddenAt).toBeNull();
+        const reports = await getDb().select().from(cardReports).where(eq(cardReports.cardId, owned.id));
+        expect(reports).toHaveLength(3);
+        expect(reports.every((report) => report.resolution === "kept")).toBe(true);
+        expect(reports.every((report) => report.reviewedAt?.getTime() === reviewedAt.getTime())).toBe(true);
+        expect(await listPendingReports()).toEqual([]);
+        expect(await cardPublicationLocked(owned.id)).toBe(false);
+
+        for (const reporterId of reviewerIds) {
+          expect(await feedIdsFor(reporterId)).not.toContain(owned.id);
+        }
+        expect(await feedIdsFor(DEV_USER_ID)).toContain(owned.id);
+        expect(await feedIdsFor(OTHER_USER_ID)).toContain(owned.id);
+
+        expect(await patchCard(owned.id, { isPublic: false })).toMatchObject({ ok: true });
+        expect(await cardPublicationLocked(owned.id)).toBe(false);
+        expect(await patchCard(owned.id, { isPublic: true })).toMatchObject({
+          ok: true,
+          card: { isPublic: true },
+        });
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("operator hide then publish unlocks the author and keeps the hidden history", async () => {
+      const owned = await createCard({ ...baseInput, isPublic: true });
+      await reportFromAll(owned.id);
+      expect(await resolveCardReports(owned.id, "hidden")).toBe("ok");
+      expect(await cardPublicationLocked(owned.id)).toBe(true);
+
+      expect(await publishHiddenCard(owned.id)).toBe("ok");
+      const restored = await getCard(owned.id);
+      expect(restored?.isPublic).toBe(true);
+      expect(restored?.moderationHidden).toBeUndefined();
+      const reports = await getDb().select().from(cardReports);
+      expect(reports).toHaveLength(3);
+      expect(reports.every((report) => report.resolution === "hidden")).toBe(true);
+      expect(await cardPublicationLocked(owned.id)).toBe(false);
+
+      for (const reporterId of reviewerIds) {
+        expect(await feedIdsFor(reporterId)).not.toContain(owned.id);
+      }
+      expect(await feedIdsFor(DEV_USER_ID)).toContain(owned.id);
+      expect(await feedIdsFor(OTHER_USER_ID)).toContain(owned.id);
+
+      expect(await patchCard(owned.id, { isPublic: false })).toMatchObject({ ok: true });
+      expect(await patchCard(owned.id, { isPublic: true })).toMatchObject({ ok: true });
+    });
+
+    it("operator publish reaches a suspended author's card, but the author stays blocked", async () => {
       const owned = await createCard({ ...baseInput, isPublic: true });
       await reportFromAll(owned.id);
       expect(await resolveCardReports(owned.id, "hidden")).toBe("ok");
@@ -2257,11 +2354,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       expect(restored?.isPublic).toBe(true);
       expect(restored?.moderationHidden).toBeUndefined();
       expect(await getDb().select().from(cardReports)).toHaveLength(3);
-      const strangerFeed = await safetyApp.request("/feed?limit=50", {
-        headers: { Authorization: `Bearer test:${OTHER_USER_ID}` },
-      });
-      const feedBody = (await strangerFeed.json()) as { cards: { id: string }[] };
-      expect(feedBody.cards.map((card) => card.id)).toContain(owned.id);
+      expect(await feedIdsFor(OTHER_USER_ID)).toContain(owned.id);
 
       expect(await patchCard(owned.id, { isPublic: false })).toMatchObject({ ok: true });
       expect(await patchCard(owned.id, { isPublic: true })).toEqual({

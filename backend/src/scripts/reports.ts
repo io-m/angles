@@ -3,7 +3,7 @@
  *
  *   pnpm reports                      list cards with open reports, oldest first
  *   pnpm reports hide <cardId>        make it private until publish and uphold its reports
- *   pnpm reports publish <cardId>     put it back on Home and lift the operator hide
+ *   pnpm reports publish <cardId>     put it back on Home, lift the operator hide, keep open reports
  *   pnpm reports keep <cardId>        dismiss its reports; it stays as it is
  *   pnpm reports delete <cardId>      delete the card
  *   pnpm reports suspend <userId>     stop an account publishing; all its cards go private

@@ -15,12 +15,12 @@ struct CardsService: Sendable {
         try await client.post(path: "cards", body: body)
     }
 
-    func list(limit: Int, before: String? = nil) async throws -> CardListResponse {
+    func list(limit: Int, before: String? = nil, timeout: TimeInterval? = nil) async throws -> CardListResponse {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {
             queryItems.append(URLQueryItem(name: "before", value: before))
         }
-        return try await client.get(path: "cards", queryItems: queryItems)
+        return try await client.get(path: "cards", queryItems: queryItems, timeout: timeout)
     }
 
     func get(id: String) async throws -> StoredCard {

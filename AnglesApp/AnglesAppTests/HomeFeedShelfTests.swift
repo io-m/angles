@@ -199,8 +199,9 @@ struct HomeFeedShelfTests {
         var hidden = posted
         hidden.isPublic = false
         hidden.moderationHidden = true
-        board.reconcileOwnerLibraryCards([hidden])
+        let change = board.reconcileOwnerVisibility([hidden], admits: { _ in true })
 
+        #expect(change.removed == [posted.id])
         #expect(board.record(posted.id) == nil)
         #expect(board.anchors[posted.id] == nil)
         #expect(!board.cards(on: .all).contains(where: { $0.id == posted.id }))
@@ -210,6 +211,127 @@ struct HomeFeedShelfTests {
             generation: 0, filter: { _ in true }, pageSize: 24
         )
         #expect(!board.cards(on: .all).contains(where: { $0.id == posted.id }))
+
+        let order = board.cards(on: .all).map(\.id)
+        let again = board.reconcileOwnerVisibility([hidden], admits: { _ in true })
+        #expect(again == OwnerVisibilityChange())
+        #expect(!again.changed)
+        #expect(board.cards(on: .all).map(\.id) == order)
+    }
+
+    @Test("hide, then publish: the card comes back once in place, anchored, without a restart")
+    func hiddenThenPublishedReturnsOnce() {
+        var board = HomeFeedBoard()
+        let newest = card(.optimistic, day: 5)
+        let mine = card(.stoic, day: 3, isOwner: true)
+        let oldest = card(.humorous, day: 1)
+        _ = board.replace(
+            [newest, mine, oldest], on: .all, before: "cursor", hasMore: true,
+            generation: 0, filter: { _ in true }, pageSize: 3
+        )
+        _ = board.replace(
+            [mine], on: .stoic, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+
+        var hidden = mine
+        hidden.isPublic = false
+        hidden.moderationHidden = true
+        #expect(board.reconcileOwnerVisibility([hidden], admits: { _ in true }).removed == [mine.id])
+        #expect(board.cards(on: .all).map(\.id) == [newest.id, oldest.id])
+        #expect(board.cards(on: .stoic).isEmpty)
+        #expect(board.privateOwnerIDs == [mine.id])
+
+        let published = board.reconcileOwnerVisibility([mine], admits: { _ in true })
+        #expect(published.placed.map(\.id) == [mine.id])
+        #expect(published.republished.map(\.id) == [mine.id])
+        #expect(board.cards(on: .all).map(\.id) == [newest.id, mine.id, oldest.id])
+        #expect(board.cards(on: .stoic).map(\.id) == [mine.id])
+        #expect(board.anchors[mine.id] != nil)
+        #expect(board.privateOwnerIDs.isEmpty)
+
+        let order = board.cards(on: .all)
+        let again = board.reconcileOwnerVisibility([mine], admits: { _ in true })
+        #expect(!again.changed)
+        #expect(board.cards(on: .all) == order)
+        #expect(board.cards(on: .all).filter { $0.id == mine.id }.count == 1)
+
+        _ = board.replace(
+            [newest, oldest], on: .all, before: "cursor", hasMore: true,
+            generation: 0, filter: { _ in true }, pageSize: 3
+        )
+        #expect(board.cards(on: .all).map(\.id) == [newest.id, mine.id, oldest.id])
+    }
+
+    @Test("a republished card older than every loaded card still lands, at the tail")
+    func republishedPastTheTailStillLands() {
+        var board = HomeFeedBoard()
+        let newer = card(.optimistic, day: 5)
+        let mine = card(.stoic, day: 1, isOwner: true)
+        _ = board.replace(
+            [newer], on: .all, before: "cursor", hasMore: true,
+            generation: 0, filter: { _ in true }, pageSize: 1
+        )
+        var hidden = mine
+        hidden.isPublic = false
+        _ = board.reconcileOwnerVisibility([hidden], admits: { _ in true })
+
+        let change = board.reconcileOwnerVisibility([mine], admits: { _ in true })
+        #expect(change.placed.map(\.id) == [mine.id])
+        #expect(board.cards(on: .all).map(\.id) == [newer.id, mine.id])
+
+        _ = board.append(
+            [mine], on: .all, before: "next", hasMore: false, generation: 0
+        )
+        #expect(board.cards(on: .all).map(\.id) == [newer.id, mine.id])
+    }
+
+    @Test("a republished card the filter excludes is not placed, and is not placed later")
+    func filteredRepublishIsNotPlaced() {
+        var board = HomeFeedBoard()
+        let other = card(.optimistic, day: 5)
+        let mine = card(.stoic, day: 3, isOwner: true)
+        _ = board.replace(
+            [other], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        var hidden = mine
+        hidden.isPublic = false
+        _ = board.reconcileOwnerVisibility([hidden], admits: { _ in true })
+
+        let change = board.reconcileOwnerVisibility([mine], admits: { _ in false })
+        #expect(change.placed.isEmpty)
+        #expect(change.republished.map(\.id) == [mine.id])
+        #expect(board.cards(on: .all).map(\.id) == [other.id])
+        #expect(!board.reconcileOwnerVisibility([mine], admits: { _ in true }).changed)
+    }
+
+    @Test("a public owner card the library repeats keeps its Home value, face, order, and anchor")
+    func unchangedPublicOwnerCardIsUntouched() {
+        var board = HomeFeedBoard()
+        let other = card(.optimistic, day: 1)
+        let mine = card(.stoic, day: 2, isOwner: true, styles: [.stoic, .humorous])
+        _ = board.replace(
+            [other], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        board.insertPublishedAtFront(mine)
+        _ = board.update(mine.id) { $0.spotlightStyle = .humorous }
+        let record = board.record(mine.id)
+        let anchor = board.anchors[mine.id]
+        let order = board.cards(on: .all).map(\.id)
+
+        var library = mine
+        library.spotlightStyle = .stoic
+        library.slides[0].isFavorite = true
+        library.slides[0].heartCount = 9
+        let change = board.reconcileOwnerVisibility([library], admits: { _ in true })
+
+        #expect(!change.changed)
+        #expect(board.record(mine.id) == record)
+        #expect(board.record(mine.id)?.spotlightStyle == .humorous)
+        #expect(board.anchors[mine.id] == anchor)
+        #expect(board.cards(on: .all).map(\.id) == order)
     }
 
     @Test("a still-public posted owner card survives refresh at the top")
@@ -227,7 +349,7 @@ struct HomeFeedShelfTests {
             [existing], on: .all, before: nil, hasMore: false,
             generation: 0, filter: { _ in true }, pageSize: 24
         )
-        board.reconcileOwnerLibraryCards([posted])
+        #expect(!board.reconcileOwnerVisibility([posted], admits: { _ in true }).changed)
         _ = board.replace(
             [existing], on: .all, before: nil, hasMore: false,
             generation: 0, filter: { _ in true }, pageSize: 24
@@ -242,19 +364,20 @@ private func card(
     _ style: Style,
     day: Int,
     isPublic: Bool = true,
-    isOwner: Bool = false
+    isOwner: Bool = false,
+    styles: [Style]? = nil
 ) -> HomeCard {
     HomeCard(
         id: UUID(),
         createdAt: Date(timeIntervalSince1970: TimeInterval(day) * 86_400),
-        slides: [
+        slides: (styles ?? [style]).map { style in
             HomeCardSlide(
                 id: UUID(),
                 thought: "A thought",
                 result: ReframeResult(style: style, reframe: "An angle"),
                 isFavorite: false
             )
-        ],
+        },
         spotlightStyle: style,
         isPublic: isPublic,
         isOwner: isOwner,

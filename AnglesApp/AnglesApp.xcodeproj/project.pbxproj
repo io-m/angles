@@ -40,6 +40,7 @@
 		7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */; };
 		7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391AB20557C346784058025E /* LoginView.swift */; };
 		7F5EE095F1DE06721C601E1A /* AIConsentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12BA34429811E6158E351C4 /* AIConsentSheet.swift */; };
+		82D2D975563E2B65E2BC4633 /* HomeOwnerVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00CF35C326325A9D9BF41E63 /* HomeOwnerVisibilityTests.swift */; };
 		830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */; };
 		8717B2AC854FC7A03D4101DF /* AuthNonce.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245774EE58FAD79304953B8A /* AuthNonce.swift */; };
 		9044CA3F66755024E8C77009 /* Go to school dark.lottie in Resources */ = {isa = PBXBuildFile; fileRef = FAC9C1EE4D289EADA4D3A110 /* Go to school dark.lottie */; };
@@ -112,6 +113,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00CF35C326325A9D9BF41E63 /* HomeOwnerVisibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeOwnerVisibilityTests.swift; sourceTree = "<group>"; };
 		01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshBanner.swift; sourceTree = "<group>"; };
 		01BEA95023B9310D87B3474C /* AppGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGate.swift; sourceTree = "<group>"; };
 		061BB33F2FBF3FC8D3579D69 /* AppleReauthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleReauthorization.swift; sourceTree = "<group>"; };
@@ -398,6 +400,7 @@
 				38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */,
 				1C07632E47BCD7EC8BB5F033 /* ForYouCoversTests.swift */,
 				BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */,
+				00CF35C326325A9D9BF41E63 /* HomeOwnerVisibilityTests.swift */,
 				9147DA97E362AE10C8A58A59 /* ReframeContractTests.swift */,
 				B0D5F569663CAAFC626FF889 /* WidgetTests.swift */,
 			);
@@ -546,6 +549,7 @@
 				BBDCFC5DAA64296BE09CD43A /* FeedRefreshPlanTests.swift in Sources */,
 				2040896C35F90189E3FBB9BD /* ForYouCoversTests.swift in Sources */,
 				E85F482E086576383A6F83CB /* HomeFeedShelfTests.swift in Sources */,
+				82D2D975563E2B65E2BC4633 /* HomeOwnerVisibilityTests.swift in Sources */,
 				07C7B3E2F8C3F83F1A83C0B0 /* ReframeContractTests.swift in Sources */,
 				E92BDD00E9E6E12F499CEE70 /* WidgetTests.swift in Sources */,
 			);
