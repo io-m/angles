@@ -43,13 +43,13 @@ export function VerifyLogin() {
     <AdminChrome title="Sign in">
       {error ? (
         <>
-          <p className="admin-status">{error}</p>
+          <p className="ops-banner" data-tone="error">{error}</p>
           <p>
-            <Link href="/admin/login">Request a new link</Link>
+            <Link className="ops-back" href="/admin/login">Request a new link</Link>
           </p>
         </>
       ) : (
-        <p className="admin-status">Signing in…</p>
+        <p className="ops-hint">Signing in…</p>
       )}
     </AdminChrome>
   );

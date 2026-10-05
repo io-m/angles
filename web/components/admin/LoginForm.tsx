@@ -49,10 +49,10 @@ export function LoginForm() {
   return (
     <AdminChrome title="Sign in">
       {sent ? (
-        <p className="admin-copy">Check that inbox for a sign-in link. It expires in 15 minutes and works once.</p>
+        <p className="ops-hint">Check that inbox for a sign-in link. It expires in 15 minutes and works once.</p>
       ) : (
-        <form className="admin-stack" onSubmit={(event) => void submit(event)}>
-          <label className="admin-field" htmlFor="operator-email">
+        <form style={{ display: 'grid', gap: 14 }} onSubmit={(event) => void submit(event)}>
+          <label className="ops-field" htmlFor="operator-email">
             Email
             <input
               id="operator-email"
@@ -63,9 +63,9 @@ export function LoginForm() {
               onChange={(event) => setEmail(event.target.value)}
             />
           </label>
-          <p className="admin-status">We will email a link if this address can review reports.</p>
-          {error ? <p className="admin-status">{error}</p> : null}
-          <button className="button button-primary" type="submit" disabled={busy}>
+          <p className="ops-hint">We will email a link if this address can review reports.</p>
+          {error ? <p className="ops-banner" data-tone="error">{error}</p> : null}
+          <button className="ops-btn ops-btn-primary" type="submit" disabled={busy}>
             Email me a link
           </button>
         </form>

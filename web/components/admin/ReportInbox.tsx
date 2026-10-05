@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
-import { AdminChrome, AdminToast } from '@/components/admin/AdminChrome';
+import { AdminShell, AdminToast } from '@/components/admin/AdminChrome';
 import {
   AdminApiError,
   adminFetch,
@@ -22,9 +22,19 @@ import {
   defaultFilters,
   isUuid,
   matchesQueue,
-  reasonLine,
+  readFilters,
   type QueueFilters,
 } from '@/lib/adminLabels';
+
+const REASON_TONE: Record<string, string> = {
+  spam: 'amber',
+  harassment: 'red',
+  hate: 'red',
+  sexual: 'violet',
+  illegal: 'dark',
+  personal_data: 'blue',
+  other: '',
+};
 
 type QueueRow = {
   cardId: string;
@@ -37,13 +47,22 @@ type QueueRow = {
   extra?: string;
 };
 
+function reasonEntries(reasons: Record<string, number>): Array<{ id: string; label: string; count: number }> {
+  return Object.entries(reasons).map(([id, count]) => ({
+    id,
+    label: REPORT_TYPES.find((item) => item.id === id)?.label ?? id,
+    count,
+  }));
+}
+
 export function ReportInbox() {
   const router = useRouter();
+  const params = useSearchParams();
   const [email, setEmail] = useState<string | null>(null);
   const [summary, setSummary] = useState<ReportDashboard | null>(null);
   const [openReports, setOpenReports] = useState<ReportSummary[] | null>(null);
   const [reviewed, setReviewed] = useState<ReviewedSummary[] | null>(null);
-  const [filters, setFilters] = useState<QueueFilters>(defaultFilters);
+  const [filters, setFilters] = useState<QueueFilters>(() => readFilters(params));
   const [query, setQuery] = useState('');
   const [searchCards, setSearchCards] = useState<SearchCard[] | null>(null);
   const [searchUsers, setSearchUsers] = useState<AuthorReview[] | null>(null);
@@ -51,6 +70,13 @@ export function ReportInbox() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [toastTone, setToastTone] = useState<'ok' | 'err'>('ok');
+
+  useEffect(() => {
+    const shelf = params.get('shelf');
+    setFilters((current) =>
+      shelf === 'reviewed' || shelf === 'open' ? { ...current, shelf } : current,
+    );
+  }, [params]);
 
   useEffect(() => {
     const stored = takeToast();
@@ -207,62 +233,75 @@ export function ReportInbox() {
   }
 
   const showingSearch = searchCards !== null;
+  const activeReason = REPORT_TYPES.find((item) => item.id === filters.reason)?.label;
 
   return (
     <>
-      <AdminChrome title="Reports" email={email}>
-        <ul className="admin-stats">
+      <AdminShell
+        email={email}
+        openCount={summary?.openCount}
+        reviewedCount={summary?.reviewedCount}
+        title="Reports"
+        subtitle={
+          filters.shelf === 'reviewed'
+            ? 'Latest decisions, newest first.'
+            : activeReason
+              ? `Open reports filed as ${activeReason}.`
+              : 'Open reports, oldest first.'
+        }
+      >
+        <ul className="ops-stats">
           <li>
             <button
-              className="admin-stat"
+              className="ops-stat"
               type="button"
               aria-pressed={filters.shelf === 'open' && filters.visibility === 'all' && !filters.suspendedOnly && !filters.reason}
               onClick={() => setFilters(defaultFilters())}
             >
-              <strong>{summary?.openCount ?? '—'}</strong>
-              <span>Open</span>
+              <span className="ops-stat-value">{summary?.openCount ?? '—'}</span>
+              <span className="ops-stat-label">Open reports</span>
             </button>
           </li>
           <li>
             <button
-              className="admin-stat"
+              className="ops-stat"
               type="button"
               aria-pressed={filters.shelf === 'open' && filters.visibility === 'private'}
               onClick={() => patch({ shelf: 'open', visibility: 'private', suspendedOnly: false })}
             >
-              <strong>{summary?.privateCount ?? '—'}</strong>
-              <span>Already private</span>
+              <span className="ops-stat-value">{summary?.privateCount ?? '—'}</span>
+              <span className="ops-stat-label">Already private</span>
             </button>
           </li>
           <li>
             <button
-              className="admin-stat"
+              className="ops-stat"
               type="button"
               aria-pressed={filters.suspendedOnly}
               onClick={() => patch({ shelf: 'open', suspendedOnly: !filters.suspendedOnly, visibility: 'all' })}
             >
-              <strong>{summary?.suspendedAuthorCount ?? '—'}</strong>
-              <span>Suspended authors</span>
+              <span className="ops-stat-value">{summary?.suspendedAuthorCount ?? '—'}</span>
+              <span className="ops-stat-label">Suspended authors</span>
             </button>
           </li>
           <li>
             <button
-              className="admin-stat"
+              className="ops-stat"
               type="button"
               aria-pressed={filters.shelf === 'reviewed'}
               onClick={() => patch({ shelf: 'reviewed', reason: '', visibility: 'all', suspendedOnly: false })}
             >
-              <strong>{summary?.reviewedCount ?? '—'}</strong>
-              <span>Reviewed</span>
+              <span className="ops-stat-value">{summary?.reviewedCount ?? '—'}</span>
+              <span className="ops-stat-label">Reviewed</span>
             </button>
           </li>
         </ul>
 
-        <ul className="admin-reasons">
+        <ul className="ops-reasons">
           {REPORT_TYPES.map((type) => (
             <li key={type.id}>
               <button
-                className="admin-reason"
+                className="ops-reason"
                 type="button"
                 aria-pressed={filters.reason === type.id && filters.shelf === 'open'}
                 onClick={() =>
@@ -272,16 +311,16 @@ export function ReportInbox() {
                   })
                 }
               >
-                <strong>{summary?.reasons[type.id] ?? 0}</strong>
-                <span>{type.label}</span>
+                <span className="ops-reason-name">{type.label}</span>
+                <span className="ops-reason-count">{summary?.reasons[type.id] ?? 0}</span>
               </button>
             </li>
           ))}
         </ul>
 
-        <div className="admin-toolbar">
+        <div className="ops-toolbar">
           <form
-            className="admin-search"
+            className="ops-search"
             onSubmit={(event) => {
               event.preventDefault();
             }}
@@ -296,24 +335,26 @@ export function ReportInbox() {
               onChange={(event) => setQuery(event.target.value)}
             />
           </form>
+          <div className="ops-segment" role="group" aria-label="Shelf">
+            <button
+              className="ops-chip"
+              type="button"
+              aria-pressed={filters.shelf === 'open'}
+              onClick={() => patch({ shelf: 'open' })}
+            >
+              Open
+            </button>
+            <button
+              className="ops-chip"
+              type="button"
+              aria-pressed={filters.shelf === 'reviewed'}
+              onClick={() => patch({ shelf: 'reviewed' })}
+            >
+              Reviewed
+            </button>
+          </div>
           <button
-            className="admin-chip"
-            type="button"
-            aria-pressed={filters.shelf === 'open'}
-            onClick={() => patch({ shelf: 'open' })}
-          >
-            Open
-          </button>
-          <button
-            className="admin-chip"
-            type="button"
-            aria-pressed={filters.shelf === 'reviewed'}
-            onClick={() => patch({ shelf: 'reviewed' })}
-          >
-            Reviewed
-          </button>
-          <button
-            className="admin-chip"
+            className="ops-pill-btn"
             type="button"
             aria-pressed={filters.visibility === 'public'}
             onClick={() => patch({ visibility: filters.visibility === 'public' ? 'all' : 'public' })}
@@ -321,7 +362,7 @@ export function ReportInbox() {
             Public
           </button>
           <button
-            className="admin-chip"
+            className="ops-pill-btn"
             type="button"
             aria-pressed={filters.visibility === 'private'}
             onClick={() => patch({ visibility: filters.visibility === 'private' ? 'all' : 'private' })}
@@ -329,7 +370,7 @@ export function ReportInbox() {
             Private
           </button>
           <button
-            className="admin-chip"
+            className="ops-pill-btn"
             type="button"
             aria-pressed={filters.suspendedOnly}
             onClick={() => patch({ suspendedOnly: !filters.suspendedOnly })}
@@ -338,27 +379,39 @@ export function ReportInbox() {
           </button>
         </div>
 
-        {error ? <p className="admin-status">{error}</p> : null}
-        {searching ? <p className="admin-status">Searching…</p> : null}
+        {error ? (
+          <p className="ops-banner" data-tone="error">
+            {error}
+          </p>
+        ) : null}
+        {searching ? <p className="ops-banner">Searching…</p> : null}
 
         {showingSearch ? (
-          <div className="admin-list">
+          <ul className="ops-queue">
             {searchUsers?.map((user) => (
-              <article className="admin-card" key={user.userId}>
-                <p className="admin-excerpt">
-                  {user.initials} · {user.email}
-                </p>
-                <div className="admin-badges">
-                  <span className="admin-badge">{user.publicCardCount} public</span>
-                  {user.publishingSuspended ? <span className="admin-badge admin-badge-alert">Suspended</span> : null}
+              <li className="ops-row" key={user.userId}>
+                <div className="ops-row-link">
+                  <p className="ops-excerpt">
+                    {user.initials} · {user.email}
+                  </p>
+                  <div className="ops-pills">
+                    <span className="ops-pill">{user.publicCardCount} public</span>
+                    {user.publishingSuspended ? (
+                      <span className="ops-pill" data-tone="red">
+                        Suspended
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                <button className="button button-secondary" type="button" onClick={() => setQuery(user.email)}>
-                  Show their cards
-                </button>
-              </article>
+                <div className="ops-row-side">
+                  <button className="ops-mini-btn" type="button" onClick={() => setQuery(user.email)}>
+                    Their cards
+                  </button>
+                </div>
+              </li>
             ))}
             {searchCards?.map((card) => (
-              <QueueCard
+              <QueueRow
                 key={card.cardId}
                 row={{
                   cardId: card.cardId,
@@ -375,43 +428,71 @@ export function ReportInbox() {
               />
             ))}
             {searchCards?.length === 0 && searchUsers?.length === 0 ? (
-              <p className="admin-status">Nothing matches.</p>
+              <li className="ops-empty">Nothing matches.</li>
             ) : null}
-          </div>
+          </ul>
         ) : (
-          <div className="admin-list">
-            {openReports === null && !error ? <p className="admin-status">Loading reports…</p> : null}
+          <ul className="ops-queue">
+            {openReports === null && !error ? (
+              <>
+                <li className="ops-skeleton" aria-hidden="true" />
+                <li className="ops-skeleton" aria-hidden="true" />
+                <li className="ops-skeleton" aria-hidden="true" />
+              </>
+            ) : null}
             {openReports && rows.length === 0 ? (
-              <p className="admin-status">{filters.shelf === 'open' && summary?.openCount === 0 ? 'No open reports.' : 'Nothing matches.'}</p>
+              <li className="ops-empty">
+                {filters.shelf === 'open' && summary?.openCount === 0 ? 'No open reports.' : 'Nothing matches these filters.'}
+              </li>
             ) : null}
             {rows.map((row) => (
-              <QueueCard key={row.cardId} row={row} href={cardHref(row.cardId, filters)} onCopy={() => void copyId(row.cardId)} />
+              <QueueRow key={row.cardId} row={row} href={cardHref(row.cardId, filters)} onCopy={() => void copyId(row.cardId)} />
             ))}
-          </div>
+          </ul>
         )}
-      </AdminChrome>
+      </AdminShell>
       <AdminToast message={toast} tone={toastTone} />
     </>
   );
 }
 
-function QueueCard({ row, href, onCopy }: { row: QueueRow; href: string; onCopy: () => void }) {
+function QueueRow({ row, href, onCopy }: { row: QueueRow; href: string; onCopy: () => void }) {
   return (
-    <article className="admin-card admin-row">
-      <Link className="admin-row-link" href={href}>
-        <p className="admin-excerpt">{row.thoughtExcerpt}</p>
-        <p className="admin-meta">
+    <li className="ops-row">
+      <Link className="ops-row-link" href={href}>
+        <p className="ops-excerpt">{row.thoughtExcerpt}</p>
+        <p className="ops-row-meta">
           {row.authorInitials} · {row.extra} · {row.when}
         </p>
-        <div className="admin-badges">
-          <span className="admin-badge">{reasonLine(row.reasons)}</span>
-          <span className="admin-badge">{row.isPublic ? 'Public' : 'Private'}</span>
-          {row.authorSuspended ? <span className="admin-badge admin-badge-alert">Suspended</span> : null}
+        <div className="ops-pills">
+          {reasonEntries(row.reasons).map((reason) => (
+            <span key={reason.id} className="ops-pill" data-tone={REASON_TONE[reason.id] || undefined}>
+              {reason.label} ×{reason.count}
+            </span>
+          ))}
+          <span className="ops-pill">{row.isPublic ? 'Public' : 'Private'}</span>
+          {row.authorSuspended ? (
+            <span className="ops-pill" data-tone="red">
+              Suspended
+            </span>
+          ) : null}
         </div>
       </Link>
-      <button className="admin-quiet" type="button" onClick={onCopy}>
-        Copy id
-      </button>
-    </article>
+      <div className="ops-row-side">
+        <span className="ops-chevron" aria-hidden="true">
+          ›
+        </span>
+        <button
+          className="ops-mini-btn"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onCopy();
+          }}
+        >
+          Copy id
+        </button>
+      </div>
+    </li>
   );
 }

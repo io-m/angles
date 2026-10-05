@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
-import { AdminChrome, AdminToast } from '@/components/admin/AdminChrome';
+import { AdminShell, AdminToast } from '@/components/admin/AdminChrome';
+import { REPORT_TYPES } from '@/lib/adminLabels';
 import {
   AdminApiError,
   adminFetch,
@@ -15,24 +16,38 @@ import {
   type ReportSummary,
   type ReviewedSummary,
 } from '@/lib/adminApi';
-import { cardHref, isUuid, matchesQueue, readFilters, reasonLine, styleLabel, type QueueFilters } from '@/lib/adminLabels';
+import { cardHref, isUuid, matchesQueue, readFilters, styleLabel, type QueueFilters } from '@/lib/adminLabels';
 
 type ConfirmKind = 'hide' | 'delete' | 'suspend';
 
 const CONFIRM: Record<ConfirmKind, { title: string; label: string }> = {
   hide: {
     title: 'Hide this card? It becomes private and cannot be published again.',
-    label: 'Hide',
+    label: 'Hide card',
   },
   delete: {
     title: 'Delete this card? This cannot be undone.',
-    label: 'Delete',
+    label: 'Delete card',
   },
   suspend: {
-    title: 'Suspend publishing? Every card from this account becomes private until you unsuspend them.',
+    title: 'Suspend publishing? Every card from this account goes private until you unsuspend them.',
     label: 'Suspend',
   },
 };
+
+const REASON_TONE: Record<string, string> = {
+  spam: 'amber',
+  harassment: 'red',
+  hate: 'red',
+  sexual: 'violet',
+  illegal: 'dark',
+  personal_data: 'blue',
+  other: '',
+};
+
+function reasonLabel(id: string): string {
+  return REPORT_TYPES.find((item) => item.id === id)?.label ?? id;
+}
 
 export function CardReview() {
   const router = useRouter();
@@ -124,6 +139,7 @@ export function CardReview() {
   const index = queue.indexOf(cardId);
   const nextId = index >= 0 ? (queue[index + 1] ?? null) : null;
   const position = index >= 0 ? `${index + 1} of ${queue.length}` : null;
+  const suspended = Boolean(author?.publishingSuspended || card?.authorSuspended);
 
   function finish(message: string): void {
     stashToast(message);
@@ -160,50 +176,88 @@ export function CardReview() {
   }
 
   return (
-    <div className="admin-review">
-      <AdminChrome title={card?.thought ?? 'Review'} email={email}>
-        <div className="admin-toolbar">
-          <Link href="/admin">Back to reports</Link>
-          {position ? <span className="admin-meta">{position}</span> : null}
-          {nextId ? (
-            <Link className="button button-secondary" href={cardHref(nextId, filters)}>
-              Next
+    <>
+      <AdminShell
+        email={email}
+        title={card?.thought ?? 'Review'}
+        subtitle={position ? `Report ${position} in this queue.` : 'Report detail.'}
+        actions={
+          nextId ? (
+            <Link className="ops-btn ops-btn-secondary" style={{ flex: '0 0 auto', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} href={cardHref(nextId, filters)}>
+              Next →
             </Link>
-          ) : null}
+          ) : undefined
+        }
+      >
+        <div className="ops-toolbar" style={{ marginBottom: 16 }}>
+          <Link className="ops-back" href="/admin">
+            ← Back to reports
+          </Link>
+          {position ? <span className="ops-position">{position}</span> : null}
         </div>
-        {error ? <p className="admin-status">{error}</p> : null}
-        {!card && !error ? <p className="admin-status">Loading card…</p> : null}
+
+        {error ? (
+          <p className="ops-banner" data-tone="error">
+            {error}
+          </p>
+        ) : null}
+        {!card && !error ? (
+          <>
+            <div className="ops-skeleton" aria-hidden="true" />
+            <div className="ops-skeleton" aria-hidden="true" />
+          </>
+        ) : null}
+
         {card ? (
-          <article className="admin-stack">
-            <section className="admin-card">
-              <div className="admin-id-row">
-                <p className="admin-id">{card.cardId}</p>
-                <button className="admin-quiet" type="button" onClick={() => void copyId()}>
-                  Copy id
-                </button>
+          <div className="ops-review-grid">
+            <section className="ops-card" aria-label="Reported card">
+              <div className="ops-card-head">
+                <div className="ops-pills">
+                  <span className="ops-pill">{card.isPublic ? 'Public' : 'Private'}</span>
+                  {Object.entries(card.reasons).map(([id, count]) => (
+                    <span key={id} className="ops-pill" data-tone={REASON_TONE[id] || undefined}>
+                      {reasonLabel(id)} ×{count}
+                    </span>
+                  ))}
+                  {card.authorSuspended ? (
+                    <span className="ops-pill" data-tone="red">
+                      Author suspended
+                    </span>
+                  ) : null}
+                </div>
+                <p className="ops-mono">
+                  {card.cardId}{' '}
+                  <button
+                    className="ops-mini-btn"
+                    type="button"
+                    onClick={() => void copyId()}
+                    style={{ marginLeft: 6 }}
+                  >
+                    Copy
+                  </button>
+                </p>
               </div>
-              <div className="admin-badges">
-                <span className="admin-badge">{card.isPublic ? 'Public' : 'Private'}</span>
-                <span className="admin-badge">
-                  {card.reportCount} open · {reasonLine(card.reasons)}
-                </span>
-                {card.authorSuspended ? <span className="admin-badge admin-badge-alert">Suspended</span> : null}
-              </div>
+
+              <p className="ops-thought">{card.thought}</p>
+
               {card.reframes.map((item) => (
-                <div className="admin-answer-block" key={item.style}>
+                <div className="ops-answer" key={item.style}>
                   <h2>{styleLabel(item.style)}</h2>
-                  <p className="admin-answer">{item.reframe}</p>
+                  <p>{item.reframe}</p>
                 </div>
               ))}
+
               {confirm ? (
-                <div className="admin-confirm" role="dialog" aria-labelledby="confirm-title">
-                  <p id="confirm-title">{CONFIRM[confirm].title}</p>
-                  <div className="admin-actions">
-                    <button className="button button-secondary" type="button" disabled={busy} onClick={() => setConfirm(null)}>
+                <div className="ops-confirm" role="dialog" aria-labelledby="confirm-title">
+                  <p id="confirm-title">
+                    <strong>{CONFIRM[confirm].label}.</strong> {CONFIRM[confirm].title}
+                  </p>
+                  <div className="ops-confirm-actions">
+                    <button className="ops-btn ops-btn-secondary" type="button" disabled={busy} onClick={() => setConfirm(null)}>
                       Cancel
                     </button>
                     <button
-                      className="button button-danger"
+                      className="ops-btn ops-btn-danger"
                       type="button"
                       disabled={busy}
                       onClick={() => {
@@ -231,9 +285,9 @@ export function CardReview() {
                   </div>
                 </div>
               ) : (
-                <div className="admin-actions">
+                <div className="ops-actionbar">
                   <button
-                    className="button button-primary"
+                    className="ops-btn ops-btn-primary"
                     type="button"
                     disabled={busy}
                     onClick={() =>
@@ -242,32 +296,36 @@ export function CardReview() {
                   >
                     Keep
                   </button>
-                  <button className="button button-secondary" type="button" disabled={busy} onClick={() => setConfirm('hide')}>
+                  <button className="ops-btn ops-btn-secondary" type="button" disabled={busy} onClick={() => setConfirm('hide')}>
                     Hide
                   </button>
-                  <button className="button button-danger" type="button" disabled={busy} onClick={() => setConfirm('delete')}>
+                  <button className="ops-btn ops-btn-danger" type="button" disabled={busy} onClick={() => setConfirm('delete')}>
                     Delete
                   </button>
                 </div>
               )}
             </section>
 
-            <section className="admin-card" id="author">
-              <h2 className="eyebrow">Author</h2>
-              <p className="admin-meta">
+            <aside className="ops-card" aria-label="Author">
+              <h2 className="ops-rail-title">Author</h2>
+              <p className="ops-author">
                 {author?.initials ?? card.authorInitials} · {author?.email ?? card.authorEmail}
               </p>
-              <div className="admin-badges">
-                {author?.publishingSuspended || card.authorSuspended ? (
-                  <span className="admin-badge admin-badge-alert">Publishing suspended</span>
+              <div className="ops-pills">
+                {suspended ? (
+                  <span className="ops-pill" data-tone="red">
+                    Suspended
+                  </span>
                 ) : (
-                  <span className="admin-badge">Can publish</span>
+                  <span className="ops-pill" data-tone="green">
+                    Can publish
+                  </span>
                 )}
-                {author ? <span className="admin-badge">{author.publicCardCount} public</span> : null}
+                {author ? <span className="ops-pill">{author.publicCardCount} public</span> : null}
               </div>
-              {author?.publishingSuspended || card.authorSuspended ? (
+              {suspended ? (
                 <button
-                  className="button button-secondary"
+                  className="ops-btn ops-btn-secondary"
                   type="button"
                   disabled={busy}
                   onClick={() =>
@@ -281,24 +339,34 @@ export function CardReview() {
                   Unsuspend
                 </button>
               ) : (
-                <button className="button button-danger" type="button" disabled={busy || confirm !== null} onClick={() => setConfirm('suspend')}>
+                <button
+                  className="ops-btn ops-btn-secondary"
+                  type="button"
+                  disabled={busy || confirm !== null}
+                  onClick={() => setConfirm('suspend')}
+                >
                   Suspend publishing
                 </button>
               )}
               {others.length > 0 ? (
-                <div className="admin-list">
-                  {others.map((item) => (
-                    <Link className="admin-row-link" key={item.cardId} href={cardHref(item.cardId, filters)}>
-                      <p className="admin-excerpt">{item.thoughtExcerpt}</p>
-                    </Link>
-                  ))}
+                <div>
+                  <h2 className="ops-rail-title" style={{ marginBottom: 6 }}>
+                    Other public cards
+                  </h2>
+                  <ul className="ops-others">
+                    {others.map((item) => (
+                      <li key={item.cardId}>
+                        <Link href={cardHref(item.cardId, filters)}>{item.thoughtExcerpt}</Link>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
-            </section>
-          </article>
+            </aside>
+          </div>
         ) : null}
-      </AdminChrome>
+      </AdminShell>
       <AdminToast message={toast} tone={toastTone} />
-    </div>
+    </>
   );
 }

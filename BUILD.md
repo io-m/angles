@@ -491,6 +491,7 @@ Not an iOS screen. The operator reviews the report email at `https://useangles.a
 - **API.** Railway `/admin` calls `reportReview.ts` for keep, hide, delete, suspend, and unsuspend. The list omits thought text; the card detail includes it. Production also requires `ADMIN_PROXY_SECRET`, which only the site worker sends.
 - **Site.** Static pages under `web/app/admin`. The browser calls same-origin `/api/admin`, and `web/worker.ts` proxies that to the Railway API. No browser CORS and no database credential in the browser. `pnpm reports` remains the backup.
 - **Overview.** `/admin` opens on counts (open, already private, suspended authors, reviewed) and a tile per report reason. The list under that is the thought, not the card id. Search matches an id, an email, or words from the thought. Keep or Hide moves to the next report in that filtered queue.
+- **Chrome.** The admin has its own neutral shell (`web/app/admin/admin.css`): dark sidebar with Open, Reviewed, and sign out, stat cards, reason tiles, a filter bar, queue rows with reason pills, and a two-column review with a sticky Keep/Hide/Delete bar. The marketing paper theme is untouched.
 
 ## Postponed (do not start)
 
@@ -505,6 +506,7 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-05 — Operator redesign. `/admin` has a dark-sidebar admin shell with stat cards, reason tiles, queue rows, and a two-column review with a sticky action bar. Same endpoints and review functions, new look only.
 - 2026-10-05 — Operator overview. `/admin` opens on counts and a tile per report reason, then a filterable list whose title is the thought. Search finds a card or an email. Keep or Hide continues to the next report. The same report-review functions still hide, keep, delete, and suspend.
 - 2026-10-05 — Operator admin. Allowlisted addresses sign in at `useangles.app/admin` with a one-time Resend link and review open reports there: keep, hide, delete, or suspend. The site proxies to Railway `/admin`, which uses the same report review functions as `pnpm reports`. The SSH script remains the backup. Report emails are still ids and a reason only.
 - 2026-10-02 — The save ride has a dark-mode copy (`Go to school dark.lottie`, from `scripts/lottie-dark-variant.mjs`): light outlines and light grey tires on the dark paper, dark grey where the light file is white, the same orange. Light mode is unchanged.

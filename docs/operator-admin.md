@@ -1,6 +1,6 @@
 # Operator admin
 
-Private review for Angles reports. Sign in at `https://useangles.app/admin`. The home page is an overview: open, private, suspended, and reviewed counts, then one tile per report reason. Tapping a tile filters the list. Search takes a card id, a user id, an email, or a few words from the thought. Only addresses in `ADMIN_OPERATOR_EMAILS` receive a link. Everyone else gets the same “check your inbox” page and no email.
+Private review for Angles reports. Sign in at `https://useangles.app/admin`. The home page is an overview with a sidebar (Open queue, Reviewed, sign out): open, private, suspended, and reviewed counts, then one tile per report reason. Tapping a tile filters the list. Search takes a card id, a user id, an email, or a few words from the thought. A card opens as two columns: the thought and answers with Keep, Hide, and Delete on the left, the author and their other public cards on the right. Only addresses in `ADMIN_OPERATOR_EMAILS` receive a link. Everyone else gets the same “check your inbox” page and no email.
 
 Report mail is unchanged: ids and a reason, no card text. Open the card from that id on the site. `pnpm reports` over SSH still works when the site is down:
 

@@ -454,6 +454,7 @@ struct ReframeCardView: View, Equatable {
                 }
                 .menuStyle(.borderlessButton)
                 .buttonStyle(.plain)
+                .fixedSize()
                 .accessibilityLabel("Public")
                 .accessibilityHint("Opens privacy actions")
             } else {
@@ -473,7 +474,8 @@ struct ReframeCardView: View, Equatable {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
-                .layoutPriority(-1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
 
             publicMark(font: .caption.weight(.semibold))
 
@@ -493,7 +495,8 @@ struct ReframeCardView: View, Equatable {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
-                .layoutPriority(-1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
 
             publicMark(font: .subheadline.weight(.semibold))
 
@@ -517,7 +520,8 @@ struct ReframeCardView: View, Equatable {
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(theme.muted)
                 .lineLimit(1)
-                .layoutPriority(-1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
 
             publicMark(font: .caption2.weight(.semibold))
 

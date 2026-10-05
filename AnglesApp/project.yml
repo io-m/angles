@@ -43,7 +43,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.angles.ios
         PRODUCT_NAME: Angles
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "13"
+        CURRENT_PROJECT_VERSION: "15"
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: AnglesApp/Info.plist
         CODE_SIGN_ENTITLEMENTS: AnglesApp/Angles.entitlements
@@ -89,7 +89,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.angles.ios.widgets
         PRODUCT_NAME: AnglesWidgets
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "13"
+        CURRENT_PROJECT_VERSION: "15"
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: AnglesWidgets/Info.plist
         CODE_SIGN_ENTITLEMENTS: AnglesWidgets/AnglesWidgets.entitlements

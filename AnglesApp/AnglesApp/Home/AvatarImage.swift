@@ -16,7 +16,7 @@ enum ImageDownsampler {
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ] as CFDictionary
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
-            return nil
+            return UIImage(data: data)
         }
         return UIImage(cgImage: thumbnail, scale: 1, orientation: .up)
     }
@@ -89,25 +89,28 @@ struct RemoteAvatarImage: View {
     @State private var loaded: UIImage?
 
     private var pixelSize: Int {
-        max(1, Int((side * displayScale).rounded(.up)))
+        max(64, Int((side * max(displayScale, 2)).rounded(.up)))
     }
 
     var body: some View {
         let image = loaded ?? AvatarImages.cached(url, pixelSize: pixelSize)
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: side, height: side)
-                    .clipShape(Circle())
+        Color.clear
+            .frame(width: side, height: side)
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                }
             }
-        }
-        .task(id: "\(pixelSize)|\(url.absoluteString)") {
-            guard image == nil else {
-                return
+            .clipShape(Circle())
+            .task(id: url.absoluteString) {
+                let pixels = pixelSize
+                if let cached = AvatarImages.cached(url, pixelSize: pixels) {
+                    loaded = cached
+                    return
+                }
+                loaded = await AvatarImages.load(url, pixelSize: pixels)
             }
-            loaded = await AvatarImages.load(url, pixelSize: pixelSize)
-        }
     }
 }
