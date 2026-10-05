@@ -7,7 +7,7 @@
     "declaration": true,
     "types": ["node"]
   },
-  "files": ["src/scripts/reports.ts"],
+  "files": ["src/scripts/reports.ts", "src/scripts/seedLiveCooks.ts"],
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts", "src/scripts/**"]
 }

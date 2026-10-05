@@ -20,6 +20,7 @@
     "db:seed-community": "tsx src/scripts/seedCommunity.ts",
     "db:seed-recent": "tsx src/scripts/seedCommunityRecent.ts",
     "db:seed-realistic": "tsx src/scripts/seedCommunityRealistic.ts",
+    "db:seed-live-cooks": "tsx src/scripts/seedLiveCooks.ts",
     "db:feed-audit": "tsx src/scripts/feedAudit.ts",
     "reports": "tsx src/scripts/reports.ts",
     "demo:session": "tsx src/scripts/demoSession.ts",
