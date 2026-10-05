@@ -105,8 +105,36 @@ final class ProfileIdentityStore {
     func applySession(_ session: SessionBody) {
         serverInitials = session.initials
         avatarPath = session.avatarUrl
-        seedName(session.name)
+        adoptServerName(session.name)
         onSynced?(session.initials, session.avatarUrl)
+        Task { await loadRemotePhotoIfNeeded() }
+    }
+
+    /// The JPEG on disk dies with the app. Pull the server copy into memory so Profile does not
+    /// depend on a view task that is cancelled while Profile is off screen.
+    private func loadRemotePhotoIfNeeded() async {
+        guard photo == nil else { return }
+        let requested = avatarPath
+        guard let url = AvatarLocation.url(for: requested) else { return }
+        guard let image = await AvatarImages.load(url, pixelSize: Self.avatarPixelSize) else { return }
+        guard photo == nil, avatarPath == requested else { return }
+        photo = image
+    }
+
+    /// A reinstall has no local name, so the account name fills the title. A name typed on this
+    /// iPhone that the server does not have yet is uploaded once.
+    private func adoptServerName(_ raw: String) {
+        let serverName = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+        let local = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hasCustomName, !local.isEmpty, local != serverName {
+            Task { await commitName() }
+            return
+        }
+        if hasCustomName, local == serverName {
+            committedName = local
+            return
+        }
+        seedName(serverName)
     }
 
     func reset() {
@@ -201,7 +229,7 @@ final class ProfileIdentityStore {
     }
 }
 
-/// Local avatar: photo when set, initials from the typed name, person icon otherwise.
+/// Photo when this iPhone has one, otherwise the server photo, then initials, then a person icon.
 /// Server cards keep `card.authorInitials`; this view is only for the local user.
 struct ProfileAvatar: View {
     var identityStore: ProfileIdentityStore?
@@ -218,6 +246,15 @@ struct ProfileAvatar: View {
                 .frame(width: side, height: side)
                 .clipShape(Circle())
                 .accessibilityHidden(true)
+        } else if let path = identityStore?.avatarPath, !path.isEmpty {
+            AuthorMark(
+                initials: remoteInitials,
+                avatarPath: path,
+                prefersLocalPhoto: false,
+                side: side,
+                fill: fill,
+                symbol: symbol
+            )
         } else if let resolved = identityStore?.avatarLetters ?? letters {
             InitialsAvatar(letters: resolved, side: side, fill: fill, symbol: symbol)
         } else {
@@ -228,6 +265,12 @@ struct ProfileAvatar: View {
                 .background(fill, in: Circle())
                 .accessibilityHidden(true)
         }
+    }
+
+    private var remoteInitials: String {
+        let resolved = identityStore?.avatarLetters ?? identityStore?.serverInitials ?? letters ?? ""
+        let trimmed = resolved.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Y" : trimmed
     }
 }
 

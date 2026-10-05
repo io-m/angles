@@ -1714,16 +1714,6 @@ struct AuthorMark: View {
     }
 
     private var remoteURL: URL? {
-        guard let avatarPath, !avatarPath.isEmpty, let baseURL = AppConfig.baseURL else { return nil }
-        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-        let pieces = avatarPath.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
-        let path = String(pieces[0])
-        components.path = path.hasPrefix("/") ? path : "/" + path
-        if pieces.count > 1, !pieces[1].isEmpty {
-            components.query = String(pieces[1])
-        }
-        return components.url
+        AvatarLocation.url(for: avatarPath)
     }
 }

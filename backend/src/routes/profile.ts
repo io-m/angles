@@ -16,7 +16,7 @@ import {
   getOwnerAppleSubject,
   getUserById,
   setOwnerAvatar,
-  updateOwnerInitials,
+  updateOwnerIdentity,
 } from "../db/users.js";
 import {
   AppleRevokeError,
@@ -58,8 +58,13 @@ const syncSubscriptionSchema = z.object({
   signedTransactionInfo: z.string().min(1).max(32_000),
 });
 
-function profileBody(user: { id: string; initials: string; avatarKey: string | null }): ProfileBody {
-  const body: ProfileBody = { initials: user.initials };
+function profileBody(user: {
+  id: string;
+  initials: string;
+  name: string;
+  avatarKey: string | null;
+}): ProfileBody {
+  const body: ProfileBody = { initials: user.initials, name: user.name };
   const avatarUrl = avatarUrlFor(user.id, user.avatarKey);
   if (avatarUrl) {
     body.avatarUrl = avatarUrl;
@@ -257,7 +262,7 @@ profileRoute.patch(
     }
   }),
   async (c) => {
-    const { displayName } = c.req.valid("json");
+    const displayName = c.req.valid("json").displayName.trim().slice(0, 40);
     const initials = initialsFromDisplayName(displayName);
     if (!initials) {
       const current = await getUserById(getOwnerUserId());
@@ -266,7 +271,7 @@ profileRoute.patch(
       }
       return c.json(profileBody(current));
     }
-    const updated = await updateOwnerInitials(initials);
+    const updated = await updateOwnerIdentity(displayName, initials);
     return c.json(profileBody(updated));
   },
 );

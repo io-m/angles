@@ -78,6 +78,8 @@ struct ProfileView: View {
     }
 
     var body: some View {
+        // Read the photo here so the header updates when the server copy arrives after sign-in.
+        let _ = identityStore?.photo
         ZStack(alignment: .top) {
             StyleTabPageBackground(pagerState: pagerState)
                 .ignoresSafeArea()

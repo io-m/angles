@@ -2,6 +2,7 @@ import Foundation
 
 struct ProfileBody: Decodable, Equatable, Sendable {
     let initials: String
+    let name: String
     let avatarUrl: String?
 }
 

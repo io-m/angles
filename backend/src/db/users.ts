@@ -30,11 +30,12 @@ export async function setOwnerAvatar(key: string | null): Promise<UserRow> {
   }
 }
 
-export async function updateOwnerInitials(initials: string): Promise<UserRow> {
+/** Stores the display name and the initials derived from it. An empty name is not written. */
+export async function updateOwnerIdentity(name: string, initials: string): Promise<UserRow> {
   try {
     const [row] = await getDb()
       .update(users)
-      .set({ initials })
+      .set({ name, initials, updatedAt: new Date() })
       .where(eq(users.id, getOwnerUserId()))
       .returning();
     if (!row) {
@@ -45,7 +46,7 @@ export async function updateOwnerInitials(initials: string): Promise<UserRow> {
     if (error instanceof DbError) {
       throw error;
     }
-    throw wrapDbError(error, "updateOwnerInitials");
+    throw wrapDbError(error, "updateOwnerIdentity");
   }
 }
 

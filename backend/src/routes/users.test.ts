@@ -25,7 +25,7 @@ vi.mock("../db/client.js", () => {
 vi.mock("../db/users.js", () => ({
   getUserById: vi.fn(),
   setOwnerAvatar: vi.fn(),
-  updateOwnerInitials: vi.fn(),
+  updateOwnerIdentity: vi.fn(),
 }));
 
 vi.mock("../db/feed.js", () => ({

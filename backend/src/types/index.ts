@@ -214,6 +214,8 @@ export type AuthorCardsResponse = {
 
 export type ProfileBody = {
   initials: string;
+  /** Trimmed display name. Empty when the account has never stored one. */
+  name: string;
   avatarUrl?: string;
 };
 
