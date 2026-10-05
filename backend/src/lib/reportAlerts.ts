@@ -1,7 +1,7 @@
 import type { ReportReason } from "./communitySafetyTypes.js";
 
 /**
- * Tells the operator a card was reported, so the 24-hour review the Terms promise happens.
+ * Tells the operator a card was reported, so the review the Terms promise happens.
  * The alert carries ids and the reason only, never the card's text: the operator reads the
  * card with `pnpm reports`.
  */
@@ -44,7 +44,7 @@ export function reportAlertEmail(alert: ReportAlert): { subject: string; text: s
       ? "It reached the report threshold and is now private until reviewed."
       : "It is still public for everyone except the reporter.",
     "",
-    "Review within 24 hours. From backend/, with the production DATABASE_URL:",
+    "Review as soon as possible. From backend/, with the production DATABASE_URL:",
     "  pnpm reports",
     `  pnpm reports hide ${alert.cardId}`,
     `  pnpm reports keep ${alert.cardId}`,

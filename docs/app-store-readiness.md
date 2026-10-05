@@ -26,7 +26,7 @@ The production feature work is implemented in the repository. The app is not rea
   - Log out and Delete account are in the paywall's (i) sheet.
   - A used-up taste routes to the paywall.
   - The subscription sync never answers 401, and a deleted account's purchase moves to the same Apple ID's new account.
-  - The Terms have the zero-tolerance and 24-hour report text plus the Apple EULA clause. The privacy policy has the providers, moderation, Home ordering, legal bases, transfers, and the Datatilsynet line.
+  - The Terms have the zero-tolerance and as-soon-as-possible report text plus the Apple EULA clause. The privacy policy has the providers, moderation, Home ordering, legal bases, transfers, and the Datatilsynet line.
 - Release gaps (`BUILD.md` row 20, October 2, 2026; build 9):
   - Each new report emails the operator through Resend (ids and reason only). `pnpm reports` lists open reports and hides, keeps, or deletes a card, or suspends an author's publishing.
   - Delete account confirms with Apple first and the server revokes the Sign in with Apple grant (guideline 5.1.1(v)).
@@ -51,7 +51,7 @@ The production feature work is implemented in the repository. The app is not rea
 - Operator details in `docs/legal/privacy.md` and `docs/legal/terms.md` name Bithavn, CVR 46705130, `info@bithavn.app`, the Copenhagen postal address, and Danish law.
 - The privacy policy names Mistral AI (France) and OpenAI (US), and says each is used through a paid API whose terms forbid training on inputs. Confirm both provider accounts before submission; in OpenAI, keep API input/output sharing off.
 - The site is published at `https://useangles.app` (`/privacy`, `/terms`, `/support`). `www` and plain HTTP redirect to that host. The 2 October 2026 Terms and Privacy text is live.
-- Set `RESEND_API_KEY`, `REPORT_ALERT_FROM`, and `REPORT_ALERT_TO` on Railway, and name who acts on a report email within 24 hours during review and launch (`railway ssh --service api --environment production node dist/scripts/reports.js`); the Terms and the review notes promise a 24-hour review.
+- Set `RESEND_API_KEY`, `REPORT_ALERT_FROM`, and `REPORT_ALERT_TO` on Railway, and name who acts on a report email as soon as possible during review and launch (`railway ssh --service api --environment production node dist/scripts/reports.js`); the Terms and the review notes promise review as soon as possible.
 - Deploy the backend with migrations `0018` and `0019` before build 9 goes to TestFlight.
 
 ### Apple production configuration

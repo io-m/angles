@@ -44,7 +44,7 @@ You may not:
 
 ## Community moderation
 
-Angles has zero tolerance for objectionable content and abusive users. Do not post content that is hateful, harassing, sexual, violent, threatening, or otherwise objectionable, and do not abuse other people. Every card you post is checked automatically before anyone else can see it. We review reported content within 24 hours, remove content that breaks these Terms, and remove the accounts of users who post it.
+Angles has zero tolerance for objectionable content and abusive users. Do not post content that is hateful, harassing, sexual, violent, threatening, or otherwise objectionable, and do not abuse other people. Every card you post is checked automatically before anyone else can see it. We review reported content as soon as possible, remove content that breaks these Terms, and remove the accounts of users who post it.
 
 We may also review reports and use automated or human moderation to reject, limit, make private, remove, or preserve content; restrict features; suspend or terminate accounts; and cooperate with authorities where appropriate. Blocking changes what you see but does not guarantee that another person cannot encounter public content elsewhere. We do not guarantee that all objectionable content will be detected or removed immediately.
 

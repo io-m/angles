@@ -122,7 +122,7 @@ export default function TermsPage() {
         Do not post content that is hateful, harassing, sexual, violent,
         threatening, or otherwise objectionable, and do not abuse other people.
         Every card you post is checked automatically before anyone else can see
-        it. We review reported content within 24 hours, remove content that
+        it. We review reported content as soon as possible, remove content that
         breaks these Terms, and remove the accounts of users who post it.
       </p>
       <p>

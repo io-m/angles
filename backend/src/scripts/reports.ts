@@ -1,5 +1,5 @@
 /**
- * Review community reports. The Terms promise a review within 24 hours.
+ * Review community reports. The Terms promise review as soon as possible.
  *
  *   pnpm reports                      list cards with open reports, oldest first
  *   pnpm reports hide <cardId>        make it private for good and uphold its reports

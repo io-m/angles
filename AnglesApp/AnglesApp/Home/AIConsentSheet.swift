@@ -50,7 +50,7 @@ struct AIConsentSheet: View {
                         consentRow(
                             icon: "hand.raised",
                             title: "Community rules",
-                            detail: "There is no tolerance for objectionable content or abusive users. Reported posts are reviewed within 24 hours, and offending accounts are removed."
+                            detail: "There is no tolerance for objectionable content or abusive users. Reported posts are reviewed as soon as possible, and offending accounts are removed."
                         )
                         consentRow(
                             icon: "cross.case",

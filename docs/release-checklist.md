@@ -1,122 +1,63 @@
 # Release checklist
 
-Current as of **2 October 2026**. Version **1.0**, build **11** is uploaded, in TestFlight, and attached to the version in App Store Connect. The App Store Connect record is `6811873869` (Angles: Reframe Thoughts).
+Current as of **5 October 2026**. Version **1.0**. Latest iOS uploads: build **12** (refresh pill; check App Store Connect for **13+** if persistence shipped after). App Store Connect app `6811873869` (Angles: Reframe Thoughts).
 
-Everything under "Left to do" needs you: a dashboard the API cannot reach, your phone, or your judgement. Everything under "Done" was checked through the App Store Connect API, Railway, or the device.
+Everything under "Left to do" needs you: a dashboard the API cannot reach, your phone, or your judgement.
 
 ## Left to do, in order
 
-### 1. App Privacy (about 10 minutes)
+### 1. App Privacy — done
 
-[App Store Connect → Angles → App Privacy](https://appstoreconnect.apple.com/apps/6811873869/distribution/privacy). Apple has no API for this page.
+Published in App Store Connect with the eight data types from this doc (Oct 2026).
 
-- Privacy Policy URL: `https://useangles.app/privacy` (already set on App Information; confirm it shows here).
-- "Do you or your third-party partners collect data from this app?" **Yes**.
-- Select exactly these data types. For each one answer: **linked to the user: Yes**, **used for tracking: No**.
+### 2. Report alert email — done (production)
 
-| Category | Data type | Purposes |
-| --- | --- | --- |
-| Contact Info | Name | App Functionality |
-| Contact Info | Email Address | App Functionality |
-| Health & Fitness | Health | App Functionality, Product Personalization |
-| User Content | Photos or Videos | App Functionality |
-| User Content | Other User Content | App Functionality, Product Personalization |
-| Identifiers | User ID | App Functionality |
-| Purchases | Purchase History | App Functionality |
-| Usage Data | Product Interaction | App Functionality, Product Personalization |
+Resend domain verified; Railway `api` has `RESEND_API_KEY`, `REPORT_ALERT_FROM`, `REPORT_ALERT_TO`. Redeploy if you change report email copy in `reportAlerts.ts`.
 
-Leave everything else unchecked, including Diagnostics (there is no crash SDK) and Advertising. This matches `AnglesApp/AnglesApp/PrivacyInfo.xcprivacy`; if one changes, change the other. Then **Publish**.
+Wording is now **as soon as possible** (not 24 hours) in Terms, consent sheet, review notes, and alert emails. Redeploy **api** for new email body text; redeploy **web** (or publish `useangles.app`) so live Terms match.
 
-### 2. Report alert email (about 10 minutes)
+To review reports: `railway ssh --service api --environment production node dist/scripts/reports.js` — then `keep`, `hide`, etc.
 
-The Terms and the review notes promise a review of every report within 24 hours. The API sends an email for each new report once these are set; until then it logs `report_alerts_disabled`.
+### 3. TestFlight on production — partly done
 
-1. In [Resend → Domains](https://resend.com/domains), add and verify a sending domain you own (for example `useangles.app`): add the DNS records it shows.
-2. In [Resend → API Keys](https://resend.com/api-keys), create a key with "Sending access".
-3. Set the three variables on the Railway `api` service (production). Railway redeploys on save:
-   - `RESEND_API_KEY` = the key
-   - `REPORT_ALERT_FROM` = for example `Angles reports <reports@useangles.app>`
-   - `REPORT_ALERT_TO` = `info@bithavn.app` (or whoever reviews reports)
-4. Check: after the redeploy, the Railway log no longer shows `report_alerts_disabled`.
+**Done:** Fresh install, onboarding, Home/feed on TestFlight against production; Home seeded with real public posts (`josipmiljak@proton.me`).
 
-To review reports: `railway ssh --service api --environment production node dist/scripts/reports.js` lists open reports; add `hide <cardId>`, `keep <cardId>`, `delete <cardId>`, `suspend <userId>`, or `unsuspend <userId>`.
+**Still to do:**
 
-### 3. Walk the reviewer path on TestFlight build 11 (about 20 minutes)
+1. **Report + email (wife’s phone):** She installs TestFlight (same internal group or external tester), signs in with **her** Apple ID, opens Home, reports **one of your** public cards (⋯ or long-press → Report). You check `info@bithavn.app`, then SSH `pnpm reports` and `keep <cardId>`.
+2. **Delete account (optional throwaway):** On a test account you do not need, Settings → Delete account → confirm Apple sheet. Confirm Sign in with Apple no longer lists Angles; Railway logs show no `apple_revoke_failed`.
+3. **Latest build:** Use the newest TestFlight build (persistence + pill fixes). Attach that build to version 1.0 before submit.
 
-The same path already worked on the local build on 2 October 2026. This run checks it against production. Delete Angles from the phone first, then install build 11 from TestFlight (internal group "Angles team"). The production database was emptied on 2 October 2026, so this is a brand-new account.
+Apple Review does not need you to have two Apple IDs; they test Report on your public posts with their account.
 
-1. Continue with Apple. The taste opens on "Welcome to Angles … Your first thought is free."
-2. Type a thought and tap Send. "Before you start" appears; tap Agree and continue.
-3. Answer any follow-up, see the angles, Save to private library.
-4. The paywall opens. Buy Monthly or Yearly with the sandbox prompt (no charge).
-5. Home opens. Post **5 to 10 public cards** with Inspire me (Save defaults to Post). App Review needs other people's cards on Home to test Report and Block; your cards count as another person to them.
-6. From a second Apple ID (or ask a friend on TestFlight), report one of your cards. Check that the alert email arrives (needs step 2), then run the reports script above and `keep` it.
-7. Settings → Delete account on a test account. Apple's sheet asks to confirm; afterwards Settings → Apple ID → Sign in with Apple must no longer list Angles. Railway logs must show no `apple_revoke_exchange_failed` or `apple_revoke_failed`.
+### 4. Screenshots — done (4 October 2026)
 
-### 4. Screenshots — done 4 October 2026
+Uploaded to version 1.0, English, iPhone 6.9". Not submitted yet.
 
-Uploaded to version 1.0, English, iPhone 6.9" only. Previews sit before the screenshots. Not submitted.
+### 5. Provider and operations safety (~15 minutes)
 
-- **Preview** (~20s, 886 × 1920): the lost-job line being typed, cooking, then Stoic, Optimistic, Humorous, and Tough Love, ending on a hearted angle. Small zooms and crossfades. Poster frame is the Stoic answer (5 seconds).
-- **Screenshots** (1320 × 2868): Four ways to see it, Write the hard thought, Angles from other people (two different posts), A shelf for each voice (Humorous), Keep the one that fits (a different kept angle). No Home Screen widget shot.
-- **Subscription review screenshot:** the paywall with both prices, on Angles Yearly and Angles Monthly. Both subscriptions are Ready to Submit.
-
-Files are in `store/` (gitignored). Rebuild with `node demo/store_edit.mjs store/raw/take-…`, then `node demo/store_upload.mjs`.
-
-### 5. Provider and operations safety (about 15 minutes)
-
-- [Mistral console](https://console.mistral.ai/): set a monthly spend limit for the workspace.
-- [OpenAI → Limits](https://platform.openai.com/settings/organization/limits): set a project budget and email alerts.
-- [OpenAI → Data controls](https://platform.openai.com/settings/organization/data-controls/sharing): confirm sharing inputs and outputs is **off** (the privacy policy says providers do not train on what users write).
-- Decide who watches Xcode Organizer crash reports, Railway alerts, and the report emails during review and launch week.
-- Calendar reminder: the Sign in with Apple client secret (`APPLE_CLIENT_SECRET`, key `W4R8326VMT`) expires on **3 April 2027**. Renew it before then or sign-in and revocation stop working.
+- [Mistral console](https://console.mistral.ai/): monthly spend limit.
+- [OpenAI → Limits](https://platform.openai.com/settings/organization/limits): budget + email alerts.
+- [OpenAI → Data controls](https://platform.openai.com/settings/organization/data-controls/sharing): training/sharing **off**.
+- Decide who watches Organizer crashes, Railway, and report mail during review week.
+- Calendar: Apple client secret expires **3 April 2027**.
 
 ### 6. Submit
 
 App Store Connect → Angles → version 1.0:
 
-1. Check that the build is **11**.
-2. Under "In-App Purchases and Subscriptions", select **both** Angles Yearly and Angles Monthly. First subscriptions must be submitted with the binary.
-3. Re-read the review notes. Keep "reports are reviewed within 24 hours" only if step 2 is done and someone acts on the emails.
-4. **Add for Review**, then **Submit for Review**.
+1. Select the **latest** TestFlight build (not 11 if 12/13 is ready).
+2. Under subscriptions, attach **both** Angles Yearly and Angles Monthly.
+3. Paste review notes from [app-review-notes.md](app-review-notes.md) (as soon as possible report wording).
+4. **Add for Review** → **Submit for Review**. Release stays **manual**.
 
-Release is set to **manual**: after approval, press Release yourself.
+## Done (unchanged summary)
 
-## Done
-
-### Apple account (shared with Thinline)
-
-- Paid Apps agreement, tax, banking, and EU trader (DSA) status are account-level and already active: Thinline (same team `36U79UTZM9`) is live with approved subscriptions in 174 territories.
-
-### App Store Connect, set through the API on 2 October 2026
-
-- Subscription group **Angles Membership** with **Angles Yearly** (`app.angles.ios.annual`, $39.99) and **Angles Monthly** (`app.angles.ios.monthly`, $4.99). Names and descriptions say "600 credits every month" (they used to say "Unlimited", which is not true). Both have a review note and prices in all 175 territories.
-- Billing Grace Period **on**: 16 days, all renewals, production and sandbox.
-- App Store Server Notifications **V2**, production and sandbox: `https://api-production-61c9.up.railway.app/app-store/notifications`. Apple's sandbox test notification was delivered and the API answered 200.
-- Price **Free**; available in 174 territories, all but mainland China (generative AI apps need a licence there).
-- App information: subtitle "See a hard thought differently", privacy policy URL, category **Health & Fitness** with **Lifestyle** second, content rights "no third-party content".
-- Age rating **13+** (matches the Terms' minimum age): user-generated content, social features, health and wellness topics, mild mature themes, mild crude humour.
-- Version 1.0 listing: description (no medical claims; Terms and Privacy links; full auto-renew text), keywords, promotional text, support `https://useangles.app/support`, marketing `https://useangles.app`, copyright "2026 Bithavn", release type manual.
-- App Review details: Josip Miljak, `info@bithavn.app`, +45 50 65 97 20, no demo account, notes from [app-review-notes.md](app-review-notes.md).
-- TestFlight internal group **Angles team** (all builds) with `miljak.josip@outlook.com`. Builds 9, 10, and 11 uploaded; 11 is attached to 1.0.
-
-### Code and backend (BUILD.md row 20)
-
-- Report alerts (Resend, ids and reason only) and the operator reports script, shipped inside the API image.
-- Sign in with Apple revocation on account delete.
-- Terms acceptance stored on the server and required before Home.
-- "Not therapy" row on Before you start, Email support in Settings, empty app icon set removed, README fixed.
-- Free taste fixed in production: it used to read as 0 credits, so "You're out of credits" showed and Send was disabled. The taste screen now welcomes new accounts.
-- A reinstall starts at Continue with Apple instead of resuming the old Keychain session.
-- Build 11: sign-in retries a request that got no answer instead of failing on the first try. The checkout spinner no longer stays up forever for a member who has not accepted the Terms. Agree and continue is pinned to the bottom of Before you start.
-- The full new-user path (Continue with Apple, free thought, Before you start, paywall, sandbox purchase, Home) worked end to end on the local build on 2 October 2026.
-- Backend: typecheck, 614 tests pass. iOS: 62 tests pass on Joe's iPhone. Release builds 9 and 10 installed and launched on the phone.
-- Production deployed with migrations `0018` and `0019`; `/health` is ok. Production data was emptied on 2 October 2026 (migration history kept).
-- Provider rates in `LLM_RATE_VERSION` `2026-10-providers-v1` match current prices (Mistral Small $0.15 / $0.60, gpt-4.1-mini $0.40 / $1.60 per million tokens).
+Apple account, subscriptions, grace period, server notifications, listing copy, age rating, review contact details, backend migrations, Resend on Railway, production `/health`, BUILD.md row 20 features, builds 9–12 uploaded, onboarding path verified on device.
 
 ## Before every later upload
 
-- From `backend/`: `pnpm typecheck` and `pnpm test` (needs the local test Postgres).
-- Bump `CURRENT_PROJECT_VERSION` for both targets in `AnglesApp/project.yml`, run `xcodegen generate`.
-- Deploy the backend before a build that depends on it reaches TestFlight.
-- Install and launch the Release build on Joe's iPhone with `devicectl`; a Simulator build does not count.
+- `backend/`: `pnpm typecheck` && `pnpm test`
+- Bump `CURRENT_PROJECT_VERSION` in `AnglesApp/project.yml`, `xcodegen generate`
+- Deploy backend before a build that depends on API changes
+- TestFlight on Joe’s iPhone for release verification (not Debug replacing TestFlight unless intentional)

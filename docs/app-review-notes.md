@@ -37,7 +37,7 @@ Home contains user-posted public cards. A user's own onboarding taste is private
 2. Tap **Report**. It asks "Why are you reporting this card?".
 3. Choose a reason: Spam, Harassment or bullying, Hate speech, Sexual content, Illegal activity, Personal information, or Something else.
 
-The reported card leaves that reviewer's Home and library. Each new report emails the operator (ids and reason only), who reviews it within 24 hours with `pnpm reports` and can hide or delete the card or stop the author publishing. Three open reports make a card private automatically.
+The reported card leaves that reviewer's Home and library. Each new report emails the operator (ids and reason only), who reviews it as soon as possible with `pnpm reports` and can hide or delete the card or stop the author publishing. Three open reports make a card private automatically.
 
 ### Block a person
 
@@ -67,7 +67,7 @@ Apple's sheet asks to confirm with the Apple ID first, so the server can revoke 
 
 ## Paste-ready notes for App Store Connect
 
-The "reviewed within 24 hours" line is only true when the report email reaches someone who acts on it daily (`RESEND_API_KEY`, `REPORT_ALERT_FROM`, `REPORT_ALERT_TO` on Railway; the API logs `report_alerts_disabled` at startup without them). If nobody does, remove that line before pasting.
+The "reviewed as soon as possible" line is only true when the report email reaches someone who acts on it promptly (`RESEND_API_KEY`, `REPORT_ALERT_FROM`, `REPORT_ALERT_TO` on Railway; the API logs `report_alerts_disabled` at startup without them). If nobody does, remove that line before pasting.
 
 ```text
 Sign-in: Angles uses Sign in with Apple only. There is no email or password login, so there is no demo account. Please tap "Continue with Apple" with your own Apple ID. The account, free taste, subscription, credits, reports and blocks are tied to that Apple sign-in on our server.
@@ -87,7 +87,7 @@ If the app ever opens directly on the paywall, this Apple ID already used its ta
 Restore: on the paywall, "Restore purchases" under the Continue button (also in the (i) sheet), or Profile -> Settings -> Subscription -> "Restore purchases".
 
 Community safety (Home shows public cards from other people):
-- Report: tap "..." on another person's card (or long-press it) -> Report -> choose a reason. The card disappears for you; reports are reviewed within 24 hours and repeated reports make a card private automatically.
+- Report: tap "..." on another person's card (or long-press it) -> Report -> choose a reason. The card disappears for you; reports are reviewed as soon as possible and repeated reports make a card private automatically.
 - Block: same menu -> "Block [initials]" -> Block. Undo in Profile -> Settings -> Blocked people -> Unblock.
 - Every post is screened by an automated moderation check before it becomes public; if the check is unavailable, nothing is published.
 - Users agree to the Terms, which have a zero-tolerance policy for objectionable content and abusive users, on the "Before you start" screen.
