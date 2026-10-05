@@ -8,6 +8,7 @@
  *   pnpm reports suspend <userId>     stop an account publishing; all its cards go private
  *   pnpm reports unsuspend <userId>   let it publish again
  *
+ * The operator site is the usual way (docs/operator-admin.md). This script is the backup.
  * Production Postgres has no public URL, so the image ships this script and it runs in the API container:
  *   railway ssh --service api --environment production node dist/scripts/reports.js [action] [id]
  */

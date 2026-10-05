@@ -1,12 +1,13 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ReportReason } from "../lib/communitySafetyTypes.js";
 import type { Style } from "../types/index.js";
 import { getDb } from "./client.js";
 import { cardReframes, cardReports, cards, users } from "./schema.js";
 
 /**
- * The operator side of community reports (`pnpm reports`). Routes never call this: there is
- * no admin HTTP surface, so review needs direct database access.
+ * The operator side of community reports. `pnpm reports` and `/admin` both call these
+ * functions. Hide, keep, delete, suspend, and unsuspend stay here so the CLI and the
+ * site cannot drift.
  */
 export type PendingReportedCard = {
   cardId: string;
@@ -170,4 +171,104 @@ export async function restorePublishing(
     .where(eq(users.id, userId))
     .returning({ id: users.id });
   return user ? "ok" : "not_found";
+}
+
+export type CardReview = {
+  cardId: string;
+  authorId: string;
+  authorInitials: string;
+  authorEmail: string;
+  authorSuspended: boolean;
+  isPublic: boolean;
+  reportCount: number;
+  reasons: Partial<Record<ReportReason, number>>;
+  firstReportedAt: Date | null;
+  thought: string;
+  reframes: { style: Style; reframe: string }[];
+};
+
+/** One card for the operator, including a card that has no open reports. */
+export async function getCardReview(cardId: string, db: Db = getDb()): Promise<CardReview | null> {
+  const [card] = await db
+    .select({
+      id: cards.id,
+      userId: cards.userId,
+      isPublic: cards.isPublic,
+      thought: cards.thoughtEn,
+      initials: users.initials,
+      email: users.email,
+      suspendedAt: users.publishingSuspendedAt,
+    })
+    .from(cards)
+    .innerJoin(users, eq(users.id, cards.userId))
+    .where(eq(cards.id, cardId));
+  if (!card) {
+    return null;
+  }
+
+  const reports = await db
+    .select({ reason: cardReports.reason, createdAt: cardReports.createdAt })
+    .from(cardReports)
+    .where(and(eq(cardReports.cardId, cardId), isNull(cardReports.reviewedAt)))
+    .orderBy(asc(cardReports.createdAt));
+  const reframes = await db
+    .select({ style: cardReframes.style, reframe: cardReframes.reframe })
+    .from(cardReframes)
+    .where(eq(cardReframes.cardId, cardId))
+    .orderBy(asc(cardReframes.position));
+
+  const reasons: Partial<Record<ReportReason, number>> = {};
+  for (const row of reports) {
+    reasons[row.reason] = (reasons[row.reason] ?? 0) + 1;
+  }
+
+  return {
+    cardId: card.id,
+    authorId: card.userId,
+    authorInitials: card.initials,
+    authorEmail: card.email,
+    authorSuspended: card.suspendedAt !== null,
+    isPublic: card.isPublic,
+    reportCount: reports.length,
+    reasons,
+    firstReportedAt: reports[0]?.createdAt ?? null,
+    thought: card.thought,
+    reframes,
+  };
+}
+
+export type AuthorReview = {
+  userId: string;
+  email: string;
+  initials: string;
+  publishingSuspended: boolean;
+  publicCardCount: number;
+};
+
+export async function getAuthorReview(userId: string, db: Db = getDb()): Promise<AuthorReview | null> {
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      initials: users.initials,
+      suspendedAt: users.publishingSuspendedAt,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!user) {
+    return null;
+  }
+
+  const [countRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(cards)
+    .where(and(eq(cards.userId, userId), eq(cards.isPublic, true)));
+
+  return {
+    userId: user.id,
+    email: user.email,
+    initials: user.initials,
+    publishingSuspended: user.suspendedAt !== null,
+    publicCardCount: countRow?.count ?? 0,
+  };
 }

@@ -4,6 +4,9 @@
   "main": "./worker.ts",
   "compatibility_date": "2026-09-30",
   "workers_dev": true,
+  "vars": {
+    "ANGLES_API_BASE_URL": "https://api-production-61c9.up.railway.app"
+  },
   "assets": {
     "directory": "./out",
     "binding": "ASSETS",

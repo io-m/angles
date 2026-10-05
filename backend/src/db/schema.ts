@@ -577,6 +577,18 @@ export const cardReports = pgTable(
   ],
 );
 
+/** One-time operator magic links. The signed token carries `jti`; this row is what makes it single-use. */
+export const adminLoginChallenges = pgTable(
+  "admin_login_challenges",
+  {
+    jti: text("jti").primaryKey(),
+    email: text("email").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [index("admin_login_challenges_expires_idx").on(table.expiresAt)],
+);
+
 export const categoryProposals = pgTable("category_proposals", {
   slug: text("slug").primaryKey(),
   label: text("label").notNull(),

@@ -7,6 +7,7 @@ import { assertBetterAuthSecret } from "./auth.js";
 import { assertMeteringConfiguration } from "./lib/meteringPolicy.js";
 import { assertProductionConfiguration } from "./lib/productionConfig.js";
 import { runProductionMigrations } from "./db/productionMigrations.js";
+import { readAdminConfig } from "./lib/adminSession.js";
 import { reportAlertConfig } from "./lib/reportAlerts.js";
 
 loadLocalEnvFile();
@@ -28,6 +29,11 @@ async function main(): Promise<void> {
   await assertSchemaCurrent();
   if (process.env.NODE_ENV === "production" && !reportAlertConfig()) {
     console.warn("report_alerts_disabled: set RESEND_API_KEY, REPORT_ALERT_FROM and REPORT_ALERT_TO");
+  }
+  if (process.env.NODE_ENV === "production" && !readAdminConfig()) {
+    console.warn(
+      "admin_disabled: set ADMIN_OPERATOR_EMAILS, ADMIN_SESSION_SECRET, and ADMIN_PROXY_SECRET",
+    );
   }
 
   const port = parsePort(process.env.PORT);
