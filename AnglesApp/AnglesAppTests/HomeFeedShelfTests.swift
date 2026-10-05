@@ -173,9 +173,77 @@ struct HomeFeedShelfTests {
         #expect(board.cards(on: .stoic).first?.id == posted.id)
         #expect(board.cards(on: .humorous).isEmpty)
     }
+
+    @Test("a private owner library record evicts every shelf and its anchor")
+    func privateOwnerRecordEvictsPublishedAnchor() {
+        var board = HomeFeedBoard()
+        let existing = card(.stoic, day: 1)
+        _ = board.replace(
+            [existing], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        _ = board.replace(
+            [existing], on: .stoic, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        let posted = card(.stoic, day: 3, isOwner: true)
+        board.insertPublishedAtFront(posted)
+
+        _ = board.replace(
+            [existing], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        #expect(board.cards(on: .all).first?.id == posted.id)
+        #expect(board.anchors[posted.id] != nil)
+
+        var hidden = posted
+        hidden.isPublic = false
+        hidden.moderationHidden = true
+        board.reconcileOwnerLibraryCards([hidden])
+
+        #expect(board.record(posted.id) == nil)
+        #expect(board.anchors[posted.id] == nil)
+        #expect(!board.cards(on: .all).contains(where: { $0.id == posted.id }))
+        #expect(!board.cards(on: .stoic).contains(where: { $0.id == posted.id }))
+        _ = board.replace(
+            [existing], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        #expect(!board.cards(on: .all).contains(where: { $0.id == posted.id }))
+    }
+
+    @Test("a still-public posted owner card survives refresh at the top")
+    func publicOwnerAnchorSurvivesRefresh() {
+        var board = HomeFeedBoard()
+        let existing = card(.optimistic, day: 1)
+        _ = board.replace(
+            [existing], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        let posted = card(.stoic, day: 3, isOwner: true)
+        board.insertPublishedAtFront(posted)
+
+        _ = board.replace(
+            [existing], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        board.reconcileOwnerLibraryCards([posted])
+        _ = board.replace(
+            [existing], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+
+        #expect(board.cards(on: .all).first?.id == posted.id)
+        #expect(board.anchors[posted.id]?.isPublic == true)
+    }
 }
 
-private func card(_ style: Style, day: Int) -> HomeCard {
+private func card(
+    _ style: Style,
+    day: Int,
+    isPublic: Bool = true,
+    isOwner: Bool = false
+) -> HomeCard {
     HomeCard(
         id: UUID(),
         createdAt: Date(timeIntervalSince1970: TimeInterval(day) * 86_400),
@@ -188,8 +256,8 @@ private func card(_ style: Style, day: Int) -> HomeCard {
             )
         ],
         spotlightStyle: style,
-        isPublic: true,
-        isOwner: false,
+        isPublic: isPublic,
+        isOwner: isOwner,
         authorId: UUID(),
         authorInitials: "AL"
     )

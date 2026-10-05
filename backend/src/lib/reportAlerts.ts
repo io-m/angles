@@ -58,6 +58,9 @@ export async function sendReportAlert(
   fetchImpl: typeof fetch = fetch,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<"sent" | "skipped"> {
+  if (env.VITEST === "true") {
+    return "skipped";
+  }
   const config = reportAlertConfig(env);
   if (!config) {
     return "skipped";

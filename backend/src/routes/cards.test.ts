@@ -617,15 +617,16 @@ describe("POST /cards/:id/report", () => {
   });
 
   it("alerts the operator once for a new report", async () => {
-    vi.mocked(reportCard).mockResolvedValue({ ok: true, created: true, madePrivate: true });
+    vi.mocked(reportCard).mockResolvedValue({ ok: true, created: true, madePrivate: false });
     const response = await app.request(
       jsonRequest(`/cards/${CARD_ID}/report`, "POST", { reason: "hate" }),
     );
     expect(response.status).toBe(200);
+    expect(announceReport).toHaveBeenCalledTimes(1);
     expect(announceReport).toHaveBeenCalledWith({
       cardId: CARD_ID,
       reason: "hate",
-      madePrivate: true,
+      madePrivate: false,
     });
   });
 

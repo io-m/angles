@@ -427,6 +427,11 @@ export const cards = pgTable(
     model: text("model").notNull(),
     spotlightStyle: styleEnum("spotlight_style").notNull(),
     isPublic: boolean("is_public").notNull().default(false),
+    /**
+     * Set when an operator hides the card. Clears when an operator publishes it again.
+     * While set, the author cannot make it public, and their library says why.
+     */
+    moderationHiddenAt: timestamp("moderation_hidden_at", { withTimezone: true, mode: "date" }),
     /** The cook signature this card was saved from. Null only on cards saved before it existed. */
     cookSignature: text("cook_signature"),
     // Millisecond precision so the `createdAt|id` page cursor round-trips through a JS Date exactly.

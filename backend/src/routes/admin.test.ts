@@ -16,6 +16,7 @@ vi.mock("../db/reportReview.js", () => ({
   getCardReview: vi.fn(),
   getAuthorReview: vi.fn(),
   resolveCardReports: vi.fn(),
+  publishHiddenCard: vi.fn(),
   deleteReportedCard: vi.fn(),
   suspendPublishing: vi.fn(),
   restorePublishing: vi.fn(),
@@ -36,6 +37,7 @@ const {
   listAuthorPublicCards,
   listPendingReports,
   listReviewedReports,
+  publishHiddenCard,
   resolveCardReports,
   restorePublishing,
   searchAdmin,
@@ -218,18 +220,29 @@ describe("admin report actions", () => {
     });
   });
 
-  it("keeps, hides, and deletes a card", async () => {
+  it("keeps, hides, publishes, and deletes a card", async () => {
     vi.mocked(resolveCardReports).mockResolvedValue("ok");
+    vi.mocked(publishHiddenCard).mockResolvedValue("ok");
     vi.mocked(deleteReportedCard).mockResolvedValue(true);
     const keep = await authed(`/admin/reports/${CARD_ID}/keep`, { method: "POST" });
     const hide = await authed(`/admin/reports/${CARD_ID}/hide`, { method: "POST" });
+    const published = await authed(`/admin/reports/${CARD_ID}/publish`, { method: "POST" });
     const deleted = await authed(`/admin/reports/${CARD_ID}/delete`, { method: "POST" });
     expect(keep.status).toBe(200);
     expect(hide.status).toBe(200);
+    expect(published.status).toBe(200);
     expect(deleted.status).toBe(200);
     expect(resolveCardReports).toHaveBeenNthCalledWith(1, CARD_ID, "kept");
     expect(resolveCardReports).toHaveBeenNthCalledWith(2, CARD_ID, "hidden");
+    expect(publishHiddenCard).toHaveBeenCalledWith(CARD_ID);
     expect(deleteReportedCard).toHaveBeenCalledWith(CARD_ID);
+  });
+
+  it("returns not found when publishing a missing card", async () => {
+    vi.mocked(publishHiddenCard).mockResolvedValue("not_found");
+    const response = await authed(`/admin/reports/${CARD_ID}/publish`, { method: "POST" });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "No such card", code: "NOT_FOUND" });
   });
 
   it("suspends and restores publishing", async () => {

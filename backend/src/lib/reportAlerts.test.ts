@@ -9,6 +9,12 @@ const env = {
 } as NodeJS.ProcessEnv;
 
 describe("report alerts", () => {
+  it("overrides local mail credentials in the Vitest process", () => {
+    expect(process.env.RESEND_API_KEY).toBe("");
+    expect(process.env.REPORT_ALERT_FROM).toBe("");
+    expect(process.env.REPORT_ALERT_TO).toBe("");
+  });
+
   it("is off until the key, sender and recipient are all set", () => {
     expect(reportAlertConfig({} as NodeJS.ProcessEnv)).toBeNull();
     expect(reportAlertConfig({ ...env, REPORT_ALERT_TO: " , " })).toBeNull();
@@ -19,6 +25,18 @@ describe("report alerts", () => {
     const fetchImpl = vi.fn<typeof fetch>();
     await expect(
       sendReportAlert({ cardId: CARD_ID, reason: "spam", madePrivate: false }, fetchImpl, {}),
+    ).resolves.toBe("skipped");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("cannot send during Vitest even when mail is configured", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    await expect(
+      sendReportAlert(
+        { cardId: CARD_ID, reason: "harassment", madePrivate: false },
+        fetchImpl,
+        { ...env, VITEST: "true" },
+      ),
     ).resolves.toBe("skipped");
     expect(fetchImpl).not.toHaveBeenCalled();
   });

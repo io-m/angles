@@ -179,6 +179,10 @@ export function toStoredCard(
     author: authorOf(row.userId, row.user, !isOwner && followedIds.has(row.userId)),
   };
 
+  if (isOwner && !row.isPublic && row.moderationHiddenAt) {
+    stored.moderationHidden = true;
+  }
+
   if (row.thoughtOriginal) {
     stored.thoughtOriginal = row.thoughtOriginal;
   }

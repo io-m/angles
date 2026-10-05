@@ -255,6 +255,8 @@ struct ReframeCardView: View, Equatable {
         VStack(alignment: .leading, spacing: 0) {
             storedHeader
 
+            moderationNotice
+
             ReframeCopyStack(
                 thought: displayedThought,
                 answer: displayedAnswer,
@@ -305,6 +307,8 @@ struct ReframeCardView: View, Equatable {
     private func tallColumn(scrollsAnswer: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             tallStoredHeader
+
+            moderationNotice
 
             ReframeCopyStack(
                 thought: displayedThought,
@@ -364,6 +368,8 @@ struct ReframeCardView: View, Equatable {
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             favoriteHeader
+
+            moderationNotice
 
             favoriteCopyBlock(copy: copy, font: font, foreground: foreground)
 
@@ -485,6 +491,24 @@ struct ReframeCardView: View, Equatable {
         }
         .padding(.horizontal, ReframeCardMetrics.chromeInset)
         .padding(.top, ReframeCardMetrics.chromeInset)
+    }
+
+    /// The author's private library, when an operator removed the post.
+    @ViewBuilder
+    private var moderationNotice: some View {
+        if let notice = card.moderationNoticeText {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.caption.weight(.semibold))
+                Text(notice)
+                    .font(.caption.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(theme.ink)
+            .padding(.horizontal, ReframeCardMetrics.chromeInset)
+            .padding(.top, 10)
+            .accessibilityElement(children: .combine)
+        }
     }
 
     private var tallStoredHeader: some View {
@@ -793,14 +817,16 @@ struct ReframeCardView: View, Equatable {
                     runAfterActionsClose(onRemoveFromBoard)
                 }
             case .owner:
-                cardActionRow(
-                    card.isPublic ? "Make private" : "Make public",
-                    systemImage: card.isPublic ? "lock.fill" : "globe"
-                ) {
-                    let makePublic = !card.isPublic
-                    runAfterActionsClose { onSetPublic(makePublic) }
+                if card.allowsOwnerVisibilityChange {
+                    cardActionRow(
+                        card.isPublic ? "Make private" : "Make public",
+                        systemImage: card.isPublic ? "lock.fill" : "globe"
+                    ) {
+                        let makePublic = !card.isPublic
+                        runAfterActionsClose { onSetPublic(makePublic) }
+                    }
+                    actionDivider()
                 }
-                actionDivider()
                 cardActionRow("Delete", systemImage: "trash", color: Self.blockRed) {
                     runAfterActionsClose { showDeleteConfirm = true }
                 }

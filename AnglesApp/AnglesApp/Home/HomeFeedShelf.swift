@@ -96,6 +96,22 @@ struct HomeFeedBoard {
         }
     }
 
+    /// Reconciles Home's cached owner cards with the authoritative library page.
+    /// A confirmed-private card also loses its anchor, so later feed replacements
+    /// cannot resurrect the stale public copy. Public anchors keep their position.
+    mutating func reconcileOwnerLibraryCards(_ cards: [HomeCard]) {
+        for card in cards where card.isOwner {
+            if card.isPublic {
+                guard records[card.id] != nil || anchors[card.id] != nil else {
+                    continue
+                }
+                remember(card)
+            } else {
+                remove(card.id)
+            }
+        }
+    }
+
     @discardableResult
     mutating func update(_ id: UUID, _ body: (inout HomeCard) -> Void) -> Bool {
         guard var card = records[id] else {

@@ -662,6 +662,8 @@ struct StoredCard: Decodable, Equatable, Sendable {
     let model: String
     let spotlightStyle: Style
     let isPublic: Bool
+    /// True when an operator hid this card. Only the owner's copy ever carries it.
+    let moderationHidden: Bool?
     let createdAt: String
     let isOwner: Bool
     let author: StoredCardAuthor
@@ -686,6 +688,7 @@ struct StoredCard: Decodable, Equatable, Sendable {
         case model
         case spotlightStyle
         case isPublic
+        case moderationHidden
         case createdAt
         case isOwner
         case author
@@ -739,6 +742,7 @@ struct StoredCard: Decodable, Equatable, Sendable {
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
         spotlightStyle = try container.decode(Style.self, forKey: .spotlightStyle)
         isPublic = try container.decodeIfPresent(Bool.self, forKey: .isPublic) ?? false
+        moderationHidden = try container.decodeIfPresent(Bool.self, forKey: .moderationHidden)
         createdAt = try container.decode(String.self, forKey: .createdAt)
         isOwner = try container.decodeIfPresent(Bool.self, forKey: .isOwner) ?? true
         author = try container.decodeIfPresent(StoredCardAuthor.self, forKey: .author)

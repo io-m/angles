@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   CATEGORIES,
   STYLES,
@@ -53,6 +53,14 @@ function loadTestDatabaseUrl(): void {
 loadTestDatabaseUrl();
 const testUrl = process.env.DATABASE_URL_TEST;
 if (testUrl) {
+  const parsed = new URL(testUrl);
+  const database = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
+  if (
+    !["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname) ||
+    database !== "angles_test"
+  ) {
+    throw new Error("DATABASE_URL_TEST must point to local database angles_test");
+  }
   process.env.DATABASE_URL = testUrl;
 }
 
@@ -60,7 +68,8 @@ const { closePool, getDb, getSql } = await import("./client.js");
 const { createCard, deleteCard, findOwnCardByCookSignature, getCard, listCards, patchCard } =
   await import("./cards.js");
 const { acceptOwnerTerms, deleteOwnerAccount } = await import("./users.js");
-const { blockUser, reportCard, unblockUser } = await import("./communitySafety.js");
+const { blockUser, cardPublicationLocked, reportCard, unblockUser } =
+  await import("./communitySafety.js");
 const {
   SubscriptionOwnershipError,
   getSubscription,
@@ -84,6 +93,7 @@ const { followUser, unfollowUser } = await import("./follows.js");
 const {
   deleteReportedCard,
   listPendingReports,
+  publishHiddenCard,
   resolveCardReports,
   restorePublishing,
   suspendPublishing,
@@ -2063,25 +2073,12 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(await getDb().select().from(userBlocks)).toHaveLength(1);
   });
 
-  it("hides a report immediately and locks publication at three unique reporters", async () => {
-    const reported = await insertOtherCard({
-      thought: "A public card that receives community reports.",
-      isPublic: true,
-    });
-
-    expect(await saveFeedAngle(reported, "stoic")).toMatchObject({ ok: true });
-    expect(await reportCard(reported, "spam")).toEqual({
-      ok: true,
-      created: true,
-      madePrivate: false,
-    });
-    expect(await reportCard(reported, "hate")).toEqual({ ok: true, created: false });
-    expect((await listFeed({ limit: 50 })).map((card) => card.id)).not.toContain(reported);
-    expect((await listCards({ limit: 50 })).map((card) => card.id)).not.toContain(reported);
-
+  it("keeps one HTTP report public, auto-privates at three, and Keep unlocks without republishing", async () => {
+    const owned = await createCard({ ...baseInput, isPublic: true });
     const reporterIds = [
       "00000000-0000-4000-8000-000000000077",
       "00000000-0000-4000-8000-000000000088",
+      "00000000-0000-4000-8000-000000000099",
     ];
     await getDb()
       .insert(users)
@@ -2094,21 +2091,42 @@ describe.skipIf(!testUrl)("cards integration", () => {
         })),
       )
       .onConflictDoNothing();
-    for (const reporterId of reporterIds) {
-      const response = await safetyApp.request(`/cards/${reported}/report`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer test:${reporterId}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ reason: "harassment" }),
-      });
-      expect(response.status).toBe(200);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network disabled"));
+    try {
+      for (const [index, reporterId] of reporterIds.entries()) {
+        const response = await safetyApp.request(`/cards/${owned.id}/report`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer test:${reporterId}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ reason: "harassment" }),
+        });
+        expect(response.status).toBe(200);
+        const row = await getDb().query.cards.findFirst({ where: eq(cards.id, owned.id) });
+        expect(row?.isPublic).toBe(index < 2);
+        if (index === 0) {
+          expect(await cardPublicationLocked(owned.id)).toBe(false);
+        }
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
     }
 
-    const row = await getDb().query.cards.findFirst({ where: eq(cards.id, reported) });
-    expect(row?.isPublic).toBe(false);
+    const autoPrivate = await getDb().query.cards.findFirst({ where: eq(cards.id, owned.id) });
+    expect(autoPrivate?.isPublic).toBe(false);
+    expect(autoPrivate?.moderationHiddenAt).toBeNull();
+    expect((await getCard(owned.id))?.moderationHidden).toBeUndefined();
+    expect(await cardPublicationLocked(owned.id)).toBe(true);
     expect(await getDb().select().from(cardReports)).toHaveLength(3);
+
+    expect(await resolveCardReports(owned.id, "kept")).toBe("ok");
+    expect((await getDb().query.cards.findFirst({ where: eq(cards.id, owned.id) }))?.isPublic).toBe(
+      false,
+    );
+    expect(await cardPublicationLocked(owned.id)).toBe(false);
+    expect(await patchCard(owned.id, { isPublic: true })).toMatchObject({ ok: true });
   });
 
   it("prevents republishing an owned card with three reports", async () => {
@@ -2197,19 +2215,95 @@ describe.skipIf(!testUrl)("cards integration", () => {
       expect(await patchCard(owned.id, { isPublic: true })).toMatchObject({ ok: true });
     });
 
-    it("hide makes a card private and keeps it from coming back after one report", async () => {
+    it("hide stamps the card, upholds reports, blocks the author, and removes it from feed", async () => {
       const owned = await createCard({ ...baseInput, isPublic: true });
-      await getDb()
-        .insert(users)
-        .values({ id: reviewerIds[0], initials: "RP", name: "Reporter", email: `seed-${reviewerIds[0]}@angles.invalid` })
-        .onConflictDoNothing();
-      await getDb()
-        .insert(cardReports)
-        .values({ reporterId: reviewerIds[0] as string, cardId: owned.id, reason: "hate" });
+      await reportFromAll(owned.id);
 
       expect(await resolveCardReports(owned.id, "hidden")).toBe("ok");
       const row = await getDb().query.cards.findFirst({ where: eq(cards.id, owned.id) });
       expect(row?.isPublic).toBe(false);
+      expect(row?.moderationHiddenAt).toBeInstanceOf(Date);
+      const reports = await getDb().select().from(cardReports);
+      expect(reports).toHaveLength(3);
+      expect(reports.every((report) => report.resolution === "hidden")).toBe(true);
+      expect(reports.every((report) => report.reviewedAt instanceof Date)).toBe(true);
+      const hidden = await getCard(owned.id);
+      expect(hidden?.moderationHidden).toBe(true);
+      const publish = await safetyApp.request(`/cards/${owned.id}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer test:${DEV_USER_ID}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ isPublic: true }),
+      });
+      expect(publish.status).toBe(400);
+      await expect(publish.json()).resolves.toMatchObject({ code: "PUBLIC_CONTENT_NOT_ALLOWED" });
+      const strangerFeed = await safetyApp.request("/feed?limit=50", {
+        headers: { Authorization: `Bearer test:${OTHER_USER_ID}` },
+      });
+      expect(strangerFeed.status).toBe(200);
+      const feedBody = (await strangerFeed.json()) as { cards: { id: string }[] };
+      expect(feedBody.cards.map((card) => card.id)).not.toContain(owned.id);
+    });
+
+    it("operator publish clears the hide, preserves history, and can override suspension", async () => {
+      const owned = await createCard({ ...baseInput, isPublic: true });
+      await reportFromAll(owned.id);
+      expect(await resolveCardReports(owned.id, "hidden")).toBe("ok");
+      expect(await suspendPublishing(DEV_USER_ID)).toBe("ok");
+      expect(await publishHiddenCard(owned.id)).toBe("ok");
+      const restored = await getCard(owned.id);
+      expect(restored?.isPublic).toBe(true);
+      expect(restored?.moderationHidden).toBeUndefined();
+      expect(await getDb().select().from(cardReports)).toHaveLength(3);
+      const strangerFeed = await safetyApp.request("/feed?limit=50", {
+        headers: { Authorization: `Bearer test:${OTHER_USER_ID}` },
+      });
+      const feedBody = (await strangerFeed.json()) as { cards: { id: string }[] };
+      expect(feedBody.cards.map((card) => card.id)).toContain(owned.id);
+
+      expect(await patchCard(owned.id, { isPublic: false })).toMatchObject({ ok: true });
+      expect(await patchCard(owned.id, { isPublic: true })).toEqual({
+        ok: false,
+        reason: "publication_blocked",
+      });
+      expect(await restorePublishing(DEV_USER_ID)).toBe("ok");
+      expect(await patchCard(owned.id, { isPublic: true })).toMatchObject({ ok: true });
+    });
+
+    it("backfills the latest legacy hidden review and keeps the card locked", async () => {
+      const owned = await createCard({ ...baseInput, isPublic: false });
+      await reportFromAll(owned.id);
+      const reviewed = [
+        new Date("2026-09-01T10:00:00.000Z"),
+        new Date("2026-09-03T10:00:00.000Z"),
+        new Date("2026-09-02T10:00:00.000Z"),
+      ];
+      for (const [index, reporterId] of reviewerIds.entries()) {
+        await getDb()
+          .update(cardReports)
+          .set({ resolution: "hidden", reviewedAt: reviewed[index] })
+          .where(
+            and(eq(cardReports.cardId, owned.id), eq(cardReports.reporterId, reporterId)),
+          );
+      }
+      await getDb()
+        .update(cards)
+        .set({ moderationHiddenAt: null })
+        .where(eq(cards.id, owned.id));
+
+      const migration = readFileSync(
+        resolve(process.cwd(), "drizzle/0021_moderation_hidden.sql"),
+        "utf8",
+      );
+      const backfill = migration.split("--> statement-breakpoint")[1]?.trim();
+      expect(backfill).toBeTruthy();
+      await getSql().unsafe(backfill as string);
+
+      const row = await getDb().query.cards.findFirst({ where: eq(cards.id, owned.id) });
+      expect(row?.moderationHiddenAt?.toISOString()).toBe("2026-09-03T10:00:00.000Z");
+      expect((await getCard(owned.id))?.moderationHidden).toBe(true);
       expect(await patchCard(owned.id, { isPublic: true })).toEqual({
         ok: false,
         reason: "publication_blocked",
@@ -2223,12 +2317,16 @@ describe.skipIf(!testUrl)("cards integration", () => {
       expect(await suspendPublishing(DEV_USER_ID)).toBe("ok");
       const rows = await getDb().query.cards.findMany({ where: eq(cards.userId, DEV_USER_ID) });
       expect(rows.every((row) => !row.isPublic)).toBe(true);
+      expect(rows.every((row) => row.moderationHiddenAt === null)).toBe(true);
       expect(await patchCard(first.id, { isPublic: true })).toEqual({
         ok: false,
         reason: "publication_blocked",
       });
 
       expect(await restorePublishing(DEV_USER_ID)).toBe("ok");
+      expect(
+        (await getDb().query.cards.findFirst({ where: eq(cards.id, second.id) }))?.isPublic,
+      ).toBe(false);
       expect(await patchCard(second.id, { isPublic: true })).toMatchObject({ ok: true });
     });
 

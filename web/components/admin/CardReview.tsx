@@ -18,12 +18,16 @@ import {
 } from '@/lib/adminApi';
 import { cardHref, isUuid, matchesQueue, readFilters, styleLabel, type QueueFilters } from '@/lib/adminLabels';
 
-type ConfirmKind = 'hide' | 'delete' | 'suspend';
+type ConfirmKind = 'hide' | 'publish' | 'delete' | 'suspend';
 
 const CONFIRM: Record<ConfirmKind, { title: string; label: string }> = {
   hide: {
-    title: 'Hide this card? It becomes private and cannot be published again.',
+    title: 'Hide this card? It becomes private, the author is told it broke the rules, and they cannot publish it again until an operator does.',
     label: 'Hide card',
+  },
+  publish: {
+    title: 'Make this card public again? It returns to Home, and the author can change it after that.',
+    label: 'Make public',
   },
   delete: {
     title: 'Delete this card? This cannot be undone.',
@@ -257,12 +261,18 @@ export function CardReview() {
                       Cancel
                     </button>
                     <button
-                      className="ops-btn ops-btn-danger"
+                      className={confirm === 'publish' ? 'ops-btn ops-btn-primary' : 'ops-btn ops-btn-danger'}
                       type="button"
                       disabled={busy}
                       onClick={() => {
                         if (confirm === 'hide') {
                           void run(() => adminFetch(`/api/admin/reports/${card.cardId}/hide`, { method: 'POST' }), 'Card hidden.', true);
+                        } else if (confirm === 'publish') {
+                          void run(
+                            () => adminFetch(`/api/admin/reports/${card.cardId}/publish`, { method: 'POST' }),
+                            'Card is public again.',
+                            false,
+                          );
                         } else if (confirm === 'delete') {
                           void run(
                             async () => {
@@ -299,6 +309,11 @@ export function CardReview() {
                   <button className="ops-btn ops-btn-secondary" type="button" disabled={busy} onClick={() => setConfirm('hide')}>
                     Hide
                   </button>
+                  {card.isPublic ? null : (
+                    <button className="ops-btn ops-btn-primary" type="button" disabled={busy} onClick={() => setConfirm('publish')}>
+                      Make public
+                    </button>
+                  )}
                   <button className="ops-btn ops-btn-danger" type="button" disabled={busy} onClick={() => setConfirm('delete')}>
                     Delete
                   </button>

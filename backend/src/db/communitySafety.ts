@@ -41,27 +41,34 @@ export function notReportedBy(viewerId: string, cardId: AnyPgColumn): SQL {
   )`;
 }
 
-/** Unique open or upheld reports that make a card private and keep it private. */
+/** Open reports that make a card private until an operator reviews them. */
 export const AUTO_PRIVATE_REPORTS = 3;
 
 /**
- * A card cannot be (re)published once an operator hid it, or while it has
- * `AUTO_PRIVATE_REPORTS` reports an operator has not dismissed.
+ * A card cannot be (re)published while an operator hide is still in force
+ * (`cards.moderation_hidden_at`), or while it has `AUTO_PRIVATE_REPORTS`
+ * reports an operator has not reviewed. A past `hidden` resolution does not
+ * lock the card once an operator publishes it again.
  */
 export async function cardPublicationLocked(
   cardId: string,
   db: Selectable = getDb(),
 ): Promise<boolean> {
+  const [card] = await db
+    .select({ hiddenAt: cards.moderationHiddenAt })
+    .from(cards)
+    .where(eq(cards.id, cardId))
+    .limit(1);
+  if (card?.hiddenAt != null) {
+    return true;
+  }
   const [row] = await db
     .select({
-      counting: sql<number>`count(*) filter (where ${cardReports.resolution} is distinct from 'kept')`.mapWith(
-        Number,
-      ),
-      hidden: sql<number>`count(*) filter (where ${cardReports.resolution} = 'hidden')`.mapWith(Number),
+      open: sql<number>`count(*) filter (where ${cardReports.resolution} is null)`.mapWith(Number),
     })
     .from(cardReports)
     .where(eq(cardReports.cardId, cardId));
-  return (row?.hidden ?? 0) > 0 || (row?.counting ?? 0) >= AUTO_PRIVATE_REPORTS;
+  return (row?.open ?? 0) >= AUTO_PRIVATE_REPORTS;
 }
 
 export async function publishingSuspended(

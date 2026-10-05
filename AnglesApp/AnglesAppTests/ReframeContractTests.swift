@@ -142,6 +142,20 @@ struct SafetyContractTests {
         #expect(stored.result == ReframeResult(style: .stoic, reframe: "It passed.", reframeOriginal: "Prošlo je."))
     }
 
+    @Test func moderationHiddenIsOptionalAndControlsTheOwnerPresentation() throws {
+        let visibleJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isFavorite":false}],"spotlightStyle":"stoic","isPublic":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
+        let visible = try JSONDecoder().decode(StoredCard.self, from: Data(visibleJSON.utf8))
+        #expect(visible.moderationHidden == nil)
+        #expect(HomeCard(stored: visible)?.moderationHidden == false)
+
+        let hiddenJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isFavorite":false}],"spotlightStyle":"stoic","isPublic":false,"moderationHidden":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
+        let hidden = try JSONDecoder().decode(StoredCard.self, from: Data(hiddenJSON.utf8))
+        let card = try #require(HomeCard(stored: hidden))
+        #expect(hidden.moderationHidden == true)
+        #expect(card.moderationNoticeText == "Hidden by Angles. This post broke the community rules.")
+        #expect(!card.allowsOwnerVisibilityChange)
+    }
+
     @Test func signedDistortionsEchoUnchangedEvenWhenUnknown() throws {
         let json = #"{"category":"work","tags":[],"intensity":3,"timeframe":"past","emotions":[],"distortions":["mind_reading","a_future_trap"],"safety":"none","inputLanguage":"en","skippedStyles":[],"matching":{"category":"work","tags":[],"intensityBand":"mid"}}"#
         let meta = try JSONDecoder().decode(ReframeMeta.self, from: Data(json.utf8))

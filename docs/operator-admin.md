@@ -1,12 +1,14 @@
 # Operator admin
 
-Private review for Angles reports. Sign in at `https://useangles.app/admin`. The home page is an overview with a sidebar (Open queue, Reviewed, sign out): open, private, suspended, and reviewed counts, then one tile per report reason. Tapping a tile filters the list. Search takes a card id, a user id, an email, or a few words from the thought. A card opens as two columns: the thought and answers with Keep, Hide, and Delete on the left, the author and their other public cards on the right. Only addresses in `ADMIN_OPERATOR_EMAILS` receive a link. Everyone else gets the same “check your inbox” page and no email.
+Private review for Angles reports. Sign in at `https://useangles.app/admin`. The home page is an overview with a sidebar (Open queue, Reviewed, sign out): open, private, suspended, and reviewed counts, then one tile per report reason. Tapping a tile filters the list. Search takes a card id, a user id, an email, or a few words from the thought. A card opens as two columns: the thought and answers with Keep, Hide, Make public (when the card is private), and Delete on the left, the author and their other public cards on the right. Keep and Hide advance the filtered queue; Make public reloads the same card. Only addresses in `ADMIN_OPERATOR_EMAILS` receive a link. Everyone else gets the same “check your inbox” page and no email.
 
 Report mail is unchanged: ids and a reason, no card text. Open the card from that id on the site. `pnpm reports` over SSH still works when the site is down:
 
 ```bash
 railway ssh --service api --environment production node dist/scripts/reports.js
 railway ssh --service api --environment production node dist/scripts/reports.js keep <cardId>
+railway ssh --service api --environment production node dist/scripts/reports.js hide <cardId>
+railway ssh --service api --environment production node dist/scripts/reports.js publish <cardId>
 ```
 
 ## Auth
@@ -34,14 +36,15 @@ The marketing site is a static export. It does not talk to Postgres. `web/worker
 | GET | `/admin/search?q=` | Card or user id, or a thought or email fragment. |
 | GET | `/admin/reports/:cardId` | Thought, reframes, and author. Works with zero open reports. |
 | POST | `/admin/reports/:cardId/keep` | Dismisses open reports. Does not republish. |
-| POST | `/admin/reports/:cardId/hide` | Private, and the card cannot be published again. |
+| POST | `/admin/reports/:cardId/hide` | Private. The author sees that Angles hid it, and cannot publish it until an operator does. |
+| POST | `/admin/reports/:cardId/publish` | Public again. Lifts the operator hide. Report history stays. |
 | POST | `/admin/reports/:cardId/delete` | Deletes the card. |
 | GET | `/admin/users/:userId` | Email, suspended flag, public card count. |
 | GET | `/admin/users/:userId/cards` | That account's public cards, as excerpts. |
 | POST | `/admin/users/:userId/suspend` | Stops publishing. Cards go private. |
 | POST | `/admin/users/:userId/unsuspend` | Lets the account publish again. Cards stay private. |
 
-Hide, keep, delete, suspend, and unsuspend are the same functions as `pnpm reports` (`backend/src/db/reportReview.ts`).
+Hide, publish, keep, delete, suspend, and unsuspend are the same functions as `pnpm reports` (`backend/src/db/reportReview.ts`). `pnpm reports publish <cardId>` is the SSH form of Make public.
 
 Unknown session: 401 `UNAUTHORIZED`. Email no longer allowlisted: 403 `FORBIDDEN`. Missing admin env: 503 `ADMIN_DISABLED`. That 503 does not take the API down for the app.
 
@@ -58,7 +61,7 @@ Unknown session: 401 `UNAUTHORIZED`. Email no longer allowlisted: 403 `FORBIDDEN
 
 Unset session secret or allowlist: startup logs `admin_disabled`. Cooks keep working.
 
-Redeploy the `api` service after setting the variables so migration `0020_admin_login_challenges` runs.
+Redeploy the `api` service after setting the variables so migrations `0020_admin_login_challenges` and `0021_moderation_hidden` run.
 
 ## Cloudflare (`angles-web`)
 

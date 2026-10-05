@@ -7,6 +7,9 @@ export default defineConfig({
     env: {
       COOK_SIGNING_KEY: "test-cook-signing-key-0123456789abcdef",
       BETTER_AUTH_SECRET: "vitest-better-auth-secret-32chars-min",
+      RESEND_API_KEY: "",
+      REPORT_ALERT_FROM: "",
+      REPORT_ALERT_TO: "",
     },
   },
 });

@@ -281,6 +281,11 @@ export type StoredCard = {
   isPublic: boolean;
   createdAt: string;
   isOwner: boolean;
+  /**
+   * True only on the owner's own card, and only while an operator hide is in force.
+   * Absent everywhere else.
+   */
+  moderationHidden?: boolean;
   author: StoredCardAuthor;
 };
 

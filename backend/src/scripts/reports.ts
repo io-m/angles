@@ -2,7 +2,8 @@
  * Review community reports. The Terms promise review as soon as possible.
  *
  *   pnpm reports                      list cards with open reports, oldest first
- *   pnpm reports hide <cardId>        make it private for good and uphold its reports
+ *   pnpm reports hide <cardId>        make it private until publish and uphold its reports
+ *   pnpm reports publish <cardId>     put it back on Home and lift the operator hide
  *   pnpm reports keep <cardId>        dismiss its reports; it stays as it is
  *   pnpm reports delete <cardId>      delete the card
  *   pnpm reports suspend <userId>     stop an account publishing; all its cards go private
@@ -16,6 +17,7 @@ import { closePool } from "../db/client.js";
 import {
   deleteReportedCard,
   listPendingReports,
+  publishHiddenCard,
   resolveCardReports,
   restorePublishing,
   suspendPublishing,
@@ -81,6 +83,11 @@ async function main(): Promise<void> {
       console.log(result === "ok" ? `${action === "hide" ? "Hid" : "Kept"} card ${cardId}.` : "No such card.");
       return;
     }
+    case "publish": {
+      const cardId = requireId(target, "cardId");
+      console.log((await publishHiddenCard(cardId)) === "ok" ? `Published card ${cardId}.` : "No such card.");
+      return;
+    }
     case "delete": {
       const cardId = requireId(target, "cardId");
       console.log((await deleteReportedCard(cardId)) ? `Deleted card ${cardId}.` : "No such card.");
@@ -95,7 +102,7 @@ async function main(): Promise<void> {
       return;
     }
     default:
-      throw new Error(`unknown action "${action}": list, hide, keep, delete, suspend, unsuspend`);
+      throw new Error(`unknown action "${action}": list, hide, publish, keep, delete, suspend, unsuspend`);
   }
 }
 

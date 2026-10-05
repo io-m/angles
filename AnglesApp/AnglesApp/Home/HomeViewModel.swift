@@ -22,6 +22,8 @@ struct HomeCard: Identifiable, Equatable {
     /// Cleaned thought in the language it was typed in, when that is not English.
     var thoughtOriginal: String?
     var isPublic: Bool
+    /// An operator hid this card. The author sees why, and cannot publish it.
+    var moderationHidden: Bool
     var isOwner: Bool
     /// Stable author id. Nil when the payload has no UUID, so the avatar does not navigate.
     var authorId: UUID?
@@ -41,6 +43,7 @@ struct HomeCard: Identifiable, Equatable {
         spotlightStyle: Style = .stoic,
         thoughtOriginal: String? = nil,
         isPublic: Bool = false,
+        moderationHidden: Bool = false,
         isOwner: Bool = true,
         authorId: UUID? = nil,
         authorInitials: String = UserInitials.letters,
@@ -55,6 +58,7 @@ struct HomeCard: Identifiable, Equatable {
         self.spotlightStyle = spotlightStyle
         self.thoughtOriginal = thoughtOriginal
         self.isPublic = isPublic
+        self.moderationHidden = moderationHidden
         self.isOwner = isOwner
         self.authorId = authorId
         self.authorInitials = authorInitials
@@ -88,6 +92,7 @@ struct HomeCard: Identifiable, Equatable {
             spotlightStyle: stored.spotlightStyle,
             thoughtOriginal: stored.thoughtOriginal,
             isPublic: stored.isPublic,
+            moderationHidden: stored.moderationHidden ?? false,
             isOwner: stored.isOwner,
             authorId: UUID(uuidString: stored.author.id),
             authorInitials: stored.author.initials,
@@ -99,6 +104,17 @@ struct HomeCard: Identifiable, Equatable {
 
     var thought: String {
         slides.first?.thought ?? ""
+    }
+
+    static let moderationHiddenMessage =
+        "Hidden by Angles. This post broke the community rules."
+
+    var moderationNoticeText: String? {
+        isOwner && !isPublic && moderationHidden ? Self.moderationHiddenMessage : nil
+    }
+
+    var allowsOwnerVisibilityChange: Bool {
+        isOwner && !(!isPublic && moderationHidden)
     }
 
     /// Life-area chrome: closed category plus a proposed label when the cook landed on `other`.
@@ -145,6 +161,7 @@ struct HomeCard: Identifiable, Equatable {
 
     mutating func apply(_ stored: StoredCard) {
         isPublic = stored.isPublic
+        moderationHidden = stored.moderationHidden ?? false
         thoughtOriginal = stored.thoughtOriginal
         if let authorId = UUID(uuidString: stored.author.id) {
             self.authorId = authorId
@@ -1026,6 +1043,7 @@ final class HomeViewModel {
             libraryFooterState = .idle
             hasLoadedLibrary = true
             libraryLoadState = .loaded
+            evictPrivatedOwnerCards(against: response.cards)
             ensureProfileTabFilled()
             return .success
         } catch {
@@ -1075,6 +1093,46 @@ final class HomeViewModel {
         }
     }
 
+    /// The library is the only response that carries the server's `isPublic`
+    /// for our own cards. A card made private behind our back (operator Hide)
+    /// never reappears in `GET /feed`, so without this the stale feed copy —
+    /// and its anchor, which `mergingAnchors` would otherwise re-insert on
+    /// every refresh — would live on forever.
+    private func evictPrivatedOwnerCards(against stored: [StoredCard]) {
+        let ownerCards = stored.compactMap(HomeCard.init(stored:)).filter(\.isOwner)
+        feedBoard.reconcileOwnerLibraryCards(ownerCards)
+        for card in ownerCards where !card.isPublic {
+            removeFromAuthorFeeds(card.id)
+        }
+    }
+
+    /// First library page merged in place, without disturbing deeper pages.
+    /// Runs on For-you pull so a card the server made private leaves Home
+    /// even if Profile is never opened. Visibility-only: failures keep the
+    /// current feed untouched.
+    private func refreshLibraryVisibility() async {
+        do {
+            let response = try await cardsService.list(limit: Self.libraryPageSize)
+            guard !Task.isCancelled else {
+                return
+            }
+            var mergedCards = merged(cards, with: response.cards)
+            let mergedIDs = Set(mergedCards.map(\.id))
+            mergedCards.append(contentsOf: cards.filter { !mergedIDs.contains($0.id) })
+            cards = mergedCards
+            libraryBefore = response.page.nextCursor
+            libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
+            hasLoadedLibrary = true
+            libraryLoadState = .loaded
+            evictPrivatedOwnerCards(against: response.cards)
+            ensureProfileTabFilled()
+        } catch {
+            guard !Task.isCancelled, !Self.isCancellation(error) else {
+                return
+            }
+        }
+    }
+
     func loadMoreLibrary() {
         guard hasLoadedLibrary,
               libraryHasMore,
@@ -1101,6 +1159,7 @@ final class HomeViewModel {
                 libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
                 libraryFooterState = .idle
                 libraryPageTask = nil
+                evictPrivatedOwnerCards(against: response.cards)
                 ensureProfileTabFilled()
             } catch {
                 guard !Task.isCancelled, !Self.isCancellation(error) else {
@@ -1304,6 +1363,9 @@ final class HomeViewModel {
             tab: tab,
             generation: generation
         )
+        if tab == .all {
+            await refreshLibraryVisibility()
+        }
     }
 
     private func fetchFeedTail(
@@ -1853,6 +1915,11 @@ final class HomeViewModel {
                       writeSessionGeneration == sessionGeneration else {
                     return
                 }
+                if Self.isNotFound(error) {
+                    dropUnavailableCard(id)
+                    reportWriteFailure(error, Self.unavailableCardMessage)
+                    return
+                }
                 if let libraryIndex, !cards.contains(where: { $0.id == id }) {
                     cards.insert(snapshot, at: min(libraryIndex, cards.count))
                 }
@@ -1948,11 +2015,8 @@ final class HomeViewModel {
         }
     }
 
-    /// Someone else's card that was deleted or made private leaves every list at once.
+    /// A card the server no longer has leaves every cached presentation at once.
     private func dropUnavailableCard(_ id: UUID) {
-        guard card(id: id)?.isOwner != true else {
-            return
-        }
         cards.removeAll { $0.id == id }
         removeFromFeed(id)
         removeFromAuthorFeeds(id)
@@ -2111,7 +2175,7 @@ final class HomeViewModel {
                       writeSessionGeneration == sessionGeneration else {
                     return
                 }
-                if !snapshot.isOwner, Self.isNotFound(error) {
+                if Self.isNotFound(error) {
                     dropUnavailableCard(id)
                     reportWriteFailure(error, Self.unavailableCardMessage)
                     return
@@ -2471,6 +2535,11 @@ final class HomeViewModel {
                 guard !Task.isCancelled,
                       publicGeneration[id] == generation,
                       writeSessionGeneration == sessionGeneration else {
+                    return
+                }
+                if Self.isNotFound(error) {
+                    dropUnavailableCard(id)
+                    reportWriteFailure(error, Self.unavailableCardMessage)
                     return
                 }
                 applyLocal(id: id) { card in

@@ -96,9 +96,9 @@ export async function listPendingReports(
 }
 
 /**
- * `hidden` makes the card private and keeps it from being published again. `kept` dismisses
- * the open reports, so they stop counting toward the automatic threshold; it never republishes
- * a card the threshold made private (the author can, through moderation).
+ * `hidden` makes the card private, stamps it as removed by an operator, and keeps
+ * the author from publishing it again. `kept` dismisses the open reports, so they
+ * stop counting toward the automatic threshold; it never republishes a card.
  */
 export async function resolveCardReports(
   cardId: string,
@@ -116,7 +116,10 @@ export async function resolveCardReports(
       return "not_found";
     }
     if (resolution === "hidden") {
-      await tx.update(cards).set({ isPublic: false }).where(eq(cards.id, cardId));
+      await tx
+        .update(cards)
+        .set({ isPublic: false, moderationHiddenAt: now })
+        .where(eq(cards.id, cardId));
     }
     await tx
       .update(cardReports)
@@ -124,6 +127,19 @@ export async function resolveCardReports(
       .where(and(eq(cardReports.cardId, cardId), isNull(cardReports.reviewedAt)));
     return "ok";
   });
+}
+
+/** Puts a card back on Home and lifts the operator hide. The report history stays. */
+export async function publishHiddenCard(
+  cardId: string,
+  db: Db = getDb(),
+): Promise<"ok" | "not_found"> {
+  const [card] = await db
+    .update(cards)
+    .set({ isPublic: true, moderationHiddenAt: null })
+    .where(eq(cards.id, cardId))
+    .returning({ id: cards.id });
+  return card ? "ok" : "not_found";
 }
 
 export async function deleteReportedCard(cardId: string, db: Db = getDb()): Promise<boolean> {

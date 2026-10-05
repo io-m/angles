@@ -10,6 +10,7 @@ import {
   listAuthorPublicCards,
   listPendingReports,
   listReviewedReports,
+  publishHiddenCard,
   resolveCardReports,
   restorePublishing,
   searchAdmin,
@@ -286,6 +287,18 @@ adminRoute.post("/reports/:cardId/hide", zValidator("param", cardIdSchema, inval
     return limited;
   }
   const result = await resolveCardReports(c.req.valid("param").cardId, "hidden");
+  if (result === "not_found") {
+    return c.json(errorBody("No such card", "NOT_FOUND"), 404);
+  }
+  return c.json({ ok: true as const });
+});
+
+adminRoute.post("/reports/:cardId/publish", zValidator("param", cardIdSchema, invalidJson), async (c) => {
+  const limited = await mutate(c);
+  if (limited) {
+    return limited;
+  }
+  const result = await publishHiddenCard(c.req.valid("param").cardId);
   if (result === "not_found") {
     return c.json(errorBody("No such card", "NOT_FOUND"), 404);
   }
