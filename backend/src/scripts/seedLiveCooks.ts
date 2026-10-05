@@ -77,11 +77,11 @@ function assertLiveCookSeedAllowed(environment: NodeJS.ProcessEnv = process.env)
   assertCommunitySeedAllowed(environment);
 }
 
-function parseFlag(argv: readonly string[], name: string, fallback: number): number {
+function parseFlag(argv: readonly string[], name: string, fallback: number, min = 1): number {
   const flag = argv.find((argument) => argument.startsWith(`--${name}=`));
   const raw = flag?.slice(`--${name}=`.length).trim();
   const value = raw ? Number.parseInt(raw, 10) : fallback;
-  if (!Number.isFinite(value) || value < 1) {
+  if (!Number.isFinite(value) || value < min) {
     throw new Error(`invalid --${name}`);
   }
   return value;
@@ -127,9 +127,10 @@ async function main(): Promise<void> {
   const email = parseEmail(process.argv);
   const source = parseFrom(process.argv);
   const targetPosts = parseFlag(process.argv, "posts", 5);
+  const skipThoughts = parseFlag(process.argv, "skip", 0, 0);
   const thoughts = loadThoughts(source);
-  if (thoughts.length < targetPosts) {
-    throw new Error(`need at least ${targetPosts} thoughts in the ${source} list`);
+  if (thoughts.length < skipThoughts + targetPosts) {
+    throw new Error(`need at least ${skipThoughts + targetPosts} thoughts in the ${source} list`);
   }
 
   const db = getDb();
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
 
   const deadlineAt = Date.now() + COOK_DEADLINE_MS;
   let posted = 0;
-  let thoughtIndex = 0;
+  let thoughtIndex = skipThoughts;
 
   process.stderr.write(`Posting up to ${targetPosts} public cards as ${email} (${source} thoughts)\n`);
 
