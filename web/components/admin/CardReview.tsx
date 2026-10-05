@@ -9,10 +9,13 @@ import {
   AdminApiError,
   adminFetch,
   stashToast,
+  type AuthorPublicCard,
   type AuthorReview,
   type CardReview as CardReviewBody,
+  type ReportSummary,
+  type ReviewedSummary,
 } from '@/lib/adminApi';
-import { isUuid, reasonLine, styleLabel } from '@/lib/adminLabels';
+import { cardHref, isUuid, matchesQueue, readFilters, reasonLine, styleLabel, type QueueFilters } from '@/lib/adminLabels';
 
 type ConfirmKind = 'hide' | 'delete' | 'suspend';
 
@@ -35,9 +38,18 @@ export function CardReview() {
   const router = useRouter();
   const params = useSearchParams();
   const cardId = params.get('id')?.trim() ?? '';
+  const shelf: QueueFilters['shelf'] = params.get('shelf') === 'reviewed' ? 'reviewed' : 'open';
+  const reason = params.get('reason') ?? '';
+  const visibilityParam = params.get('visibility');
+  const visibility: QueueFilters['visibility'] =
+    visibilityParam === 'public' || visibilityParam === 'private' ? visibilityParam : 'all';
+  const suspendedOnly = params.get('suspended') === '1';
+  const filters = readFilters(params);
   const [email, setEmail] = useState<string | null>(null);
   const [card, setCard] = useState<CardReviewBody | null>(null);
   const [author, setAuthor] = useState<AuthorReview | null>(null);
+  const [others, setOthers] = useState<AuthorPublicCard[]>([]);
+  const [queue, setQueue] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [toastTone, setToastTone] = useState<'ok' | 'err'>('ok');
@@ -49,29 +61,40 @@ export function CardReview() {
     setToast(caught instanceof Error ? caught.message : 'Something went wrong');
   }, []);
 
-  const load = useCallback(async (isCurrent: () => boolean): Promise<void> => {
-    if (!isUuid(cardId)) {
-      setCard(null);
-      setAuthor(null);
-      setError(cardId ? 'That card id is not valid.' : 'Open a card from the inbox.');
-      return;
-    }
-    const [session, nextCard] = await Promise.all([
-      adminFetch<{ email: string }>('/api/admin/session'),
-      adminFetch<CardReviewBody>(`/api/admin/reports/${cardId}`),
-    ]);
-    if (!isCurrent()) {
-      return;
-    }
-    setEmail(session.email);
-    setCard(nextCard);
-    const nextAuthor = await adminFetch<AuthorReview>(`/api/admin/users/${nextCard.authorId}`);
-    if (!isCurrent()) {
-      return;
-    }
-    setAuthor(nextAuthor);
-    setError(null);
-  }, [cardId]);
+  const load = useCallback(
+    async (isCurrent: () => boolean): Promise<void> => {
+      if (!isUuid(cardId)) {
+        setCard(null);
+        setAuthor(null);
+        setError(cardId ? 'That card id is not valid.' : 'Open a card from the overview.');
+        return;
+      }
+      const activeFilters: QueueFilters = { shelf, reason, visibility, suspendedOnly };
+      const queuePath = shelf === 'reviewed' ? '/api/admin/reports/reviewed' : '/api/admin/reports';
+      const [session, nextCard, listed] = await Promise.all([
+        adminFetch<{ email: string }>('/api/admin/session'),
+        adminFetch<CardReviewBody>(`/api/admin/reports/${cardId}`),
+        adminFetch<{ reports: Array<ReportSummary | ReviewedSummary> }>(queuePath),
+      ]);
+      if (!isCurrent()) {
+        return;
+      }
+      setEmail(session.email);
+      setCard(nextCard);
+      setQueue(listed.reports.filter((row) => matchesQueue(row, activeFilters)).map((row) => row.cardId));
+      const [nextAuthor, publicCards] = await Promise.all([
+        adminFetch<AuthorReview>(`/api/admin/users/${nextCard.authorId}`),
+        adminFetch<{ cards: AuthorPublicCard[] }>(`/api/admin/users/${nextCard.authorId}/cards`),
+      ]);
+      if (!isCurrent()) {
+        return;
+      }
+      setAuthor(nextAuthor);
+      setOthers(publicCards.cards.filter((item) => item.cardId !== cardId));
+      setError(null);
+    },
+    [cardId, reason, shelf, suspendedOnly, visibility],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +121,15 @@ export function CardReview() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  const index = queue.indexOf(cardId);
+  const nextId = index >= 0 ? (queue[index + 1] ?? null) : null;
+  const position = index >= 0 ? `${index + 1} of ${queue.length}` : null;
+
+  function finish(message: string): void {
+    stashToast(message);
+    router.replace(nextId ? cardHref(nextId, filters) : '/admin');
+  }
+
   async function copyId(): Promise<void> {
     try {
       await navigator.clipboard.writeText(cardId);
@@ -108,11 +140,15 @@ export function CardReview() {
     }
   }
 
-  async function run(action: () => Promise<void>, success: string): Promise<void> {
+  async function run(action: () => Promise<void>, success: string, advance: boolean): Promise<void> {
     setBusy(true);
     setConfirm(null);
     try {
       await action();
+      if (advance) {
+        finish(success);
+        return;
+      }
       setToastTone('ok');
       setToast(success);
       await load(() => true);
@@ -123,25 +159,18 @@ export function CardReview() {
     }
   }
 
-  async function removeCard(): Promise<void> {
-    setBusy(true);
-    setConfirm(null);
-    try {
-      await adminFetch(`/api/admin/reports/${cardId}/delete`, { method: 'POST' });
-      stashToast('Card deleted.');
-      router.replace('/admin');
-    } catch (caught) {
-      showError(caught);
-      setBusy(false);
-    }
-  }
-
   return (
-    <>
-      <AdminChrome title="Card" email={email}>
-        <p>
+    <div className="admin-review">
+      <AdminChrome title={card?.thought ?? 'Review'} email={email}>
+        <div className="admin-toolbar">
           <Link href="/admin">Back to reports</Link>
-        </p>
+          {position ? <span className="admin-meta">{position}</span> : null}
+          {nextId ? (
+            <Link className="button button-secondary" href={cardHref(nextId, filters)}>
+              Next
+            </Link>
+          ) : null}
+        </div>
         {error ? <p className="admin-status">{error}</p> : null}
         {!card && !error ? <p className="admin-status">Loading card…</p> : null}
         {card ? (
@@ -149,8 +178,8 @@ export function CardReview() {
             <section className="admin-card">
               <div className="admin-id-row">
                 <p className="admin-id">{card.cardId}</p>
-                <button className="button button-secondary" type="button" onClick={() => void copyId()}>
-                  Copy
+                <button className="admin-quiet" type="button" onClick={() => void copyId()}>
+                  Copy id
                 </button>
               </div>
               <div className="admin-badges">
@@ -160,12 +189,8 @@ export function CardReview() {
                 </span>
                 {card.authorSuspended ? <span className="admin-badge admin-badge-alert">Suspended</span> : null}
               </div>
-              <div className="admin-section">
-                <h2>Thought</h2>
-                <p className="admin-copy">{card.thought}</p>
-              </div>
               {card.reframes.map((item) => (
-                <div className="admin-section" key={item.style}>
+                <div className="admin-answer-block" key={item.style}>
                   <h2>{styleLabel(item.style)}</h2>
                   <p className="admin-answer">{item.reframe}</p>
                 </div>
@@ -183,16 +208,20 @@ export function CardReview() {
                       disabled={busy}
                       onClick={() => {
                         if (confirm === 'hide') {
-                          void run(
-                            () => adminFetch(`/api/admin/reports/${card.cardId}/hide`, { method: 'POST' }),
-                            'Card hidden.',
-                          );
+                          void run(() => adminFetch(`/api/admin/reports/${card.cardId}/hide`, { method: 'POST' }), 'Card hidden.', true);
                         } else if (confirm === 'delete') {
-                          void removeCard();
+                          void run(
+                            async () => {
+                              await adminFetch(`/api/admin/reports/${card.cardId}/delete`, { method: 'POST' });
+                            },
+                            'Card deleted.',
+                            true,
+                          );
                         } else {
                           void run(
                             () => adminFetch(`/api/admin/users/${card.authorId}/suspend`, { method: 'POST' }),
                             'Publishing suspended.',
+                            false,
                           );
                         }
                       }}
@@ -208,10 +237,7 @@ export function CardReview() {
                     type="button"
                     disabled={busy}
                     onClick={() =>
-                      void run(
-                        () => adminFetch(`/api/admin/reports/${card.cardId}/keep`, { method: 'POST' }),
-                        'Reports dismissed.',
-                      )
+                      void run(() => adminFetch(`/api/admin/reports/${card.cardId}/keep`, { method: 'POST' }), 'Reports dismissed.', true)
                     }
                   >
                     Keep
@@ -231,7 +257,6 @@ export function CardReview() {
               <p className="admin-meta">
                 {author?.initials ?? card.authorInitials} · {author?.email ?? card.authorEmail}
               </p>
-              <p className="admin-id">{card.authorId}</p>
               <div className="admin-badges">
                 {author?.publishingSuspended || card.authorSuspended ? (
                   <span className="admin-badge admin-badge-alert">Publishing suspended</span>
@@ -249,6 +274,7 @@ export function CardReview() {
                     void run(
                       () => adminFetch(`/api/admin/users/${card.authorId}/unsuspend`, { method: 'POST' }),
                       'Publishing restored.',
+                      false,
                     )
                   }
                 >
@@ -259,11 +285,20 @@ export function CardReview() {
                   Suspend publishing
                 </button>
               )}
+              {others.length > 0 ? (
+                <div className="admin-list">
+                  {others.map((item) => (
+                    <Link className="admin-row-link" key={item.cardId} href={cardHref(item.cardId, filters)}>
+                      <p className="admin-excerpt">{item.thoughtExcerpt}</p>
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
             </section>
           </article>
         ) : null}
       </AdminChrome>
       <AdminToast message={toast} tone={toastTone} />
-    </>
+    </div>
   );
 }

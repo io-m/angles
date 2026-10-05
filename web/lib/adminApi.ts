@@ -7,6 +7,45 @@ export type ReportSummary = {
   firstReportedAt: string;
   reasons: Record<string, number>;
   reportCount: number;
+  thoughtExcerpt: string;
+};
+
+export type ReviewedSummary = {
+  cardId: string;
+  authorId: string;
+  authorInitials: string;
+  authorSuspended: boolean;
+  isPublic: boolean;
+  reviewedAt: string;
+  resolution: 'kept' | 'hidden';
+  reasons: Record<string, number>;
+  thoughtExcerpt: string;
+};
+
+export type ReportDashboard = {
+  openCount: number;
+  privateCount: number;
+  suspendedAuthorCount: number;
+  reviewedCount: number;
+  reasons: Record<string, number>;
+};
+
+export type SearchCard = {
+  cardId: string;
+  thoughtExcerpt: string;
+  isPublic: boolean;
+  authorId: string;
+  authorInitials: string;
+  authorEmail: string;
+  authorSuspended: boolean;
+  reportCount: number;
+  reasons: Record<string, number>;
+};
+
+export type AuthorPublicCard = {
+  cardId: string;
+  thoughtExcerpt: string;
+  createdAt: string;
 };
 
 export type CardReview = ReportSummary & {

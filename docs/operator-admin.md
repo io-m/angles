@@ -1,6 +1,6 @@
 # Operator admin
 
-Private review for Angles reports. Sign in at `https://useangles.app/admin`. Only addresses in `ADMIN_OPERATOR_EMAILS` receive a link. Everyone else gets the same “check your inbox” page and no email.
+Private review for Angles reports. Sign in at `https://useangles.app/admin`. The home page is an overview: open, private, suspended, and reviewed counts, then one tile per report reason. Tapping a tile filters the list. Search takes a card id, a user id, an email, or a few words from the thought. Only addresses in `ADMIN_OPERATOR_EMAILS` receive a link. Everyone else gets the same “check your inbox” page and no email.
 
 Report mail is unchanged: ids and a reason, no card text. Open the card from that id on the site. `pnpm reports` over SSH still works when the site is down:
 
@@ -28,12 +28,16 @@ The marketing site is a static export. It does not talk to Postgres. `web/worker
 | POST | `/admin/login/verify` | `{ token }` sets the session cookie. |
 | POST | `/admin/logout` | Clears the cookie. |
 | GET | `/admin/session` | `{ email }` or 401. |
-| GET | `/admin/reports` | Open reports, oldest first. No thought text. |
+| GET | `/admin/reports` | Open reports, oldest first. Thought excerpt only. |
+| GET | `/admin/reports/summary` | Counts for the overview, including one number per reason. |
+| GET | `/admin/reports/reviewed` | Latest keep or hide per card. |
+| GET | `/admin/search?q=` | Card or user id, or a thought or email fragment. |
 | GET | `/admin/reports/:cardId` | Thought, reframes, and author. Works with zero open reports. |
 | POST | `/admin/reports/:cardId/keep` | Dismisses open reports. Does not republish. |
 | POST | `/admin/reports/:cardId/hide` | Private, and the card cannot be published again. |
 | POST | `/admin/reports/:cardId/delete` | Deletes the card. |
 | GET | `/admin/users/:userId` | Email, suspended flag, public card count. |
+| GET | `/admin/users/:userId/cards` | That account's public cards, as excerpts. |
 | POST | `/admin/users/:userId/suspend` | Stops publishing. Cards go private. |
 | POST | `/admin/users/:userId/unsuspend` | Lets the account publish again. Cards stay private. |
 

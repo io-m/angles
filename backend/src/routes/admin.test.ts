@@ -19,6 +19,11 @@ vi.mock("../db/reportReview.js", () => ({
   deleteReportedCard: vi.fn(),
   suspendPublishing: vi.fn(),
   restorePublishing: vi.fn(),
+  summarizeReports: vi.fn(),
+  listReviewedReports: vi.fn(),
+  listAuthorPublicCards: vi.fn(),
+  searchAdmin: vi.fn(),
+  thoughtExcerpt: (thought: string) => thought,
 }));
 
 const { createApp } = await import("../app.js");
@@ -28,9 +33,13 @@ const {
   deleteReportedCard,
   getAuthorReview,
   getCardReview,
+  listAuthorPublicCards,
   listPendingReports,
+  listReviewedReports,
   resolveCardReports,
   restorePublishing,
+  searchAdmin,
+  summarizeReports,
   suspendPublishing,
 } = await import("../db/reportReview.js");
 
@@ -151,7 +160,7 @@ describe("admin auth", () => {
 });
 
 describe("admin report actions", () => {
-  it("lists open reports without the thought or reframes", async () => {
+  it("lists open reports with an excerpt and without the reframes", async () => {
     vi.mocked(listPendingReports).mockResolvedValueOnce([
       {
         cardId: CARD_ID,
@@ -179,9 +188,10 @@ describe("admin report actions", () => {
         firstReportedAt: "2026-10-05T10:00:00.000Z",
         reasons: { harassment: 2 },
         reportCount: 2,
+        thoughtExcerpt: "private thought",
       },
     ]);
-    expect(JSON.stringify(body)).not.toContain("private thought");
+    expect(JSON.stringify(body)).not.toContain("private answer");
   });
 
   it("returns the card text on detail", async () => {
@@ -241,6 +251,112 @@ describe("admin report actions", () => {
     expect(restored.status).toBe(200);
     expect(suspendPublishing).toHaveBeenCalledWith(USER_ID);
     expect(restorePublishing).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it("rejects search and the overview without a session", async () => {
+    const summary = await app.request("/admin/reports/summary");
+    const found = await app.request("/admin/search?q=dad");
+    expect(summary.status).toBe(401);
+    expect(found.status).toBe(401);
+    expect(summarizeReports).not.toHaveBeenCalled();
+    expect(searchAdmin).not.toHaveBeenCalled();
+  });
+
+  it("returns the overview counts", async () => {
+    vi.mocked(summarizeReports).mockResolvedValueOnce({
+      openCount: 3,
+      privateCount: 1,
+      suspendedAuthorCount: 1,
+      reviewedCount: 4,
+      reasons: {
+        spam: 0,
+        harassment: 2,
+        hate: 0,
+        sexual: 0,
+        illegal: 0,
+        personal_data: 1,
+        other: 0,
+      },
+    });
+    const response = await authed("/admin/reports/summary");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ openCount: 3, reasons: { harassment: 2, personal_data: 1 } });
+  });
+
+  it("searches by a thought fragment and by email", async () => {
+    vi.mocked(searchAdmin).mockResolvedValueOnce({
+      cards: [
+        {
+          cardId: CARD_ID,
+          thought: "My kid asked why I am home.",
+          isPublic: true,
+          authorId: USER_ID,
+          authorInitials: "JM",
+          authorEmail: "author@example.com",
+          authorSuspended: false,
+          reportCount: 1,
+          reasons: { personal_data: 1 },
+        },
+      ],
+      users: [],
+    });
+    const byThought = await authed("/admin/search?q=home");
+    expect(byThought.status).toBe(200);
+    expect(searchAdmin).toHaveBeenCalledWith("home");
+    expect(await byThought.json()).toMatchObject({
+      cards: [{ thoughtExcerpt: "My kid asked why I am home.", authorEmail: "author@example.com" }],
+    });
+
+    vi.mocked(searchAdmin).mockResolvedValueOnce({
+      cards: [],
+      users: [
+        {
+          userId: USER_ID,
+          email: "author@example.com",
+          initials: "JM",
+          publishingSuspended: false,
+          publicCardCount: 6,
+        },
+      ],
+    });
+    const byEmail = await authed("/admin/search?q=author@example.com");
+    expect(byEmail.status).toBe(200);
+    expect(searchAdmin).toHaveBeenCalledWith("author@example.com");
+    expect(await byEmail.json()).toMatchObject({ users: [{ email: "author@example.com", publicCardCount: 6 }] });
+  });
+
+  it("lists reviewed decisions and an author's public cards", async () => {
+    vi.mocked(listReviewedReports).mockResolvedValueOnce([
+      {
+        cardId: CARD_ID,
+        authorId: USER_ID,
+        authorInitials: "JM",
+        authorSuspended: false,
+        isPublic: false,
+        thought: "A reviewed thought.",
+        resolution: "hidden",
+        reviewedAt: new Date("2026-10-05T12:00:00.000Z"),
+        reasons: { spam: 1 },
+      },
+    ]);
+    vi.mocked(getAuthorReview).mockResolvedValueOnce({
+      userId: USER_ID,
+      email: "author@example.com",
+      initials: "JM",
+      publishingSuspended: false,
+      publicCardCount: 1,
+    });
+    vi.mocked(listAuthorPublicCards).mockResolvedValueOnce([
+      { cardId: CARD_ID, thought: "Still public.", createdAt: new Date("2026-10-01T00:00:00.000Z") },
+    ]);
+    const reviewed = await authed("/admin/reports/reviewed");
+    const cards = await authed(`/admin/users/${USER_ID}/cards`);
+    expect(reviewed.status).toBe(200);
+    expect(await reviewed.json()).toMatchObject({
+      reports: [{ resolution: "hidden", thoughtExcerpt: "A reviewed thought." }],
+    });
+    expect(cards.status).toBe(200);
+    expect(await cards.json()).toMatchObject({ cards: [{ thoughtExcerpt: "Still public." }] });
   });
 
   it("rejects a card id that is not a UUID", async () => {

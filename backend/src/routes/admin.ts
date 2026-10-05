@@ -7,11 +7,17 @@ import {
   deleteReportedCard,
   getAuthorReview,
   getCardReview,
+  listAuthorPublicCards,
   listPendingReports,
+  listReviewedReports,
   resolveCardReports,
   restorePublishing,
+  searchAdmin,
+  summarizeReports,
   suspendPublishing,
+  thoughtExcerpt,
   type PendingReportedCard,
+  type ReviewedCard,
 } from "../db/reportReview.js";
 import {
   ADMIN_PROXY_HEADER,
@@ -75,6 +81,10 @@ function clientIp(header: string | undefined, forwardedFor: string | undefined):
   return forwarded && forwarded.length > 0 ? forwarded.slice(0, 64) : "unknown";
 }
 
+const searchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(200),
+});
+
 function reportSummary(card: PendingReportedCard) {
   return {
     cardId: card.cardId,
@@ -85,6 +95,21 @@ function reportSummary(card: PendingReportedCard) {
     firstReportedAt: card.firstReportedAt.toISOString(),
     reasons: card.reasons,
     reportCount: card.reportCount,
+    thoughtExcerpt: thoughtExcerpt(card.thought),
+  };
+}
+
+function reviewedSummary(card: ReviewedCard) {
+  return {
+    cardId: card.cardId,
+    authorId: card.authorId,
+    authorInitials: card.authorInitials,
+    authorSuspended: card.authorSuspended,
+    isPublic: card.isPublic,
+    reviewedAt: card.reviewedAt.toISOString(),
+    resolution: card.resolution,
+    reasons: card.reasons,
+    thoughtExcerpt: thoughtExcerpt(card.thought),
   };
 }
 
@@ -189,6 +214,33 @@ adminRoute.get("/reports", async (c) => {
   return c.json({ reports: pending.map(reportSummary) });
 });
 
+adminRoute.get("/reports/summary", async (c) => {
+  return c.json(await summarizeReports());
+});
+
+adminRoute.get("/reports/reviewed", async (c) => {
+  const reviewed = await listReviewedReports();
+  return c.json({ reports: reviewed.map(reviewedSummary) });
+});
+
+adminRoute.get("/search", zValidator("query", searchQuerySchema, invalidJson), async (c) => {
+  const found = await searchAdmin(c.req.valid("query").q);
+  return c.json({
+    cards: found.cards.map((card) => ({
+      cardId: card.cardId,
+      thoughtExcerpt: thoughtExcerpt(card.thought),
+      isPublic: card.isPublic,
+      authorId: card.authorId,
+      authorInitials: card.authorInitials,
+      authorEmail: card.authorEmail,
+      authorSuspended: card.authorSuspended,
+      reportCount: card.reportCount,
+      reasons: card.reasons,
+    })),
+    users: found.users,
+  });
+});
+
 adminRoute.get("/reports/:cardId", zValidator("param", cardIdSchema, invalidJson), async (c) => {
   const card = await getCardReview(c.req.valid("param").cardId);
   if (!card) {
@@ -250,6 +302,21 @@ adminRoute.post("/reports/:cardId/delete", zValidator("param", cardIdSchema, inv
     return c.json(errorBody("No such card", "NOT_FOUND"), 404);
   }
   return c.json({ ok: true as const });
+});
+
+adminRoute.get("/users/:userId/cards", zValidator("param", userIdSchema, invalidJson), async (c) => {
+  const author = await getAuthorReview(c.req.valid("param").userId);
+  if (!author) {
+    return c.json(errorBody("No such user", "NOT_FOUND"), 404);
+  }
+  const listed = await listAuthorPublicCards(author.userId);
+  return c.json({
+    cards: listed.map((card) => ({
+      cardId: card.cardId,
+      thoughtExcerpt: thoughtExcerpt(card.thought),
+      createdAt: card.createdAt.toISOString(),
+    })),
+  });
 });
 
 adminRoute.get("/users/:userId", zValidator("param", userIdSchema, invalidJson), async (c) => {
