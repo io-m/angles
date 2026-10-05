@@ -459,6 +459,8 @@ private struct AuthorFeed {
     var generation = 0
     var task: Task<Void, Never>?
     var isRefreshing = false
+    var refreshOutcome: FeedRefreshOutcome?
+    var refreshToken = 0
 }
 
 private struct BlockAuthorSnapshot {
@@ -962,6 +964,28 @@ final class HomeViewModel {
     }
 
     /// Returning to Profile must not re-run a cold library load.
+    /// Clears the Home refresh pill after it has been shown once.
+    func consumeFeedRefreshBanner() {
+        feedRefreshOutcome = nil
+    }
+
+    /// Clears the Profile library refresh pill after it has been shown once.
+    func consumeLibraryRefreshBanner() {
+        libraryRefreshOutcome = nil
+    }
+
+    func authorRefreshOutcome(for authorId: UUID) -> FeedRefreshOutcome? {
+        authorFeeds[authorId]?.refreshOutcome
+    }
+
+    func authorRefreshToken(for authorId: UUID) -> Int {
+        authorFeeds[authorId]?.refreshToken ?? 0
+    }
+
+    func consumeAuthorRefreshBanner(_ authorId: UUID) {
+        mutateAuthor(authorId) { $0.refreshOutcome = nil }
+    }
+
     func loadLibraryIfNeeded() async {
         guard !hasLoadedLibrary else {
             return
@@ -1363,6 +1387,13 @@ final class HomeViewModel {
         }
         feedRefreshOutcome = outcome
         feedRefreshToken &+= 1
+    }
+
+    private func publishAuthorRefresh(_ outcome: FeedRefreshOutcome, authorId: UUID) {
+        mutateAuthor(authorId) { feed in
+            feed.refreshOutcome = outcome
+            feed.refreshToken &+= 1
+        }
     }
 
     private func prependFeedCards(_ arrivals: [HomeCard], on tab: HomeFeedTab, generation: Int) {
@@ -3001,6 +3032,7 @@ final class HomeViewModel {
         guard authorFeeds[id] != nil, authorFeeds[id]?.isRefreshing != true else {
             return
         }
+        let known = Set(authorFeeds[id]?.cards.map(\.id) ?? [])
         // Like Home, the cursor survives until page one lands.
         mutateAuthor(id) { feed in
             feed.isRefreshing = true
@@ -3015,6 +3047,28 @@ final class HomeViewModel {
         let generation = authorFeeds[id]?.generation ?? 0
         await fetchAuthorPage(id: id, replacing: true, generation: generation)
         mutateAuthor(id) { $0.isRefreshing = false }
+
+        guard authorFeeds[id]?.generation == generation else {
+            return
+        }
+        guard let feed = authorFeeds[id] else {
+            return
+        }
+
+        if feed.footerState == .failed {
+            publishAuthorRefresh(.failed, authorId: id)
+            return
+        }
+        if case .failed = feed.loadState, feed.cards.isEmpty {
+            publishAuthorRefresh(.failed, authorId: id)
+            return
+        }
+
+        let added = feed.cards.filter { !known.contains($0.id) }.count
+        publishAuthorRefresh(
+            added > 0 ? .newItems(added) : .upToDate,
+            authorId: id
+        )
     }
 
     func retryLoadAuthor(_ id: UUID) {

@@ -40,6 +40,9 @@ struct AuthorProfileView: View {
             emptyState: { tab in
                 tab.emptyState(appliedFilter: HomeFeedFilter(), audience: .author)
             },
+            refreshOutcome: viewModel.authorRefreshOutcome(for: route.id),
+            refreshToken: viewModel.authorRefreshToken(for: route.id),
+            onConsumeRefresh: { viewModel.consumeAuthorRefreshBanner(route.id) },
             onRetry: { _ in viewModel.retryLoadAuthor(route.id) },
             onRefresh: { _ in await viewModel.refreshAuthor(route.id) },
             onLoadMore: { _ in viewModel.loadMoreAuthor(route.id) },

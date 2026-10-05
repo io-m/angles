@@ -4,8 +4,8 @@ import SwiftUI
 /// refresh that found nothing new reads as a dead gesture — and a failed one
 /// reads the same as a successful one.
 ///
-/// Home rotates through the catalog, so it uses all five. The library is a
-/// private log and stays newest-first, so it only ever reports the first three.
+/// Home rotates through the catalog, so it uses all five. The library and author
+/// pages are newest-first lists, so they only ever report the first three.
 enum FeedRefreshOutcome: Equatable {
     case newItems(Int)
     case upToDate
@@ -22,6 +22,9 @@ struct FeedRefreshBanner: View {
     let token: Int
     /// "post" on the community feed, "card" in the private library.
     let noun: String
+    /// Called after the pill is shown (or the task is cancelled mid-flight) so the
+    /// model can drop the outcome. Otherwise `.task(id: token)` replays on return.
+    var onConsumed: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -57,6 +60,7 @@ struct FeedRefreshBanner: View {
                 return
             }
             shown = outcome
+            defer { onConsumed() }
             // Long enough to read one line; the border spark finishes inside this window.
             try? await Task.sleep(for: .seconds(1))
             shown = nil

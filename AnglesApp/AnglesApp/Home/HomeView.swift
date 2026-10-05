@@ -42,6 +42,7 @@ struct HomeView: View {
             canPullToRefresh: canLoadFullAppContent && !isGlimpseActive,
             refreshOutcome: viewModel.feedRefreshOutcome,
             refreshToken: viewModel.feedRefreshToken,
+            onConsumeRefresh: { viewModel.consumeFeedRefreshBanner() },
             offersOwnerPrivacyMenu: true,
             externalSelectionTab: viewModel.saveLanding == .home ? .all : nil,
             externalSelectionToken: viewModel.saveLandingToken,
@@ -161,6 +162,7 @@ struct HomeFeedPager<Chrome: View>: View {
     /// Nil on surfaces that do not announce their refresh outcome.
     let refreshOutcome: FeedRefreshOutcome?
     let refreshToken: Int
+    let onConsumeRefresh: () -> Void
     let offersOwnerPrivacyMenu: Bool
     let externalSelectionTab: HomeFeedTab?
     let externalSelectionToken: Int
@@ -203,6 +205,7 @@ struct HomeFeedPager<Chrome: View>: View {
         canPullToRefresh: Bool = true,
         refreshOutcome: FeedRefreshOutcome? = nil,
         refreshToken: Int = 0,
+        onConsumeRefresh: @escaping () -> Void = {},
         offersOwnerPrivacyMenu: Bool = false,
         externalSelectionTab: HomeFeedTab? = nil,
         externalSelectionToken: Int = 0,
@@ -238,6 +241,7 @@ struct HomeFeedPager<Chrome: View>: View {
         self.canPullToRefresh = canPullToRefresh
         self.refreshOutcome = refreshOutcome
         self.refreshToken = refreshToken
+        self.onConsumeRefresh = onConsumeRefresh
         self.offersOwnerPrivacyMenu = offersOwnerPrivacyMenu
         self.externalSelectionTab = externalSelectionTab
         self.externalSelectionToken = externalSelectionToken
@@ -276,7 +280,8 @@ struct HomeFeedPager<Chrome: View>: View {
             FeedRefreshBanner(
                 outcome: refreshOutcome,
                 token: refreshToken,
-                noun: "post"
+                noun: "post",
+                onConsumed: onConsumeRefresh
             )
             .padding(.top, chromeHeight + 8)
             .ignoresSafeArea(edges: .top)

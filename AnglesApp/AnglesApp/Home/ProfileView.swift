@@ -101,7 +101,8 @@ struct ProfileView: View {
             FeedRefreshBanner(
                 outcome: viewModel.libraryRefreshOutcome,
                 token: viewModel.libraryRefreshToken,
-                noun: "card"
+                noun: "card",
+                onConsumed: { viewModel.consumeLibraryRefreshBanner() }
             )
             .padding(.top, fixedChromeHeight + 8)
             .ignoresSafeArea(edges: .top)
