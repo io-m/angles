@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
 import type { StoredCardAuthor } from "../types/index.js";
@@ -8,11 +8,15 @@ import { followNotifications, follows, users } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 
-/** Author ids from `authorIds` that `viewerId` follows. The viewer is never included. */
+/**
+ * Author ids from `authorIds` that `viewerId` follows. The viewer is never included.
+ * `before` counts only follows made by then, so a ranked visit scores every page alike.
+ */
 export async function followedAuthorIds(
   viewerId: string,
   authorIds: readonly string[],
   db: Selectable = getDb(),
+  before?: Date,
 ): Promise<Set<string>> {
   const ids = [...new Set(authorIds)].filter((id) => id !== viewerId);
   if (ids.length === 0) {
@@ -27,6 +31,7 @@ export async function followedAuthorIds(
           eq(follows.followerId, viewerId),
           inArray(follows.followeeId, ids),
           notBlockedBetween(viewerId, follows.followeeId),
+          before ? lte(follows.createdAt, before) : undefined,
         ),
       );
     return new Set(rows.map((row) => row.followeeId));

@@ -177,7 +177,7 @@ struct HomeFeedBoard {
             }
             shelf.order.insert(placed.id, at: newestFirstIndex(of: placed, in: shelf.order))
             shelf.ids.insert(placed.id)
-            note(&shelf, [placed])
+            note(&shelf, [placed], from: [])
             shelves[tab] = shelf
             inserted = true
         }
@@ -342,7 +342,8 @@ struct HomeFeedBoard {
         hasMore: Bool,
         generation: Int,
         filter: (HomeCard) -> Bool,
-        pageSize: Int
+        pageSize: Int,
+        arrivalsAfter: String? = nil
     ) -> Commit {
         guard var shelf = shelves[tab], shelf.generation == generation else {
             return .stale
@@ -357,7 +358,12 @@ struct HomeFeedBoard {
         }
         shelf.order = next.map(\.id)
         shelf.ids = Set(shelf.order)
-        note(&shelf, next)
+        if let serverMark = arrivalsAfter.flatMap(FeedCardMark.init(cursor:)) {
+            shelf.highWater = serverMark
+            note(&shelf, next, from: [])
+        } else {
+            note(&shelf, next, from: page)
+        }
         shelf.before = before
         shelf.hasMore = hasMore
         shelf.footerState = .idle
@@ -390,7 +396,7 @@ struct HomeFeedBoard {
             shelf.order.append(card.id)
             arrived.append(card)
         }
-        note(&shelf, arrived)
+        note(&shelf, arrived, from: arrived)
         if let before {
             shelf.before = before
         }
@@ -421,7 +427,7 @@ struct HomeFeedBoard {
             fresh.append(card)
         }
         shelf.order.insert(contentsOf: fresh.map(\.id), at: 0)
-        note(&shelf, fresh)
+        note(&shelf, fresh, from: cards)
         shelf.loadState = .loaded
         shelf.hasLoaded = true
         shelf.footerState = .idle
@@ -451,7 +457,7 @@ struct HomeFeedBoard {
         }
         shelf.order = next.map(\.id)
         shelf.ids = Set(shelf.order)
-        note(&shelf, next)
+        note(&shelf, next, from: page)
         shelf.before = before
         shelf.hasMore = hasMore
         shelf.footerState = .idle
@@ -507,7 +513,7 @@ struct HomeFeedBoard {
             shelf.order.removeAll { $0 == card.id }
             shelf.order.insert(card.id, at: 0)
             shelf.ids.insert(card.id)
-            note(&shelf, [card])
+            note(&shelf, [card], from: [])
             shelf.loadState = .loaded
             shelf.hasLoaded = true
             shelves[tab] = shelf
@@ -665,16 +671,15 @@ struct HomeFeedBoard {
         }
     }
 
-    private func note(_ shelf: inout HomeFeedShelfState, _ cards: [HomeCard]) {
+    /// Remembers `cards` as loaded this visit. Only cards in `served` (what the server
+    /// returned) can move the arrival mark: a card placed locally, such as your own new
+    /// post, would otherwise hide every post that arrived before it.
+    private func note(_ shelf: inout HomeFeedShelfState, _ cards: [HomeCard], from served: [HomeCard]) {
         for card in cards {
             shelf.seenIDs.insert(card.id)
-            if let mark = shelf.highWater {
-                if FeedOrder.isNewer(card, than: mark) {
-                    shelf.highWater = FeedCardMark(card)
-                }
-            } else {
-                shelf.highWater = FeedCardMark(card)
-            }
+        }
+        for card in served {
+            shelf.highWater = FeedCardMark.latest(shelf.highWater, FeedCardMark(card))
         }
     }
 }

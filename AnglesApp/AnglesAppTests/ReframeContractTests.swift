@@ -208,3 +208,19 @@ struct GraceOnlyAccessTests {
         ))
     }
 }
+
+struct FeedPageContractTests {
+    @Test func rankedPageCarriesTheArrivalMark() throws {
+        let json = #"{"cards":[],"page":{"nextCursor":"c2VlZA","arrivalsAfter":"2026-10-06T10:00:00.000Z|00000000-0000-4000-8000-000000000001"}}"#
+        let response = try JSONDecoder().decode(CardListResponse.self, from: Data(json.utf8))
+        #expect(response.page.serverCursor == "c2VlZA")
+        #expect(response.page.arrivalsAfter == "2026-10-06T10:00:00.000Z|00000000-0000-4000-8000-000000000001")
+    }
+
+    @Test func chronologicalPageHasNoArrivalMark() throws {
+        let json = #"{"cards":[]}"#
+        let response = try JSONDecoder().decode(CardListResponse.self, from: Data(json.utf8))
+        #expect(response.page.serverCursor == nil)
+        #expect(response.page.arrivalsAfter == nil)
+    }
+}

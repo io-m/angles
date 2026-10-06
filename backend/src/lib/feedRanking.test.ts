@@ -3,6 +3,7 @@ import { STYLES, type Category, type Emotion, type Style } from "../types/index.
 import {
   AFFINITY_CONFIG,
   EMPTY_AFFINITY,
+  FOLLOW_MIX,
   MIN_MIX_CONFIDENCE,
   PRIMARY_TIE_WEIGHT,
   offTabFade,
@@ -20,8 +21,10 @@ import {
   compareRanked,
   decodeFeedSession,
   encodeFeedSession,
+  followMix,
   freshnessTerm,
   isKeptOnShelf,
+  isPartlyKept,
   jitterTerm,
   openingStyle,
   rankCards,
@@ -43,6 +46,9 @@ import {
 } from "./feedRanking.js";
 
 const NOW = new Date("2026-09-28T12:00:00.000Z");
+
+const CATEGORY_CYCLE: readonly Category[] = ["work", "money", "family", "health"];
+const EMOTION_CYCLE: readonly Emotion[] = ["shame", "fear", "sadness", "anger"];
 
 function hoursAgo(hours: number): Date {
   return new Date(NOW.getTime() - hours * 3_600_000);
@@ -1045,15 +1051,212 @@ describe("primary tab", () => {
 });
 
 describe("isKeptOnShelf", () => {
-  it("hides on For you once any angle is kept, and on a tab only for that angle", () => {
+  it("hides on For you only once every angle is kept, and on a tab as soon as its own is", () => {
     const kept = new Set<Style>(["optimistic"]);
-    expect(isKeptOnShelf(kept, undefined)).toBe(true);
+    expect(isKeptOnShelf(kept, undefined)).toBe(false);
+    expect(isPartlyKept(kept)).toBe(true);
     expect(isKeptOnShelf(kept, "optimistic")).toBe(true);
     expect(isKeptOnShelf(kept, "stoic")).toBe(false);
+
+    expect(isKeptOnShelf(new Set<Style>(STYLES), undefined)).toBe(true);
+    expect(isPartlyKept(new Set<Style>(STYLES))).toBe(false);
+  });
+
+  it("judges a card by the angles it actually has", () => {
+    const kept = new Set<Style>(["stoic", "optimistic"]);
+    expect(isKeptOnShelf(kept, undefined, ["stoic", "optimistic"])).toBe(true);
+    expect(isKeptOnShelf(kept, undefined, ["stoic", "optimistic", "humorous"])).toBe(false);
+    expect(isPartlyKept(kept, ["stoic", "optimistic", "humorous"])).toBe(true);
   });
 
   it("hides nothing for a card the viewer has not kept", () => {
     expect(isKeptOnShelf(undefined, undefined)).toBe(false);
     expect(isKeptOnShelf(new Set<Style>(), "stoic")).toBe(false);
+    expect(isPartlyKept(undefined)).toBe(false);
+  });
+});
+
+describe("own cards", () => {
+  const confident = themes(["work"], ["shame"]);
+
+  it("get no theme match or follow, so they compete as a stranger's card would", () => {
+    const mine = scoreCard(card({ own: true, followed: true }), { now: NOW, seed: "s", affinity: confident });
+    const stranger = scoreCard(card({ id: "33333333-3333-4333-8333-333333333333" }), {
+      now: NOW,
+      seed: "s",
+      affinity: EMPTY_AFFINITY,
+    });
+    expect(mine.terms.affinity).toBe(0);
+    expect(mine.terms.followed).toBe(0);
+    expect(mine.terms.freshness).toBeCloseTo(stranger.terms.freshness, 8);
+  });
+
+  it("appear at most once a page, and the list ends when only own cards are left", () => {
+    const ranked = [
+      ...Array.from({ length: 6 }, (_, index) =>
+        spreadable({ id: `mine-${index}`, authorId: "me", own: true }),
+      ),
+      spreadable({ id: "theirs-0", authorId: "martina" }),
+      spreadable({ id: "theirs-1", authorId: "martina", category: "money" }),
+    ];
+    const page = spreadPage(ranked, 24);
+    expect(page.filter((item) => item.own)).toHaveLength(1);
+    expect(page.map((item) => item.id)).toEqual(expect.arrayContaining(["theirs-0", "theirs-1"]));
+
+    const whole = spreadRanked(ranked, 24);
+    expect(whole).toHaveLength(3);
+    expect(whole.filter((item) => item.own)).toHaveLength(1);
+  });
+
+  it("still shows the top one when nobody else has posted", () => {
+    const ranked = Array.from({ length: 4 }, (_, index) =>
+      spreadable({ id: `mine-${index}`, authorId: "me", own: true }),
+    );
+    expect(spreadRanked(ranked, 24).map((item) => item.id)).toEqual(["mine-0"]);
+  });
+});
+
+describe("a small community", () => {
+  it("alternates authors instead of walling the page with the top one", () => {
+    const ranked = [
+      ...Array.from({ length: 8 }, (_, index) =>
+        spreadable({ id: `a-${index}`, authorId: "author-a", category: CATEGORY_CYCLE[index % 4] }),
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        spreadable({ id: `b-${index}`, authorId: "author-b", category: CATEGORY_CYCLE[index % 4] }),
+      ),
+    ];
+    const page = spreadPage(ranked, 12);
+    expect(page).toHaveLength(12);
+    // Every b card is placed before a's tail, and no author runs three in a row while
+    // the other still has cards.
+    const lastB = page.map((item) => item.authorId).lastIndexOf("author-b");
+    expect(lastB).toBeLessThan(9);
+    let run = 0;
+    let longest = 0;
+    let previous = "";
+    for (const item of page.slice(0, lastB + 1)) {
+      run = item.authorId === previous ? run + 1 : 1;
+      previous = item.authorId;
+      longest = Math.max(longest, run);
+    }
+    expect(longest).toBeLessThanOrEqual(2);
+  });
+
+  it("does not put one author back to back when someone else fits", () => {
+    const ranked = [
+      spreadable({ id: "a-0", authorId: "a", category: "work" }),
+      spreadable({ id: "a-1", authorId: "a", category: "money" }),
+      spreadable({ id: "b-0", authorId: "b", category: "family" }),
+    ];
+    expect(spreadPage(ranked, 3).map((item) => item.id)).toEqual(["a-0", "b-0", "a-1"]);
+  });
+});
+
+describe("follow mix", () => {
+  const followedCard = (index: number, authorId: string, hours = 10): SpreadableCard =>
+    spreadable({
+      id: `f-${authorId}-${index}`,
+      authorId,
+      followed: true,
+      createdAt: hoursAgo(hours),
+      category: CATEGORY_CYCLE[index % 4],
+      emotions: [EMOTION_CYCLE[index % 4] ?? "shame"],
+    });
+  const strangerCard = (index: number): SpreadableCard =>
+    spreadable({
+      id: `s-${index}`,
+      authorId: `stranger-${index}`,
+      createdAt: hoursAgo(1),
+      category: CATEGORY_CYCLE[index % 4],
+      emotions: [EMOTION_CYCLE[(index + 1) % 4] ?? "shame"],
+    });
+
+  it("is off until the viewer follows three people who posted this week", () => {
+    const two = [followedCard(0, "x"), followedCard(0, "y")];
+    expect(followMix(two, NOW)).toBeNull();
+    const stale = [...two, followedCard(0, "z", 24 * 9)];
+    expect(followMix(stale, NOW)).toBeNull();
+    const three = [...two, followedCard(0, "z")];
+    expect(followMix(three, NOW)).toMatchObject({ share: FOLLOW_MIX.share, maxShare: FOLLOW_MIX.maxShare });
+  });
+
+  it("holds about a quarter of the page for followed authors, paced from the top", () => {
+    // Strangers' posts are all fresher, so plain rank order would push every followed card off the page.
+    const ranked = [
+      ...Array.from({ length: 30 }, (_, index) => strangerCard(index)),
+      ...["x", "y", "z", "w"].flatMap((authorId) => [0, 1].map((index) => followedCard(index, authorId))),
+    ];
+    const mix = followMix(ranked, NOW);
+    const page = spreadPage(ranked, 24, { follow: mix });
+    const followedSlots = page.flatMap((item, slot) => (item.followed ? [slot] : []));
+    expect(followedSlots).toHaveLength(6);
+    expect(followedSlots[0]).toBeLessThan(4);
+    expect(followedSlots.every((slot, index) => slot <= 4 * (index + 1))).toBe(true);
+    expect(spreadPage(ranked, 24).filter((item) => item.followed)).toHaveLength(0);
+  });
+
+  it("never lets followed authors take more than half a page while anything else is left", () => {
+    // Followed posts rank first; the cap stops them at half.
+    const ranked = [
+      ...["x", "y", "z", "w", "v", "u", "t"].flatMap((authorId) =>
+        [0, 1].map((index) => followedCard(index, authorId)),
+      ),
+      ...Array.from({ length: 20 }, (_, index) => strangerCard(index)),
+    ];
+    const page = spreadPage(ranked, 24, { follow: followMix(ranked, NOW) });
+    expect(page.filter((item) => item.followed)).toHaveLength(12);
+  });
+});
+
+describe("partly kept cards", () => {
+  it("drop by the partly-kept penalty on For you, and not on a style shelf", () => {
+    const plain = scoreCard(card(), { now: NOW, seed: "s" });
+    const partly = scoreCard(card({ partlyKept: true }), { now: NOW, seed: "s" });
+    expect(partly.score).toBeCloseTo(plain.score + RANKING_WEIGHTS.partlyKept, 8);
+
+    const shelf: StyleShelfContext = {
+      style: "stoic",
+      affinity: EMPTY_AFFINITY,
+      hearts: 0,
+      angleHearts: 0,
+      coverMatches: false,
+    };
+    const onShelf = scoreCard(card({ partlyKept: true }), { now: NOW, seed: "s", style: shelf });
+    const plainShelf = scoreCard(card(), { now: NOW, seed: "s", style: shelf });
+    expect(onShelf.score).toBeCloseTo(plainShelf.score, 8);
+  });
+
+  it("open on an answer the viewer has not kept", () => {
+    const face = openingStyle({
+      cardId: "c",
+      viewerId: "v",
+      cover: "humorous",
+      available: STYLES,
+      preferred: "humorous",
+      kept: new Set<Style>(["humorous"]),
+    });
+    expect(face).toBe("tough_love");
+    expect(
+      openingStyle({
+        cardId: "c",
+        viewerId: "v",
+        cover: "humorous",
+        available: STYLES,
+        preferred: "stoic",
+        kept: new Set<Style>(["humorous"]),
+      }),
+    ).toBe("stoic");
+    // Nothing unkept left: the cover stands.
+    expect(
+      openingStyle({
+        cardId: "c",
+        viewerId: "v",
+        cover: "humorous",
+        available: ["humorous"],
+        preferred: null,
+        kept: new Set<Style>(["humorous"]),
+      }),
+    ).toBe("humorous");
   });
 });

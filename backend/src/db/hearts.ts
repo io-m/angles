@@ -1,9 +1,26 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, ne, sql, type SQL } from "drizzle-orm";
 import type { Style } from "../types/index.js";
 import { getDb } from "./client.js";
 import { cardReframes, cards, savedAngles } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
+
+/**
+ * Which hearts a ranked visit counts: those made by `before` (the visit's start, so every
+ * page of it scores the same), never the viewer's own (your heart is not social proof).
+ */
+export type HeartWindow = { before?: Date; excludeUserId?: string };
+
+function heartWindowFilters(options: HeartWindow): SQL[] {
+  const filters: SQL[] = [];
+  if (options.before) {
+    filters.push(lte(savedAngles.favoritedAt, options.before));
+  }
+  if (options.excludeUserId) {
+    filters.push(ne(savedAngles.userId, options.excludeUserId));
+  }
+  return filters;
+}
 
 /**
  * Hearts other people left on a card, keyed by card id.
@@ -18,6 +35,7 @@ type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 export async function loadCardHeartTotals(
   cardIds: string[],
   db: Selectable = getDb(),
+  options: HeartWindow = {},
 ): Promise<Map<string, number>> {
   const totals = new Map<string, number>();
   if (cardIds.length === 0) {
@@ -31,7 +49,7 @@ export async function loadCardHeartTotals(
       hearts: sql<number>`count(distinct ${savedAngles.userId})::int`,
     })
     .from(savedAngles)
-    .where(inArray(savedAngles.cardId, cardIds))
+    .where(and(inArray(savedAngles.cardId, cardIds), ...heartWindowFilters(options)))
     .groupBy(savedAngles.cardId);
 
   for (const row of rows) {
@@ -84,6 +102,7 @@ export async function loadViewerStyleTaste(
 export async function loadStyleHeartCounts(
   cardIds: string[],
   db: Selectable = getDb(),
+  options: HeartWindow = {},
 ): Promise<Map<string, Map<Style, number>>> {
   const counts = new Map<string, Map<Style, number>>();
   if (cardIds.length === 0) {
@@ -98,7 +117,7 @@ export async function loadStyleHeartCounts(
       hearts: sql<number>`count(*)::int`,
     })
     .from(savedAngles)
-    .where(inArray(savedAngles.cardId, cardIds))
+    .where(and(inArray(savedAngles.cardId, cardIds), ...heartWindowFilters(options)))
     .groupBy(savedAngles.cardId, savedAngles.style);
 
   for (const row of rows) {

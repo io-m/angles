@@ -538,6 +538,9 @@ final class HomeViewModel {
     private(set) var libraryLoadState: LibraryLoadState
     private(set) var libraryFooterState: FeedFooterState = .idle
     private(set) var feedBoard = HomeFeedBoard()
+    /// Cards each Home shelf has put on screen. Read only when a pull plans a rotation,
+    /// so it stays out of observation and scrolling never redraws Home.
+    @ObservationIgnored private var feedDisplayedIDs: [HomeFeedTab: Set<UUID>] = [:]
     /// For you's first load. Style shelves stay unloaded until their tab is opened.
     var feedLoadState: LibraryLoadState { feedBoard.shelf(.all).loadState }
     /// The banner for the shelf that was just pulled. Switching tabs must not replay it.
@@ -1294,6 +1297,7 @@ final class HomeViewModel {
 
         feedTasks = [:]
         feedBoard.reset()
+        feedDisplayedIDs = [:]
         appliedFilter = HomeFeedFilter()
         homeFeedTab = .all
 
@@ -1397,6 +1401,10 @@ final class HomeViewModel {
         startFeedTask(on: tab, replacing: true)
     }
 
+    func noteFeedCardDisplayed(_ id: UUID, on tab: HomeFeedTab) {
+        feedDisplayedIDs[tab, default: []].insert(id)
+    }
+
     /// Pull-to-refresh for the shelf that was pulled. Each tab keeps its own cursor,
     /// so a Stoic pull cannot rotate For you, and the other way around.
     func refreshFeed(_ tab: HomeFeedTab = .all) async {
@@ -1493,15 +1501,18 @@ final class HomeViewModel {
         }
 
         let current = feedBoard.cards(on: tab)
+        let shelf = feedBoard.shelf(tab)
         let headCards = head.stored.map { merged(current, with: $0) }
         let plan = FeedRefreshPlanner.plan(
             head: headCards,
             headLimit: Self.feedHeadLimit,
             tail: tail.stored.map { merged(current, with: $0) } ?? [],
-            highWater: feedBoard.shelf(tab).highWater,
-            seenIDs: feedBoard.shelf(tab).seenIDs,
+            highWater: shelf.highWater,
+            seenIDs: shelf.seenIDs,
+            onShelf: current,
+            displayedIDs: feedDisplayedIDs[tab] ?? [],
             pageSize: Self.feedPageSize,
-            isRotated: feedBoard.shelf(tab).isRotated
+            isRotated: shelf.isRotated
         )
 
         switch plan {
@@ -1517,12 +1528,19 @@ final class HomeViewModel {
                 publishFeedRefresh(.newItems(newCount), on: tab, generation: generation)
             }
         case let .rotate(rotation):
+            // A tail that did not load leaves the shelf's cursor where it was, so the
+            // next load more still asks for it.
+            let tailLoaded = tail.stored != nil
             withoutAnimation {
                 _ = feedBoard.rotate(
                     rotation.page,
                     on: tab,
-                    before: tail.serverCursor ?? rotation.nextBefore,
-                    hasMore: rotation.consumedWholeTail ? tail.hasMore : true,
+                    before: tailLoaded
+                        ? tail.serverCursor ?? rotation.nextBefore ?? shelf.before
+                        : shelf.before,
+                    hasMore: !tailLoaded
+                        ? shelf.hasMore
+                        : rotation.consumedWholeTail ? tail.hasMore : true,
                     generation: generation,
                     filter: { matchesFeedFilter($0, filter) },
                     pageSize: Self.feedPageSize
@@ -1677,7 +1695,8 @@ final class HomeViewModel {
                         hasMore: response.page.hasMore(pageSize: Self.feedPageSize),
                         generation: generation,
                         filter: { matchesFeedFilter($0, filter) },
-                        pageSize: Self.feedPageSize
+                        pageSize: Self.feedPageSize,
+                        arrivalsAfter: response.page.arrivalsAfter
                     )
                 } else {
                     commit = feedBoard.append(

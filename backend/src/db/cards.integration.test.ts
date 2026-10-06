@@ -11,6 +11,7 @@ import {
   type Category,
   type CreateCardInput,
   type Emotion,
+  type StoredCard,
   type Style,
 } from "../types/index.js";
 import { DEV_USER_ID, runAsOwner } from "../lib/authStub.js";
@@ -90,6 +91,10 @@ const {
 const { openReplay, parseReplayKey, sealReplay } = await import("../lib/reframeReplay.js");
 const { clearFeedSaves, listFeed, listRankedFeed, saveFeedAngle } = await import("./feed.js");
 const { followUser, unfollowUser } = await import("./follows.js");
+
+async function rankedCards(query: Parameters<typeof listRankedFeed>[0]): Promise<StoredCard[]> {
+  return (await listRankedFeed(query)).cards;
+}
 const {
   deliverFollowPush,
   listFollowNotifications,
@@ -1336,21 +1341,23 @@ describe.skipIf(!testUrl)("cards integration", () => {
     category?: Category;
     emotions?: Emotion[];
     createdAt?: Date;
+    authorId?: string;
   }): Promise<string> {
     const db = getDb();
+    const authorId = input.authorId ?? OTHER_USER_ID;
     await db
       .insert(users)
       .values({
-        id: OTHER_USER_ID,
+        id: authorId,
         initials: "AL",
         name: "AL",
-        email: `seed-${OTHER_USER_ID}@angles.invalid`,
+        email: `seed-${authorId}@angles.invalid`,
       })
       .onConflictDoNothing();
     const [inserted] = await db
       .insert(cards)
       .values({
-        userId: OTHER_USER_ID,
+        userId: authorId,
         thoughtEn: input.thought,
         inputLanguage: "en",
         category: input.category ?? "work",
@@ -1697,7 +1704,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         await heart(loved, fan, index === 0 ? "stoic" : "optimistic");
       }
 
-      const ranked = await listRankedFeed({ limit: 24, session: session() });
+      const ranked = await rankedCards({ limit: 24, session: session() });
       const ids = ranked.map((card) => card.id);
       expect(ids.indexOf(loved)).toBeLessThan(ids.indexOf(plain));
     });
@@ -1724,7 +1731,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         createdAt,
       });
 
-      const ranked = await listRankedFeed({ limit: 24, session: session() });
+      const ranked = await rankedCards({ limit: 24, session: session() });
       const ids = ranked.map((card) => card.id);
       expect(ids.indexOf(mirror)).toBeLessThan(ids.indexOf(stranger));
     });
@@ -1742,9 +1749,9 @@ describe.skipIf(!testUrl)("cards integration", () => {
       }
 
       const seeded = session();
-      const first = await listRankedFeed({ limit: 3, session: seeded });
-      const second = await listRankedFeed({ limit: 3, session: { ...seeded, offset: 3 } });
-      const third = await listRankedFeed({ limit: 3, session: { ...seeded, offset: 6 } });
+      const first = await rankedCards({ limit: 3, session: seeded });
+      const second = await rankedCards({ limit: 3, session: { ...seeded, offset: 3 } });
+      const third = await rankedCards({ limit: 3, session: { ...seeded, offset: 6 } });
 
       const paged = [...first, ...second, ...third].map((card) => card.id);
       expect(paged).toHaveLength(7);
@@ -1761,9 +1768,9 @@ describe.skipIf(!testUrl)("cards integration", () => {
       }
 
       const startedAt = new Date();
-      const one = await listRankedFeed({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
-      const again = await listRankedFeed({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
-      const other = await listRankedFeed({ limit: 12, session: { seed: "seed-two", startedAt, offset: 0 } });
+      const one = await rankedCards({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
+      const again = await rankedCards({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
+      const other = await rankedCards({ limit: 12, session: { seed: "seed-two", startedAt, offset: 0 } });
 
       expect(again.map((card) => card.id)).toEqual(one.map((card) => card.id));
       expect(other.map((card) => card.id)).not.toEqual(one.map((card) => card.id));
@@ -1799,7 +1806,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         createdAt: fresh,
       });
 
-      const ids = (await listRankedFeed({ limit: 24, session: session() })).map((card) => card.id);
+      const ids = (await rankedCards({ limit: 24, session: session() })).map((card) => card.id);
       expect(ids.indexOf(grief)).toBeLessThan(ids.indexOf(money));
     });
 
@@ -1817,7 +1824,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       const seeded = session();
       const pages = new Map<Style, string[]>();
       for (const style of STYLES) {
-        const page = await listRankedFeed({ limit: 12, style, session: seeded });
+        const page = await rankedCards({ limit: 12, style, session: seeded });
         expect(page).toHaveLength(12);
         pages.set(style, page.map((card) => card.id));
       }
@@ -1853,7 +1860,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       const seeded = session();
       const paged: string[] = [];
       for (const offset of [0, 7, 14, 21, 28]) {
-        const page = await listRankedFeed({ limit: 7, session: { ...seeded, offset } });
+        const page = await rankedCards({ limit: 7, session: { ...seeded, offset } });
         paged.push(...page.map((card) => card.id));
       }
       expect(paged).toHaveLength(ids.size);
@@ -1861,7 +1868,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
       const again: string[] = [];
       for (const offset of [0, 7, 14, 21, 28]) {
-        const page = await listRankedFeed({ limit: 7, session: { ...seeded, offset } });
+        const page = await rankedCards({ limit: 7, session: { ...seeded, offset } });
         again.push(...page.map((card) => card.id));
       }
       expect(again).toEqual(paged);
@@ -1879,18 +1886,36 @@ describe.skipIf(!testUrl)("cards integration", () => {
         isPublic: true,
         createdAt,
       });
-      expect((await saveFeedAngle(kept, "optimistic")).ok).toBe(true);
+      expect((await saveFeedAngle(kept, "humorous")).ok).toBe(true);
       const later = { ...session(), startedAt: new Date(Date.now() + 1_000) };
 
-      const all = (await listRankedFeed({ limit: 24, session: later })).map((card) => card.id);
-      expect(all).not.toContain(kept);
-      expect(all).toContain(untouched);
+      // A heart is on one answer: For you still shows the card, lower, opening on an answer
+      // the viewer has not kept (the fixture's cover is the one they hearted).
+      const forYou = await rankedCards({ limit: 24, session: later });
+      const all = forYou.map((card) => card.id);
+      expect(all).toContain(kept);
+      expect(all.indexOf(kept)).toBeGreaterThan(all.indexOf(untouched));
+      expect(forYou.find((card) => card.id === kept)?.spotlightStyle).not.toBe("humorous");
 
-      const sameAngle = await listRankedFeed({ limit: 24, style: "optimistic", session: later });
+      // Once every angle is kept, For you has nothing new to show from it.
+      for (const style of ["stoic", "optimistic", "tough_love"] as const) {
+        expect((await saveFeedAngle(kept, style)).ok).toBe(true);
+      }
+      const fullyKept = { ...session(), startedAt: new Date(Date.now() + 2_000) };
+      expect((await rankedCards({ limit: 24, session: fullyKept })).map((card) => card.id)).not.toContain(
+        kept,
+      );
+      for (const style of ["stoic", "optimistic", "tough_love"] as const) {
+        await getDb()
+          .delete(savedAngles)
+          .where(and(eq(savedAngles.cardId, kept), eq(savedAngles.style, style)));
+      }
+
+      const sameAngle = await rankedCards({ limit: 24, style: "humorous", session: later });
       expect(sameAngle.map((card) => card.id)).not.toContain(kept);
 
       // Another voice for the same thought is still worth meeting.
-      const otherAngle = await listRankedFeed({ limit: 24, style: "stoic", session: later });
+      const otherAngle = await rankedCards({ limit: 24, style: "stoic", session: later });
       expect(otherAngle.map((card) => card.id)).toContain(kept);
     });
 
@@ -1906,7 +1931,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         );
       }
       const startedAt = new Date(Date.now() - 5_000);
-      const before = await listRankedFeed({ limit: 24, session: { seed: "seed-frozen-h", startedAt, offset: 0 } });
+      const before = await rankedCards({ limit: 24, session: { seed: "seed-frozen-h", startedAt, offset: 0 } });
 
       const target = ids[0];
       if (!target) {
@@ -1914,10 +1939,10 @@ describe.skipIf(!testUrl)("cards integration", () => {
       }
       expect((await saveFeedAngle(target, "stoic")).ok).toBe(true);
 
-      const after = await listRankedFeed({ limit: 24, session: { seed: "seed-frozen-h", startedAt, offset: 0 } });
-      // The heart may move the card within the visit's order (its hearts count and the
-      // viewer's themes are live), but it must not drop out of the visit.
-      expect(after.map((card) => card.id).sort()).toEqual(before.map((card) => card.id).sort());
+      const after = await rankedCards({ limit: 24, session: { seed: "seed-frozen-h", startedAt, offset: 0 } });
+      // Hearts, follows and themes are read as of the visit's start, so a heart made
+      // during the visit leaves its order exactly as it was.
+      expect(after.map((card) => card.id)).toEqual(before.map((card) => card.id));
       expect(after.map((card) => card.id)).toContain(target);
     });
 
@@ -1940,7 +1965,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         category: "work",
       });
 
-      const filtered = await listRankedFeed({
+      const filtered = await rankedCards({
         limit: 24,
         categories: ["work"],
         emotions: ["fear"],
@@ -1952,12 +1977,12 @@ describe.skipIf(!testUrl)("cards integration", () => {
       expect(ids).not.toContain(priv);
 
       await reportCard(work, "other");
-      expect((await listRankedFeed({ limit: 24, session: session() })).map((card) => card.id)).not.toContain(
+      expect((await rankedCards({ limit: 24, session: session() })).map((card) => card.id)).not.toContain(
         work,
       );
 
       expect(await blockUser(OTHER_USER_ID)).toBe("ok");
-      expect(await listRankedFeed({ limit: 24, session: session() })).toEqual([]);
+      expect(await rankedCards({ limit: 24, session: session() })).toEqual([]);
       await unblockUser(OTHER_USER_ID);
     });
 
@@ -1994,6 +2019,74 @@ describe.skipIf(!testUrl)("cards integration", () => {
       expect(withOwn.find((card) => card.id === own.id)?.spotlightStyle).toBe("stoic");
     });
 
+    it("mixes a two-person community instead of showing the viewer only their own posts", async () => {
+      // Production on 2026-10-06: the viewer wrote most of the catalog and hearted one angle
+      // of each of the other person's two newer posts.
+      for (let index = 0; index < 6; index += 1) {
+        await createCard({
+          ...baseInput,
+          thought: `My own public post number ${index}.`,
+          isPublic: true,
+        });
+      }
+      const theirs: string[] = [];
+      for (let index = 0; index < 2; index += 1) {
+        const id = await insertOtherCard({
+          thought: `Their newer post number ${index}.`,
+          isPublic: true,
+          category: index === 0 ? "family" : "future",
+          createdAt: new Date(Date.now() - (index + 1) * 60_000),
+        });
+        expect((await saveFeedAngle(id, "humorous")).ok).toBe(true);
+        theirs.push(id);
+      }
+
+      const startedAt = new Date(Date.now() + 1_000);
+      const page = await listRankedFeed({ limit: 24, session: { seed: "seed-pair", startedAt, offset: 0 } });
+      const ids = page.cards.map((card) => card.id);
+      expect(ids).toEqual(expect.arrayContaining(theirs));
+      expect(page.cards.filter((card) => card.isOwner)).toHaveLength(1);
+
+      // A pull right after page 1 finds nothing new: everything up to the mark is in the visit.
+      const [markAt, markId] = page.arrivalsAfter.split("|");
+      const arrivals = await listFeed(
+        { limit: 8, after: { createdAt: new Date(markAt ?? ""), id: markId ?? "" } },
+        { rankedArrivals: true },
+      );
+      expect(arrivals).toEqual([]);
+    });
+
+    it("keeps its order across pages when the viewer follows someone mid-visit", async () => {
+      const second = "00000000-0000-4000-8000-0000000000b2";
+      for (let index = 0; index < 12; index += 1) {
+        await insertOtherCard({
+          thought: `A post ${index} for the mid-visit follow test.`,
+          isPublic: true,
+          category: CATEGORIES[index % (CATEGORIES.length - 1)] ?? "work",
+          createdAt: new Date(Date.now() - index * 3_600_000),
+          authorId: index % 2 === 0 ? OTHER_USER_ID : second,
+        });
+      }
+      const seeded = { seed: "seed-follow-mid", startedAt: new Date(), offset: 0 };
+      const first = await rankedCards({ limit: 4, session: seeded });
+      expect(await followUser(second)).toMatchObject({ result: "ok" });
+      const rest: StoredCard[] = [];
+      for (const offset of [4, 8]) {
+        rest.push(...(await rankedCards({ limit: 4, session: { ...seeded, offset } })));
+      }
+      const paged = [...first, ...rest].map((card) => card.id);
+      expect(new Set(paged).size).toBe(12);
+      expect(paged).toHaveLength(12);
+
+      // The same visit replayed now reads the same order: the follow waits for the next visit.
+      const replay: string[] = [];
+      for (const offset of [0, 4, 8]) {
+        replay.push(...(await rankedCards({ limit: 4, session: { ...seeded, offset } })).map((card) => card.id));
+      }
+      expect(replay).toEqual(paged);
+      expect(await unfollowUser(second)).toBe("ok");
+    });
+
     it("leaves a post newer than the session out, so arrivals stay the other half", async () => {
       const startedAt = new Date(Date.now() - 60_000);
       const late = await insertOtherCard({
@@ -2002,7 +2095,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         createdAt: new Date(),
       });
 
-      const ranked = await listRankedFeed({
+      const ranked = await rankedCards({
         limit: 24,
         session: { seed: "seed-frozen", startedAt, offset: 0 },
       });

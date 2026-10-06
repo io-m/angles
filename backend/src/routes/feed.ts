@@ -127,21 +127,28 @@ feedRoute.get(
     // newer, newest first — a new post must not be able to rank out of sight), or the
     // client is mid-scroll on a keyset cursor and must not be yanked into another order.
     const keyset = pointer && "before" in pointer ? pointer.before : undefined;
-    if (query.after || keyset || !rankingEnabled()) {
-      const cardList = await listFeed({ ...facets, before: keyset, after: query.after });
+    const ranking = rankingEnabled();
+    if (query.after || keyset || !ranking) {
+      const listQuery = { ...facets, before: keyset, after: query.after };
+      // Arrivals under ranking follow the ranked feed's visibility rules.
+      const cardList =
+        ranking && query.after
+          ? await listFeed(listQuery, { rankedArrivals: true })
+          : await listFeed(listQuery);
       return c.json({ cards: cardList } satisfies FeedListResponse);
     }
 
     // A ranked order cannot be derived from the cards, so the server owns the pointer.
     const session = pointer && "session" in pointer ? pointer.session : newFeedSession();
-    const cardList = await listRankedFeed({ ...facets, session });
+    const ranked = await listRankedFeed({ ...facets, session });
     return c.json({
-      cards: cardList,
+      cards: ranked.cards,
       page: {
         nextCursor: encodeFeedSession({
           ...session,
-          offset: session.offset + cardList.length,
+          offset: session.offset + ranked.cards.length,
         }),
+        arrivalsAfter: ranked.arrivalsAfter,
       },
     } satisfies FeedListResponse);
   },

@@ -5,7 +5,8 @@ import Foundation
 ///
 /// Order is the server's and never changes here; only the face does. A card keeps the
 /// angle it came with unless that repeats the card above (or a fixed card below), and
-/// then takes another angle it actually has. Your own cards keep the cover you saved,
+/// then takes another angle it actually has. A card never opens on an angle you hearted
+/// while it has one you have not. Your own cards keep the cover you saved,
 /// and a card with one angle keeps it: a repeat beats dropping a card.
 enum ForYouCovers {
     /// - Parameters:
@@ -40,12 +41,22 @@ enum ForYouCovers {
     }
 
     private static func isFixed(_ card: HomeCard) -> Bool {
-        card.isOwner || styles(of: card).count < 2
+        card.isOwner || choices(for: card).count < 2
     }
 
     private static func styles(of card: HomeCard) -> [Style] {
         var seen: Set<Style> = []
         return card.slides.map(\.result.style).filter { seen.insert($0).inserted }
+    }
+
+    /// The angles a card may open on. One you already hearted is in your library, so the
+    /// card opens on one you have not read whenever it has one, even if that repeats a
+    /// neighbour.
+    private static func choices(for card: HomeCard) -> [Style] {
+        let available = styles(of: card)
+        let kept = Set(card.slides.filter(\.isFavorite).map(\.result.style))
+        let unkept = available.filter { !kept.contains($0) }
+        return unkept.isEmpty ? available : unkept
     }
 
     private static func face(
@@ -54,12 +65,12 @@ enum ForYouCovers {
         fixedBelow: Style?,
         softBelow: Style?
     ) -> Style {
-        let available = styles(of: card)
         let current = card.spotlightStyle
-        guard !card.isOwner, available.count > 1 else {
+        guard !card.isOwner, styles(of: card).count > 1 else {
             return current
         }
-        if available.contains(current), current != previous, current != fixedBelow {
+        let options = choices(for: card)
+        if options.contains(current), current != previous, current != fixedBelow {
             return current
         }
 
@@ -69,7 +80,7 @@ enum ForYouCovers {
         let cycle = (1 ... Style.allCases.count).map {
             Style.allCases[(start + $0) % Style.allCases.count]
         }
-        let ordered = cycle.filter(available.contains)
+        let ordered = cycle.filter(options.contains)
         let tiers: [(Style) -> Bool] = [
             { $0 != previous && $0 != fixedBelow && $0 != softBelow },
             { $0 != previous && $0 != fixedBelow },
@@ -80,6 +91,6 @@ enum ForYouCovers {
                 return pick
             }
         }
-        return available.contains(current) ? current : available[0]
+        return options.contains(current) ? current : options[0]
     }
 }

@@ -18,9 +18,14 @@ export const RANKING_WEIGHTS = {
   freshness: 2.0,
   resonance: 0.8,
   affinity: 0.7,
-  followed: 0.35,
+  followed: 0.6,
   secondChance: 0.25,
   jitter: 0.15,
+  /**
+   * A card the viewer already hearted some angles of, but not all. It stays on For you
+   * (opening on an angle they have not kept) and drops by about half a day of freshness.
+   */
+  partlyKept: -0.5,
 } as const;
 
 /**
@@ -34,12 +39,12 @@ export const STYLE_RANKING_WEIGHTS = {
    * Subtracted on a style shelf from a card whose primary tab, for this viewer, is a
    * different style, once the card is old enough to have settled (see `OFF_TAB_FADE_HOURS`).
    * Larger than everything an old card can score on the terms every tab shares (resonance,
-   * follow, theme, second chance, jitter come to about 2.25), so an off-tab card ranks
+   * follow, theme, second chance, jitter come to 2.5), so an off-tab card ranks
    * below all of the tab's own cards even when it is popular: those hearts are about the
    * thought, not this voice. Angle hearts on this tab make it the primary tab instead. A penalty and not a filter: a thin community still
    * fills the tab once its primary cards run out, and a strong card can lead a second tab.
    */
-  offTab: 2.5,
+  offTab: 2.75,
 } as const;
 
 /**
@@ -100,8 +105,13 @@ export type RankableCard = {
   createdAt: Date;
   category: Category;
   emotions: readonly Emotion[];
+  /** Distinct other people who hearted it. The viewer's own hearts never count. */
   hearts: number;
   followed: boolean;
+  /** The viewer's own card: no theme match and no follow, so it competes as a stranger's would. */
+  own?: boolean;
+  /** The viewer hearted some of this card's angles but not all of them. For you only. */
+  partlyKept?: boolean;
   /** Hearts on one angle. Read only while ranking that style shelf. */
   angleHearts?: number;
   /** Hearts on each angle. Read only to choose the card's primary tab. */
@@ -231,6 +241,7 @@ export type RankingTerms = {
   followed: number;
   secondChance: number;
   jitter: number;
+  partlyKept: number;
 };
 
 export type ScoredCard = { id: string; score: number; terms: RankingTerms };
@@ -406,13 +417,18 @@ export function scoreCard(
   const terms: RankingTerms = {
     freshness: freshnessTerm(card, options.now),
     resonance: resonanceTerm(card),
-    affinity: style
-      ? blendedAffinityTerm(card, affinity, style.affinity, style.hearts)
-      : affinityTerm(card, affinity) * affinity.confidence,
-    followed: card.followed ? 1 : 0,
+    // Themes are learned from what the viewer writes, so their own card would always be
+    // a perfect match. It gets none, and competes the way a stranger's card would.
+    affinity: card.own
+      ? 0
+      : style
+        ? blendedAffinityTerm(card, affinity, style.affinity, style.hearts)
+        : affinityTerm(card, affinity) * affinity.confidence,
+    followed: card.followed && !card.own ? 1 : 0,
     secondChance: secondChanceTerm(card, options.now),
     // A style salt keeps two shelves from tying into the same order. For you omits it.
     jitter: jitterTerm(card.id, style ? `${options.seed}:${style.style}` : options.seed),
+    partlyKept: card.partlyKept && !style ? 1 : 0,
   };
 
   let score = 0;
@@ -432,18 +448,36 @@ export function scoreCard(
 }
 
 /**
- * Whether the viewer has already kept this card on the shelf they are reading. For you hides
- * a card once any of its angles is hearted. A style tab hides it only if that tab's own
- * angle is hearted, so the same thought can still show in a voice they have not kept.
+ * Whether the viewer has already kept this card on the shelf they are reading. A heart is
+ * on one answer, not the whole card, so For you hides a card only once every angle it has
+ * is hearted; until then it can still show an answer they have not kept. A style tab hides
+ * it as soon as that tab's own angle is hearted.
  */
 export function isKeptOnShelf(
   keptStyles: ReadonlySet<Style> | undefined,
   shelf: Style | undefined,
+  available: readonly Style[] = STYLES,
 ): boolean {
   if (!keptStyles || keptStyles.size === 0) {
     return false;
   }
-  return shelf === undefined ? true : keptStyles.has(shelf);
+  if (shelf !== undefined) {
+    return keptStyles.has(shelf);
+  }
+  const angles = available.length > 0 ? available : STYLES;
+  return angles.every((style) => keptStyles.has(style));
+}
+
+/** Some of the card's angles are hearted and some are not. */
+export function isPartlyKept(
+  keptStyles: ReadonlySet<Style> | undefined,
+  available: readonly Style[] = STYLES,
+): boolean {
+  if (!keptStyles || keptStyles.size === 0) {
+    return false;
+  }
+  const angles = available.length > 0 ? available : STYLES;
+  return angles.some((style) => !keptStyles.has(style)) && angles.some((style) => keptStyles.has(style));
 }
 
 /** Highest first, ties broken by id so one seed always produces one order. */
@@ -620,6 +654,11 @@ export function bucketCaps(mix: ThemeMix, pageSize: number): Record<ThemeBucket,
 export const SPREAD_LIMITS = {
   /** Cards one author can hold in a page. */
   perAuthor: 2,
+  /**
+   * The viewer's own cards in a page. Never broken: For you is about other people, and
+   * your posts are all on Profile.
+   */
+  own: 1,
   /** Consecutive cards allowed to share a life area, a dominant mood, or a cover angle. */
   run: 2,
   /**
@@ -631,6 +670,24 @@ export const SPREAD_LIMITS = {
   peakIntensity: 6,
 } as const;
 
+/**
+ * How follows shape a For you page. Following someone is a boost, not a filter: once the
+ * viewer follows enough people who post, a quarter of each page is theirs, spread through
+ * the page, and never more than half.
+ */
+export const FOLLOW_MIX = {
+  /** Followed authors with a recent post before the floor applies. */
+  minAuthors: 3,
+  /** Share of a page held for followed authors' recent posts, paced from the top. */
+  share: 0.25,
+  /** Most of a page followed authors may hold while anything else is left. */
+  maxShare: 0.5,
+  /** Only a post this young counts toward the floor; an old one is not why you follow someone. */
+  recentDays: 7,
+} as const;
+
+export type FollowMix = { share: number; maxShare: number; recentSince: Date };
+
 export type SpreadableCard = {
   id: string;
   authorId: string;
@@ -640,12 +697,42 @@ export type SpreadableCard = {
   spotlightStyle: Style;
   /** Set when the page follows a theme mix. Absent reads as `explore`. */
   bucket?: ThemeBucket;
+  /** The viewer's own card. Capped at `SPREAD_LIMITS.own` and outside the theme mix. */
+  own?: boolean;
+  /** Written by someone the viewer follows. */
+  followed?: boolean;
+  createdAt?: Date;
 };
+
+/**
+ * The follow floor for this viewer, or null while they follow too few people who post.
+ * Counted over the whole candidate set, so every page of a visit uses the same rule.
+ */
+export function followMix(
+  cards: readonly Pick<SpreadableCard, "authorId" | "followed" | "own" | "createdAt">[],
+  now: Date,
+): FollowMix | null {
+  const recentSince = new Date(now.getTime() - FOLLOW_MIX.recentDays * 86_400_000);
+  const authors = new Set<string>();
+  for (const card of cards) {
+    if (card.followed && !card.own && card.createdAt && card.createdAt >= recentSince) {
+      authors.add(card.authorId);
+    }
+  }
+  if (authors.size < FOLLOW_MIX.minAuthors) {
+    return null;
+  }
+  return { share: FOLLOW_MIX.share, maxShare: FOLLOW_MIX.maxShare, recentSince };
+}
 
 type Run<T> = { key: T | null; length: number };
 
 type SpreadState = {
   perAuthor: Map<string, number>;
+  own: number;
+  followed: number;
+  followedRecent: number;
+  lastAuthor: string | null;
   peakIntensity: number;
   category: Run<Category>;
   mood: Run<Emotion>;
@@ -667,11 +754,15 @@ function extendRun<T>(run: Run<T>, key: T | null): Run<T> {
 /**
  * How badly a card fits where it would land. The author and intensity caps are real
  * limits — one voice dominating a page, or a wall of crisis, is the thing to prevent.
- * A run is only reading rhythm, so breaking one is better than breaking a cap.
+ * A run is only reading rhythm, so breaking one is better than breaking a cap. `never`
+ * is the own-card cap, which no fallback breaks.
  */
-type SpreadFit = "ok" | "soft" | "hard";
+type SpreadFit = "ok" | "soft" | "hard" | "never";
 
 function spreadFit(card: SpreadableCard, state: SpreadState): SpreadFit {
+  if (card.own && state.own >= SPREAD_LIMITS.own) {
+    return "never";
+  }
   if ((state.perAuthor.get(card.authorId) ?? 0) >= SPREAD_LIMITS.perAuthor) {
     return "hard";
   }
@@ -680,14 +771,31 @@ function spreadFit(card: SpreadableCard, state: SpreadState): SpreadFit {
   }
   const themeRun = card.bucket === "core" ? SPREAD_LIMITS.coreRun : SPREAD_LIMITS.run;
   const breaksRun =
+    card.authorId === state.lastAuthor ||
     runIsFull(state.category, card.category, themeRun) ||
     runIsFull(state.mood, dominantMood(card), themeRun) ||
     runIsFull(state.spotlight, card.spotlightStyle);
   return breaksRun ? "soft" : "ok";
 }
 
-function recordSpread(card: SpreadableCard, state: SpreadState): void {
+function isRecentFollowed(card: SpreadableCard, follow: FollowMix | null | undefined): boolean {
+  return Boolean(
+    follow && card.followed && !card.own && card.createdAt && card.createdAt >= follow.recentSince,
+  );
+}
+
+function recordSpread(card: SpreadableCard, state: SpreadState, follow: FollowMix | null | undefined): void {
   state.perAuthor.set(card.authorId, (state.perAuthor.get(card.authorId) ?? 0) + 1);
+  if (card.own) {
+    state.own += 1;
+  }
+  if (card.followed && !card.own) {
+    state.followed += 1;
+  }
+  if (isRecentFollowed(card, follow)) {
+    state.followedRecent += 1;
+  }
+  state.lastAuthor = card.authorId;
   if (card.intensity >= 5) {
     state.peakIntensity += 1;
   }
@@ -699,6 +807,10 @@ function recordSpread(card: SpreadableCard, state: SpreadState): void {
 function emptySpreadState(): SpreadState {
   return {
     perAuthor: new Map(),
+    own: 0,
+    followed: 0,
+    followedRecent: 0,
+    lastAuthor: null,
     peakIntensity: 0,
     category: { key: null, length: 0 },
     mood: { key: null, length: 0 },
@@ -706,38 +818,65 @@ function emptySpreadState(): SpreadState {
   };
 }
 
+export type SpreadOptions = { mix?: ThemeMix | null; follow?: FollowMix | null };
+
 /**
- * Greedy re-pick over one page: take the best-ranked card that does not break a limit,
- * and fall back to the best remaining card rather than returning a short page. Ranking
- * decides what deserves to be read; this only decides what it is like to read in a row.
+ * Greedy re-pick over one page: take the best-ranked card that does not break a limit.
+ * Ranking decides what deserves to be read; this only decides what it is like to read in
+ * a row. In order:
+ *
+ * 1. When the follow floor is behind (fewer than `share` of the slots so far), the best
+ *    recent card from someone the viewer follows, if one fits without breaking a cap.
+ * 2. The best-ranked card that fits and whose theme bucket (and the followed share) has
+ *    room; then one that only breaks a rhythm rule; then the same ignoring that room.
+ * 3. When every card left breaks the author or intensity cap (a small community), the
+ *    card whose author has the fewest cards on the page, ties to rank. Never plain rank
+ *    order, which would wall the page with the top author.
+ * 4. Only own cards over their cap are left: the page ends short.
  */
 export function spreadPage<T extends SpreadableCard>(
   ranked: readonly T[],
   pageSize: number,
-  options: { mix?: ThemeMix | null } = {},
+  options: SpreadOptions = {},
 ): T[] {
   const state = emptySpreadState();
   const remaining = [...ranked];
   const page: T[] = [];
   const placed: Record<ThemeBucket, number> = { core: 0, adjacent: 0, explore: 0 };
   const caps = options.mix ? bucketCaps(options.mix, pageSize) : null;
+  const follow = options.follow ?? null;
+  const followCap = follow ? Math.ceil(follow.maxShare * pageSize - 1e-9) : Number.POSITIVE_INFINITY;
+
+  const hasRoom = (card: T): boolean => {
+    if (card.followed && !card.own && state.followed >= followCap) {
+      return false;
+    }
+    if (card.own || !caps) {
+      return true;
+    }
+    const bucket = card.bucket ?? "explore";
+    return placed[bucket] < caps[bucket];
+  };
 
   while (page.length < pageSize && remaining.length > 0) {
     const fits = remaining.map((card) => spreadFit(card, state));
-
-    // The best-ranked card that fits, so the page reads in rank order, as long as its
-    // bucket still has room; failing that, one that only breaks a rhythm rule; failing
-    // that, ignore the buckets' room; failing that, rank order wins over a short page.
-    const pick = (level: SpreadFit, respectCaps: boolean): number =>
+    const pick = (level: SpreadFit, respectCaps: boolean, only?: (card: T) => boolean): number =>
       remaining.findIndex(
         (card, position) =>
-          fits[position] === level &&
-          (!respectCaps ||
-            !caps ||
-            placed[card.bucket ?? "explore"] < caps[card.bucket ?? "explore"]),
+          fits[position] === level && (!only || only(card)) && (!respectCaps || hasRoom(card)),
       );
 
-    let index = pick("ok", true);
+    let index = -1;
+    if (follow && state.followedRecent < Math.floor(follow.share * (page.length + 1))) {
+      const eligible = (card: T): boolean => isRecentFollowed(card, follow);
+      index = pick("ok", true, eligible);
+      if (index === -1) {
+        index = pick("soft", true, eligible);
+      }
+    }
+    if (index === -1) {
+      index = pick("ok", true);
+    }
     if (index === -1) {
       index = pick("soft", true);
     }
@@ -748,14 +887,29 @@ export function spreadPage<T extends SpreadableCard>(
       index = pick("soft", false);
     }
     if (index === -1) {
-      index = 0;
+      let fewest = Number.POSITIVE_INFINITY;
+      for (const [position, card] of remaining.entries()) {
+        if (fits[position] !== "hard") {
+          continue;
+        }
+        const count = state.perAuthor.get(card.authorId) ?? 0;
+        if (count < fewest) {
+          fewest = count;
+          index = position;
+        }
+      }
+    }
+    if (index === -1) {
+      break;
     }
     const [card] = remaining.splice(index, 1);
     if (!card) {
       break;
     }
-    recordSpread(card, state);
-    placed[card.bucket ?? "explore"] += 1;
+    recordSpread(card, state, follow);
+    if (!card.own) {
+      placed[card.bucket ?? "explore"] += 1;
+    }
     page.push(card);
   }
 
@@ -766,19 +920,28 @@ export function spreadPage<T extends SpreadableCard>(
  * The whole ranked list, spread one page at a time. The limits are per page, but the
  * result has to be one stable global order or offset paging would drop and repeat
  * cards as the offset moves — so the windows are computed the same way every request.
+ *
+ * Each page carries at most one of the viewer's own cards. Once nobody else's cards are
+ * left the list ends; the rest of the viewer's own posts are on their Profile.
  */
 export function spreadRanked<T extends SpreadableCard>(
   ranked: readonly T[],
   pageSize: number,
-  options: { mix?: ThemeMix | null } = {},
+  options: SpreadOptions = {},
 ): T[] {
   const spread: T[] = [];
   let remaining: readonly T[] = ranked;
   while (remaining.length > 0) {
     const window = spreadPage(remaining, pageSize, options);
+    if (window.length === 0) {
+      break;
+    }
     spread.push(...window);
     const taken = new Set(window.map((card) => card.id));
     remaining = remaining.filter((card) => !taken.has(card.id));
+    if (!remaining.some((card) => !card.own)) {
+      break;
+    }
   }
   return spread;
 }
@@ -796,6 +959,9 @@ const PREFERRED_COVER_SHARE = 0.5;
  * Someone who hearts Humorous should meet Humorous more often, but the mix is the point
  * of the For you tab, so the choice is a stable coin flip per card rather than a takeover.
  * Deterministic in the card and the viewer, so a card does not change face on a reload.
+ *
+ * With `kept` (For you only), a card never opens on an answer the viewer already hearted
+ * while it has one they have not: that card is back for the angles they have not read.
  */
 export function openingStyle(options: {
   cardId: string;
@@ -803,14 +969,32 @@ export function openingStyle(options: {
   cover: Style;
   available: readonly Style[];
   preferred: Style | null;
+  kept?: ReadonlySet<Style>;
 }): Style {
+  const kept = options.kept;
+  const unkept = kept ? options.available.filter((style) => !kept.has(style)) : options.available;
+  const open = (style: Style): boolean => unkept.length === 0 || unkept.includes(style);
   const { preferred } = options;
-  if (!preferred || preferred === options.cover || !options.available.includes(preferred)) {
-    return options.cover;
+
+  let face = options.cover;
+  if (preferred && preferred !== options.cover && options.available.includes(preferred)) {
+    face = jitterTerm(options.cardId, options.viewerId) < PREFERRED_COVER_SHARE ? preferred : options.cover;
   }
-  return jitterTerm(options.cardId, options.viewerId) < PREFERRED_COVER_SHARE
-    ? preferred
-    : options.cover;
+  if (open(face)) {
+    return face;
+  }
+  if (preferred && open(preferred) && options.available.includes(preferred)) {
+    return preferred;
+  }
+  // The next unkept angle after the cover, in catalog order, so one card always lands on one face.
+  const start = STYLES.indexOf(options.cover);
+  for (let step = 1; step <= STYLES.length; step += 1) {
+    const style = STYLES[(start + step) % STYLES.length];
+    if (style && unkept.includes(style)) {
+      return style;
+    }
+  }
+  return face;
 }
 
 /** A pull-to-refresh session: which order the viewer is walking and where it starts. */

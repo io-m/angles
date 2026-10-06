@@ -91,9 +91,33 @@ struct ForYouCoversTests {
         )
         #expect(board.cards(on: .stoic).map(\.spotlightStyle) == [.stoic, .stoic])
     }
+
+    @Test("a card never opens on an angle you hearted while it has another")
+    func skipsKeptAngles() {
+        let card = cover(.stoic, styles: Style.allCases, day: 2, kept: [.stoic])
+        #expect(ForYouCovers.assign([card]).first?.spotlightStyle != .stoic)
+    }
+
+    @Test("an unread angle beats avoiding a repeat")
+    func unreadBeatsNoRepeat() {
+        let card = cover(.stoic, styles: Style.allCases, day: 2, kept: [.stoic, .humorous, .toughLove])
+        #expect(ForYouCovers.assign([card], above: .optimistic).first?.spotlightStyle == .optimistic)
+    }
+
+    @Test("a card with every angle hearted keeps the face it came with")
+    func everyAngleKept() {
+        let card = cover(.humorous, styles: Style.allCases, day: 2, kept: Set(Style.allCases))
+        #expect(ForYouCovers.assign([card]).first?.spotlightStyle == .humorous)
+    }
 }
 
-private func cover(_ face: Style, styles: [Style], day: Int, isOwner: Bool = false) -> HomeCard {
+private func cover(
+    _ face: Style,
+    styles: [Style],
+    day: Int,
+    isOwner: Bool = false,
+    kept: Set<Style> = []
+) -> HomeCard {
     HomeCard(
         id: UUID(),
         createdAt: Date(timeIntervalSince1970: TimeInterval(day) * 86_400),
@@ -102,7 +126,7 @@ private func cover(_ face: Style, styles: [Style], day: Int, isOwner: Bool = fal
                 id: UUID(),
                 thought: "A thought",
                 result: ReframeResult(style: style, reframe: "An angle"),
-                isFavorite: false
+                isFavorite: kept.contains(style)
             )
         },
         spotlightStyle: face,

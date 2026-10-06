@@ -951,12 +951,12 @@ struct CardListResponse: Decodable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
         cards = raw.compactMap(\.value)
+        let server = try container.decodeIfPresent(ServerPageCursor.self, forKey: .page)
         page = try CardPage(
             container: container,
             key: .cards,
-            serverCursor: try container
-                .decodeIfPresent(ServerPageCursor.self, forKey: .page)?
-                .nextCursor
+            serverCursor: server?.nextCursor,
+            arrivalsAfter: server?.arrivalsAfter
         )
     }
 }
@@ -965,6 +965,7 @@ struct CardListResponse: Decodable, Equatable, Sendable {
 /// when this arrives it wins; the client only echoes it back.
 private struct ServerPageCursor: Decodable, Equatable, Sendable {
     let nextCursor: String?
+    let arrivalsAfter: String?
 }
 
 /// What the server sent, before cards this build cannot decode are dropped. Paging reads this,
@@ -976,6 +977,10 @@ struct CardPage: Equatable, Sendable {
     let serverCursor: String?
     /// The server's own cursor when it sent one, else `createdAt|id` of its last card.
     let nextCursor: String?
+    /// `createdAt|id` of the newest card a ranked visit could show. A pull asks for
+    /// arrivals after this, not after the newest card on screen: a ranked page need not
+    /// hold the newest posts. Absent on chronological pages, where the two are the same.
+    let arrivalsAfter: String?
 
     private struct Key: Decodable {
         let id: String
@@ -985,11 +990,13 @@ struct CardPage: Equatable, Sendable {
     init<K: CodingKey>(
         container: KeyedDecodingContainer<K>,
         key: K,
-        serverCursor: String? = nil
+        serverCursor: String? = nil,
+        arrivalsAfter: String? = nil
     ) throws {
         let keys = try container.decodeIfPresent([Failable<Key>].self, forKey: key) ?? []
         receivedCount = keys.count
         self.serverCursor = serverCursor
+        self.arrivalsAfter = arrivalsAfter
         nextCursor = serverCursor
             ?? keys.last?.value.map { "\($0.createdAt)|\($0.id.lowercased())" }
     }

@@ -119,6 +119,9 @@ struct TallHomeCardGrid: View, Equatable {
     var onReachEnd: (() -> Void)? = nil
     var loadMorePrefetchDistance = 0
     var offersOwnerPrivacyMenu = false
+    /// A card reached the screen (or the lazy stack's short lead past it). Home's refresh
+    /// uses this to tell cards the reader has passed from cards still below them.
+    var onCardAppear: ((HomeCard) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -163,6 +166,7 @@ struct TallHomeCardGrid: View, Equatable {
                 }
                 .modifier(TallCardFocusTransition(enabled: !reduceMotion))
                 .onAppear {
+                    onCardAppear?(card)
                     guard let onReachEnd, card.id == loadMoreTriggerID else {
                         return
                     }

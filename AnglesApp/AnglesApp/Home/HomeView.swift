@@ -59,7 +59,8 @@ struct HomeView: View {
             onBlock: blockAuthor,
             onOpenAuthor: onOpenAuthor,
             onToggleFollow: toggleFollow,
-            onInspire: onInspire
+            onInspire: onInspire,
+            onCardAppear: { tab, card in viewModel.noteFeedCardDisplayed(card.id, on: tab) }
         ) { pagerState, settledSelection, onSelectTab in
             HomeChrome(
                 safeTop: safeAreaInsets.top,
@@ -180,6 +181,7 @@ struct HomeFeedPager<Chrome: View>: View {
     let onOpenAuthor: (HomeCard) -> Void
     let onToggleFollow: (HomeCard) -> Void
     let onInspire: () -> Void
+    let onCardAppear: (HomeFeedTab, HomeCard) -> Void
     let chrome: (
         StyleTabPagerState<HomeFeedTab>,
         HomeFeedTab,
@@ -223,6 +225,7 @@ struct HomeFeedPager<Chrome: View>: View {
         onOpenAuthor: @escaping (HomeCard) -> Void,
         onToggleFollow: @escaping (HomeCard) -> Void,
         onInspire: @escaping () -> Void = {},
+        onCardAppear: @escaping (HomeFeedTab, HomeCard) -> Void = { _, _ in },
         @ViewBuilder chrome: @escaping (
             StyleTabPagerState<HomeFeedTab>,
             HomeFeedTab,
@@ -259,6 +262,7 @@ struct HomeFeedPager<Chrome: View>: View {
         self.onOpenAuthor = onOpenAuthor
         self.onToggleFollow = onToggleFollow
         self.onInspire = onInspire
+        self.onCardAppear = onCardAppear
         self.chrome = chrome
     }
 
@@ -333,7 +337,8 @@ struct HomeFeedPager<Chrome: View>: View {
                                 onOpenAuthor: onOpenAuthor,
                                 onToggleFollow: onToggleFollow,
                                 onInspire: onInspire,
-                                offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
+                                offersOwnerPrivacyMenu: offersOwnerPrivacyMenu,
+                                onCardAppear: { card in onCardAppear(tab, card) }
                             )
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
@@ -500,6 +505,7 @@ struct HomeFeedTabPage: View {
     let onToggleFollow: (HomeCard) -> Void
     let onInspire: () -> Void
     let offersOwnerPrivacyMenu: Bool
+    var onCardAppear: (HomeCard) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -640,7 +646,8 @@ struct HomeFeedTabPage: View {
                         onToggleFollow: onToggleFollow,
                         onReachEnd: onLoadMore,
                         loadMorePrefetchDistance: 6,
-                        offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
+                        offersOwnerPrivacyMenu: offersOwnerPrivacyMenu,
+                        onCardAppear: onCardAppear
                     )
                     .equatable()
                     .padding(.horizontal, HeaderCollapse.horizontalPadding)

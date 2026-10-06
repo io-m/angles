@@ -40,6 +40,8 @@ private func plan(
     tail: [HomeCard] = [],
     highWater: FeedCardMark?,
     seen: Set<UUID> = [],
+    onShelf: [HomeCard] = [],
+    displayed: Set<UUID> = [],
     pageSize: Int = 24,
     isRotated: Bool = false
 ) -> FeedRefreshPlan {
@@ -49,6 +51,8 @@ private func plan(
         tail: tail,
         highWater: highWater,
         seenIDs: seen,
+        onShelf: onShelf,
+        displayedIDs: displayed,
         pageSize: pageSize,
         isRotated: isRotated
     )
@@ -195,5 +199,124 @@ struct FeedRefreshPlanTests {
             seen: [loaded.id]
         )
         #expect(result == .rotate(.init(page: [older], nextBefore: older.pageCursor, consumedWholeTail: true)))
+    }
+
+    @Test("a card already on the shelf is not an arrival")
+    func seenCardIsNotAnArrival() {
+        // Your own post, placed at the top when you published it, comes back after the mark.
+        let mine = card(1)
+        let loaded = card(60)
+        let result = plan(
+            head: [mine],
+            tail: [],
+            highWater: FeedCardMark(loaded),
+            seen: [mine.id, loaded.id]
+        )
+        #expect(result == .unchanged)
+    }
+
+    @Test("a full head that is partly your own cards prepends only the rest")
+    func seenCardsInAFullHeadDoNotCatchUp() {
+        let loaded = card(600)
+        let mine = card(1)
+        let arrivals = (2 ... 8).map { card($0) }
+        let result = plan(
+            head: [mine] + arrivals,
+            headLimit: 8,
+            highWater: FeedCardMark(loaded),
+            seen: [loaded.id, mine.id]
+        )
+        #expect(result == .prepend(arrivals: arrivals))
+    }
+
+    @Test("rotation brings up cards the reader never reached, then the next page")
+    func rotationPrefersUndisplayed() {
+        let read = card(10)
+        let below = [card(20), card(30)]
+        let next = card(400)
+        let result = plan(
+            head: [],
+            tail: [next],
+            highWater: FeedCardMark(read),
+            seen: Set(([read] + below).map(\.id)),
+            onShelf: [read] + below,
+            displayed: [read.id]
+        )
+        #expect(
+            result == .rotate(
+                .init(page: below + [next], nextBefore: next.pageCursor, consumedWholeTail: true)
+            )
+        )
+    }
+
+    @Test("with nothing left to load, rotation still brings up the unread cards")
+    func rotationOfUnreadOnly() {
+        let read = card(10)
+        let below = card(20)
+        let result = plan(
+            head: [],
+            tail: [],
+            highWater: FeedCardMark(read),
+            seen: [read.id, below.id],
+            onShelf: [read, below],
+            displayed: [read.id]
+        )
+        #expect(result == .rotate(.init(page: [below], nextBefore: nil, consumedWholeTail: true)))
+    }
+
+    @Test("a shelf nobody has read and nothing new behind it does not rotate")
+    func unreadShelfWithNothingNewIsUnchanged() {
+        let top = card(10)
+        let below = card(20)
+        let result = plan(
+            head: [],
+            tail: [],
+            highWater: FeedCardMark(top),
+            seen: [top.id, below.id],
+            onShelf: [top, below],
+            displayed: []
+        )
+        #expect(result == .unchanged)
+    }
+
+    @Test("a fully read shelf with nothing new restarts once rotated")
+    func readShelfRestarts() {
+        let top = card(10)
+        let result = plan(
+            head: [],
+            tail: [],
+            highWater: FeedCardMark(top),
+            seen: [top.id],
+            onShelf: [top],
+            displayed: [top.id],
+            isRotated: true
+        )
+        #expect(result == .restart)
+    }
+}
+
+@Suite("Feed arrival mark")
+struct FeedCardMarkTests {
+    @Test("a server cursor parses into a mark")
+    func parsesServerCursor() {
+        let newest = card(5)
+        let mark = FeedCardMark(cursor: newest.pageCursor)
+        #expect(mark == FeedCardMark(newest))
+    }
+
+    @Test("a malformed cursor is nil")
+    func rejectsMalformed() {
+        #expect(FeedCardMark(cursor: "") == nil)
+        #expect(FeedCardMark(cursor: "not-a-date|00000000-0000-4000-8000-000000000001") == nil)
+        #expect(FeedCardMark(cursor: "2026-10-06T10:00:00.000Z|not-a-uuid") == nil)
+        #expect(FeedCardMark(cursor: "2026-10-06T10:00:00.000Z") == nil)
+    }
+
+    @Test("a mark only moves forward")
+    func latestKeepsTheNewer() {
+        let (high, low) = twins()
+        #expect(FeedCardMark.latest(FeedCardMark(low), FeedCardMark(high)) == FeedCardMark(high))
+        #expect(FeedCardMark.latest(FeedCardMark(high), FeedCardMark(low)) == FeedCardMark(high))
+        #expect(FeedCardMark.latest(nil, FeedCardMark(low)) == FeedCardMark(low))
     }
 }

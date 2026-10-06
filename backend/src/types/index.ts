@@ -369,7 +369,15 @@ export type FeedListResponse = {
    * Present when the server owns the page pointer, which a ranked order does because
    * it cannot be derived from the cards. Clients echo it back opaquely.
    */
-  page?: { nextCursor: string };
+  page?: {
+    nextCursor: string;
+    /**
+     * `createdAt|id` of the newest card this ranked visit could show. A pull asks for
+     * arrivals after this, never after the newest card on screen: a ranked page need not
+     * hold the newest posts, and those are already in the visit's order.
+     */
+    arrivalsAfter?: string;
+  };
 };
 
 export type FeedCursor = {

@@ -213,14 +213,20 @@ describe("GET /feed with resonance ranking", () => {
     delete process.env.FEED_RANKING;
   });
 
-  it("mints a session and hands back its cursor", async () => {
-    vi.mocked(listRankedFeed).mockResolvedValue([feedCard()]);
+  const ARRIVALS_AFTER = `2026-09-27T08:00:00.000Z|${CARD_ID}`;
+
+  it("mints a session and hands back its cursor and arrival mark", async () => {
+    vi.mocked(listRankedFeed).mockResolvedValue({ cards: [feedCard()], arrivalsAfter: ARRIVALS_AFTER });
     const before = new Date();
     const response = await app.request("/feed?limit=24");
     expect(response.status).toBe(200);
 
-    const body = (await jsonOf(response)) as { cards: unknown[]; page: { nextCursor: string } };
+    const body = (await jsonOf(response)) as {
+      cards: unknown[];
+      page: { nextCursor: string; arrivalsAfter: string };
+    };
     expect(body.cards).toHaveLength(1);
+    expect(body.page.arrivalsAfter).toBe(ARRIVALS_AFTER);
     expect(listFeed).not.toHaveBeenCalled();
 
     const minted = vi.mocked(listRankedFeed).mock.calls[0]?.[0].session;
@@ -234,7 +240,7 @@ describe("GET /feed with resonance ranking", () => {
   });
 
   it("keeps a style on the ranked request and on the next page", async () => {
-    vi.mocked(listRankedFeed).mockResolvedValue([feedCard()]);
+    vi.mocked(listRankedFeed).mockResolvedValue({ cards: [feedCard()], arrivalsAfter: ARRIVALS_AFTER });
     const first = await app.request("/feed?style=stoic&limit=24");
     expect(first.status).toBe(200);
     expect(listRankedFeed).toHaveBeenCalledWith(expect.objectContaining({ style: "stoic" }));
@@ -256,7 +262,7 @@ describe("GET /feed with resonance ranking", () => {
   });
 
   it("continues the session the client echoes back", async () => {
-    vi.mocked(listRankedFeed).mockResolvedValue([]);
+    vi.mocked(listRankedFeed).mockResolvedValue({ cards: [], arrivalsAfter: ARRIVALS_AFTER });
     const session = {
       seed: "seed-abcdefgh",
       startedAt: new Date("2026-09-28T09:00:00.000Z"),
@@ -275,10 +281,12 @@ describe("GET /feed with resonance ranking", () => {
     const response = await app.request(`/feed?after=${encodeURIComponent(after)}&limit=8`);
     expect(response.status).toBe(200);
     expect(listRankedFeed).not.toHaveBeenCalled();
+    // Same visibility as a ranked page: no fully kept card, at most one of the viewer's own.
     expect(listFeed).toHaveBeenCalledWith(
       expect.objectContaining({
         after: { createdAt: new Date("2026-09-10T12:00:00.000Z"), id: CARD_ID },
       }),
+      { rankedArrivals: true },
     );
     await expect(jsonOf(response)).resolves.toEqual({ cards: [] });
   });

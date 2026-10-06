@@ -358,6 +358,63 @@ struct HomeFeedShelfTests {
         #expect(board.cards(on: .all).first?.id == posted.id)
         #expect(board.anchors[posted.id]?.isPublic == true)
     }
+
+    @Test("a ranked page takes the server's arrival mark, not its newest card")
+    func rankedPageUsesServerMark() {
+        var board = HomeFeedBoard()
+        // The ranked page leads with an older card; a newer one ranked lower is off the page.
+        let shown = card(.stoic, day: 3)
+        let offPage = card(.stoic, day: 9)
+        _ = board.replace(
+            [shown], on: .all, before: "ranked", hasMore: true,
+            generation: 0, filter: { _ in true }, pageSize: 24,
+            arrivalsAfter: offPage.pageCursor
+        )
+        #expect(board.shelf(.all).highWater == FeedCardMark(offPage))
+    }
+
+    @Test("a chronological page marks its own newest card")
+    func chronologicalPageUsesNewestCard() {
+        var board = HomeFeedBoard()
+        let newest = card(.stoic, day: 5)
+        let older = card(.stoic, day: 2)
+        _ = board.replace(
+            [newest, older], on: .all, before: nil, hasMore: false,
+            generation: 0, filter: { _ in true }, pageSize: 24
+        )
+        #expect(board.shelf(.all).highWater == FeedCardMark(newest))
+    }
+
+    @Test("your own new post does not move the arrival mark")
+    func localInsertKeepsMark() {
+        var board = HomeFeedBoard()
+        let loaded = card(.stoic, day: 3)
+        _ = board.replace(
+            [loaded], on: .all, before: "ranked", hasMore: true,
+            generation: 0, filter: { _ in true }, pageSize: 24,
+            arrivalsAfter: loaded.pageCursor
+        )
+        let posted = card(.stoic, day: 10, isOwner: true)
+        board.insertPublishedAtFront(posted)
+        #expect(board.cards(on: .all).first?.id == posted.id)
+        #expect(board.shelf(.all).highWater == FeedCardMark(loaded))
+        #expect(board.shelf(.all).seenIDs.contains(posted.id))
+    }
+
+    @Test("arrivals move the mark to the newest one")
+    func prependAdvancesMark() {
+        var board = HomeFeedBoard()
+        let loaded = card(.stoic, day: 3)
+        _ = board.replace(
+            [loaded], on: .all, before: "ranked", hasMore: true,
+            generation: 0, filter: { _ in true }, pageSize: 24,
+            arrivalsAfter: loaded.pageCursor
+        )
+        let newer = card(.stoic, day: 7)
+        let newest = card(.stoic, day: 8)
+        _ = board.prepend([newest, newer], on: .all, generation: 0)
+        #expect(board.shelf(.all).highWater == FeedCardMark(newest))
+    }
 }
 
 private func card(

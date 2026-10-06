@@ -4,8 +4,11 @@ import {
   assignPrimaryStyles,
   buildAffinity,
   classifyTheme,
+  followMix,
   isKeptOnShelf,
+  isPartlyKept,
   rankCards,
+  SPREAD_LIMITS,
   spreadRanked,
   themeMix,
   type StyleTabContext,
@@ -92,7 +95,14 @@ function feedFilters(
   return filters;
 }
 
-export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
+export async function listFeed(
+  query: FeedListQuery,
+  /**
+   * Arrivals under ranking: the same visibility as a ranked page, so a pull never brings
+   * back a card the ranked feed hides (fully kept) or a second card of the viewer's own.
+   */
+  options: { rankedArrivals?: boolean } = {},
+): Promise<StoredCard[]> {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
@@ -104,10 +114,12 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
       filters.push(newerThanCursor(query.after));
     }
 
-    const rows = await db.query.cards.findMany({
+    const found = await db.query.cards.findMany({
       where: and(...filters),
       orderBy: [desc(cards.createdAt), desc(cards.id)],
-      limit: query.limit,
+      // Read past the limit so hidden cards cannot make a full head look short: the phone
+      // reads a full head of arrivals as "more may be waiting" and reloads instead.
+      limit: options.rankedArrivals ? Math.min(500, query.limit * 4) : query.limit,
       with: {
         user: true,
         reframes: { orderBy: [asc(cardReframes.position)] },
@@ -115,7 +127,31 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
       },
     });
 
-    return storedCardsForViewer(rows, viewerId);
+    if (!options.rankedArrivals) {
+      return storedCardsForViewer(found, viewerId);
+    }
+
+    const kept = await loadKeptAngles(
+      viewerId,
+      found.map((row) => row.id),
+      new Date(),
+      db,
+    );
+    let ownShown = 0;
+    const rows = found.filter((row) => {
+      const styles = row.reframes.map((item) => item.style);
+      if (isKeptOnShelf(kept.get(row.id), query.style, styles)) {
+        return false;
+      }
+      if (row.userId === viewerId) {
+        ownShown += 1;
+        return ownShown <= SPREAD_LIMITS.own;
+      }
+      return true;
+    });
+    return storedCardsForViewer(rows.slice(0, query.limit), viewerId, db, {
+      coverAvoidsKept: !query.style,
+    });
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
@@ -127,6 +163,11 @@ export async function listFeed(query: FeedListQuery): Promise<StoredCard[]> {
 /** Cards scored before paging. Bounded so one request cannot rank the whole catalog. */
 const RANKING_CANDIDATE_CAP = 1000;
 
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
+/** One ranked page, and the `createdAt|id` a pull should ask for arrivals after. */
+export type RankedFeedPage = { cards: StoredCard[]; arrivalsAfter: string };
+
 /**
  * Resonance-ranked page.
  *
@@ -134,17 +175,22 @@ const RANKING_CANDIDATE_CAP = 1000;
  * exact: nothing can join the set mid-scroll, so a page can neither repeat a card nor
  * skip one. Posts newer than that are arrivals and come back through `after` instead.
  *
+ * Every ranking input is read as of `startedAt` too — hearts, follows, themes, and the
+ * clock freshness is measured on — so each page of one visit is cut from the same order.
+ * A heart or a follow made during the visit shapes the next one.
+ *
  * Above `RANKING_CANDIDATE_CAP` the oldest cards stop being reachable by ranking. Add a
  * sampled tail to the candidate query before the public catalog gets that large.
  */
 export async function listRankedFeed(
   query: FeedListQuery & { session: FeedSessionCursor },
-): Promise<StoredCard[]> {
+): Promise<RankedFeedPage> {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
+    const startedAt = query.session.startedAt;
     const filters = feedFilters(db, viewerId, query);
-    filters.push(sql`${cards.createdAt} <= ${query.session.startedAt.toISOString()}::timestamptz`);
+    filters.push(sql`${cards.createdAt} <= ${startedAt.toISOString()}::timestamptz`);
 
     const found = await db
       .select({
@@ -161,35 +207,52 @@ export async function listRankedFeed(
       .orderBy(desc(cards.createdAt), desc(cards.id))
       .limit(RANKING_CANDIDATE_CAP);
 
+    // The newest card this visit could show. A pull asks for posts newer than this, not
+    // newer than the newest card on screen: a ranked page need not hold the newest posts,
+    // and everything up to here is already in this visit's order.
+    const newest = found[0];
+    const arrivalsAfter = newest
+      ? `${newest.createdAt.toISOString()}|${newest.id}`
+      : `${startedAt.toISOString()}|${NIL_UUID}`;
+
     // Angles the viewer already kept are not shown again, only those kept before this
     // visit began: the candidate set is frozen at `startedAt`, and a heart tapped while
     // scrolling must not make a card vanish and shift every offset after it.
     const kept = await loadKeptAngles(
       viewerId,
       found.map((row) => row.id),
-      query.session.startedAt,
+      startedAt,
       db,
     );
-    const candidates = found.filter((row) => !isKeptOnShelf(kept.get(row.id), query.style));
+    // For you hides a card only once every angle it has is kept, so it needs to know which
+    // angles those are. A style shelf needs them for every card to pick its primary tab.
+    const cardStyles = await loadCardStyles(
+      query.style ? found.map((row) => row.id) : [...kept.keys()],
+      db,
+    );
+    const candidates = found.filter(
+      (row) => !isKeptOnShelf(kept.get(row.id), query.style, cardStyles.get(row.id) ?? STYLES),
+    );
 
     if (candidates.length === 0) {
-      return [];
+      return { cards: [], arrivalsAfter };
     }
 
-    const now = new Date();
+    const now = startedAt;
     const ids = candidates.map((row) => row.id);
-    // A style shelf also needs every angle's hearts, the angles each card has, and the
-    // viewer's taste on all four tabs, because a card's primary tab is decided across them.
-    const [hearts, followed, affinity, angleHearts, cardStyles, tabs] = await Promise.all([
-      loadCardHeartTotals(ids, db),
+    const heartWindow = { before: startedAt, excludeUserId: viewerId };
+    // A style shelf also needs every angle's hearts and the viewer's taste on all four
+    // tabs, because a card's primary tab is decided across them.
+    const [hearts, followed, affinity, angleHearts, tabs] = await Promise.all([
+      loadCardHeartTotals(ids, db, heartWindow),
       followedAuthorIds(
         viewerId,
         candidates.map((row) => row.authorId),
         db,
+        startedAt,
       ),
       loadViewerAffinity(viewerId, now, db),
-      query.style ? loadStyleHeartCounts(ids, db) : Promise.resolve(null),
-      query.style ? loadCardStyles(ids, db) : Promise.resolve(null),
+      query.style ? loadStyleHeartCounts(ids, db, heartWindow) : Promise.resolve(null),
       query.style ? loadViewerStyleTabs(viewerId, now, db) : Promise.resolve(null),
     ]);
 
@@ -201,8 +264,11 @@ export async function listRankedFeed(
       emotions: row.emotions,
       hearts: hearts.get(row.id) ?? 0,
       followed: followed.has(row.authorId),
+      own: row.authorId === viewerId,
+      partlyKept:
+        !query.style && isPartlyKept(kept.get(row.id), cardStyles.get(row.id) ?? STYLES),
       angleHeartsByStyle: Object.fromEntries(angleHearts?.get(row.id) ?? []),
-      availableStyles: cardStyles?.get(row.id),
+      availableStyles: query.style ? cardStyles.get(row.id) : undefined,
       coverStyle: row.spotlightStyle,
     }));
     const primaryByCard =
@@ -227,22 +293,31 @@ export async function listRankedFeed(
     // Themes come from the general affinity on every tab: the tab's own taste only
     // reorders cards, while the mix is about what this viewer is mostly in.
     const byId = new Map(
-      candidates.map((row) => [row.id, { ...row, bucket: classifyTheme(row, affinity) }]),
+      candidates.map((row) => [
+        row.id,
+        {
+          ...row,
+          bucket: classifyTheme(row, affinity),
+          own: row.authorId === viewerId,
+          followed: followed.has(row.authorId),
+        },
+      ]),
     );
-    const spread = spreadRanked(
-      ranked.flatMap((scored) => {
-        const row = byId.get(scored.id);
-        return row ? [row] : [];
-      }),
-      query.limit,
-      { mix: themeMix(affinity.confidence) },
-    );
+    const spreadable = ranked.flatMap((scored) => {
+      const row = byId.get(scored.id);
+      return row ? [row] : [];
+    });
+    const spread = spreadRanked(spreadable, query.limit, {
+      mix: themeMix(affinity.confidence),
+      // Style shelves are about the voice; the follow floor is a For you rule.
+      follow: query.style ? null : followMix(spreadable, now),
+    });
 
     const pageIds = spread
       .slice(query.session.offset, query.session.offset + query.limit)
       .map((row) => row.id);
     if (pageIds.length === 0) {
-      return [];
+      return { cards: [], arrivalsAfter };
     }
 
     const rows = await db.query.cards.findMany({
@@ -259,7 +334,10 @@ export async function listRankedFeed(
       return row ? [row] : [];
     });
 
-    return storedCardsForViewer(ordered, viewerId);
+    return {
+      cards: await storedCardsForViewer(ordered, viewerId, db, { coverAvoidsKept: !query.style }),
+      arrivalsAfter,
+    };
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
@@ -285,6 +363,8 @@ async function loadViewerHearts(
   viewerId: string,
   db: ReturnType<typeof getDb>,
   limit: number,
+  /** Only hearts made by then, so a ranked visit learns the same themes on every page. */
+  before: Date,
 ): Promise<HeartRow[]> {
   const [saved, own] = await Promise.all([
     db
@@ -297,7 +377,7 @@ async function loadViewerHearts(
       })
       .from(savedAngles)
       .innerJoin(cards, eq(cards.id, savedAngles.cardId))
-      .where(eq(savedAngles.userId, viewerId))
+      .where(and(eq(savedAngles.userId, viewerId), lte(savedAngles.favoritedAt, before)))
       .orderBy(desc(savedAngles.favoritedAt), desc(cards.id))
       .limit(limit),
     db
@@ -311,7 +391,14 @@ async function loadViewerHearts(
       })
       .from(cardReframes)
       .innerJoin(cards, eq(cards.id, cardReframes.cardId))
-      .where(and(eq(cards.userId, viewerId), eq(cardReframes.isFavorite, true)))
+      .where(
+        and(
+          eq(cards.userId, viewerId),
+          eq(cardReframes.isFavorite, true),
+          lte(cards.createdAt, before),
+          or(isNull(cardReframes.favoritedAt), lte(cardReframes.favoritedAt, before)),
+        ),
+      )
       .orderBy(desc(cardReframes.favoritedAt), desc(cards.id))
       .limit(limit),
   ]);
@@ -326,6 +413,7 @@ async function loadViewerHearts(
  * What the viewer is mostly in, from what they wrote and from every angle they hearted on
  * any tab. This is the recognition term: the reason their feed should not read like a
  * stranger's. Hearting three angles of one card is one signal about the card's theme.
+ * Read as of `now`: a ranked visit passes its start, so nothing after it moves the order.
  */
 export async function loadViewerAffinity(
   viewerId: string,
@@ -336,10 +424,10 @@ export async function loadViewerAffinity(
     db
       .select({ category: cards.category, emotions: cards.emotions, at: cards.createdAt })
       .from(cards)
-      .where(eq(cards.userId, viewerId))
+      .where(and(eq(cards.userId, viewerId), lte(cards.createdAt, now)))
       .orderBy(desc(cards.createdAt), desc(cards.id))
       .limit(AFFINITY_SAMPLE),
-    loadViewerHearts(viewerId, db, AFFINITY_SAMPLE * 2),
+    loadViewerHearts(viewerId, db, AFFINITY_SAMPLE * 2, now),
   ]);
 
   const latestHeart = new Map<string, HeartRow>();
@@ -368,7 +456,7 @@ async function loadViewerStyleTabs(
   now: Date,
   db: ReturnType<typeof getDb>,
 ): Promise<StyleTabs> {
-  const hearts = await loadViewerHearts(viewerId, db, AFFINITY_SAMPLE * STYLES.length);
+  const hearts = await loadViewerHearts(viewerId, db, AFFINITY_SAMPLE * STYLES.length, now);
   const tab = (style: Style): StyleTabContext => {
     const rows = hearts
       .filter((row) => row.style === style)

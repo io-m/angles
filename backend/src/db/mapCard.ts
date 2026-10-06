@@ -65,6 +65,8 @@ export async function storedCardsForViewer(
   rows: CardLoaded[],
   viewerId: string = getOwnerUserId(),
   db: Selectable = getDb(),
+  /** For you: someone else's card opens on an answer the viewer has not hearted, when it has one. */
+  options: { coverAvoidsKept?: boolean } = {},
 ): Promise<StoredCard[]> {
   const saves = await loadViewerSaves(
     rows.map((row) => row.id),
@@ -86,7 +88,7 @@ export async function storedCardsForViewer(
     ? await loadViewerStyleTaste(viewerId, db)
     : null;
   return rows.map((row) =>
-    toStoredCard(row, saves, viewerId, followed, hearts.get(row.id), taste),
+    toStoredCard(row, saves, viewerId, followed, hearts.get(row.id), taste, options.coverAvoidsKept),
   );
 }
 
@@ -99,6 +101,7 @@ export function toStoredCard(
   styleHearts?: ReadonlyMap<Style, number>,
   /** The angle this viewer keeps hearting, when they have one. */
   preferredStyle?: Style | null,
+  coverAvoidsKept = false,
 ): StoredCard {
   const isOwner = row.userId === viewerId;
   const savedStyles = saves.angles.get(row.id);
@@ -163,7 +166,7 @@ export function toStoredCard(
     results,
     model: row.model,
     // Your own card keeps the cover you saved it with; someone else's can open on the
-    // angle you keep hearting, some of the time.
+    // angle you keep hearting, some of the time, and on For you never on one you kept.
     spotlightStyle: isOwner
       ? row.spotlightStyle
       : openingStyle({
@@ -172,6 +175,7 @@ export function toStoredCard(
           cover: row.spotlightStyle,
           available: results.map((item) => item.style),
           preferred: preferredStyle ?? null,
+          kept: coverAvoidsKept && savedStyles ? new Set(savedStyles.keys()) : undefined,
         }),
     isPublic: row.isPublic,
     createdAt: row.createdAt.toISOString(),
