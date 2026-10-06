@@ -440,19 +440,21 @@
       }
 
       // ---- chapter cards ----
-      tl.fromTo("#scrim", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, D.chapters[0].at - 0.1);
+      tl.fromTo("#scrim", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power2.out" }, D.chapters[0].at);
       D.chapters.forEach((c, i) => {
         const el = `#chapter-${i}`;
-        tl.fromTo(`${el} .num`, { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.28, ease: "expo.out" }, c.at);
+        tl.fromTo(`${el} .num`, { opacity: 0, x: -24 }, { opacity: 1, x: 0, duration: 0.16, ease: "expo.out" }, c.at);
         tl.fromTo(
           `${el} .name`,
-          { opacity: 0, scale: 1.45, transformOrigin: "0% 50%" },
-          { opacity: 1, scale: 1, duration: 0.3, ease: "power4.out" },
-          c.at + 0.06,
+          { opacity: 0, scale: 1.2, transformOrigin: "0% 50%" },
+          { opacity: 1, scale: 1, duration: 0.18, ease: "power4.out" },
+          c.at,
         );
         tl.set(el, { opacity: 1 }, c.at);
         if (i + 1 < D.chapters.length) {
           tl.set(el, { opacity: 0 }, D.chapters[i + 1].at);
+        } else {
+          tl.to(el, { opacity: 0, duration: 0.2, ease: "power2.in" }, D.appEnd);
         }
         if (c.note) {
           tl.fromTo(`${el} .note`, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, c.at + c.noteAfter);
@@ -461,6 +463,7 @@
 
       // ---- end card: dip to black, then the brand lands ----
       const TE = D.appEnd;
+      tl.to("#scrim", { opacity: 0, duration: 0.2, ease: "power2.in" }, TE);
       tl.to("#end", { opacity: 1, duration: 0.45, ease: "power2.in" }, TE);
       tl.fromTo("#end-glow", { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 1.2, ease: "sine.out" }, TE + 0.45);
       tl.fromTo("#icon", { opacity: 0, scale: 0 }, { opacity: 1, scale: 1, duration: 0.55, ease: "back.out(1.8)" }, TE + 0.5);

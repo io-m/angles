@@ -2,15 +2,14 @@
 //
 //   node demo/edit.mjs demo/raw/take-YYYYMMDD-HHMMSS [demo/themes/<name>.json]
 //
-// The words on screen (hook, best-answer note, end card) come from the theme: the one given,
-// else the theme.json the take was recorded with, else demo/themes/lost-job.json.
+// Cut (every video): hook, type, send, short cook, four style chapters, outro.
+// The last chapter (Tough love) gets extra hold + a small zoom. No fifth "best"
+// chapter, no Post, no Home. Theme words are the hook and the end card.
 //
-// Maestro's marks say roughly when each beat happened; the exact moment is the nearest
-// real change in the recording (scene scores), so cuts land on the frame where the app
-// actually moved. The cut list, tap points, chapter cards, and camera moves are written
-// into the HyperFrames composition in demo/video/, which renders the picture. ffmpeg then
-// adds the audio track and encodes to spec. The app footage itself is only trimmed and
-// sped up: no filters.
+// Maestro marks plus scene scores pick in-points. The yellow chapter title
+// lands on the same timeline frame as the cut. Composition:
+// demo/lib/composition.template.html. Footage is trimmed and sped up only.
+
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -176,24 +175,21 @@ if (followupMarks.length) {
   followupAnswerAt = firstChange(fullScores, need("followup_answer"), need("followup_answer") + 4, 0.006) ?? need("followup_answer") + 1;
 }
 const cookFrom = (followupAnswerAt ?? sendAt) + 0.6;
-const cardAt = firstChange(cardScores, cookFrom + 0.4, need("card") + 0.5, 0.03)
-  ?? biggestChange(cardScores, cookFrom + 0.4, need("card") + 0.5)
-  ?? need("card");
+const cardMark = need("card");
+const cardScene =
+  firstChange(cardScores, cookFrom + 0.4, cardMark + 0.5, 0.03)
+  ?? biggestChange(cardScores, cookFrom + 0.4, cardMark + 0.5);
+// Cut as soon as the card is on screen so the first chapter overlay is not waiting on settle.
+const cardAt = cardScene ?? cardMark;
 
 // The order the flow tapped the chips in; the card opened on firstStyle.
 const tapOrder = ["optimistic", "humorous", "stoic", "tough_love"];
 const firstStyle = result.firstStyle && NAMES[result.firstStyle] ? result.firstStyle : "stoic";
 const chipAt = {};
 for (const style of tapOrder) {
-  const mark = need(`chip_${style}`);
-  chipAt[style] = firstChange(cardScores, mark, need(`shown_${style}`) + 0.5, 0.004) ?? mark + 1;
-}
-const best = result.best;
-let bestAt = chipAt[best];
-let bestSelectedBefore = tapOrder[tapOrder.indexOf(best) - 1] ?? firstStyle;
-if (marks.best_tap !== undefined) {
-  bestAt = firstChange(cardScores, marks.best_tap, need("best_shown") + 0.5, 0.004) ?? marks.best_tap + 1;
-  bestSelectedBefore = tapOrder[tapOrder.length - 1];
+  if (marks[`shown_${style}`] !== undefined) {
+    chipAt[style] = need(`shown_${style}`) - 0.12;
+  }
 }
 
 /** Center of a chip in points, given which chip was selected (and so wide) at the time. */
@@ -311,29 +307,32 @@ if (followupAnswerAt !== null) {
   cooking("cooking", sendAt + 0.6, cardAt);
 }
 
-const LEAD = 0.4;
-const middle = tapOrder.filter((s) => s !== firstStyle && s !== best);
-let bestSeconds = config.bestSeconds;
-const endAt = () => cursor + config.firstAnswerSeconds + middle.length * config.chipSeconds + bestSeconds;
-while (endAt() + config.endCardSeconds + 0.45 < config.targetTotalSeconds[0] && bestSeconds < config.bestMaxSeconds) {
-  bestSeconds += 0.25;
+const rest = tapOrder.filter((s) => s !== firstStyle && chipAt[s] !== undefined);
+const angleSeconds = config.angleSeconds ?? config.chipSeconds ?? config.firstAnswerSeconds;
+const lastExtra = config.lastAngleExtraSeconds ?? 2;
+const [minTotal, maxTotal] = config.targetTotalSeconds;
+
+function angleChapter(name, mediaStart, style, tap, dur) {
+  const s = shot(name, mediaStart, dur);
+  return { style, shot: s, changeAt: s.at, tap };
 }
 
-const arrival = shot(`chapter-${firstStyle}`, cardAt - 0.1, config.firstAnswerSeconds);
-const angleShots = [{ style: firstStyle, shot: arrival, changeAt: arrival.at + 0.1, tap: null }];
-for (const style of middle) {
-  const s = shot(`chapter-${style}`, chipAt[style] - LEAD, config.chipSeconds);
-  const before = tapOrder[tapOrder.indexOf(style) - 1] ?? firstStyle;
-  angleShots.push({ style, shot: s, changeAt: s.at + LEAD, tap: chipCenter(style, before) });
+const arrival = angleChapter(`chapter-${firstStyle}`, cardAt, firstStyle, null, angleSeconds);
+const angleShots = [arrival];
+for (let i = 0; i < rest.length; i++) {
+  const style = rest[i];
+  const isLast = i === rest.length - 1;
+  const before = i === 0 ? firstStyle : rest[i - 1];
+  const dur = isLast ? angleSeconds + lastExtra : angleSeconds;
+  angleShots.push(angleChapter(`chapter-${style}`, chipAt[style], style, chipCenter(style, before), dur));
 }
-const bestShot = shot(`best-${best}`, bestAt - LEAD, bestSeconds);
-angleShots.push({ style: best, shot: bestShot, changeAt: bestShot.at + LEAD, tap: chipCenter(best, bestSelectedBefore), best: true });
+const lastShot = angleShots[angleShots.length - 1];
 
 const appEnd = round(cursor);
 const total = round(appEnd + 0.45 + config.endCardSeconds);
 beats.push({ name: "end", outStart: appEnd, outEnd: total });
-if (total < 25 || total > 35) {
-  throw new Error(`edit would be ${total.toFixed(2)} s; expected 25-35 s. Adjust demo/edit.config.json.`);
+if (total < minTotal || total > maxTotal) {
+  throw new Error(`edit would be ${total.toFixed(2)} s; expected ${minTotal}-${maxTotal} s. Adjust demo/edit.config.json.`);
 }
 
 // ---------- composition data ----------
@@ -348,11 +347,12 @@ const cam = {
   card: { sx: px(C.cardCenterXPt), sy: px(cardMidY), S: C.cardScale, ly: 1075 },
   best: { sx: px(C.cardCenterXPt + 2), sy: px(cardMidY), S: C.bestScale, ly: 1060 },
 };
+const lastDur = lastShot.shot.dur;
 const moves = [
   { at: round(TH + 0.55), key: "compose", dur: 2.2, ease: "power2.inOut" },
   { at: round(sendShot.at + 0.35), key: "cook", dur: 0.7, ease: "power3.inOut" },
-  { at: round(arrival.at + 0.1), key: "card", dur: 0.8, ease: "power3.inOut" },
-  { at: round(bestShot.at + 0.6), key: "best", dur: round(bestSeconds - 0.9), ease: "sine.inOut" },
+  { at: round(arrival.changeAt), key: "card", dur: 0.45, ease: "power3.out" },
+  { at: round(lastShot.changeAt), key: "best", dur: round(Math.max(0.8, lastDur - 0.2)), ease: "sine.inOut" },
 ];
 if (followupShot) {
   moves.splice(2, 0, { at: followupShot.at, key: "compose", dur: 0.6, ease: "power3.inOut" });
@@ -361,15 +361,15 @@ if (followupShot) {
 const taps = [{ id: "tap-send", at: round(sendShot.at + 0.15), x: px(L.send.x), y: px(L.send.y) }];
 for (const a of angleShots) {
   if (a.tap) {
-    taps.push({ id: `tap-${a.style}`, at: round(a.changeAt - 0.2), x: px(a.tap.x), y: px(a.tap.y) });
+    taps.push({ id: `tap-${a.style}`, at: round(a.shot.at - 0.06), x: px(a.tap.x), y: px(a.tap.y) });
   }
 }
 const chapters = angleShots.map((a, i) => ({
-  at: round(i === 0 ? a.shot.at + 0.45 : a.changeAt),
-  num: NUMBERS[i],
+  at: round(a.changeAt),
+  num: NUMBERS[i] ?? "",
   name: NAMES[a.style],
-  note: a.best && theme.bestNote ? upper(theme.bestNote) : null,
-  noteAfter: 1.6,
+  note: null,
+  noteAfter: 0,
 }));
 const data = {
   source: { width: SRC_W, height: SRC_H },
@@ -502,6 +502,6 @@ run("ffmpeg", [
 
 writeFileSync(
   join(outDir, "edl.json"),
-  `${JSON.stringify({ take, total, music: hasMusic, source: { width: SRC_W, height: SRC_H }, events: { composeOpen, typeFirst, sendAt, followupAnswerAt, cardAt, chipAt, bestAt }, timeline: beats, composition: data, sfx: cues }, null, 2)}\n`,
+  `${JSON.stringify({ take, total, music: hasMusic, source: { width: SRC_W, height: SRC_H }, events: { composeOpen, typeFirst, sendAt, followupAnswerAt, cardAt, chipAt }, timeline: beats, composition: data, sfx: cues }, null, 2)}\n`,
 );
 log(`wrote ${output} (${total.toFixed(2)} s, music: ${hasMusic ? "yes" : "no"})`);

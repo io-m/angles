@@ -1,0 +1,24 @@
+{
+  "line": "My flight to Lisbon is in 9 days and I've packed nothing except anxiety and three outfit ideas.",
+  "followupReply": "Next Thursday, carry-on only — weekend with two friends.",
+  "bestStyle": "auto",
+  "hook": [
+    [
+      { "text": "Lisbon", "look": "big" },
+      { "text": "in 9 days.", "look": "big" },
+      { "text": "Still not packed.", "look": "small" }
+    ],
+    [
+      { "text": "So I asked AI", "look": "small" },
+      { "text": "to see it", "look": "small" },
+      { "text": "4 ways.", "look": "slam" }
+    ]
+  ],
+  "bestNote": "The one that hit hardest.",
+  "end": {
+    "wordmark": "Angles",
+    "tagline": "One thought. Four ways to see it.",
+    "badge": "Coming soon to the App Store",
+    "follow": "Follow for more"
+  }
+}

@@ -7,6 +7,8 @@ appId: app.angles.ios
     id: "chip.${STYLE_KEY}"
     childOf:
       id: "compose.card"
+- waitForAnimationToEnd:
+    timeout: 1000
 - extendedWaitUntil:
     visible:
       id: "compose.card"

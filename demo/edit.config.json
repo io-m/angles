@@ -1,17 +1,17 @@
 {
   "screenWidthPt": 402,
   "targetTotalSeconds": [
-    25,
-    35
+    20,
+    32
   ],
   "typingOutSeconds": 3.5,
   "typingMaxSpeed": 3.5,
   "cookingSpeed": 1.5,
-  "cookingMaxOutSeconds": 4,
-  "firstAnswerSeconds": 2.4,
-  "chipSeconds": 1.5,
-  "bestSeconds": 7,
-  "bestMaxSeconds": 9,
+  "cookingMaxOutSeconds": 1.8,
+  "angleSeconds": 1.4,
+  "firstAnswerSeconds": 1.4,
+  "chipSeconds": 1.4,
+  "lastAngleExtraSeconds": 2,
   "endCardSeconds": 3.6,
   "musicVolume": 0.18,
   "camera": {
@@ -30,6 +30,10 @@
     "send": {
       "x": 355,
       "y": 471
+    },
+    "post": {
+      "x": 201,
+      "y": 718
     },
     "bubble": {
       "x": 201,

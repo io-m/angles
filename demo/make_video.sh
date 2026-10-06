@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # One command: real cook on the demo Simulator, recorded, then edited to
-# demo/output/final_9x16.mp4.
+# demo/output/final_9x16.mp4. Cut contract: demo/README.md (hook, type, short
+# cook, four chapters, Tough love hold, outro). Do not add Post or Home.
 #
 #   demo/make_video.sh                         # full run (build, record, edit, check)
-#   demo/make_video.sh --theme exam-panic      # demo/themes/exam-panic.json: the thought and every on-screen word
+#   demo/make_video.sh --theme lisbon-flight   # demo/themes/lisbon-flight.json
 #   demo/make_video.sh --skip-build            # reuse the installed Simulator build
 #   demo/make_video.sh --reuse-take demo/raw/take-20261002-210000   # re-edit only
 #
-# Env overrides (win over the theme): DEMO_LINE, FOLLOWUP_REPLY, BEST_STYLE (auto|stoic|optimistic|humorous|tough_love)
+# Env overrides (win over the theme): DEMO_LINE, FOLLOWUP_REPLY, BEST_STYLE
+# BEST_STYLE affects report.md scoring only, not the picture.
 set -euo pipefail
 
 DEMO="$(cd "$(dirname "$0")" && pwd)"

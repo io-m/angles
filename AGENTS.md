@@ -76,7 +76,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Config/AppConfig.swift` — optional Release API, legal, and support destinations
 - `AnglesApp/AnglesApp/Models/ReframeModels.swift` — must match backend JSON exactly
 - `BUILD.md` — **screen/feature order**. Update it in the same change as every new screen or feature.
-- `demo/` — the showcase video: `demo/make_video.sh` records a real cook on the "Angles Demo iPhone 17 Pro" Simulator with Maestro, then `demo/edit.mjs` cuts it into the HyperFrames composition in `demo/video/` (hook, the whole phone in a device frame with camera moves, chapter cards, end-card call to action; template `demo/lib/composition.template.html`) and renders `demo/output/final_9x16.mp4` (see `demo/README.md`). It signs in with `pnpm demo:session` (local database only) and `DemoLaunch` (Debug Simulator builds only). Raw takes in `demo/raw/` are never overwritten.
+- `demo/` — showcase TikToks. **Cut contract** is at the top of `demo/README.md`: hook, type, short cook, **exactly four** style chapters (yellow title on the cut), extra hold + small zoom on Tough love, then the end card. Do not add a fifth “best” chapter, Post, bike cover, or Home. `demo/make_video.sh` records a real cook on the "Angles Demo iPhone 17 Pro" Simulator; `demo/edit.mjs` writes the HyperFrames composition (`demo/lib/composition.template.html`) and `demo/output/final_9x16.mp4`. Sign-in is `pnpm demo:session` (local DB) + `DemoLaunch` (Debug Simulator only). Raw takes in `demo/raw/` are never overwritten.
 
 ## Do not invent
 

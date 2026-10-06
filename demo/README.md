@@ -1,13 +1,18 @@
 # Showcase video
 
-A 25–35 s vertical video of a real cook:
+A 20–32 s vertical TikTok of a **real** cook. Every video uses the same cut. Change only the **theme** (`demo/themes/<name>.json`). Do not invent extra beats.
 
-- A yellow kinetic-type hook: "I lost my job 5 months ago. So I asked AI to see it 4 ways."
-- A zoom-through into the full phone screen. The thought is typed, Send is tapped, and the real cooking bubble runs.
-- A chapter card for each style as the camera moves over the real answer card, then a long hold on the best answer.
-- An end card: the Angles mark, "Coming soon to the App Store", and "Follow for more".
+**Cut contract** (hook → type → send → short cook → four style chapters → outro):
 
-Nothing in the phone is mocked. The AI output is whatever the local API returned on that take.
+1. Yellow kinetic hook (~3 s), then the whole phone in a device frame.
+2. Type the thought (~3.5 s sped up), tap Send at real speed.
+3. Cooking bubble at 1.5x, **capped at ~1.8 s**. The first yellow chapter title lands **on the same frame as the card**, not after a hold on the bubble.
+4. **Exactly four** chapters: the style that opened, then the other chips in tap order, ending on Tough love. Each of the first three is ~1.4 s. Yellow `CHAPTER n` + style name on the cut, no extra pause before the title.
+5. Last chapter (Tough love) holds **~2 s extra** (~3.4 s) with a small slow zoom, then the end card (wordmark, App Store badge, follow).
+
+**Do not add** (these were tried and dropped): a fifth “best” chapter, jumping back to Stoic, a `bestNote` line, **undefined** chapter numbers, Post, the bike save cover, or Home / border glow. `pick_best.js` still scores answers for `report.md` only; it does not change the cut.
+
+Nothing in the phone is mocked. The AI output is whatever the local API returned on that take. Timings live in `edit.config.json`. Full pipeline: `demo/README.md` below.
 
 ## Regenerate
 
@@ -15,7 +20,7 @@ Nothing in the phone is mocked. The AI output is whatever the local API returned
 demo/make_video.sh
 ```
 
-The output is `demo/output/final_9x16.mp4` (1080x1920, 30 fps, H.264/AAC). Next to it are `report.md` (the answers, the one that was held, and the checks), `contact_sheet.png`, `frames/` (both hook cards, every beat, the end card), and `edl.json` (the cut list).
+The output is `demo/output/final_9x16.mp4` (1080x1920, 30 fps, H.264/AAC). Next to it are `report.md` (the answers and the checks), `contact_sheet.png`, `frames/` (hook cards, every beat, the end card), and `edl.json` (the cut list).
 
 Before you run it:
 
@@ -35,17 +40,16 @@ Before you run it:
    - open compose with the sparkle button and type the line
    - Send, then answer at most one follow-up (a chip if one fits, otherwise `FOLLOWUP_REPLY`)
    - wait for the card without tapping anything
-   - tap Optimistic, Humorous, Stoic, and Tough love in turn
-   - return to the best answer and hold it
+   - tap Optimistic, Humorous, Stoic, and Tough love in turn (short holds; the edit trims tighter)
+   - hold Tough love; the edit cuts from there to the end card
 
-   The flow never taps Post or Save. It stops with a clear reason if Angles asks a second follow-up, answers with a crisis line, or shows an error.
+   It stops with a clear reason if Angles asks a second follow-up, answers with a crisis line, or shows an error.
 5. Each take is saved to `demo/raw/take-YYYYMMDD-HHMMSS/` and is never overwritten. A take holds `screen.mp4`, `answers.json`, the theme it was recorded with (`theme.json`), the Maestro logs, and the final view hierarchy.
 6. `edit.mjs` snaps each beat to the real scene changes in the recording and builds the cut:
    - typing sped up to about 3.5 s, with the Send tap at real speed
-   - cooking at 1.5x, capped at 4 s
-   - the first answer for 2.4 s
-   - 1.5 s for each other style
-   - about 7 s on the best answer
+   - cooking at 1.5x, capped at about 1.8 s
+   - ~1.4 s for each of the first three styles, with the yellow chapter title on the same frame as the cut
+   - ~3.4 s on Tough love with a small zoom, then the end card
 
    It writes the cut, tap points, chapter cards, and camera moves into `video/index.html`, built from `lib/composition.template.html`. That file is a HyperFrames composition, and its footage is a constant-frame-rate copy of the take in `video/media/`. The phone is always shown whole, inside a device frame. The camera pushes in on the composer, the cooking bubble, and the answer card, so the card stays fully in frame. Taps the Simulator recording cannot show are drawn as ripples.
 
@@ -56,23 +60,23 @@ Before you run it:
 ```bash
 demo/make_video.sh --skip-build                      # reuse the build already installed on the Simulator
 demo/make_video.sh --reuse-take demo/raw/take-…      # re-edit an existing take; no Simulator, no cook
-demo/make_video.sh --theme lost-job                  # demo/themes/lost-job.json (the default)
+demo/make_video.sh --theme lost-job                  # demo/themes/lost-job.json
+demo/make_video.sh --theme lisbon-flight             # demo/themes/lisbon-flight.json
 DEMO_LINE="…" demo/make_video.sh                     # a different thought, same on-screen words
 FOLLOWUP_REPLY="…" demo/make_video.sh                # what to say if Angles asks a follow-up and no chip fits
-BEST_STYLE=stoic demo/make_video.sh                  # force the held answer (stoic|optimistic|humorous|tough_love)
 ```
 
-By default, `flows/pick_best.js` picks the held answer by favouring concrete objects and a next step and penalising stock phrases. The report shows every score. Timings, camera zoom levels, and the length target are in `edit.config.json`. `layoutPt` holds the points measured on the iPhone 17 Pro: composer, Send button, chip row. Re-measure them if the compose layout changes. The words come from the theme, and colors and motion live in `lib/composition.template.html`. The hook is sized with Anton's real letter widths (`lib/anton-widths.json`, read from the bundled font).
+`BEST_STYLE` still exists for the **report** (`flows/pick_best.js`). It does **not** insert a fifth held chapter. Timings, camera zoom, and the length target are in `edit.config.json`. `layoutPt` holds the points measured on the iPhone 17 Pro: composer, Send button, chip row. Re-measure them if the compose layout changes. The words come from the theme, and colors and motion live in `lib/composition.template.html`. The hook is sized with Anton's real letter widths (`lib/anton-widths.json`, read from the bundled font).
 
 To preview without rendering, run `EDIT_ONLY=1 node demo/edit.mjs demo/raw/take-…`. Then run `npx hyperframes@0.8.113 preview` or `snapshot --at 2.9,12,20` in `demo/video/`.
 
 ## Make one with a new theme
 
-Each video is one theme file in `demo/themes/`. It holds the thought that gets typed, and every word on screen that is not the app itself: the hook, the note under the best answer, and the end card. `lost-job.json` is the reference. Everything else (the recording, cuts, camera, chapter cards, sound) stays the same.
+Each video is one theme file in `demo/themes/`. It holds the thought that gets typed, and every word on screen that is not the app itself: the hook and the end card. The cut, camera, chapter cards, and sound stay the same for every theme (`lisbon-flight.json` is a recent example; `lost-job.json` still works).
 
 To have an LLM make one, give it this:
 
-> Read `demo/README.md` ("Make one with a new theme") and `demo/themes/lost-job.json`. Write `demo/themes/<short-name>.json` for this theme: **<your theme>**. Then run `demo/make_video.sh --theme <short-name>`, read `demo/output/report.md` and `demo/output/contact_sheet.png`, and tell me if it is postable.
+> Read `demo/README.md` from the top (**Cut contract**) and `demo/themes/lisbon-flight.json`. Write `demo/themes/<short-name>.json` for this theme: **<your theme>**. Do not add Post, Home, or a fifth chapter. Then run `demo/make_video.sh --theme <short-name>`, read `demo/output/report.md` and `demo/output/contact_sheet.png`, and tell me if it is postable.
 
 Rules for the theme file:
 
@@ -82,15 +86,14 @@ Rules for the theme file:
   - `small` lines (white) read largest at about 13 characters.
   - Longer lines shrink to fit, and the edit prints a warning when a line drops below 70% size.
   - Three lines per card is the sweet spot.
-- `bestNote` is the line under the last chapter card, up to about 34 characters.
 - `end` is the end card:
   - `tagline`: about 34 characters
   - `badge`: the yellow pill, about 29 characters
   - `follow`: about 24 characters
   - `wordmark`: the app name
-- `bestStyle` is `auto`, or a style to force as the held answer.
+- `bestNote` and `bestStyle` may still sit in a theme file; the edit **ignores** them for the picture (`bestStyle` only affects `report.md` scoring).
 
-A run records a new take, which spends one cook credit on the demo account. If the answers read as generic, run it again, or sharpen `line`. To change only the words of an existing take (the hook, the note, the end card), run `demo/make_video.sh --reuse-take demo/raw/take-… --theme <short-name>`. That does not record a new take, so `line` is not used. The colors, fonts, motion, and end-card layout are in `lib/composition.template.html`.
+A run records a new take, which spends one cook credit on the demo account. If the answers read as generic, run it again, or sharpen `line`. To change only the words of an existing take (the hook and the end card), run `demo/make_video.sh --reuse-take demo/raw/take-… --theme <short-name>`. That does not record a new take, so `line` is not used. The colors, fonts, motion, and end-card layout are in `lib/composition.template.html`.
 
 Each run writes `demo/output/final_9x16.mp4` and a copy named after the theme and take, like `demo/output/lost-job_take-20261002-211217.mp4`. Re-editing the same take with the same theme replaces that copy.
 
@@ -103,7 +106,7 @@ Put a track you have the rights to at `demo/assets/music.mp3`. It is looped or t
 - The answers are specific to this thought. If they read as generic, record another take or change `DEMO_LINE`.
 - Exactly zero or one follow-up was asked (`report.md`).
 - There is no notification banner, real name, or personal data. The account is "Angles Demo", shown with the initials "AD".
-- The held answer is readable on a phone at arm's length.
+- The last chapter (Tough love) is readable on a phone at arm's length.
 - The hook reads in one glance, and the end card's App Store and follow lines sit clear of TikTok's caption area.
 
 `report.md` marks the video NOT POSTABLE when the flow saw more than one follow-up, a crisis line, or a missing style. The flow itself refuses to finish a take in those cases.

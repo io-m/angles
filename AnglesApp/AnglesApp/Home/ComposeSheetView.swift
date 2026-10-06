@@ -757,6 +757,7 @@ struct ComposeSheetView: View {
         .padding(.bottom, 8)
         .background { composerGlow }
         .accessibilityLabel(saveButtonTitle)
+        .accessibilityIdentifier("compose.post")
         .modifier(AccessibilityHintIfPresent(hint: saveButtonHint))
     }
 
@@ -1151,6 +1152,7 @@ struct SaveCelebrationCover: View {
         .clipped()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
+        .accessibilityIdentifier("save.cover")
     }
 }
 

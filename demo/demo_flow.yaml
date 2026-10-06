@@ -1,6 +1,7 @@
 # The recorded take. Starts on Home (warmup.yaml got it there), cooks DEMO_LINE
-# for real, walks the four style chips, and ends holding the best answer.
-# Never taps Post, Save, or New answer.
+# for real, walks the four style chips, and holds Tough love. The edit always
+# cuts four chapters then the outro (see demo/README.md Cut contract).
+# Do not tap Post, Save, or jump back to a "best" style.
 #
 # Env (make_video.sh passes these):
 #   DEMO_LINE       the thought to type
@@ -104,13 +105,15 @@ appId: app.angles.ios
     visible:
       id: "compose.card"
     timeout: 1000
+- waitForAnimationToEnd:
+    timeout: 2000
 - evalScript: ${output.demo.marks.push(['card', Date.now()])}
 
 # 5. Hold on the first answer.
 - runFlow:
     file: flows/hold.yaml
     env:
-      HOLD_MS: 2000
+      HOLD_MS: 700
 - copyTextFrom:
     id: "compose.card"
 - runScript:
@@ -118,63 +121,37 @@ appId: app.angles.ios
     env:
       STYLE_KEY: auto
 
-# 6. Each chip, 2 s each.
+# 6. Each chip — short holds; the edit trims tighter.
 - runFlow:
     file: flows/chip.yaml
     env:
       STYLE_KEY: optimistic
       STYLE_NAME: Optimistic
-      HOLD_MS: 2000
+      HOLD_MS: 550
 - runFlow:
     file: flows/chip.yaml
     env:
       STYLE_KEY: humorous
       STYLE_NAME: Humorous
-      HOLD_MS: 2000
+      HOLD_MS: 550
 - runFlow:
     file: flows/chip.yaml
     env:
       STYLE_KEY: stoic
       STYLE_NAME: Stoic
-      HOLD_MS: 2000
+      HOLD_MS: 550
 - runFlow:
     file: flows/chip.yaml
     env:
       STYLE_KEY: tough_love
       STYLE_NAME: Tough Love
-      HOLD_MS: 2000
+      HOLD_MS: 2800
 
-# 7. Back to the best answer and hold it long enough to read (the edit keeps ~8 s).
+# 7. Score the answers for the report; the edit holds Tough love then the outro.
 - runScript:
     file: flows/pick_best.js
     env:
       BEST_STYLE: ${BEST_STYLE}
 - evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', optimistic: 'Optimistic', humorous: 'Humorous', tough_love: 'Tough Love' })[output.demo.best]}"
-- runFlow:
-    when:
-      true: ${output.demo.best !== 'tough_love'}
-    commands:
-      - runFlow:
-          file: flows/hold.yaml
-          env:
-            HOLD_MS: 300
-      - evalScript: ${output.demo.marks.push(['best_tap', Date.now()])}
-      - tapOn:
-          id: "chip.${output.demo.best}"
-          childOf:
-            id: "compose.card"
-- extendedWaitUntil:
-    visible:
-      id: "compose.card"
-      text: ".*${output.demo.bestName} answer\\..*"
-    timeout: 5000
-- evalScript: ${output.demo.marks.push(['best_shown', Date.now()])}
-- runFlow:
-    file: flows/hold.yaml
-    env:
-      HOLD_MS: 8000
-- evalScript: ${output.demo.marks.push(['best_end', Date.now()])}
-
-# 8. End here. Report for make_video.sh.
 - runScript:
     file: flows/report.js

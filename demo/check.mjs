@@ -38,8 +38,8 @@ if (v?.codec_name !== "h264" || v.width !== 1080 || v.height !== 1920 || v.r_fra
 if (a?.codec_name !== "aac") {
   problems.push(`audio stream is ${a?.codec_name ?? "missing"}, expected aac`);
 }
-if (duration < 25 || duration > 35) {
-  problems.push(`duration ${duration.toFixed(2)} s is outside 25-35 s`);
+if (duration < 20 || duration > 32) {
+  problems.push(`duration ${duration.toFixed(2)} s is outside 20-32 s`);
 }
 if (sizeMB >= 50) {
   problems.push(`file is ${sizeMB.toFixed(1)} MB, must be under 50 MB`);
@@ -98,7 +98,7 @@ const lines = [
   `- Output: \`demo/output/final_9x16.mp4\` (${duration.toFixed(2)} s, ${sizeMB.toFixed(1)} MB, ${v?.width}x${v?.height}, ${a?.codec_name ?? "no audio"}${edl.music ? ", music and sound effects" : ", sound effects only"})`,
   `- Take: \`${take.replace(`${dirname(DEMO)}/`, "")}\``,
   `- Follow-ups asked: ${answers.followups ?? 0}${answers.followupQuestion ? ` ("${answers.followupQuestion}" answered with "${answers.followupAnswer}")` : ""}`,
-  `- Held on: **${NAMES[best] ?? best}**${answers.bestForced ? " (forced with BEST_STYLE)" : " (auto pick)"}`,
+  `- Strongest scored (report only, not a fifth chapter): **${NAMES[best] ?? best}**${answers.bestForced ? " (forced with BEST_STYLE)" : " (auto pick)"}`,
   "",
   "## Answers",
   "",
@@ -114,7 +114,7 @@ const lines = [
   "## Check by eye",
   "",
   "- Are the answers specific to this thought, or generic? Generic means do not post.",
-  "- Is the held answer readable on a phone at arm's length (`frames/*best*.png`)?",
+  "- Is the last chapter (Tough love) readable on a phone at arm's length?",
   "- No notification, real name, or personal data anywhere (the account is \"Angles Demo\").",
   "- The hook cards read in one glance, and the end card's App Store line and follow line are clear of TikTok's caption area.",
   "",

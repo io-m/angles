@@ -1,0 +1,21 @@
+---
+description: Canonical cut for Angles showcase TikToks in demo/
+globs: demo/**
+alwaysApply: false
+---
+
+# Showcase TikTok cut
+
+Read the **Cut contract** at the top of `demo/README.md` before changing any demo video file.
+
+Standard beat list for **every** theme:
+
+1. Hook (~3 s)
+2. Type (~3.5 s) + Send
+3. Cooking at 1.5x, capped ~1.8 s; first yellow chapter title on the **same frame** as the card
+4. Exactly four chapters (opened style, then other chips, ending on Tough love). First three ~1.4 s each
+5. Tough love ~3.4 s with a small zoom, then the existing end card
+
+Do **not** add: a fifth “best” chapter, jump back to Stoic, `bestNote` overlay, Post, bike save cover, or Home / border glow. `pick_best.js` scores `report.md` only.
+
+New videos: write `demo/themes/<name>.json`, run `demo/make_video.sh --theme <name>`. Re-cuts: `--reuse-take`. Timings: `demo/edit.config.json`.
