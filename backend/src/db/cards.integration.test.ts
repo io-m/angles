@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   CATEGORIES,
   STYLES,
@@ -13,7 +13,7 @@ import {
   type Emotion,
   type Style,
 } from "../types/index.js";
-import { DEV_USER_ID } from "../lib/authStub.js";
+import { DEV_USER_ID, runAsOwner } from "../lib/authStub.js";
 import type {
   VerifiedAppStoreNotification,
   VerifiedAppStoreRenewal,
@@ -91,6 +91,13 @@ const { openReplay, parseReplayKey, sealReplay } = await import("../lib/reframeR
 const { clearFeedSaves, listFeed, listRankedFeed, saveFeedAngle } = await import("./feed.js");
 const { followUser, unfollowUser } = await import("./follows.js");
 const {
+  deliverFollowPush,
+  listFollowNotifications,
+  markFollowNotificationsRead,
+  registerDeviceToken,
+  setNotifyFollows,
+} = await import("./followNotifications.js");
+const {
   deleteReportedCard,
   listPendingReports,
   publishHiddenCard,
@@ -104,6 +111,8 @@ const {
   cardReports,
   cards,
   dailyUsage,
+  deviceTokens,
+  followNotifications,
   follows,
   meterOperations,
   savedAngles,
@@ -201,7 +210,8 @@ describe.skipIf(!testUrl)("cards integration", () => {
     await getSql()`
       TRUNCATE llm_call_usage, credit_adjustments, meter_operations, daily_usage, taste_usage,
         usage_periods, subscription_events, subscription_entitlements, user_blocks, card_reports,
-        follows, saved_angles, card_reframes, card_tags, cards, tags, category_proposals
+        follow_notifications, device_tokens, follows, saved_angles, card_reframes, card_tags, cards,
+        tags, category_proposals
         RESTART IDENTITY CASCADE
     `;
     await getDb()
@@ -2007,15 +2017,18 @@ describe.skipIf(!testUrl)("cards integration", () => {
   });
 
   it("follows and unfollows another user without changing feed order", async () => {
-    expect(await followUser(DEV_USER_ID)).toBe("self");
-    expect(await followUser("00000000-0000-4000-8000-000000000066")).toBe("not_found");
+    expect(await followUser(DEV_USER_ID)).toEqual({ result: "self", notificationId: null });
+    expect(await followUser("00000000-0000-4000-8000-000000000066")).toEqual({
+      result: "not_found",
+      notificationId: null,
+    });
 
     const cardId = await insertOtherCard({
       thought: "I keep waiting for a reply that is not coming and I feel small.",
       isPublic: true,
     });
-    expect(await followUser(OTHER_USER_ID)).toBe("ok");
-    expect(await followUser(OTHER_USER_ID)).toBe("ok");
+    expect(await followUser(OTHER_USER_ID)).toMatchObject({ result: "ok" });
+    expect(await followUser(OTHER_USER_ID)).toEqual({ result: "ok", notificationId: null });
 
     const followed = await listFeed({ limit: 50 });
     expect(followed.find((card) => card.id === cardId)?.author.following).toBe(true);
@@ -2048,7 +2061,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(await getDb().select().from(follows)).toHaveLength(0);
     expect(await getDb().select().from(savedAngles)).toHaveLength(0);
     expect((await listFeed({ limit: 50 })).map((card) => card.id)).not.toContain(otherCard);
-    expect(await followUser(OTHER_USER_ID)).toBe("blocked");
+    expect(await followUser(OTHER_USER_ID)).toEqual({ result: "blocked", notificationId: null });
     expect(await saveFeedAngle(otherCard, "stoic")).toEqual({ ok: false, reason: "not_found" });
     expect(await getDb().select().from(userBlocks)).toHaveLength(1);
 
@@ -2065,12 +2078,162 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
     await Promise.all([followUser(OTHER_USER_ID), blockUser(OTHER_USER_ID)]);
     expect(await getDb().select().from(follows)).toHaveLength(0);
+    expect(await getDb().select().from(followNotifications)).toHaveLength(0);
     expect(await getDb().select().from(userBlocks)).toHaveLength(1);
 
     expect(await unblockUser(OTHER_USER_ID)).toBe("ok");
     await Promise.all([saveFeedAngle(otherCard, "stoic"), blockUser(OTHER_USER_ID)]);
     expect(await getDb().select().from(savedAngles)).toHaveLength(0);
     expect(await getDb().select().from(userBlocks)).toHaveLength(1);
+  });
+
+  it("notifies on a new follow, stacks nothing unread, and drops both directions on block", async () => {
+    await getDb()
+      .insert(users)
+      .values({
+        id: OTHER_USER_ID,
+        initials: "AL",
+        name: "Private Name",
+        email: `seed-${OTHER_USER_ID}@angles.invalid`,
+      })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: { name: "Private Name", initials: "AL" },
+      });
+
+    expect(await followUser(DEV_USER_ID)).toEqual({ result: "self", notificationId: null });
+    expect(await getDb().select().from(followNotifications)).toHaveLength(0);
+
+    const first = await runAsOwner(OTHER_USER_ID, () => followUser(DEV_USER_ID));
+    expect(first.result).toBe("ok");
+    expect(first.notificationId).toEqual(expect.any(String));
+    const repeat = await runAsOwner(OTHER_USER_ID, () => followUser(DEV_USER_ID));
+    expect(repeat).toEqual({ result: "ok", notificationId: null });
+    expect(await getDb().select().from(followNotifications)).toHaveLength(1);
+
+    await runAsOwner(OTHER_USER_ID, () => unfollowUser(DEV_USER_ID));
+    const unreadAgain = await runAsOwner(OTHER_USER_ID, () => followUser(DEV_USER_ID));
+    expect(unreadAgain.notificationId).toBeNull();
+    expect(await getDb().select().from(followNotifications)).toHaveLength(1);
+
+    const listed = await listFollowNotifications();
+    expect(listed.unreadCount).toBe(1);
+    expect(listed.notifications).toHaveLength(1);
+    expect(listed.notifications[0]).toMatchObject({
+      followedBack: false,
+      readAt: null,
+      actor: { id: OTHER_USER_ID, initials: "AL", following: false },
+    });
+    expect(listed.notifications[0]?.actor).not.toHaveProperty("name");
+
+    // Postgres keeps microseconds; the wire stamp has milliseconds, and build 18 can lose one more.
+    await getDb()
+      .update(followNotifications)
+      .set({ createdAt: sql`'2026-10-06 08:40:24.130267+00'::timestamptz` })
+      .where(eq(followNotifications.recipientId, DEV_USER_ID));
+    const stamped = await listFollowNotifications();
+    expect(stamped.notifications[0]?.createdAt).toBe("2026-10-06T08:40:24.130Z");
+    expect(await markFollowNotificationsRead({ before: new Date("2026-10-06T08:40:24.128Z") })).toBe(1);
+    expect(await markFollowNotificationsRead({ before: new Date("2026-10-06T08:40:24.129Z") })).toBe(0);
+    expect((await listFollowNotifications()).notifications[0]?.readAt).toEqual(expect.any(String));
+
+    await runAsOwner(OTHER_USER_ID, () => unfollowUser(DEV_USER_ID));
+    await followUser(OTHER_USER_ID);
+    const followedBack = await runAsOwner(OTHER_USER_ID, () => followUser(DEV_USER_ID));
+    expect(followedBack.notificationId).toEqual(expect.any(String));
+    const rows = await getDb()
+      .select()
+      .from(followNotifications)
+      .where(eq(followNotifications.recipientId, DEV_USER_ID));
+    expect(rows).toHaveLength(2);
+    expect(rows.some((row) => row.followedBack)).toBe(true);
+    const perPerson = await listFollowNotifications();
+    expect(perPerson.notifications).toHaveLength(1);
+    expect(perPerson.notifications[0]).toMatchObject({
+      id: followedBack.notificationId,
+      followedBack: true,
+      readAt: null,
+    });
+    expect(perPerson.unreadCount).toBe(1);
+
+    const previous = {
+      APNS_KEY: process.env.APNS_KEY,
+      APNS_KEY_ID: process.env.APNS_KEY_ID,
+      APNS_TEAM_ID: process.env.APNS_TEAM_ID,
+      APNS_BUNDLE_ID: process.env.APNS_BUNDLE_ID,
+    };
+    const sent: { title: string; body: string; collapseId: string }[] = [];
+    const notificationId = followedBack.notificationId as string;
+    const record = async (alert: { title: string; body: string; collapseId: string }) => {
+      sent.push({ title: alert.title, body: alert.body, collapseId: alert.collapseId });
+      return "sent" as const;
+    };
+    try {
+      await registerDeviceToken("ab".repeat(32), "sandbox");
+      delete process.env.APNS_KEY;
+      delete process.env.APNS_KEY_ID;
+      delete process.env.APNS_TEAM_ID;
+      delete process.env.APNS_BUNDLE_ID;
+      await deliverFollowPush(notificationId, record);
+      expect(sent).toHaveLength(0);
+
+      process.env.APNS_KEY = "test-key";
+      process.env.APNS_KEY_ID = "KEYID12345";
+      process.env.APNS_TEAM_ID = "TEAMID1234";
+      process.env.APNS_BUNDLE_ID = "app.angles.ios";
+      await setNotifyFollows(false);
+      await deliverFollowPush(notificationId, record);
+      expect(sent).toHaveLength(0);
+
+      await setNotifyFollows(true);
+      await getDb().delete(deviceTokens);
+      await deliverFollowPush(notificationId, record);
+      expect(sent).toHaveLength(0);
+
+      await registerDeviceToken("ab".repeat(32), "sandbox");
+      await registerDeviceToken("cd".repeat(32), "sandbox");
+      const liveTokens = await getDb().select().from(deviceTokens);
+      expect(liveTokens).toHaveLength(1);
+      expect(liveTokens[0]?.token).toBe("cd".repeat(32));
+
+      await deliverFollowPush(notificationId, async (alert) => {
+        sent.push({ title: alert.title, body: alert.body, collapseId: alert.collapseId });
+        return "unregistered";
+      });
+      expect(sent).toEqual([
+        {
+          title: "Private Name",
+          body: "Followed you back",
+          collapseId: notificationId,
+        },
+      ]);
+      expect(await getDb().select().from(deviceTokens)).toHaveLength(0);
+    } finally {
+      await setNotifyFollows(true);
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+
+    expect((await listFollowNotifications()).unreadCount).toBe(1);
+    expect(
+      await markFollowNotificationsRead({ throughId: "00000000-0000-4000-8000-0000000000ff" }),
+    ).toBe(1);
+    const otherUnread = (await runAsOwner(OTHER_USER_ID, () => listFollowNotifications())).unreadCount;
+    expect(
+      await runAsOwner(OTHER_USER_ID, () => markFollowNotificationsRead({ throughId: notificationId })),
+    ).toBe(otherUnread);
+    expect((await listFollowNotifications()).unreadCount).toBe(1);
+    expect(await markFollowNotificationsRead({ throughId: notificationId })).toBe(0);
+    expect((await listFollowNotifications()).notifications.every((row) => row.readAt !== null)).toBe(true);
+
+    await runAsOwner(OTHER_USER_ID, () => blockUser(DEV_USER_ID));
+    expect(await getDb().select().from(followNotifications)).toHaveLength(0);
+    expect(await getDb().select().from(follows)).toHaveLength(0);
   });
 
   it("keeps one HTTP report public, auto-privates at three, and Keep unlocks without republishing", async () => {

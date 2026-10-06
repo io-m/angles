@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { blockUser, unblockUser, usersAreBlocked } from "../db/communitySafety.js";
 import { listPublicCardsForUser } from "../db/feed.js";
+import { deliverFollowPush } from "../db/followNotifications.js";
 import { followedAuthorIds, followUser, unfollowUser } from "../db/follows.js";
 import { authorOf } from "../db/mapCard.js";
 import { getUserById } from "../db/users.js";
@@ -79,14 +80,17 @@ usersRoute.put(
       return c.json(errorBody("You cannot follow yourself", "VALIDATION_ERROR"), 400);
     }
     const result = await followUser(id);
-    if (result === "not_found") {
+    if (result.result === "not_found") {
       return c.json(errorBody("Not found", "NOT_FOUND"), 404);
     }
-    if (result === "self") {
+    if (result.result === "self") {
       return c.json(errorBody("You cannot follow yourself", "VALIDATION_ERROR"), 400);
     }
-    if (result === "blocked") {
+    if (result.result === "blocked") {
       return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+    }
+    if (result.notificationId) {
+      void deliverFollowPush(result.notificationId);
     }
     const body: FollowStateResponse = { following: true };
     return c.json(body);

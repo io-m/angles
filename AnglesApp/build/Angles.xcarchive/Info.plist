@@ -15,7 +15,7 @@
 		<key>CFBundleShortVersionString</key>
 		<string>1.0.0</string>
 		<key>CFBundleVersion</key>
-		<string>12</string>
+		<string>25</string>
 		<key>SigningIdentity</key>
 		<string>Apple Development: Josip Miljak (2AB5U4G2LQ)</string>
 		<key>Team</key>
@@ -24,7 +24,7 @@
 	<key>ArchiveVersion</key>
 	<integer>2</integer>
 	<key>CreationDate</key>
-	<date>2026-10-05T11:17:56Z</date>
+	<date>2026-10-06T10:43:13Z</date>
 	<key>Distributions</key>
 	<array>
 		<dict>
@@ -35,11 +35,11 @@
 			<key>destination</key>
 			<string>upload</string>
 			<key>identifier</key>
-			<string>ff109795-b4af-4546-b554-d64dfbe7b55e</string>
+			<string>6d58a1ee-7107-4bc7-aca1-08b8d50e7062</string>
 			<key>preparationEvent</key>
 			<dict>
 				<key>date</key>
-				<string>2026-10-05T11:18:01Z</string>
+				<string>2026-10-06T10:43:19Z</string>
 				<key>errors</key>
 				<array/>
 				<key>infoMessages</key>
@@ -64,7 +64,7 @@
 			<key>uploadEvent</key>
 			<dict>
 				<key>date</key>
-				<string>2026-10-05T11:19:59Z</string>
+				<string>2026-10-06T10:45:09Z</string>
 				<key>errors</key>
 				<array/>
 				<key>infoMessages</key>
@@ -79,7 +79,7 @@
 				<array/>
 			</dict>
 			<key>uploadedBuildNumber</key>
-			<string>12</string>
+			<string>25</string>
 		</dict>
 	</array>
 	<key>Name</key>

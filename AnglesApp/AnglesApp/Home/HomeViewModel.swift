@@ -557,6 +557,17 @@ final class HomeViewModel {
     private(set) var followingLoadState: LibraryLoadState = .loading
     private(set) var blockedPeople: [BlockedPerson] = []
     private(set) var blocksLoadState: LibraryLoadState = .loading
+    private(set) var followNotices: [FollowNotice] = []
+    private(set) var followNoticesLoadState: LibraryLoadState = .loading
+    private(set) var unreadFollowCount = 0
+    /// Bumps on every load or mark, so the icon badge is rewritten even when the count is the
+    /// same and a push left a stale number on the icon.
+    private(set) var followBadgeRevision = 0
+    /// Bumps when a push should open the follows sheet.
+    var openFollowNotificationsToken = 0
+    /// Bumped by every mark. A list that left before it answers with the old unread state.
+    private var followNoticesGeneration = 0
+    private var followReadTask: Task<Void, Never>?
 
     private let reframeService: ReframeService
     private let cardsService: CardsService
@@ -1298,6 +1309,13 @@ final class HomeViewModel {
         followingLoadState = .loading
         blockedPeople = []
         blocksLoadState = .loading
+        followNotices = []
+        followNoticesLoadState = .loading
+        unreadFollowCount = 0
+        followBadgeRevision &+= 1
+        followNoticesGeneration &+= 1
+        followReadTask?.cancel()
+        followReadTask = nil
         blocksGeneration &+= 1
         configureUsageAccount(userID: nil)
         saveLanding = nil
@@ -2180,6 +2198,9 @@ final class HomeViewModel {
         cards.removeAll { $0.authorId == authorId && !$0.isOwner }
         feedBoard.remove { $0.authorId == authorId && !$0.isOwner }
         followedPeople.removeAll { $0.id == authorId }
+        followNotices.removeAll { $0.actorId == authorId }
+        unreadFollowCount = followNotices.filter { $0.readAt == nil }.count
+        followBadgeRevision &+= 1
 
         for id in Array(authorFeeds.keys)
         where id == authorId
@@ -2304,6 +2325,100 @@ final class HomeViewModel {
                 followingLoadState = .failed("Couldn't load who you follow.")
             }
         }
+    }
+
+    func loadFollowNotifications() async {
+        if followNotices.isEmpty {
+            followNoticesLoadState = .loading
+        }
+        let generation = followNoticesGeneration
+        do {
+            let response = try await profileService.followNotifications()
+            guard generation == followNoticesGeneration else {
+                return
+            }
+            followNotices = response.notifications.compactMap(FollowNotice.init)
+            unreadFollowCount = response.unreadCount
+            followNoticesLoadState = .loaded
+            followBadgeRevision &+= 1
+        } catch {
+            guard !Self.isCancellation(error), generation == followNoticesGeneration else {
+                return
+            }
+            if followNotices.isEmpty {
+                followNoticesLoadState = .failed("Couldn't load follows.")
+            }
+        }
+    }
+
+    /// The bell sheet opened. The view model owns this work, so closing the sheet at once,
+    /// or a dialog over it, still finishes the read. Rows already on screen are read first;
+    /// the refresh then reads any follow that arrived since.
+    func openedFollowNotifications() {
+        let previous = followReadTask
+        let session = writeSessionGeneration
+        followReadTask = Task { @MainActor in
+            await previous?.value
+            guard !Task.isCancelled, writeSessionGeneration == session else {
+                return
+            }
+            await markDisplayedFollowNotificationsRead()
+            guard !Task.isCancelled, writeSessionGeneration == session else {
+                return
+            }
+            await loadFollowNotifications()
+            guard !Task.isCancelled, writeSessionGeneration == session else {
+                return
+            }
+            await markDisplayedFollowNotificationsRead()
+        }
+    }
+
+    /// Reads everything up to the newest row on screen. The server compares at its own
+    /// precision and answers with the count left, which is what the badge shows.
+    private func markDisplayedFollowNotificationsRead() async {
+        guard followNoticesLoadState == .loaded,
+              followNotices.contains(where: { $0.readAt == nil }),
+              let newest = followNotices.first
+        else {
+            return
+        }
+        let session = writeSessionGeneration
+        followNoticesGeneration &+= 1
+        let now = Date()
+        for index in followNotices.indices where followNotices[index].readAt == nil {
+            followNotices[index].readAt = now
+        }
+        unreadFollowCount = 0
+        followBadgeRevision &+= 1
+        do {
+            let left = try await profileService.markFollowNotificationsRead(
+                throughId: newest.id.uuidString.lowercased()
+            )
+            guard writeSessionGeneration == session else {
+                return
+            }
+            followNoticesGeneration &+= 1
+            unreadFollowCount = left
+            followBadgeRevision &+= 1
+        } catch {
+            // The server still has them unread; the next list restores the count.
+            return
+        }
+    }
+
+    func requestOpenFollowNotifications() {
+        openFollowNotificationsToken += 1
+    }
+
+    func followBack(_ authorId: UUID) {
+        guard !isOwnAuthor(authorId) else {
+            return
+        }
+        if followNotices.contains(where: { $0.actorId == authorId && $0.following }) || isFollowing(authorId) {
+            return
+        }
+        commitFollow(authorId, following: true, origin: .followBack)
     }
 
     func loadBlocks() async {
@@ -2505,12 +2620,20 @@ final class HomeViewModel {
         guard !isOwnAuthor(authorId) else {
             return
         }
-        commitFollow(authorId, following: !isFollowing(authorId))
+        commitFollow(authorId, following: !isFollowing(authorId), origin: .browse)
+    }
+
+    private enum FollowOrigin {
+        /// Home, an author page, or a hearted card in the library.
+        case browse
+        /// The bell sheet or a push action: answering someone who followed you.
+        case followBack
     }
 
     private func commitFollow(
         _ authorId: UUID,
         following next: Bool,
+        origin: FollowOrigin = .browse,
         onRollback: (() -> Void)? = nil
     ) {
         setFollowing(authorId, following: next)
@@ -2536,6 +2659,26 @@ final class HomeViewModel {
                     return
                 }
                 setFollowing(authorId, following: state.following)
+                if next, state.following {
+                    if let notice = followNotices.first(where: { $0.actorId == authorId }),
+                       !followedPeople.contains(where: { $0.id == authorId }) {
+                        followedPeople.insert(
+                            FollowedPerson(
+                                id: authorId,
+                                initials: notice.initials,
+                                avatarPath: notice.avatarPath
+                            ),
+                            at: 0
+                        )
+                    }
+                    // Following someone who followed you is answering a follow, even from
+                    // their page, so it never asks.
+                    let answersAFollow = origin == .followBack
+                        || followNotices.contains(where: { $0.actorId == authorId })
+                    if !answersAFollow, !FollowPush.promptSeen {
+                        Task { await FollowPush.askOnceAfterOwnFollow() }
+                    }
+                }
             } catch {
                 guard !Task.isCancelled,
                       self.followGeneration[authorId] == generation,
@@ -3424,6 +3567,9 @@ final class HomeViewModel {
                     feed.cards[index].authorFollowing = following
                 }
             }
+        }
+        for index in followNotices.indices where followNotices[index].actorId == authorId {
+            followNotices[index].following = following
         }
     }
 

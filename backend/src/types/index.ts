@@ -195,12 +195,45 @@ export type StoredCardTag = {
 export type StoredCardAuthor = {
   id: string;
   initials: string;
+  /** Trimmed `users.name` when the API includes it (for example follow notifications). */
+  displayName?: string;
   avatarUrl?: string;
   following: boolean;
 };
 
 export type FollowStateResponse = {
   following: boolean;
+};
+
+export type PushEnvironment = "sandbox" | "production";
+
+export type FollowNotificationItem = {
+  id: string;
+  createdAt: string;
+  readAt: string | null;
+  followedBack: boolean;
+  actor: StoredCardAuthor;
+};
+
+export type FollowNotificationsResponse = {
+  unreadCount: number;
+  notifications: FollowNotificationItem[];
+};
+
+/** `before` is the build 18 shape; current clients send `throughId`. */
+export type ReadNotificationsRequest = { throughId: string } | { before: string };
+
+export type ReadNotificationsResponse = {
+  read: true;
+  unreadCount: number;
+};
+
+export type NotifyFollowsBody = {
+  notifyFollows: boolean;
+};
+
+export type DeviceRegistrationBody = {
+  registered: boolean;
 };
 
 export type FollowingListResponse = {
@@ -227,6 +260,8 @@ export type SessionBody = {
   tasteConsumedAt: string | null;
   /** When this account agreed to the Terms (zero tolerance for abuse) and AI processing. */
   termsAcceptedAt: string | null;
+  /** Push when someone follows this account. The in-app list stays either way. */
+  notifyFollows: boolean;
   avatarUrl?: string;
 };
 

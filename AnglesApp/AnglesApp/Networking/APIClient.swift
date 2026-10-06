@@ -127,6 +127,14 @@ final class APIClient: @unchecked Sendable {
         try decode(try await send(path: path, method: "PUT", timeout: timeout))
     }
 
+    func put<Body: Encodable, Response: Decodable>(
+        path: String,
+        body: Body,
+        timeout: TimeInterval? = nil
+    ) async throws -> Response {
+        try decode(try await send(path: path, method: "PUT", body: body, timeout: timeout))
+    }
+
     func patch<Body: Encodable, Response: Decodable>(
         path: String,
         body: Body,
@@ -139,8 +147,13 @@ final class APIClient: @unchecked Sendable {
         _ = try await send(path: path, method: "DELETE", timeout: timeout)
     }
 
-    func delete<Body: Encodable>(path: String, body: Body, timeout: TimeInterval? = nil) async throws {
-        _ = try await send(path: path, method: "DELETE", body: body, timeout: timeout)
+    func delete<Body: Encodable>(
+        path: String,
+        body: Body,
+        bearer: String? = nil,
+        timeout: TimeInterval? = nil
+    ) async throws {
+        _ = try await send(path: path, method: "DELETE", body: body, bearer: bearer, timeout: timeout)
     }
 
     func deleteJSON<Response: Decodable>(path: String, timeout: TimeInterval? = nil) async throws -> Response {
@@ -188,6 +201,7 @@ final class APIClient: @unchecked Sendable {
         queryItems: [URLQueryItem] = [],
         body: Body,
         headers: [String: String] = [:],
+        bearer: String? = nil,
         timeout: TimeInterval? = nil
     ) async throws -> Data {
         try await perform(
@@ -197,6 +211,7 @@ final class APIClient: @unchecked Sendable {
             bodyData: try encoder.encode(body),
             contentType: "application/json",
             headers: headers,
+            bearer: bearer,
             timeout: timeout
         )
     }
@@ -208,6 +223,7 @@ final class APIClient: @unchecked Sendable {
         bodyData: Data?,
         contentType: String?,
         headers: [String: String] = [:],
+        bearer: String? = nil,
         timeout: TimeInterval?
     ) async throws -> Data {
         try await execute(
@@ -217,7 +233,8 @@ final class APIClient: @unchecked Sendable {
             bodyData: bodyData,
             contentType: contentType,
             headers: headers,
-            timeout: timeout
+            timeout: timeout,
+            bearer: bearer
         ).0
     }
 

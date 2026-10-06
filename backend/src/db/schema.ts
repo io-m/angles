@@ -80,6 +80,8 @@ export const users = pgTable(
     termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true, mode: "date" }),
     /** Set by an operator (`pnpm reports suspend`). The account keeps its private library but cannot publish. */
     publishingSuspendedAt: timestamp("publishing_suspended_at", { withTimezone: true, mode: "date" }),
+    /** Push when someone follows this account. The in-app list stays either way. */
+    notifyFollows: boolean("notify_follows").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
@@ -537,6 +539,46 @@ export const follows = pgTable(
     index("follows_followee_idx").on(table.followeeId),
     check("follows_not_self", sql`${table.followerId} <> ${table.followeeId}`),
   ],
+);
+
+/** One row per new follow. An unread pair cannot stack; a read row can be followed by another. */
+export const followNotifications = pgTable(
+  "follow_notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipientId: uuid("recipient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    followedBack: boolean("followed_back").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    index("follow_notifications_recipient_created_idx").on(
+      table.recipientId,
+      table.createdAt.desc(),
+    ),
+    uniqueIndex("follow_notifications_unread_pair_idx")
+      .on(table.recipientId, table.actorId)
+      .where(sql`${table.readAt} is null`),
+  ],
+);
+
+/** APNs device token. Registering the same token moves it to the current account. */
+export const deviceTokens = pgTable(
+  "device_tokens",
+  {
+    token: text("token").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    environment: subscriptionEnvironmentEnum("environment").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [index("device_tokens_user_idx").on(table.userId)],
 );
 
 export const userBlocks = pgTable(

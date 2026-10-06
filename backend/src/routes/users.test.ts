@@ -78,6 +78,7 @@ function userRow(overrides: { id?: string; initials?: string; avatarKey?: string
     tasteConsumedAt: null as Date | null,
     termsAcceptedAt: null as Date | null,
     publishingSuspendedAt: null as Date | null,
+    notifyFollows: true,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
   };
@@ -277,7 +278,7 @@ describe("PUT /users/:id/follow", () => {
   });
 
   it("follows another user", async () => {
-    vi.mocked(followUser).mockResolvedValue("ok");
+    vi.mocked(followUser).mockResolvedValue({ result: "ok", notificationId: null });
     const response = await app.request(`/users/${AUTHOR_ID}/follow`, { method: "PUT" });
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual({ following: true });
@@ -295,14 +296,14 @@ describe("PUT /users/:id/follow", () => {
   });
 
   it("404s an unknown user", async () => {
-    vi.mocked(followUser).mockResolvedValue("not_found");
+    vi.mocked(followUser).mockResolvedValue({ result: "not_found", notificationId: null });
     const response = await app.request(`/users/${AUTHOR_ID}/follow`, { method: "PUT" });
     expect(response.status).toBe(404);
     await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });
   });
 
   it("hides a blocked follow target as not found", async () => {
-    vi.mocked(followUser).mockResolvedValue("blocked");
+    vi.mocked(followUser).mockResolvedValue({ result: "blocked", notificationId: null });
     const response = await app.request(`/users/${AUTHOR_ID}/follow`, { method: "PUT" });
     expect(response.status).toBe(404);
   });

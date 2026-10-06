@@ -1,10 +1,10 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
 import type { StoredCardAuthor } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
 import { lockUserPair, notBlockedBetween, usersAreBlocked } from "./communitySafety.js";
-import { follows, users } from "./schema.js";
+import { followNotifications, follows, users } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 
@@ -70,10 +70,23 @@ export async function listFollowing(): Promise<StoredCardAuthor[]> {
 
 export type FollowWriteResult = "ok" | "not_found" | "self" | "blocked";
 
-export async function followUser(followeeId: string): Promise<FollowWriteResult> {
+/** `notificationId` is set only when this call created a follow notification. */
+export type FollowWriteOutcome = {
+  result: FollowWriteResult;
+  notificationId: string | null;
+};
+
+function followOutcome(
+  result: FollowWriteResult,
+  notificationId: string | null = null,
+): FollowWriteOutcome {
+  return { result, notificationId };
+}
+
+export async function followUser(followeeId: string): Promise<FollowWriteOutcome> {
   const followerId = getOwnerUserId();
   if (followeeId === followerId) {
-    return "self";
+    return followOutcome("self");
   }
   try {
     return await getDb().transaction(async (tx) => {
@@ -83,13 +96,49 @@ export async function followUser(followeeId: string): Promise<FollowWriteResult>
         columns: { id: true },
       });
       if (!user) {
-        return "not_found";
+        return followOutcome("not_found");
       }
       if (await usersAreBlocked(followerId, followeeId, tx)) {
-        return "blocked";
+        return followOutcome("blocked");
       }
-      await tx.insert(follows).values({ followerId, followeeId }).onConflictDoNothing();
-      return "ok";
+      const inserted = await tx
+        .insert(follows)
+        .values({ followerId, followeeId })
+        .onConflictDoNothing()
+        .returning({ followerId: follows.followerId });
+      if (inserted.length === 0) {
+        return followOutcome("ok");
+      }
+
+      const reverse = await tx
+        .select({ followerId: follows.followerId })
+        .from(follows)
+        .where(and(eq(follows.followerId, followeeId), eq(follows.followeeId, followerId)))
+        .limit(1);
+
+      let notificationId: string | null = null;
+      // A failed notification must not roll back the follow. Postgres aborts the
+      // transaction on any error, so the insert sits in its own savepoint.
+      await tx.execute(sql`savepoint follow_notification`);
+      try {
+        const notes = await tx
+          .insert(followNotifications)
+          .values({
+            recipientId: followeeId,
+            actorId: followerId,
+            followedBack: reverse.length > 0,
+          })
+          .onConflictDoNothing()
+          .returning({ id: followNotifications.id });
+        notificationId = notes[0]?.id ?? null;
+        await tx.execute(sql`release savepoint follow_notification`);
+      } catch (error) {
+        await tx.execute(sql`rollback to savepoint follow_notification`);
+        console.error("follow_notification_insert_failed", {
+          name: error instanceof Error ? error.name : "error",
+        });
+      }
+      return followOutcome("ok", notificationId);
     });
   } catch (error) {
     if (error instanceof DbError) {

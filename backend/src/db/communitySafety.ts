@@ -5,7 +5,7 @@ import { avatarUrlFor } from "../lib/avatarUrl.js";
 import type { ReportReason } from "../lib/communitySafetyTypes.js";
 import type { StoredCardAuthor } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
-import { cardReports, cards, follows, savedAngles, userBlocks, users } from "./schema.js";
+import { cardReports, cards, followNotifications, follows, savedAngles, userBlocks, users } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 export type AppTransaction = Parameters<
@@ -136,6 +136,20 @@ export async function blockUser(blockedId: string): Promise<BlockWriteResult> {
           or(
             and(eq(follows.followerId, blockerId), eq(follows.followeeId, blockedId)),
             and(eq(follows.followerId, blockedId), eq(follows.followeeId, blockerId)),
+          ),
+        );
+      await tx
+        .delete(followNotifications)
+        .where(
+          or(
+            and(
+              eq(followNotifications.recipientId, blockerId),
+              eq(followNotifications.actorId, blockedId),
+            ),
+            and(
+              eq(followNotifications.recipientId, blockedId),
+              eq(followNotifications.actorId, blockerId),
+            ),
           ),
         );
 

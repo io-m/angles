@@ -58,6 +58,15 @@ vi.mock("../db/metering.js", () => ({
   getUsageSummary: vi.fn(),
 }));
 
+vi.mock("../db/followNotifications.js", () => ({
+  listFollowNotifications: vi.fn(),
+  markFollowNotificationsRead: vi.fn(),
+  registerDeviceToken: vi.fn(),
+  unregisterDeviceToken: vi.fn(),
+  setNotifyFollows: vi.fn(),
+  deliverFollowPush: vi.fn(),
+}));
+
 vi.mock("../lib/objectStorage.js", () => {
   class StorageUnavailableError extends Error {
     constructor() {
@@ -77,6 +86,7 @@ const { createApp } = await import("../app.js");
 const { listBlockedUsers } = await import("../db/communitySafety.js");
 const { listFollowing } = await import("../db/follows.js");
 const { getUsageSummary } = await import("../db/metering.js");
+const { markFollowNotificationsRead } = await import("../db/followNotifications.js");
 const { acceptOwnerTerms, getUserById, setOwnerAvatar, updateOwnerIdentity, deleteOwnerAccount } =
   await import("../db/users.js");
 const { deleteAvatar, getAvatar, putAvatar, StorageUnavailableError } = await import("../lib/objectStorage.js");
@@ -98,6 +108,7 @@ const owner = {
   tasteConsumedAt: null as Date | null,
   termsAcceptedAt: null as Date | null,
   publishingSuspendedAt: null as Date | null,
+  notifyFollows: true,
   createdAt: new Date("2026-09-10T12:00:00.000Z"),
   updatedAt: new Date("2026-09-10T12:00:00.000Z"),
 };
@@ -256,6 +267,7 @@ describe("profile avatar", () => {
       tasteCompletedAt: tasted.toISOString(),
       tasteConsumedAt: null,
       termsAcceptedAt: null,
+      notifyFollows: true,
     });
   });
 
@@ -293,6 +305,52 @@ describe("profile avatar", () => {
     });
     expect(body.tokens).toBeUndefined();
     expect(body.cost).toBeUndefined();
+  });
+
+  describe("follow notification read", () => {
+    const readRequest = (body: unknown) =>
+      app.request("/profile/notifications/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    beforeEach(() => {
+      vi.mocked(markFollowNotificationsRead).mockReset();
+      vi.mocked(markFollowNotificationsRead).mockResolvedValue(0);
+    });
+
+    it("marks through the newest row on screen and returns the count left", async () => {
+      const throughId = "00000000-0000-4000-8000-000000000099";
+      const response = await readRequest({ throughId });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ read: true, unreadCount: 0 });
+      expect(markFollowNotificationsRead).toHaveBeenCalledWith({ throughId });
+    });
+
+    it("still accepts the build 18 timestamp", async () => {
+      vi.mocked(markFollowNotificationsRead).mockResolvedValue(2);
+      const response = await readRequest({ before: "2026-10-06T08:40:24.130Z" });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ read: true, unreadCount: 2 });
+      expect(markFollowNotificationsRead).toHaveBeenCalledWith({
+        before: new Date("2026-10-06T08:40:24.130Z"),
+      });
+    });
+
+    it("rejects both shapes together, neither, or a bad id", async () => {
+      for (const body of [
+        { throughId: "00000000-0000-4000-8000-000000000099", before: "2026-10-06T08:40:24.130Z" },
+        {},
+        { throughId: "not-a-uuid" },
+        { before: "yesterday" },
+      ]) {
+        const response = await readRequest(body);
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({ code: "VALIDATION_ERROR" });
+      }
+      expect(markFollowNotificationsRead).not.toHaveBeenCalled();
+    });
   });
 
   it("rejects a missing session", async () => {

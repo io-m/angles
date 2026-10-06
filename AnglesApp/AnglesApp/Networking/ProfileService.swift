@@ -48,6 +48,56 @@ struct ProfileService: Sendable {
         try await client.get(path: "profile/following")
     }
 
+    func followNotifications() async throws -> FollowNotificationsResponse {
+        try await client.get(path: "profile/notifications")
+    }
+
+    /// Reads every row up to `throughId` and returns the unread count left on the server.
+    func markFollowNotificationsRead(throughId: String) async throws -> Int {
+        let response: ReadNotificationsResponse = try await client.post(
+            path: "profile/notifications/read",
+            body: ReadNotificationsRequest(throughId: throughId),
+            timeout: Self.writeTimeout
+        )
+        return response.unreadCount
+    }
+
+    func updateNotifyFollows(_ notifyFollows: Bool) async throws -> NotifyFollowsBody {
+        struct Body: Encodable {
+            let notifyFollows: Bool
+        }
+        return try await client.patch(
+            path: "profile/notifications",
+            body: Body(notifyFollows: notifyFollows),
+            timeout: Self.writeTimeout
+        )
+    }
+
+    func registerDevice(token: String, environment: String) async throws {
+        struct Body: Encodable {
+            let token: String
+            let environment: String
+        }
+        let _: DeviceRegistrationBody = try await client.put(
+            path: "profile/devices",
+            body: Body(token: token, environment: environment),
+            timeout: Self.writeTimeout
+        )
+    }
+
+    /// `bearer` is for logout, after the local session is gone. Nil uses the current session.
+    func unregisterDevice(token: String, bearer: String? = nil) async throws {
+        struct Body: Encodable {
+            let token: String
+        }
+        try await client.delete(
+            path: "profile/devices",
+            body: Body(token: token),
+            bearer: bearer,
+            timeout: Self.writeTimeout
+        )
+    }
+
     func blocks() async throws -> FollowingListResponse {
         try await client.get(path: "profile/blocks")
     }

@@ -3,6 +3,13 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { listBlockedUsers } from "../db/communitySafety.js";
+import {
+  listFollowNotifications,
+  markFollowNotificationsRead,
+  registerDeviceToken,
+  setNotifyFollows,
+  unregisterDeviceToken,
+} from "../db/followNotifications.js";
 import { listFollowing } from "../db/follows.js";
 import { getUsageSummary } from "../db/metering.js";
 import {
@@ -38,8 +45,12 @@ import {
   StorageUnavailableError,
 } from "../lib/objectStorage.js";
 import type {
+  DeviceRegistrationBody,
   FollowingListResponse,
+  FollowNotificationsResponse,
+  NotifyFollowsBody,
   ProfileBody,
+  ReadNotificationsResponse,
   SessionBody,
   TermsAcceptanceBody,
 } from "../types/index.js";
@@ -49,6 +60,40 @@ const MAX_AVATAR_BYTES = Math.floor(1.5 * 1024 * 1024);
 const patchProfileSchema = z.object({
   displayName: z.string().max(40),
 });
+
+const deviceTokenSchema = z
+  .string()
+  .regex(/^[0-9a-fA-F]{32,200}$/);
+
+const registerDeviceSchema = z
+  .object({
+    token: deviceTokenSchema,
+    environment: z.enum(["sandbox", "production"]),
+  })
+  .strict();
+
+const unregisterDeviceSchema = z
+  .object({
+    token: deviceTokenSchema,
+  })
+  .strict();
+
+const readNotificationsSchema = z.union([
+  z.object({ throughId: z.uuid() }).strict(),
+  z
+    .object({
+      before: z
+        .string()
+        .refine((value) => !Number.isNaN(Date.parse(value)), "before must be a datetime"),
+    })
+    .strict(),
+]);
+
+const patchNotificationsSchema = z
+  .object({
+    notifyFollows: z.boolean(),
+  })
+  .strict();
 
 const deleteAccountSchema = z.object({
   appleAuthorizationCode: z.string().min(1).max(4096).optional(),
@@ -97,6 +142,7 @@ profileRoute.get("/session", requireAuth, async (c) => {
     tasteCompletedAt: user.tasteCompletedAt ? user.tasteCompletedAt.toISOString() : null,
     tasteConsumedAt: user.tasteConsumedAt ? user.tasteConsumedAt.toISOString() : null,
     termsAcceptedAt: user.termsAcceptedAt ? user.termsAcceptedAt.toISOString() : null,
+    notifyFollows: user.notifyFollows,
   };
   const avatarUrl = avatarUrlFor(user.id, user.avatarKey);
   if (avatarUrl) {
@@ -252,6 +298,76 @@ profileRoute.get("/blocks", requireAuth, async (c) => {
   const body: FollowingListResponse = { users: await listBlockedUsers() };
   return c.json(body);
 });
+
+profileRoute.get("/notifications", requireAuth, async (c) => {
+  const body: FollowNotificationsResponse = await listFollowNotifications();
+  return c.json(body);
+});
+
+profileRoute.post(
+  "/notifications/read",
+  requireAuth,
+  zValidator("json", readNotificationsSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    const input = c.req.valid("json");
+    const unreadCount = await markFollowNotificationsRead(
+      "throughId" in input ? { throughId: input.throughId } : { before: new Date(input.before) },
+    );
+    const body: ReadNotificationsResponse = { read: true, unreadCount };
+    return c.json(body);
+  },
+);
+
+profileRoute.patch(
+  "/notifications",
+  requireAuth,
+  zValidator("json", patchNotificationsSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    const body: NotifyFollowsBody = {
+      notifyFollows: await setNotifyFollows(c.req.valid("json").notifyFollows),
+    };
+    return c.json(body);
+  },
+);
+
+profileRoute.put(
+  "/devices",
+  requireAuth,
+  zValidator("json", registerDeviceSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    const { token, environment } = c.req.valid("json");
+    await registerDeviceToken(token, environment);
+    const body: DeviceRegistrationBody = { registered: true };
+    return c.json(body);
+  },
+);
+
+profileRoute.delete(
+  "/devices",
+  requireAuth,
+  zValidator("json", unregisterDeviceSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    await unregisterDeviceToken(c.req.valid("json").token);
+    const body: DeviceRegistrationBody = { registered: false };
+    return c.json(body);
+  },
+);
 
 profileRoute.patch(
   "/",

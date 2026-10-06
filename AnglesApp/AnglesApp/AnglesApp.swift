@@ -1,5 +1,6 @@
 import Combine
 import SwiftUI
+import UserNotifications
 
 private enum HomeRevealPhase: Equatable {
     case hidden
@@ -21,6 +22,7 @@ enum BrowseRoute: Hashable {
 
 @main
 struct AnglesApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var themeStore = ThemeStore()
 
     var body: some Scene {
@@ -52,6 +54,7 @@ struct AppRoot: View {
     @State private var saveCoverLabel: String?
     @State private var saveCoverPresented = false
     @State private var pendingWidgetDeepLink: AnglesDeepLink?
+    @State private var pushCenter = FollowPushCenter.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -96,6 +99,7 @@ struct AppRoot: View {
                         onOpenAuthor: openAuthor,
                         onOpenFollowed: openFollowed
                     )
+                    .badge(viewModel.unreadFollowCount)
                     .tabItem { Label("Profile", systemImage: "person") }
                     .tag(RootTab.profile)
                 }
@@ -265,6 +269,9 @@ struct AppRoot: View {
                 return
             }
             await viewModel.loadUsageIfNeeded()
+            await viewModel.loadFollowNotifications()
+            consumeFollowPush()
+            await syncFollowPush()
         }
         .onChange(of: destination) { old, new in
             handleDestinationChange(from: old, to: new)
@@ -293,6 +300,9 @@ struct AppRoot: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active, sessionStore.isSignedIn {
+                Task { await syncFollowPush() }
+            }
             // A subscription can lapse while the app is alive. Ask Apple again on every
             // foreground so Home cannot outlive the entitlement until the next cold launch.
             guard phase == .active,
@@ -304,7 +314,24 @@ struct AppRoot: View {
             Task {
                 await storeKitManager.refreshEntitlements()
                 await storeKitManager.probeSubscriptionOffer()
+                await viewModel.loadFollowNotifications()
+                syncAppBadge()
             }
+        }
+        .onChange(of: pushCenter.tokenRevision) { _, _ in
+            guard let token = pushCenter.deviceToken, sessionStore.isSignedIn else {
+                return
+            }
+            Task { await registerPushToken(token) }
+        }
+        .onChange(of: pushCenter.pendingActorID) { _, actorId in
+            guard actorId != nil else {
+                return
+            }
+            consumeFollowPush()
+        }
+        .onChange(of: viewModel.followBadgeRevision) { _, _ in
+            syncAppBadge()
         }
         .onChange(of: storeKitManager.isBusy) { _, _ in
             handleCheckoutStateChange()
@@ -453,6 +480,7 @@ struct AppRoot: View {
         }
         if new == .home {
             membershipRequested = false
+            consumeFollowPush()
         }
     }
 
@@ -557,6 +585,7 @@ struct AppRoot: View {
                     homeRevealPhase = .visible
                 }
                 applyPendingWidgetDeepLinkIfPossible()
+                consumeFollowPush()
             }
         case .hidden, .animating, .visible:
             return
@@ -582,6 +611,80 @@ struct AppRoot: View {
 
     // MARK: - Session
 
+    private func registerPushToken(_ token: String) async {
+        do {
+            try await ProfileService().registerDevice(token: token, environment: FollowPush.tokenEnvironment)
+            #if DEBUG
+            print("[Angles Push] registered \(FollowPush.tokenEnvironment) token")
+            #endif
+        } catch {
+            // The next foreground registers again.
+            #if DEBUG
+            print("[Angles Push] token registration with the API failed: \(error)")
+            #endif
+        }
+    }
+
+    /// iOS permission is the only off switch. If this phone can show banners, keep a token
+    /// and heal a leftover account flag from the old in-app toggle.
+    private func syncFollowPush() async {
+        await FollowPush.reconcile(notifyFollows: true)
+        let status = await FollowPush.authorizationStatus()
+        if FollowPush.isAllowed(status), sessionStore.session?.notifyFollows == false {
+            _ = await sessionStore.setNotifyFollows(true)
+        }
+        if let token = pushCenter.deviceToken, FollowPush.isAllowed(status) {
+            await registerPushToken(token)
+        }
+    }
+
+    /// The icon number is the unread count, set every time it is read so a stale number from
+    /// a push cannot outlive it.
+    private func syncAppBadge() {
+        let count = sessionStore.isSignedIn ? viewModel.unreadFollowCount : 0
+        UNUserNotificationCenter.current().setBadgeCount(count)
+    }
+
+    /// Lock-screen tap or action. View profile opens their posts; Follow back opens the bell
+    /// and follows. Pending state waits until Home is revealed — the same gate as widget links —
+    /// so enterHome cannot wipe the author page and the cover cannot hide it.
+    private func consumeFollowPush() {
+        guard sessionStore.isSignedIn,
+              isHomeRevealed,
+              let actorId = pushCenter.pendingActorID,
+              let id = FollowPush.uuid(from: actorId)
+        else {
+            return
+        }
+        let intent = pushCenter.pendingIntent
+        pushCenter.clearPending()
+        switch intent {
+        case .viewProfile:
+            openAuthorFromFollowPush(id)
+        case .followBack:
+            selectedTab = .profile
+            lastContentTab = .profile
+            viewModel.requestOpenFollowNotifications()
+            viewModel.followBack(id)
+        }
+    }
+
+    private func openAuthorFromFollowPush(_ authorId: UUID) {
+        // Author pages sit on the NavigationStack that wraps the tabs. Do not change
+        // selectedTab here: switching Home after a push pops that stack and lands on Home.
+        if let notice = viewModel.followNotices.first(where: { $0.actorId == authorId }) {
+            openFollowed(
+                FollowedPerson(
+                    id: notice.actorId,
+                    initials: notice.initials,
+                    avatarPath: notice.avatarPath
+                )
+            )
+        } else {
+            openFollowed(FollowedPerson(id: authorId, initials: "", avatarPath: nil))
+        }
+    }
+
     private func logOut() {
         endSession(.logOut)
     }
@@ -597,6 +700,15 @@ struct AppRoot: View {
     /// Logout, account deletion, and a rejected session all end here. Nothing awaits before the
     /// session clears, so the next frame is Login — never taste, paywall, or Home.
     private func endSession(_ reason: SessionEnd) {
+        if reason == .logOut {
+            let deviceToken = UserDefaults.standard.string(forKey: FollowPush.tokenDefaultsKey)
+            let bearer = AuthCredentials.shared.bearerToken
+            if let deviceToken, let bearer, !bearer.isEmpty {
+                Task {
+                    try? await ProfileService().unregisterDevice(token: deviceToken, bearer: bearer)
+                }
+            }
+        }
         homeFeedTask?.cancel()
         homeFeedTask = nil
         homeArrivalCapTask?.cancel()

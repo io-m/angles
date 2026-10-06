@@ -9,6 +9,7 @@ import { assertProductionConfiguration } from "./lib/productionConfig.js";
 import { runProductionMigrations } from "./db/productionMigrations.js";
 import { readAdminConfig } from "./lib/adminSession.js";
 import { reportAlertConfig } from "./lib/reportAlerts.js";
+import { describeApnsConfig } from "./lib/apns.js";
 
 loadLocalEnvFile();
 
@@ -29,6 +30,11 @@ async function main(): Promise<void> {
   await assertSchemaCurrent();
   if (process.env.NODE_ENV === "production" && !reportAlertConfig()) {
     console.warn("report_alerts_disabled: set RESEND_API_KEY, REPORT_ALERT_FROM and REPORT_ALERT_TO");
+  }
+  const apns = describeApnsConfig();
+  console.log("apns_config", apns);
+  if (apns.configured && !apns.keyValid) {
+    console.error("apns_key_invalid: APNS_KEY is not a readable .p8 EC private key");
   }
   if (process.env.NODE_ENV === "production" && !readAdminConfig()) {
     console.warn(

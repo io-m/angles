@@ -477,12 +477,20 @@ struct StoredCardTag: Codable, Equatable, Sendable {
 struct StoredCardAuthor: Codable, Equatable, Sendable {
     let id: String
     let initials: String
+    let displayName: String?
     let avatarUrl: String?
     let following: Bool
 
-    init(id: String = "", initials: String, avatarUrl: String? = nil, following: Bool = false) {
+    init(
+        id: String = "",
+        initials: String,
+        displayName: String? = nil,
+        avatarUrl: String? = nil,
+        following: Bool = false
+    ) {
         self.id = id
         self.initials = initials
+        self.displayName = displayName
         self.avatarUrl = avatarUrl
         self.following = following
     }
@@ -490,6 +498,7 @@ struct StoredCardAuthor: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id
         case initials
+        case displayName
         case avatarUrl
         case following
     }
@@ -498,6 +507,7 @@ struct StoredCardAuthor: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
         initials = try container.decodeIfPresent(String.self, forKey: .initials) ?? ""
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         following = try container.decodeIfPresent(Bool.self, forKey: .following) ?? false
     }
@@ -549,6 +559,80 @@ struct FollowingListResponse: Decodable, Equatable, Sendable {
     let users: [StoredCardAuthor]
 }
 
+struct FollowNotificationItem: Decodable, Equatable, Sendable {
+    let id: String
+    let createdAt: String
+    let readAt: String?
+    let followedBack: Bool
+    let actor: StoredCardAuthor
+}
+
+struct FollowNotificationsResponse: Decodable, Equatable, Sendable {
+    let unreadCount: Int
+    let notifications: [FollowNotificationItem]
+}
+
+/// The server also accepts build 18's `{ before }`; this app only sends `throughId`.
+struct ReadNotificationsRequest: Encodable, Equatable, Sendable {
+    let throughId: String
+}
+
+struct ReadNotificationsResponse: Decodable, Equatable, Sendable {
+    let read: Bool
+    let unreadCount: Int
+}
+
+struct NotifyFollowsBody: Decodable, Equatable, Sendable {
+    let notifyFollows: Bool
+}
+
+struct DeviceRegistrationBody: Decodable, Equatable, Sendable {
+    let registered: Bool
+}
+
+struct FollowNotice: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let createdAt: Date
+    var readAt: Date?
+    let followedBack: Bool
+    let actorId: UUID
+    let initials: String
+    let displayName: String?
+    let avatarPath: String?
+    var following: Bool
+
+    var sentence: String {
+        followedBack ? "Followed you back" : "Followed you"
+    }
+
+    var publicLabel: String {
+        let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !name.isEmpty {
+            return name
+        }
+        let trimmed = initials.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Someone" : trimmed
+    }
+
+    init?(item: FollowNotificationItem) {
+        guard let id = UUID(uuidString: item.id),
+              let actorId = UUID(uuidString: item.actor.id),
+              let createdAt = ISO8601Dates.date(from: item.createdAt)
+        else {
+            return nil
+        }
+        self.id = id
+        self.createdAt = createdAt
+        self.readAt = item.readAt.flatMap(ISO8601Dates.date(from:))
+        self.followedBack = item.followedBack
+        self.actorId = actorId
+        self.initials = item.actor.initials
+        self.displayName = item.actor.displayName
+        self.avatarPath = item.actor.avatarUrl
+        self.following = item.actor.following
+    }
+}
+
 struct SessionBody: Decodable, Equatable, Sendable {
     let id: String
     let initials: String
@@ -557,6 +641,40 @@ struct SessionBody: Decodable, Equatable, Sendable {
     let tasteConsumedAt: String?
     let termsAcceptedAt: String?
     let avatarUrl: String?
+    /// Push when someone follows this account. The in-app list stays either way.
+    let notifyFollows: Bool
+
+    init(
+        id: String,
+        initials: String,
+        name: String,
+        tasteCompletedAt: String?,
+        tasteConsumedAt: String?,
+        termsAcceptedAt: String?,
+        avatarUrl: String?,
+        notifyFollows: Bool = true
+    ) {
+        self.id = id
+        self.initials = initials
+        self.name = name
+        self.tasteCompletedAt = tasteCompletedAt
+        self.tasteConsumedAt = tasteConsumedAt
+        self.termsAcceptedAt = termsAcceptedAt
+        self.avatarUrl = avatarUrl
+        self.notifyFollows = notifyFollows
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        initials = try container.decode(String.self, forKey: .initials)
+        name = try container.decode(String.self, forKey: .name)
+        tasteCompletedAt = try container.decodeIfPresent(String.self, forKey: .tasteCompletedAt)
+        tasteConsumedAt = try container.decodeIfPresent(String.self, forKey: .tasteConsumedAt)
+        termsAcceptedAt = try container.decodeIfPresent(String.self, forKey: .termsAcceptedAt)
+        avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        notifyFollows = try container.decodeIfPresent(Bool.self, forKey: .notifyFollows) ?? true
+    }
 
     var hasUsedTaste: Bool {
         [tasteConsumedAt, tasteCompletedAt].contains { value in
@@ -567,6 +685,17 @@ struct SessionBody: Decodable, Equatable, Sendable {
 
     var hasAcceptedTerms: Bool {
         termsAcceptedAt?.isEmpty == false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case initials
+        case name
+        case tasteCompletedAt
+        case tasteConsumedAt
+        case termsAcceptedAt
+        case avatarUrl
+        case notifyFollows
     }
 }
 

@@ -20,6 +20,7 @@
 		23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */; };
 		241F7BC96BA7F87308C06C49 /* celebration-checkmark.json in Resources */ = {isa = PBXBuildFile; fileRef = C4B72925153855FD655114F4 /* celebration-checkmark.json */; };
 		24D8AC03A338F125B60DBCB7 /* AnglesWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CFC1E4A1063AFDE75D437AE8 /* AnglesWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2552C717E0FF01245A757BAA /* FollowNotificationsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B761B6C40E2103B1EFD9AED6 /* FollowNotificationsSheet.swift */; };
 		26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */; };
 		2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */; };
 		2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B602E536EA39A5C8524CE6 /* ReframeService.swift */; };
@@ -58,6 +59,7 @@
 		ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */; };
 		B5EAC4C0ABD423A66050338D /* InspireMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17DACFE5A32F9B04674495C /* InspireMark.swift */; };
 		B9938F536C7B31B2B2AB7059 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB09EE79B4A27D757AD2944A /* AuthService.swift */; };
+		BA49D2348827B807F623E46A /* FollowPush.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77B31A78996E9B7E89E9D348 /* FollowPush.swift */; };
 		BBDCFC5DAA64296BE09CD43A /* FeedRefreshPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */; };
 		BD5651910EFAA74B0C7C11AD /* HomeFeedPullRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926E1968DC6C213D5BAAAF2E /* HomeFeedPullRefresh.swift */; };
 		BFB32DC8E79F7A90F9203F19 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */; };
@@ -120,6 +122,7 @@
 		0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderChrome.swift; sourceTree = "<group>"; };
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
 		152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshPlan.swift; sourceTree = "<group>"; };
+		15A7251B9796790EA9B57C01 /* Angles-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Angles-Release.entitlements"; sourceTree = "<group>"; };
 		1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorProfileView.swift; sourceTree = "<group>"; };
 		1C07632E47BCD7EC8BB5F033 /* ForYouCoversTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForYouCoversTests.swift; sourceTree = "<group>"; };
 		1FFD1F9D62B1D72EFFFBFEAE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -146,6 +149,7 @@
 		6A473004998C2F650FCA971D /* DrawerStubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerStubView.swift; sourceTree = "<group>"; };
 		74967E0B0593CCC6912B35AE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		7498958071766D66B285676C /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
+		77B31A78996E9B7E89E9D348 /* FollowPush.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowPush.swift; sourceTree = "<group>"; };
 		7B056E3708A9AE432904A684 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCardGrid.swift; sourceTree = "<group>"; };
 		8598E7366020BE50E4CF231A /* Angles.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Angles.entitlements; sourceTree = "<group>"; };
@@ -163,6 +167,7 @@
 		B1EBC59EB491832949278518 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		B3956722F5CD9FC2607E738A /* RootTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabBar.swift; sourceTree = "<group>"; };
 		B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnglesApp.swift; sourceTree = "<group>"; };
+		B761B6C40E2103B1EFD9AED6 /* FollowNotificationsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowNotificationsSheet.swift; sourceTree = "<group>"; };
 		BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedShelfTests.swift; sourceTree = "<group>"; };
 		BE68FEE0F7F06EC666CA46A9 /* Go to school.lottie */ = {isa = PBXFileReference; path = "Go to school.lottie"; sourceTree = "<group>"; };
 		C17DACFE5A32F9B04674495C /* InspireMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspireMark.swift; sourceTree = "<group>"; };
@@ -263,6 +268,14 @@
 			path = Paywall;
 			sourceTree = "<group>";
 		};
+		532A53F90AFC2E258F93CC80 /* Push */ = {
+			isa = PBXGroup;
+			children = (
+				77B31A78996E9B7E89E9D348 /* FollowPush.swift */,
+			);
+			path = Push;
+			sourceTree = "<group>";
+		};
 		55885B68E6C816ED0A1419B9 /* Auth */ = {
 			isa = PBXGroup;
 			children = (
@@ -354,6 +367,7 @@
 				01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */,
 				152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */,
 				4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */,
+				B761B6C40E2103B1EFD9AED6 /* FollowNotificationsSheet.swift */,
 				C43E1D6BE1E7EBC18B58660A /* ForYouCovers.swift */,
 				0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */,
 				81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */,
@@ -373,6 +387,7 @@
 		E5867170AF5329B3B1527D6E /* AnglesApp */ = {
 			isa = PBXGroup;
 			children = (
+				15A7251B9796790EA9B57C01 /* Angles-Release.entitlements */,
 				8598E7366020BE50E4CF231A /* Angles.entitlements */,
 				277F500C2565CC7DF5621C5A /* Angles.icon */,
 				B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */,
@@ -384,6 +399,7 @@
 				B6B237C79F6DE4D015CCAE8C /* Models */,
 				0015A8A62717D6248D7BE219 /* Networking */,
 				3C7A6CC9AC2A38D2B0970D56 /* Paywall */,
+				532A53F90AFC2E258F93CC80 /* Push */,
 				6CBF3A7EC581D3C9244338E9 /* Resources */,
 				B76BADF40D79DBF4341405FC /* Root */,
 				A1EEEC4B1AED5D4B34FC7B21 /* Settings */,
@@ -581,6 +597,8 @@
 				DE82C4F9220F52D1290B0658 /* FavoriteAngleWidgetPublisher.swift in Sources */,
 				EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */,
 				057F225336671B92CC069930 /* FeedRefreshPlan.swift in Sources */,
+				2552C717E0FF01245A757BAA /* FollowNotificationsSheet.swift in Sources */,
+				BA49D2348827B807F623E46A /* FollowPush.swift in Sources */,
 				DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */,
 				3AC3B1905991BF3CE20A9601 /* ForYouCovers.swift in Sources */,
 				02995E8655495BCA8665D82E /* HeaderChrome.swift in Sources */,
@@ -741,7 +759,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -765,7 +783,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -859,7 +877,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "AnglesApp/Info-Debug.plist";
@@ -887,7 +905,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesApp/Info.plist;

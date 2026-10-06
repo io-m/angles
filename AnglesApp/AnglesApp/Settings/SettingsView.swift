@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UserNotifications
 
 struct SettingsView: View {
     let storeKitManager: StoreKitManager
@@ -27,6 +28,8 @@ struct SettingsView: View {
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
     @State private var photoItem: PhotosPickerItem?
+    @State private var pushStatus: UNAuthorizationStatus?
+    @Environment(\.scenePhase) private var scenePhase
     @FocusState private var nameFocused: Bool
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -53,6 +56,10 @@ struct SettingsView: View {
                             .presentationCompactAdaptation(.popover)
                             .modifier(UserAppearance(store: themeStore))
                     }
+
+                    rowDivider
+
+                    followsRow
 
                     rowDivider
 
@@ -185,6 +192,15 @@ struct SettingsView: View {
             .presentationBackground(theme.grey)
             .modifier(UserAppearance(store: themeStore))
         }
+        .task {
+            await refreshPushPermission()
+            await FollowPush.reconcile(notifyFollows: true)
+            await refreshPushPermission()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshPushPermission() }
+        }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task { await loadPhoto(from: item) }
@@ -226,6 +242,51 @@ struct SettingsView: View {
 
     private var showsLegalSection: Bool {
         showsPrivacyPolicy || showsTermsOfService || showsSupport
+    }
+
+    /// Banners are an iOS permission. This row never pretends to be a switch: it asks once,
+    /// then opens iOS Settings, including when already on so they can turn it off there.
+    private var followsRow: some View {
+        cardRow(
+            symbol: "bell",
+            title: "Follows",
+            subtitle: followsSubtitle
+        ) {
+            Task {
+                await FollowPush.enableFromSettings()
+                await refreshPushPermission()
+            }
+        } trailing: {
+            EmptyView()
+        }
+        .accessibilityHint(followsAccessibilityHint)
+    }
+
+    private var followsSubtitle: String {
+        guard let pushStatus else {
+            return "When someone follows you"
+        }
+        if FollowPush.isAllowed(pushStatus) {
+            return "On · iOS Settings"
+        }
+        if pushStatus == .denied {
+            return "Allow in iOS Settings"
+        }
+        return "Turn on notifications"
+    }
+
+    private var followsAccessibilityHint: String {
+        guard let pushStatus else {
+            return "Asks iOS to allow notifications"
+        }
+        if pushStatus == .notDetermined {
+            return "Asks iOS to allow notifications"
+        }
+        return "Opens iOS Settings"
+    }
+
+    private func refreshPushPermission() async {
+        pushStatus = await FollowPush.authorizationStatus()
     }
 
     private func deleteAccount() async {

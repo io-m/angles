@@ -139,7 +139,8 @@ final class SessionStore {
             tasteCompletedAt: ISO8601Dates.string(from: Date()),
             tasteConsumedAt: current.tasteConsumedAt,
             termsAcceptedAt: current.termsAcceptedAt,
-            avatarUrl: current.avatarUrl
+            avatarUrl: current.avatarUrl,
+            notifyFollows: current.notifyFollows
         )
     }
 
@@ -168,7 +169,34 @@ final class SessionStore {
                 tasteCompletedAt: latest.tasteCompletedAt,
                 tasteConsumedAt: latest.tasteConsumedAt,
                 termsAcceptedAt: accepted.termsAcceptedAt,
-                avatarUrl: latest.avatarUrl
+                avatarUrl: latest.avatarUrl,
+                notifyFollows: latest.notifyFollows
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Push only. The in-app follow list stays either way.
+    func setNotifyFollows(_ enabled: Bool) async -> Bool {
+        guard let current = session else {
+            return false
+        }
+        do {
+            let updated = try await profileService.updateNotifyFollows(enabled)
+            guard session?.id == current.id, let latest = session else {
+                return false
+            }
+            session = SessionBody(
+                id: latest.id,
+                initials: latest.initials,
+                name: latest.name,
+                tasteCompletedAt: latest.tasteCompletedAt,
+                tasteConsumedAt: latest.tasteConsumedAt,
+                termsAcceptedAt: latest.termsAcceptedAt,
+                avatarUrl: latest.avatarUrl,
+                notifyFollows: updated.notifyFollows
             )
             return true
         } catch {

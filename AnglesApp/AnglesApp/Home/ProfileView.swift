@@ -59,6 +59,7 @@ struct ProfileView: View {
     @State private var pagerState = StyleTabPagerState<ProfileGridFilter>(initialTab: .favorites)
     @State private var showSettings = false
     @State private var showFollowing = false
+    @State private var showNotifications = false
     @State private var committedTab: ProfileGridFilter = .favorites
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -95,7 +96,9 @@ struct ProfileView: View {
                 settledSelection: committedTab,
                 showSettings: $showSettings,
                 identityStore: identityStore,
+                hasUnreadFollows: viewModel.unreadFollowCount > 0,
                 onOpenFollowing: { showFollowing = true },
+                onOpenNotifications: { showNotifications = true },
                 onSelectTab: selectTab
             )
             .ignoresSafeArea(edges: .top)
@@ -121,6 +124,7 @@ struct ProfileView: View {
                 return
             }
             await viewModel.loadLibraryIfNeeded()
+            await viewModel.loadFollowNotifications()
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(
@@ -170,6 +174,38 @@ struct ProfileView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.grey)
             .modifier(UserAppearance(store: themeStore))
+        }
+        .sheet(isPresented: $showNotifications) {
+            FollowNotificationsSheet(
+                notices: viewModel.followNotices,
+                loadState: viewModel.followNoticesLoadState,
+                onRetry: { Task { await viewModel.loadFollowNotifications() } },
+                onFollowBack: { notice in
+                    viewModel.followBack(notice.actorId)
+                },
+                onOpen: { notice in
+                    showNotifications = false
+                    onOpenFollowed(
+                        FollowedPerson(
+                            id: notice.actorId,
+                            initials: notice.initials,
+                            avatarPath: notice.avatarPath
+                        )
+                    )
+                },
+                writeError: viewModel.writeError,
+                onDismissError: viewModel.dismissWriteError
+            )
+            .task {
+                viewModel.openedFollowNotifications()
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.grey)
+            .modifier(UserAppearance(store: themeStore))
+        }
+        .onChange(of: viewModel.openFollowNotificationsToken) { _, _ in
+            showNotifications = true
         }
     }
 
@@ -357,7 +393,9 @@ private struct ProfileChrome: View {
     let settledSelection: ProfileGridFilter
     @Binding var showSettings: Bool
     var identityStore: ProfileIdentityStore? = nil
+    var hasUnreadFollows = false
     var onOpenFollowing: () -> Void = {}
+    var onOpenNotifications: () -> Void = {}
     let onSelectTab: (ProfileGridFilter) -> Void
 
     var body: some View {
@@ -371,7 +409,9 @@ private struct ProfileChrome: View {
                 collapseDistance: collapseDistance,
                 showSettings: $showSettings,
                 identityStore: identityStore,
-                onOpenFollowing: onOpenFollowing
+                hasUnreadFollows: hasUnreadFollows,
+                onOpenFollowing: onOpenFollowing,
+                onOpenNotifications: onOpenNotifications
             )
 
             ProfileIdentityHeader(title: title, identityStore: identityStore)
@@ -450,7 +490,9 @@ private struct ProfileTopBar: View {
     let collapseDistance: CGFloat
     @Binding var showSettings: Bool
     var identityStore: ProfileIdentityStore? = nil
+    var hasUnreadFollows = false
     var onOpenFollowing: () -> Void = {}
+    var onOpenNotifications: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -484,6 +526,25 @@ private struct ProfileTopBar: View {
             .accessibilityHidden(progress <= 0.4)
 
             Spacer(minLength: 8)
+
+            Button(action: onOpenNotifications) {
+                CircleIcon(
+                    systemName: "bell",
+                    fill: theme.surface,
+                    symbol: theme.ink,
+                    hairline: theme.cardHairline
+                )
+                .overlay(alignment: .topTrailing) {
+                    if hasUnreadFollows {
+                        Circle()
+                            .fill(theme.ink)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 1, y: -1)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(hasUnreadFollows ? "Follows, new" : "Follows")
 
             Button(action: onOpenFollowing) {
                 CircleIcon(
