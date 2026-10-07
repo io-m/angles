@@ -48,6 +48,8 @@ struct AppRoot: View {
     @State private var paywallShowsCelebration = false
     @State private var paywallHeroCard: HomeCard?
     @State private var homeRevealPhase: HomeRevealPhase = .hidden
+    @State private var splashPhase: LaunchSplashPhase = .holding
+    @State private var splashHoldElapsed = false
     @State private var homeFeedTask: Task<Void, Never>?
     @State private var homeArrivalCapTask: Task<Void, Never>?
     @State private var homeArrivalTimedOut = false
@@ -238,11 +240,21 @@ struct AppRoot: View {
                 .zIndex(28)
             }
 
-            if destination == .launching {
-                theme.paper
+            if destination == .launching, splashPhase == .finished {
+                ColorTokens.paperDark
                     .ignoresSafeArea()
                     .zIndex(30)
                     .accessibilityHidden(true)
+            }
+
+            if splashPhase != .finished {
+                LaunchSplash(
+                    isExiting: splashPhase == .exiting,
+                    reduceMotion: reduceMotion,
+                    onFinished: completeLaunchSplash
+                )
+                .zIndex(40)
+                .allowsHitTesting(true)
             }
         }
         .environment(\.profileIdentity, identityStore)
@@ -262,6 +274,15 @@ struct AppRoot: View {
         }
         .task {
             await launch()
+        }
+        .task {
+            try? await Task.sleep(for: LaunchSplashMotion.minimumHold)
+            guard splashPhase == .holding else {
+                return
+            }
+            splashHoldElapsed = true
+            tryFinishLaunchSplashIfReady()
+            advanceHomeRevealIfPossible()
         }
         .task(id: sessionStore.session?.id) {
             viewModel.configureUsageAccount(userID: sessionStore.session?.id)
@@ -394,7 +415,7 @@ struct AppRoot: View {
     }
 
     private var showsHomeArrivalStatus: Bool {
-        guard destination == .home else {
+        guard splashPhase == .finished, destination == .home else {
             return false
         }
         switch homeRevealPhase {
@@ -482,6 +503,7 @@ struct AppRoot: View {
             membershipRequested = false
             consumeFollowPush()
         }
+        tryFinishLaunchSplashIfReady()
     }
 
     /// Home is already covered on this frame. Taste/paywall are gone structurally; the reveal
@@ -553,6 +575,20 @@ struct AppRoot: View {
             guard hasResolvedInitialHomeLoad else {
                 return
             }
+            if splashPhase == .holding {
+                guard splashHoldElapsed else {
+                    return
+                }
+                homeArrivalCapTask?.cancel()
+                homeArrivalCapTask = nil
+                withoutAnimations {
+                    homeRevealPhase = .visible
+                }
+                beginLaunchSplashExit()
+                applyPendingWidgetDeepLinkIfPossible()
+                consumeFollowPush()
+                return
+            }
             withoutAnimations {
                 homeRevealPhase = .animating
             }
@@ -589,6 +625,33 @@ struct AppRoot: View {
             }
         case .hidden, .animating, .visible:
             return
+        }
+    }
+
+    /// Login, taste, paywall, and Terms leave as soon as the gate is ready and the splash has
+    /// had its minimum hold. Home waits for the first feed result in `advanceHomeRevealIfPossible`.
+    private func tryFinishLaunchSplashIfReady() {
+        guard splashPhase == .holding, splashHoldElapsed else {
+            return
+        }
+        switch destination {
+        case .launching, .home:
+            return
+        case .login, .taste, .paywall, .terms:
+            beginLaunchSplashExit()
+        }
+    }
+
+    private func beginLaunchSplashExit() {
+        guard splashPhase == .holding else {
+            return
+        }
+        splashPhase = .exiting
+    }
+
+    private func completeLaunchSplash() {
+        withoutAnimations {
+            splashPhase = .finished
         }
     }
 

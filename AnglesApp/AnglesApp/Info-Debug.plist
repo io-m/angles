@@ -53,7 +53,10 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Angles connects to the development API on your local network.</string>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

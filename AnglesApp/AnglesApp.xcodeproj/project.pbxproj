@@ -12,6 +12,7 @@
 		057F225336671B92CC069930 /* FeedRefreshPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */; };
 		07C7B3E2F8C3F83F1A83C0B0 /* ReframeContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9147DA97E362AE10C8A58A59 /* ReframeContractTests.swift */; };
 		17CBFD4C422D6640341241AA /* CardsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91621A647BBA93B4181D3EB3 /* CardsService.swift */; };
+		1A8E857134A0528319DEE70F /* LaunchSplash.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E4DC6027AAB14F4E0FF4586 /* LaunchSplash.swift */; };
 		1C5A8915F3447627232F0B0D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D63A3C056314A252917F965 /* PaywallView.swift */; };
 		1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3956722F5CD9FC2607E738A /* RootTabBar.swift */; };
 		1DDD3EBC27953342A162D134 /* AnglesWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA72C92F4982795D86D0E015 /* AnglesWidgets.swift */; };
@@ -121,6 +122,7 @@
 		061BB33F2FBF3FC8D3579D69 /* AppleReauthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleReauthorization.swift; sourceTree = "<group>"; };
 		0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeaderChrome.swift; sourceTree = "<group>"; };
 		0D63A3C056314A252917F965 /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallView.swift; sourceTree = "<group>"; };
+		0E4DC6027AAB14F4E0FF4586 /* LaunchSplash.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchSplash.swift; sourceTree = "<group>"; };
 		152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshPlan.swift; sourceTree = "<group>"; };
 		15A7251B9796790EA9B57C01 /* Angles-Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Angles-Release.entitlements"; sourceTree = "<group>"; };
 		1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorProfileView.swift; sourceTree = "<group>"; };
@@ -341,6 +343,7 @@
 			isa = PBXGroup;
 			children = (
 				01BEA95023B9310D87B3474C /* AppGate.swift */,
+				0E4DC6027AAB14F4E0FF4586 /* LaunchSplash.swift */,
 				B3956722F5CD9FC2607E738A /* RootTabBar.swift */,
 			);
 			path = Root;
@@ -611,6 +614,7 @@
 				830C5D21D51989E70ADBBE4E /* HomeViewModel.swift in Sources */,
 				B5EAC4C0ABD423A66050338D /* InspireMark.swift in Sources */,
 				BFB32DC8E79F7A90F9203F19 /* KeychainStore.swift in Sources */,
+				1A8E857134A0528319DEE70F /* LaunchSplash.swift in Sources */,
 				7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
 				3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */,
@@ -759,7 +763,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 26;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -783,7 +787,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 26;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -877,7 +881,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 26;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "AnglesApp/Info-Debug.plist";
@@ -905,7 +909,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 26;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesApp/Info.plist;
