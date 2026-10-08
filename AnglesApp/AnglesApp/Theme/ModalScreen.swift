@@ -5,17 +5,21 @@ struct ModalScreen<Content: View>: View {
     let title: String
     var searchText: Binding<String>?
     var searchPrompt: String
+    /// Stays under the title while the content scrolls. The People tabs use this.
+    private let header: AnyView?
     @ViewBuilder var content: Content
 
     init(
         title: String,
         searchText: Binding<String>? = nil,
         searchPrompt: String = "Search",
+        header: AnyView? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.searchText = searchText
         self.searchPrompt = searchPrompt
+        self.header = header
         self.content = content()
     }
 
@@ -25,11 +29,16 @@ struct ModalScreen<Content: View>: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                content
-                    .padding(.bottom, 40)
+            VStack(spacing: 0) {
+                if let header {
+                    header
+                }
+                ScrollView {
+                    content
+                        .padding(.bottom, 40)
+                }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)

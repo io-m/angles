@@ -15,14 +15,18 @@ struct HomeView: View {
     var glimpseCard: HomeCard? = nil
     var isGlimpseActive = false
     var isActiveTab: Bool = true
+    var identityStore: ProfileIdentityStore? = nil
     var onLogOut: (() -> Void)? = nil
+    var onDeleteAccount: (() async -> AccountDeletion)? = nil
     var onOpenAuthor: (HomeCard) -> Void = { _ in }
     var onInspire: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var themeStore: ThemeStore
 
     @State private var showHomeFilter = false
+    @State private var showSettings = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -71,6 +75,7 @@ struct HomeView: View {
                 settledSelection: settledSelection,
                 appliedCount: viewModel.appliedFilter.appliedCount,
                 showFilter: $showHomeFilter,
+                showSettings: $showSettings,
                 onSelectTab: onSelectTab
             )
         }
@@ -83,6 +88,34 @@ struct HomeView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.grey)
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(
+                storeKitManager: storeKitManager,
+                identityStore: identityStore,
+                onLogOut: {
+                    onLogOut?()
+                    showSettings = false
+                },
+                onDeleteAccount: {
+                    let result = await onDeleteAccount?() ?? .failed
+                    if result == .deleted {
+                        showSettings = false
+                    }
+                    return result
+                },
+                blockedPeople: viewModel.blockedPeople,
+                blocksLoadState: viewModel.blocksLoadState,
+                onLoadBlocks: { await viewModel.loadBlocks() },
+                onRetryBlocks: { Task { await viewModel.loadBlocks() } },
+                onUnblock: viewModel.unblock,
+                writeError: viewModel.writeError,
+                onDismissWriteError: viewModel.dismissWriteError
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.grey)
+            .modifier(UserAppearance(store: themeStore))
         }
     }
 
@@ -440,7 +473,12 @@ private struct HomeChrome: View {
     let settledSelection: HomeFeedTab
     let appliedCount: Int
     @Binding var showFilter: Bool
+    @Binding var showSettings: Bool
     let onSelectTab: (HomeFeedTab) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -465,6 +503,19 @@ private struct HomeChrome: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Filter Home")
                 .accessibilityValue(filterAccessibilityValue(appliedCount))
+
+                Button {
+                    showSettings = true
+                } label: {
+                    CircleIcon(
+                        systemName: "gearshape",
+                        fill: theme.surface,
+                        symbol: theme.ink,
+                        hairline: theme.cardHairline
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
             }
             .padding(.horizontal, HeaderCollapse.horizontalPadding)
             .frame(height: HeaderCollapse.headerHeight)

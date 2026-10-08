@@ -82,7 +82,9 @@ struct AppRoot: View {
                         storeKitManager: storeKitManager,
                         canLoadFullAppContent: isHomeRevealed,
                         isActiveTab: selectedTab == .home,
+                        identityStore: identityStore,
                         onLogOut: logOut,
+                        onDeleteAccount: deleteAccount,
                         onOpenAuthor: openAuthor,
                         onInspire: presentCompose
                     )
@@ -754,7 +756,7 @@ struct AppRoot: View {
         UNUserNotificationCenter.current().setBadgeCount(count)
     }
 
-    /// Lock-screen tap or action. View profile opens their posts; Follow back opens the bell
+    /// Lock-screen tap or action. View profile opens their posts; Follow back opens People
     /// and follows. Pending state waits until Home is revealed — the same gate as widget links —
     /// so enterHome cannot wipe the author page and the cover cannot hide it.
     private func consumeFollowPush() {

@@ -116,9 +116,8 @@ final class StyleTabPagerState<T: StyleTabRepresentable> {
     }
 }
 
-/// The style picker in a page header: a native single-select menu, plus a chip for any
-/// tab pinned outside it (Profile's Favorites). Six styles do not fit a row of chips on a
-/// narrow phone, so they live in the menu. The pages do not swipe sideways.
+/// The style picker in a page header: one native single-select menu. Six styles do not
+/// fit a row of chips on a narrow phone, so they live in the menu. The pages do not swipe sideways.
 struct AdaptiveStyleTabBar<T: StyleTabRepresentable>: View {
     let pagerState: StyleTabPagerState<T>
     let settledSelection: T
@@ -199,7 +198,8 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
             Picker(selection: selection) {
                 ForEach(tabs, id: \.self) { tab in
                     Label {
-                        Text(tab.title)
+                        Text(tab.chipTitle)
+                            .accessibilityLabel(tab.title)
                     } icon: {
                         rowIcon(for: tab)
                     }

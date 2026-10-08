@@ -3,12 +3,10 @@ import SwiftUI
 
 private enum ProfileMetrics {
     static let identityHeight: CGFloat = 132
-    static let tabBarHeight = StyleTabMetrics.tabBarHeight
 
     static func expandedChromeHeight(safeTop: CGFloat) -> CGFloat {
         HeaderCollapse.overlayHeight(safeTop: safeTop)
             + identityHeight
-            + tabBarHeight
     }
 
     static func chromeHeight(safeTop: CGFloat, collapseDistance: CGFloat) -> CGFloat {
@@ -58,7 +56,8 @@ struct ProfileView: View {
     @State private var pagerState = StyleTabPagerState<ProfileGridFilter>(initialTab: .favorites)
     @State private var showSettings = false
     @State private var showFollowing = false
-    @State private var showNotifications = false
+    /// A follow push opens People on Notifications. The icon opens Following.
+    @State private var peopleStartsOnNotifications = false
     @State private var committedTab: ProfileGridFilter = .favorites
     /// Lists that have been shown. The rest are empty placeholders until first chosen.
     @State private var visitedTabs: Set<ProfileGridFilter> = [.favorites]
@@ -100,7 +99,6 @@ struct ProfileView: View {
                 identityStore: identityStore,
                 hasUnreadFollows: viewModel.unreadFollowCount > 0,
                 onOpenFollowing: { showFollowing = true },
-                onOpenNotifications: { showNotifications = true },
                 onSelectTab: selectTab
             )
             .ignoresSafeArea(edges: .top)
@@ -159,34 +157,29 @@ struct ProfileView: View {
         .sheet(isPresented: $showFollowing) {
             FollowingSheet(
                 people: viewModel.followedPeople,
+                notices: viewModel.followNotices,
                 loadState: viewModel.followingLoadState,
-                onRetry: { Task { await viewModel.loadFollowing() } },
+                noticesLoadState: viewModel.followNoticesLoadState,
+                startsOnNotifications: peopleStartsOnNotifications || viewModel.unreadFollowCount > 0,
+                onRetry: {
+                    Task {
+                        await viewModel.loadFollowing()
+                        await viewModel.loadFollowNotifications()
+                    }
+                },
+                onViewNotifications: { viewModel.openedFollowNotifications() },
                 onUnfollow: { person in
                     viewModel.unfollow(person)
+                },
+                onFollowBack: { notice in
+                    viewModel.followBack(notice.actorId)
                 },
                 onOpen: { person in
                     showFollowing = false
                     onOpenFollowed(person)
                 },
-                writeError: viewModel.writeError,
-                onDismissError: viewModel.dismissWriteError
-            )
-            .task { await viewModel.loadFollowing() }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(theme.grey)
-            .modifier(UserAppearance(store: themeStore))
-        }
-        .sheet(isPresented: $showNotifications) {
-            FollowNotificationsSheet(
-                notices: viewModel.followNotices,
-                loadState: viewModel.followNoticesLoadState,
-                onRetry: { Task { await viewModel.loadFollowNotifications() } },
-                onFollowBack: { notice in
-                    viewModel.followBack(notice.actorId)
-                },
-                onOpen: { notice in
-                    showNotifications = false
+                onOpenNotice: { notice in
+                    showFollowing = false
                     onOpenFollowed(
                         FollowedPerson(
                             id: notice.actorId,
@@ -199,7 +192,9 @@ struct ProfileView: View {
                 onDismissError: viewModel.dismissWriteError
             )
             .task {
-                viewModel.openedFollowNotifications()
+                async let following: Void = viewModel.loadFollowing()
+                async let notices: Void = viewModel.loadFollowNotifications()
+                _ = await (following, notices)
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -207,7 +202,13 @@ struct ProfileView: View {
             .modifier(UserAppearance(store: themeStore))
         }
         .onChange(of: viewModel.openFollowNotificationsToken) { _, _ in
-            showNotifications = true
+            peopleStartsOnNotifications = true
+            showFollowing = true
+        }
+        .onChange(of: showFollowing) { _, showing in
+            if !showing {
+                peopleStartsOnNotifications = false
+            }
         }
     }
 
@@ -389,7 +390,6 @@ private struct ProfileChrome: View {
     var identityStore: ProfileIdentityStore? = nil
     var hasUnreadFollows = false
     var onOpenFollowing: () -> Void = {}
-    var onOpenNotifications: () -> Void = {}
     let onSelectTab: (ProfileGridFilter) -> Void
 
     var body: some View {
@@ -401,11 +401,13 @@ private struct ProfileChrome: View {
                 title: title,
                 safeTop: safeTop,
                 collapseDistance: collapseDistance,
+                pagerState: pagerState,
+                settledSelection: settledSelection,
                 showSettings: $showSettings,
                 identityStore: identityStore,
                 hasUnreadFollows: hasUnreadFollows,
                 onOpenFollowing: onOpenFollowing,
-                onOpenNotifications: onOpenNotifications
+                onSelectTab: onSelectTab
             )
 
             ProfileIdentityHeader(title: title, identityStore: identityStore)
@@ -418,12 +420,6 @@ private struct ProfileChrome: View {
                 .allowsHitTesting(identityProgress < 0.5)
                 .accessibilityHidden(identityProgress >= 0.5)
                 .animation(nil, value: collapseDistance)
-
-            AdaptiveStyleTabBar(
-                pagerState: pagerState,
-                settledSelection: settledSelection,
-                onSelect: onSelectTab
-            )
         }
         .frame(
             height: ProfileMetrics.chromeHeight(
@@ -482,11 +478,13 @@ private struct ProfileTopBar: View {
     let title: String
     let safeTop: CGFloat
     let collapseDistance: CGFloat
+    let pagerState: StyleTabPagerState<ProfileGridFilter>
+    let settledSelection: ProfileGridFilter
     @Binding var showSettings: Bool
     var identityStore: ProfileIdentityStore? = nil
     var hasUnreadFollows = false
     var onOpenFollowing: () -> Void = {}
-    var onOpenNotifications: () -> Void = {}
+    let onSelectTab: (ProfileGridFilter) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -521,9 +519,17 @@ private struct ProfileTopBar: View {
 
             Spacer(minLength: 8)
 
-            Button(action: onOpenNotifications) {
+            AdaptiveStyleTabBar(
+                pagerState: pagerState,
+                settledSelection: settledSelection,
+                includesTrailingSpacer: false,
+                padded: false,
+                onSelect: onSelectTab
+            )
+
+            Button(action: onOpenFollowing) {
                 CircleIcon(
-                    systemName: "bell",
+                    systemName: "person.2",
                     fill: theme.surface,
                     symbol: theme.ink,
                     hairline: theme.cardHairline
@@ -538,18 +544,7 @@ private struct ProfileTopBar: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(hasUnreadFollows ? "Follows, new" : "Follows")
-
-            Button(action: onOpenFollowing) {
-                CircleIcon(
-                    systemName: "person.2",
-                    fill: theme.surface,
-                    symbol: theme.ink,
-                    hairline: theme.cardHairline
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Following")
+            .accessibilityLabel(hasUnreadFollows ? "People, new" : "People")
 
             Button {
                 showSettings = true

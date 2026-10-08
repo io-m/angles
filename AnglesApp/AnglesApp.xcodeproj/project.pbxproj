@@ -22,7 +22,6 @@
 		23F467865BB541A745FA9322 /* AccentPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB51DAEEE790AFEA4D8A659B /* AccentPalette.swift */; };
 		241F7BC96BA7F87308C06C49 /* celebration-checkmark.json in Resources */ = {isa = PBXBuildFile; fileRef = C4B72925153855FD655114F4 /* celebration-checkmark.json */; };
 		24D8AC03A338F125B60DBCB7 /* AnglesWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CFC1E4A1063AFDE75D437AE8 /* AnglesWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		2552C717E0FF01245A757BAA /* FollowNotificationsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B761B6C40E2103B1EFD9AED6 /* FollowNotificationsSheet.swift */; };
 		26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */; };
 		2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */; };
 		2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B602E536EA39A5C8524CE6 /* ReframeService.swift */; };
@@ -187,7 +186,6 @@
 		B1EBC59EB491832949278518 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		B3956722F5CD9FC2607E738A /* RootTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabBar.swift; sourceTree = "<group>"; };
 		B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnglesApp.swift; sourceTree = "<group>"; };
-		B761B6C40E2103B1EFD9AED6 /* FollowNotificationsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowNotificationsSheet.swift; sourceTree = "<group>"; };
 		BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedShelfTests.swift; sourceTree = "<group>"; };
 		BE68FEE0F7F06EC666CA46A9 /* Go to school.lottie */ = {isa = PBXFileReference; path = "Go to school.lottie"; sourceTree = "<group>"; };
 		C17DACFE5A32F9B04674495C /* InspireMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspireMark.swift; sourceTree = "<group>"; };
@@ -396,7 +394,6 @@
 				01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */,
 				152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */,
 				4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */,
-				B761B6C40E2103B1EFD9AED6 /* FollowNotificationsSheet.swift */,
 				C43E1D6BE1E7EBC18B58660A /* ForYouCovers.swift */,
 				0A024A4365CA3EDE6B822949 /* HeaderChrome.swift */,
 				81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */,
@@ -635,7 +632,6 @@
 				379C2850E7C0BCFA12492CDB /* FeedLatestPill.swift in Sources */,
 				EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */,
 				057F225336671B92CC069930 /* FeedRefreshPlan.swift in Sources */,
-				2552C717E0FF01245A757BAA /* FollowNotificationsSheet.swift in Sources */,
 				BA49D2348827B807F623E46A /* FollowPush.swift in Sources */,
 				DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */,
 				3AC3B1905991BF3CE20A9601 /* ForYouCovers.swift in Sources */,

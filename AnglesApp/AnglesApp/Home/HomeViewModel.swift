@@ -271,8 +271,18 @@ enum HomeFeedTab: Equatable, Hashable, CaseIterable {
         matchingStyle?.displayName ?? "For you"
     }
 
+    /// Pill and menu row. Short on purpose, and close to the same length, so the
+    /// fixed-width pill is not a wide capsule around "Stoic". Cards keep `displayName`.
     var chipTitle: String {
-        matchingStyle?.displayName ?? "For you"
+        switch self {
+        case .all: "For you"
+        case .stoic: "Stoic"
+        case .optimistic: "Hopeful"
+        case .humorous: "Witty"
+        case .toughLove: "Tough"
+        case .tender: "Tender"
+        case .values: "Values"
+        }
     }
 
     var matchingStyle: Style? {
@@ -392,8 +402,17 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
         matchingStyle?.displayName ?? "Favorite angles"
     }
 
+    /// Same length band as the style names, so Favorites does not stretch the pill.
     var chipTitle: String {
-        matchingStyle?.displayName ?? "Favorites"
+        switch self {
+        case .favorites: "Hearts"
+        case .stoic: "Stoic"
+        case .optimistic: "Hopeful"
+        case .humorous: "Witty"
+        case .toughLove: "Tough"
+        case .tender: "Tender"
+        case .values: "Values"
+        }
     }
 
     var matchingStyle: Style? {
@@ -2591,7 +2610,7 @@ final class HomeViewModel {
         }
     }
 
-    /// The bell sheet opened. The view model owns this work, so closing the sheet at once,
+    /// The people sheet opened. The view model owns this work, so closing the sheet at once,
     /// or a dialog over it, still finishes the read. Rows already on screen are read first;
     /// the refresh then reads any follow that arrived since.
     func openedFollowNotifications() {
@@ -2866,7 +2885,7 @@ final class HomeViewModel {
     private enum FollowOrigin {
         /// Home, an author page, or a hearted card in the library.
         case browse
-        /// The bell sheet or a push action: answering someone who followed you.
+        /// The people sheet or a push action: answering someone who followed you.
         case followBack
     }
 
@@ -3185,7 +3204,7 @@ final class HomeViewModel {
         switch payload.code {
         case "SUBSCRIPTION_REQUIRED":
             tasteEndedByServer = true
-            return ("Membership is required. Open Profile → Settings → Subscription.", false)
+            return ("Membership is required. Open Settings → Subscription.", false)
         case "INSUFFICIENT_CREDITS":
             return ("You’re out of credits\(reset).", false)
         case "TASTE_RECOOK_UNAVAILABLE":

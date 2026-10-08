@@ -59,13 +59,13 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/AnglesApp.swift` — AppRoot: TabView (Home, Profile), compose overlay, shared `HomeViewModel`
 - `AnglesApp/AnglesApp/Root/AppGate.swift` — the pure funnel resolver (launching / login / taste / paywall / home); AppRoot renders only from it
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
-- `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: For you + a native single-select style menu (six styles) aligned with trailing filter; tinted glass header; no Home Settings gear
+- `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: For you + a native single-select style menu (six styles) aligned with trailing filter and Settings gear; tinted glass header
 - `AnglesApp/AnglesApp/Home/StyleTabPager.swift` — the style menu and the pager state shared by Home, Profile, and author pages. The menu pill is as wide as its longest label, and Profile's Favorites is a row in the same menu, so nothing resizes when a style is picked; a pick is one request-driven crossfade (`StyleTabPagerState.requestPage`), not per-frame scroll tracking. Pages build the first time they are chosen (`visitedTabs`)
 - `AnglesApp/AnglesApp/Theme/RenderCounter.swift`, `FrameMonitor.swift` — DEBUG-only `RENDER <view> n` and `HITCH <ms>` console lines (read with `devicectl ... launch --console`); compiled out of Release
 - `AnglesApp/AnglesApp/Home/HomeFeedShelf.swift` — one Home card record, one page per tab. A heart, follow, or removal updates every shelf that is showing that post. Profile and author pages do not use this ranking.
 - `AnglesApp/AnglesApp/Home/HomeFilterSheet.swift` — draft/apply Life area and Mood tabbed multi-select
 - `AnglesApp/AnglesApp/Home/HeaderChrome.swift` — shared header metrics and the bottom fade stops
-- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library with a fixed compact identity header (avatar, session name), Favorites-first tabs and one list per style, chosen from the menu (no sideways swipe); Settings gear and Following sheet; opaque style wash chrome
+- `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library with a fixed compact identity header (avatar, session name) and one list per style, chosen from the menu that sits in the icon row with People and Settings (no sideways swipe). People is one sheet with Following and Notifications tabs. Notifications is follows. Opaque style wash chrome
 - `AnglesApp/AnglesApp/Home/AuthorProfileView.swift` — one author's public posts, same five tabs, follow badge; swipe back from anywhere on the page on iOS 26+, the edge strip before that (`wideBackSwipe`, `Theme/InteractivePop.swift`; scoped to this page and handed back when it goes away)
 - `AnglesApp/AnglesApp/Home/FollowingSheet.swift` — who the viewer follows; unfollow, open, its own write banner
 - `AnglesApp/AnglesApp/Home/AIConsentSheet.swift` — the one-time per-account "Before you start" sheet before the first Send: AI providers, what is sent, community rules, Terms and Privacy acceptance
