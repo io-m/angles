@@ -255,6 +255,9 @@ struct ProfileView: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.paging)
+                // Styles are picked from the menu, never by dragging sideways. The vertical
+                // lists in each page switch scrolling back on below.
+                .scrollDisabled(true)
                 .coordinateSpace(name: ProfileMetrics.pagerSpace)
                 .modifier(
                     StyleTabPagerTracking(
@@ -644,6 +647,7 @@ private struct ProfileTabPage: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.always)
+                .scrollDisabled(false)
                 .modifier(
                     HomeFeedNativeRefresh(
                         enabled: true,

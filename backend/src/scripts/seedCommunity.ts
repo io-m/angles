@@ -5,12 +5,13 @@
  *   pnpm db:migrate
  *   pnpm db:seed-community
  *
- * Re-running deletes non-JM users and their cards, then inserts the fixture.
+ * Re-running deletes the seeded community (users whose email is seed-…@angles.invalid, with
+ * their cards and hearts), then inserts the fixture. Real local accounts are left alone.
  * Does not call the live LLM. JM's library is left in place.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ne } from "drizzle-orm";
+import { like } from "drizzle-orm";
 import { DEV_USER_ID } from "../lib/authStub.js";
 import { STEP_DEFAULT_MODELS } from "../lib/llmClient.js";
 import { intensityBand, type Category, type Emotion, type Style, type Timeframe } from "../types/index.js";
@@ -36,8 +37,9 @@ async function main(): Promise<void> {
   }
 
   const db = getDb();
-  await db.delete(cards).where(ne(cards.userId, DEV_USER_ID));
-  await db.delete(users).where(ne(users.id, DEV_USER_ID));
+  // Only the seeded community goes: fixture authors and seeded readers. A real local
+  // account (a phone sign-in, the demo or simulator users) keeps its cards and hearts.
+  await db.delete(users).where(like(users.email, "seed-%@angles.invalid"));
 
   await db.insert(users).values(
     fixture.users.map((user) => ({

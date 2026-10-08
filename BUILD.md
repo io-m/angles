@@ -283,7 +283,7 @@ Tapping someone else's card avatar pushes this page over Home or Profile, coveri
 - **Posts.** `GET /users/:id/cards` returns that person's public cards, newest first, with the same cursor as Home. Private cards stay off the page, including the author's own. An empty public list is still that person. Unknown ids are an error on the page.
 - **Tabs.** For you is the default mixed cover. A style tab keeps posts that have that angle and opens on it, from the one loaded list. No Favorites, no Life area or Mood sheet, no Settings.
 - **Hearts and owner actions.** Same as Home, written through the existing card and feed endpoints. The author list, Home, and the library update in place. Opening this page does not refetch either.
-- **Back.** Only the header chevron pops the page. Each pushed public destination hides the native back control, disabling the system edge-pop so horizontal drags belong exclusively to the style pager. The tab bar returns with the card that opened the page. A tap on this page for the author already showing does nothing.
+- **Back.** The header chevron pops the page, and so does the system edge swipe (the pager no longer scrolls sideways, and `InteractivePop.swift` keeps the gesture alive under the hidden bar). The tab bar returns with the card that opened the page. A tap on this page for the author already showing does nothing.
 
 ### 9i. Profile identity + style tabs
 
@@ -299,7 +299,7 @@ Not a new screen. Polish on 9i.
 
 - **Chrome.** Opaque paper plus a stronger style wash, lit from -45° (top-leading to bottom-trailing). Favorites uses a quiet ink tint. Cards cannot show through the identity or tab row. Wash crossfades when the settled tab changes.
 - **Tabs.** Favorites is first and the default, as its own chip. The six styles are one native single-select menu beside it (24), which reads "Styles" while Favorites is on screen. Spring only on selection change.
-- **Paging.** Identity, tabs, and Settings stay put. Card lists page horizontally (`scrollTargetBehavior(.paging)`), not an inner TabView. Each page is its own vertical `ScrollView` + `HomeCardGrid`.
+- **Paging.** Identity, tabs, and Settings stay put. Card lists sit in a horizontal paging strip (`scrollTargetBehavior(.paging)`), not an inner TabView, that the menu or Favorites chip scrolls; since 24 a finger cannot drag it. Each page is its own vertical `ScrollView` + `HomeCardGrid`.
 
 ### 9k. Interactive Profile pager
 
@@ -532,6 +532,7 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-08 — Six-style polish. The dev community fixture now carries four of the six styles per card (Tender and Values on about two thirds, a grave scene never Humorous or Tough love, the spotlight always one of the card's own angles), and `pnpm db:seed-community` removes only seeded users, so a real local account keeps its cards. Values is a compass (`safari.fill`). Style menu rows keep each style's colour. Home, Profile, and author pages no longer swipe sideways between styles (the menu is the only way), and the author page's edge swipe goes back again.
 - 2026-10-08 — Six voices (24). Tender and Values join the catalog; each cook writes the four that fit best, ranked, and a solemn thought is Stoic, Optimistic, Tender, and Values. Only builds that send `Angles-Style-Set: 2` see the new styles; every route projects cards onto the original four for older builds, so build 30 decodes everything it gets. The writer prompt carries only the voices a cook writes, so cost per cook is flat. The style chip row is a native menu on Home, Profile, and author pages.
 - 2026-10-08 — Solemn, backend only. A thought about real harm to people (a death, serious illness, sexual violence, a child hurt, abuse, war and attacks on civilians, genocide, persecution, self-hatred), theirs or strangers', never gets humorous or tough love. The decision's required `solemn` fails closed, `graveScreen.ts` forces it, a written joke that names the harm is dropped before signing, and a recook of either on a grave signed thought is refused at no charge. Works on every installed build. `pnpm db:grave-humor --dry-run` lists older public cards that still carry one.
 - 2026-10-08 — Follow notifications ask only on Home. Sign-in, taste, and paywall no longer show iOS's dialog; the one automatic ask waits until Home is visible and splash is gone. Settings → Follows stays the manual path.

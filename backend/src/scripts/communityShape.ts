@@ -227,9 +227,8 @@ const STYLE_POPULARITY: Record<Style, number> = {
   optimistic: 28,
   humorous: 24,
   tough_love: 18,
-  // The fixture community predates these voices; its cards never carry them.
-  tender: 0,
-  values: 0,
+  tender: 16,
+  values: 14,
 };
 
 /**

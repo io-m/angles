@@ -1,7 +1,6 @@
 import {
   CATEGORIES,
   EMOTIONS,
-  STYLES,
   TIMEFRAMES,
   intensityBand,
   type Category,
@@ -522,6 +521,44 @@ const TOUGH: Array<(core: string) => string> = [
   (core) => `${lead(core)} can be real and still not be the assignment. Do the assignment. Feelings can walk beside you. They walk; they do not drive.`,
 ];
 
+const TENDER: Array<(core: string) => string> = [
+  (core) => `Of course ${core} stings. You are allowed to be gentle with yourself about it tonight. Nothing here needs fixing before you are allowed to rest.`,
+  (core) => `${lead(core)} is heavy because you care. Let that be a soft thing to notice, not another thing to fix. Put a hand on the heavy part and breathe slowly.`,
+  (core) => `You do not have to be brave about ${core} today. Being tired and tender is a fair way to meet it. Be as kind to yourself as you would be to a friend.`,
+  (core) => `If a friend told you about ${core}, you would pull a chair closer. Offer yourself the same chair. Warm drink, slow breath, no verdict required.`,
+  (core) => `${lead(core)} landed somewhere sore. That is not weakness; it is a sign something matters to you. Go gently and let the soreness be real.`,
+  (core) => `You have been holding ${core} by yourself for a while. You can set it down for an hour and it will still be there. Rest is not giving up on it.`,
+  (core) => `It makes sense that ${core} still tugs at you. You are not behind on feeling better. Take it at the pace of someone who is looking after themselves.`,
+  (core) => `Let ${core} be tender without making it a project. A quiet moment, a kind word to yourself, and a little patience is enough for now.`,
+];
+
+const VALUES: Array<(core: string) => string> = [
+  (core) => `${lead(core)} hurts because something you care about is on the line. Ask what that is, then choose one small action that would honor it today.`,
+  (core) => `Under ${core} there is something you value, probably honesty or belonging. Name it, and let the next step serve that instead of the sting.`,
+  (core) => `What does ${core} say about what matters to you? Start there. One choice that fits that answer is worth more than winning the argument in your head.`,
+  (core) => `You can be unsure about ${core} and still know what you stand for. Pick the one value you want to act from today and let the rest wait.`,
+  (core) => `${lead(core)} is a clue about your priorities. If care, fairness, or growth is in there, make one move today that a person who values it would make.`,
+  (core) => `The question behind ${core} is not whether you failed but what you want to be loyal to. Choose that, and let the next small act follow it.`,
+  (core) => `Let ${core} point at what you are protecting. Then ask what a person who protects that would do before the day ends. Do the smallest version of it.`,
+  (core) => `You do not need to resolve ${core} to act well. Decide what you want your day to say about you, and make one choice that says it.`,
+];
+
+/**
+ * Four of six per card, as the real decision would pick. Rotates so every style sits on
+ * about two thirds of the cards, every shelf fills, and a grave scene never carries a joke
+ * or a push.
+ */
+const STYLE_SETS: readonly (readonly Style[])[] = [
+  ["stoic", "optimistic", "humorous", "tough_love"],
+  ["stoic", "tender", "optimistic", "values"],
+  ["optimistic", "humorous", "tender", "values"],
+  ["stoic", "tough_love", "tender", "values"],
+  ["optimistic", "tender", "humorous", "tough_love"],
+  ["stoic", "humorous", "tough_love", "values"],
+];
+
+const SOLEMN_SET: readonly Style[] = ["stoic", "optimistic", "tender", "values"];
+
 /** Experiment tall cards: short seed thoughts get one rotated second sentence so the
  * feed shows new-budget copy (20-28 words). Each stays generic enough to follow any scene. */
 const THOUGHT_EXTENDERS = [
@@ -549,14 +586,19 @@ function tagsFor(scene: Scene, category: Category, index: number): string[] {
   return unique.slice(0, 8);
 }
 
-function resultsFor(core: string, index: number): { style: Style; reframe: string }[] {
+const WRITERS: Record<Style, Array<(core: string) => string>> = {
+  stoic: STOIC,
+  optimistic: OPTIMISTIC,
+  humorous: HUMOROUS,
+  tough_love: TOUGH,
+  tender: TENDER,
+  values: VALUES,
+};
+
+function resultsFor(core: string, index: number, category: Category): { style: Style; reframe: string }[] {
   const pick = index % 8;
-  return [
-    { style: "stoic", reframe: STOIC[pick]!(core) },
-    { style: "optimistic", reframe: OPTIMISTIC[pick]!(core) },
-    { style: "humorous", reframe: HUMOROUS[pick]!(core) },
-    { style: "tough_love", reframe: TOUGH[pick]!(core) },
-  ];
+  const styles = category === "grief_loss" ? SOLEMN_SET : STYLE_SETS[index % STYLE_SETS.length]!;
+  return styles.map((style) => ({ style, reframe: WRITERS[style][pick]!(core) }));
 }
 
 export function buildCommunityFixture(): CommunityFixture {
@@ -572,7 +614,7 @@ export function buildCommunityFixture(): CommunityFixture {
   const posts: CommunityPost[] = scenes.map((item, index) => {
     const thought = `${item.scene.thought} ${THOUGHT_EXTENDERS[index % THOUGHT_EXTENDERS.length]}`;
     assertCopy("thought", thought, THOUGHT_MIN_WORDS, THOUGHT_MAX_WORDS, THOUGHT_MIN_CHARS, THOUGHT_MAX_CHARS);
-    const results = resultsFor(item.scene.core, index);
+    const results = resultsFor(item.scene.core, index, item.category);
     for (const result of results) {
       assertCopy(
         `${result.style} reframe`,
@@ -604,7 +646,7 @@ export function buildCommunityFixture(): CommunityFixture {
       timeframe: TIMEFRAMES[index % TIMEFRAMES.length]!,
       emotions,
       results,
-      spotlightStyle: STYLES[index % STYLES.length]!,
+      spotlightStyle: results[index % results.length]!.style,
     };
     if (original) {
       post.thoughtOriginal = original.thoughtOriginal;

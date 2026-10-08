@@ -9,7 +9,6 @@ import {
   type Emotion,
 } from "./types/index.js";
 import { DEV_USER_ID } from "./lib/authStub.js";
-import { LEGACY_STYLES } from "./lib/styleSet.js";
 import {
   REFRAME_MAX_CHARS,
   REFRAME_MAX_WORDS,
@@ -62,7 +61,14 @@ describe("community fixture", () => {
       expect(wordCount(post.thought)).toBeLessThanOrEqual(THOUGHT_MAX_WORDS);
       expect(post.thought.length).toBeGreaterThanOrEqual(THOUGHT_MIN_CHARS);
       expect(post.thought.length).toBeLessThanOrEqual(THOUGHT_MAX_CHARS);
-      expect(post.results.map((item) => item.style)).toEqual([...LEGACY_STYLES]);
+      const styles = post.results.map((item) => item.style);
+      expect(new Set(styles).size).toBe(4);
+      expect(styles.every((style) => (STYLES as readonly string[]).includes(style))).toBe(true);
+      expect(styles).toContain(post.spotlightStyle);
+      if (post.category === "grief_loss") {
+        expect(styles).not.toContain("humorous");
+        expect(styles).not.toContain("tough_love");
+      }
       const reframes = new Set(post.results.map((item) => item.reframe));
       expect(reframes.size).toBe(4);
       for (const result of post.results) {

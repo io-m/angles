@@ -116,7 +116,9 @@ struct AppRoot: View {
                             viewModel: viewModel,
                             onOpenAuthor: openAuthor
                         )
-                        .navigationBarBackButtonHidden(true)
+                        // The header chevron is the visible back and the bar stays hidden. The
+                        // back button is no longer hidden, so the system edge swipe pops the page
+                        // (InteractivePop.swift keeps it alive under the hidden bar).
                     }
                 }
                 .toolbar(.hidden, for: .navigationBar)

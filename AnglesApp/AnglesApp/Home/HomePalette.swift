@@ -118,7 +118,7 @@ struct CardStyleAppearance {
                 dark: UIColor(red: 1.0, green: 0.88, blue: 0.94, alpha: 1)
             )
         case .values:
-            systemImage = "shield.lefthalf.filled"
+            systemImage = "safari.fill"
             ink = Color.adaptive(
                 light: UIColor(red: 0.48, green: 0.26, blue: 0.82, alpha: 1),
                 dark: UIColor(red: 0.72, green: 0.58, blue: 1.0, alpha: 1)

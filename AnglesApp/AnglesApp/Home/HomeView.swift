@@ -368,7 +368,9 @@ struct HomeFeedPager<Chrome: View>: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollTargetBehavior(.paging)
-                .scrollDisabled(isScrollDisabled)
+                // Styles are picked from the menu, never by dragging sideways. The pages'
+                // own vertical lists set `scrollDisabled` themselves, so this stays here.
+                .scrollDisabled(true)
                 .coordinateSpace(name: pagerSpace)
                 .modifier(
                     StyleTabPagerTracking(

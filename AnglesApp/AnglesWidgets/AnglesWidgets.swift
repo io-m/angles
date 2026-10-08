@@ -176,7 +176,7 @@ private struct FavoriteAngleView: View {
         case "humorous": return "face.smiling.fill"
         case "tough_love": return "flame.fill"
         case "tender": return "hands.and.sparkles.fill"
-        case "values": return "shield.lefthalf.filled"
+        case "values": return "safari.fill"
         default: return "mountain.2.fill"
         }
     }

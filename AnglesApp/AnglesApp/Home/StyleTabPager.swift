@@ -1,5 +1,6 @@
 import Observation
 import SwiftUI
+import UIKit
 
 enum StyleTabMetrics {
     static let chipSpring = Animation.spring(response: 0.36, dampingFraction: 0.78)
@@ -257,7 +258,7 @@ struct StyleTabPagerTracking<T: StyleTabRepresentable>: ViewModifier {
 
 /// The style picker in a page header: a native single-select menu, plus a chip for any
 /// tab pinned outside it (Profile's Favorites). Six styles do not fit a row of chips on a
-/// narrow phone, so they live in the menu. Swiping the pager still moves between them.
+/// narrow phone, so they live in the menu. The pages no longer swipe sideways.
 struct AdaptiveStyleTabBar<T: StyleTabRepresentable>: View {
     let pagerState: StyleTabPagerState<T>
     let settledSelection: T
@@ -341,8 +342,12 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
         Menu {
             Picker(selection: selection) {
                 ForEach(tabs, id: \.self) { tab in
-                    Label(tab.title, systemImage: tab.systemImage)
-                        .tag(tab)
+                    Label {
+                        Text(tab.title)
+                    } icon: {
+                        rowIcon(for: tab)
+                    }
+                    .tag(tab)
                 }
             } label: {
                 Text("Style")
@@ -379,6 +384,24 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
         .sensoryFeedback(.selection, trigger: selectHaptic)
         .accessibilityLabel(isActive ? "Style: \(current.title)" : "Styles")
         .accessibilityHint("Opens the list of styles")
+    }
+
+    /// A native menu draws row icons as one template colour. A pre-tinted image keeps each
+    /// style's own colour; rows with no style (For you) stay a plain symbol.
+    private func rowIcon(for tab: T) -> Image {
+        guard let style = tab.matchingStyle else {
+            return Image(systemName: tab.systemImage)
+        }
+        let ink = UIColor(CardStyleAppearance(style: style).ink)
+            .resolvedColor(with: UITraitCollection(userInterfaceStyle: colorScheme == .dark ? .dark : .light))
+        let configuration = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+        guard
+            let symbol = UIImage(systemName: tab.systemImage, withConfiguration: configuration)?
+                .withTintColor(ink, renderingMode: .alwaysOriginal)
+        else {
+            return Image(systemName: tab.systemImage)
+        }
+        return Image(uiImage: symbol)
     }
 
     private var ink: Color {
