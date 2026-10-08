@@ -7,6 +7,7 @@ import {
   normalizeSafety,
   parseDecision,
   runDecision,
+  solemnSkipFor,
 } from "./decision.js";
 import { generateJson, LlmError } from "./llmClient.js";
 import { SAFETY_FALLBACK_MESSAGE } from "./prompts.js";
@@ -27,6 +28,7 @@ function raw(overrides: Record<string, unknown> = {}): string {
     thought_original_cleaned: null,
     styles: ["stoic", "optimistic", "humorous", "tough_love"],
     skipped_styles: [],
+    solemn: false,
     category: "work",
     proposed_category: null,
     proposed_label: null,
@@ -348,6 +350,96 @@ describe("runDecision safety screen", () => {
     await expect(run("This deadline is killing me, I have three reports due")).rejects.toThrow(
       LlmError,
     );
+  });
+});
+
+describe("solemn", () => {
+  beforeEach(() => {
+    vi.mocked(generateJson).mockReset();
+  });
+
+  const ready = (decision: Awaited<ReturnType<typeof runDecision>>) => {
+    if (decision.kind !== "ready") {
+      throw new Error("expected ready");
+    }
+    return decision;
+  };
+
+  it("reads a missing or non-false solemn as solemn", () => {
+    for (const solemn of [undefined, null, "false", 0, true]) {
+      const decision = ready(parseDecision(raw({ solemn })));
+      expect(decision.solemn).toBe(true);
+      expect(decision.styles).toEqual(["stoic", "optimistic"]);
+      expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    }
+  });
+
+  it("writes every style only on an explicit false", () => {
+    const decision = ready(parseDecision(raw({ solemn: false })));
+    expect(decision.solemn).toBe(false);
+    expect(decision.styles).toEqual(["stoic", "optimistic", "humorous", "tough_love"]);
+  });
+
+  it("treats every loss as solemn whatever the model said", () => {
+    const decision = ready(parseDecision(raw({ solemn: false, category: "grief_loss" })));
+    expect(decision.styles).toEqual(["stoic", "optimistic"]);
+  });
+
+  it("replaces the model's own skip reasons with ours", () => {
+    const decision = ready(
+      parseDecision(raw({ solemn: true, skipped_styles: [{ style: "humorous", reason: "lol no" }] })),
+    );
+    expect(decision.meta.skippedStyles.find((item) => item.style === "humorous")?.reason).toMatch(/grave/);
+  });
+
+  it("overrides a model that called civilian bombing fine to joke about", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(
+      raw({ thought_en: "I am deeply concerned about Russian bombing of civilians in Ukraine.", category: "other" }),
+    );
+    const decision = ready(
+      await runDecision({
+        text: "I am deeply concerned about Russian bombing of civilians in Ukraine",
+        followUps: [],
+        forceReady: false,
+      }),
+    );
+    expect(decision.solemn).toBe(true);
+    expect(decision.styles).not.toContain("humorous");
+    expect(decision.styles).not.toContain("tough_love");
+  });
+
+  it("screens the cleaned English thought of a thought in another language", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(
+      raw({ thought_en: "My sister was diagnosed with stage 4 cancer and I'm terrified.", input_language: "hr" }),
+    );
+    const decision = ready(
+      await runDecision({ text: "Sestri su dijagnosticirali rak četvrtog stadija", followUps: [], forceReady: false }),
+    );
+    expect(decision.styles).toEqual(["stoic", "optimistic"]);
+  });
+
+  it("keeps the joke on an idiom", async () => {
+    vi.mocked(generateJson).mockResolvedValueOnce(raw());
+    const decision = ready(
+      await runDecision({ text: "I totally bombed my job interview today", followUps: [], forceReady: false }),
+    );
+    expect(decision.styles).toContain("humorous");
+  });
+});
+
+describe("solemnSkipFor", () => {
+  const cook = (thought: string, category: "work" | "grief_loss" = "work") => ({ thought, meta: { category } });
+
+  it("refuses a joke or a push on a signed grave thought", () => {
+    const grave = cook("I am deeply concerned about Russian bombing of civilians in Ukraine.");
+    expect(solemnSkipFor("humorous", grave)?.reason).toMatch(/joke/);
+    expect(solemnSkipFor("tough_love", grave)?.reason).toMatch(/push/);
+    expect(solemnSkipFor("stoic", grave)).toBeUndefined();
+    expect(solemnSkipFor("humorous", cook("It has been a year.", "grief_loss"))).toBeDefined();
+  });
+
+  it("allows them on an ordinary thought", () => {
+    expect(solemnSkipFor("humorous", cook("I bombed my interview and keep replaying it."))).toBeUndefined();
   });
 });
 

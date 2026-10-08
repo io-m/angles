@@ -22,6 +22,7 @@
     "db:seed-realistic": "tsx src/scripts/seedCommunityRealistic.ts",
     "db:seed-live-cooks": "tsx src/scripts/seedLiveCooks.ts",
     "db:feed-audit": "tsx src/scripts/feedAudit.ts",
+    "db:grave-humor": "tsx src/scripts/graveHumor.ts",
     "reports": "tsx src/scripts/reports.ts",
     "demo:session": "tsx src/scripts/demoSession.ts",
     "llm:eval": "tsx src/scripts/llmEval.ts"

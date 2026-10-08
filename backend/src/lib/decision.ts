@@ -35,8 +35,9 @@ import {
   DECISION_FORCE_READY,
   DECISION_PROMPT,
   DECISION_REPAIR_PROMPT,
+  GRAVE_HUMOR_SKIP_REASON,
+  GRAVE_TOUGH_LOVE_SKIP_REASON,
   SAFETY_FALLBACK_MESSAGE,
-  SELF_BLAME_LOSS_SKIP_REASON,
   THOUGHT_HARD_MAX_CHARS,
   THOUGHT_HARD_MAX_WORDS,
   THOUGHT_MAX_CHARS,
@@ -45,6 +46,7 @@ import {
   THOUGHT_REPAIR_MAX_CHARS,
   THOUGHT_REPAIR_MAX_WORDS,
 } from "./prompts.js";
+import { screensAsGrave } from "./graveScreen.js";
 import { screensAsSelfHarm } from "./safetyScreen.js";
 import { slugify, titleCase, normalizeTagSlugs } from "./slugs.js";
 
@@ -61,6 +63,8 @@ export type ReadyDecision = {
   thought: string;
   thoughtOriginal?: string;
   styles: Style[];
+  /** Real harm to people: no joke and no push. Never on the wire; `meta.skippedStyles` carries it. */
+  solemn: boolean;
   meta: ReframeMeta;
 };
 
@@ -102,6 +106,7 @@ export const DECISION_JSON_SCHEMA: JsonSchema = {
       "thought_original_cleaned",
       "styles",
       "skipped_styles",
+      "solemn",
       "category",
       "proposed_category",
       "proposed_label",
@@ -132,6 +137,7 @@ export const DECISION_JSON_SCHEMA: JsonSchema = {
           },
         },
       },
+      solemn: { type: "boolean" },
       category: nullable({ type: "string", enum: [...CATEGORIES] }),
       proposed_category: nullable({ type: "string" }),
       proposed_label: nullable({ type: "string" }),
@@ -163,6 +169,8 @@ const rawDecisionSchema = z.object({
   thought_original_cleaned: z.string().max(4000).nullish(),
   styles: z.array(z.string().max(32)).nullish(),
   skipped_styles: z.array(skippedStyleSchema).nullish(),
+  // Anything but an explicit `false` reads as solemn, so it is not validated here.
+  solemn: z.unknown().optional(),
   category: z.string().max(64).nullish(),
   proposed_category: z.string().max(64).nullish(),
   proposed_label: z.string().max(64).nullish(),
@@ -384,16 +392,59 @@ function normalizeSkipped(values: readonly SkippedStyle[] | null | undefined): S
   return skipped;
 }
 
+/** Never written for a thought about real harm to people. */
+export const SOLEMN_BLOCKED_STYLES: readonly Style[] = ["humorous", "tough_love"];
+
+const SOLEMN_SKIP_REASONS: Partial<Record<Style, string>> = {
+  humorous: GRAVE_HUMOR_SKIP_REASON,
+  tough_love: GRAVE_TOUGH_LOVE_SKIP_REASON,
+};
+
+type StyleChoice = { styles: Style[]; skippedStyles: SkippedStyle[] };
+
+/**
+ * Removes the voices a solemn thought never gets and records our own reason for each,
+ * whatever the model wrote, so a later "New answer" on them is refused too.
+ */
+function withoutSolemnBlocked(styles: readonly Style[], skippedStyles: readonly SkippedStyle[]): StyleChoice {
+  const allowed = styles.filter((style) => !SOLEMN_BLOCKED_STYLES.includes(style));
+  return {
+    styles: allowed.length > 0 ? allowed : STYLES.filter((style) => !SOLEMN_BLOCKED_STYLES.includes(style)),
+    skippedStyles: [
+      ...skippedStyles.filter((item) => !SOLEMN_BLOCKED_STYLES.includes(item.style)),
+      ...SOLEMN_BLOCKED_STYLES.map((style) => ({ style, reason: SOLEMN_SKIP_REASONS[style] ?? GRAVE_HUMOR_SKIP_REASON })),
+    ],
+  };
+}
+
+/**
+ * Why a "New answer" in this style is refused for a signed cook about real harm, or
+ * nothing. Covers cooks signed before solemn existed, whose skipped list lacks it.
+ */
+export function solemnSkipFor(
+  style: Style,
+  cook: { thought: string; thoughtOriginal?: string; meta: Pick<ReframeMeta, "category"> },
+): SkippedStyle | undefined {
+  const reason = SOLEMN_SKIP_REASONS[style];
+  if (!reason) {
+    return undefined;
+  }
+  const grave = cook.meta.category === "grief_loss" || screensAsGrave([cook.thought, cook.thoughtOriginal]);
+  return grave ? { style, reason } : undefined;
+}
+
+/** The same ready decision, made solemn after the fact by a screen or the output guard. */
+export function asSolemn(decision: ReadyDecision): ReadyDecision {
+  const { styles, skippedStyles } = withoutSolemnBlocked(decision.styles, decision.meta.skippedStyles);
+  return { ...decision, solemn: true, styles, meta: { ...decision.meta, skippedStyles } };
+}
+
 /**
  * A style the model both chose and skipped counts as skipped. Stoic and optimistic
- * are written even if the model tried to skip them. Tough love is held back from
- * someone blaming themselves for a loss even when the model wrote it in.
+ * are written even if the model tried to skip them. A solemn thought never gets
+ * humorous or tough love, even when the model wrote them in.
  */
-function chooseStyles(
-  requested: Style[],
-  skipped: SkippedStyle[],
-  selfBlameLoss: boolean,
-): { styles: Style[]; skippedStyles: SkippedStyle[] } {
+function chooseStyles(requested: Style[], skipped: SkippedStyle[], solemn: boolean): StyleChoice {
   let skippedStyles = skipped.filter((item) => item.style !== "stoic" && item.style !== "optimistic");
   const base =
     requested.length > 0 ? requested : STYLES.filter((style) => !skipped.some((item) => item.style === style));
@@ -413,14 +464,7 @@ function chooseStyles(
     skippedStyles = skipped.filter((item) => !base.includes(item.style));
   }
 
-  if (selfBlameLoss && styles.includes("tough_love") && styles.length > 1) {
-    styles = styles.filter((style) => style !== "tough_love");
-    skippedStyles = [
-      ...skippedStyles.filter((item) => item.style !== "tough_love"),
-      { style: "tough_love", reason: SELF_BLAME_LOSS_SKIP_REASON },
-    ];
-  }
-  return { styles, skippedStyles };
+  return solemn ? withoutSolemnBlocked(styles, skippedStyles) : { styles, skippedStyles };
 }
 
 export function parseDecision(raw: string, options: ParseOptions = {}): Decision {
@@ -470,10 +514,12 @@ export function parseDecision(raw: string, options: ParseOptions = {}): Decision
 
   const { category, proposedCategory, proposedLabel } = normalizeCategory(value.category);
   const distortions = normalizeDistortions(value.distortions);
+  // Fails closed: only an explicit `false` allows a joke or a push. A loss is always solemn.
+  const solemn = value.solemn !== false || category === "grief_loss";
   const { styles, skippedStyles } = chooseStyles(
     normalizeStyles(value.styles),
     normalizeSkipped(value.skipped_styles),
-    category === "grief_loss" && distortions.includes("personalizing"),
+    solemn,
   );
   if (styles.length === 0) {
     throw new DecisionParseError("ready decision chose no styles");
@@ -518,6 +564,7 @@ export function parseDecision(raw: string, options: ParseOptions = {}): Decision
     thought,
     thoughtOriginal: original && original !== thought ? original : undefined,
     styles,
+    solemn,
     meta,
   };
 }
@@ -559,10 +606,22 @@ function applySafetyScreen(decision: Decision, screened: boolean): Decision {
   return screened || screensAsSelfHarm(cleaned) ? screenedContinue(decision.meta.inputLanguage) : decision;
 }
 
+/**
+ * The grave screen wins over a model that marked real harm as fine to joke about. The
+ * cleaned English thought is screened too, which covers every other input language.
+ */
+function applyGraveScreen(decision: Decision, grave: boolean): Decision {
+  if (decision.kind === "continue" || decision.solemn) {
+    return decision;
+  }
+  return grave || screensAsGrave([decision.thought, decision.thoughtOriginal]) ? asSolemn(decision) : decision;
+}
+
 export async function runDecision(input: RunDecisionInput): Promise<Decision> {
-  const screened = screensAsSelfHarm([input.text, ...input.followUps.map((item) => item.answer)]);
+  const ownWords = [input.text, ...input.followUps.map((item) => item.answer)];
+  const screened = screensAsSelfHarm(ownWords);
   try {
-    return applySafetyScreen(await decide(input), screened);
+    return applyGraveScreen(applySafetyScreen(await decide(input), screened), screensAsGrave(ownWords));
   } catch (error) {
     // A thought the screen caught still gets crisis help when the model fails.
     if (screened && error instanceof LlmError) {

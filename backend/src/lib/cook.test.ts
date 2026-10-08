@@ -4,6 +4,7 @@ import {
   recookStyle,
   REWRITE_MIN_REMAINING_MS,
   rewriteFlagged,
+  withoutGraveJokes,
   writeStyleBatch,
   writerMaxOutputTokens,
 } from "./cook.js";
@@ -19,6 +20,7 @@ const decision: ReadyDecision = {
   kind: "ready",
   thought: "I bombed my interview and I keep replaying every shaky answer.",
   styles: ["stoic", "optimistic"],
+  solemn: false,
   meta: {
     category: "work",
     tags: ["job_interview"],
@@ -206,5 +208,37 @@ describe("answers in their language", () => {
     expect(call?.text).toContain("They wrote in Croatian.");
     expect(result).toEqual({ style: "stoic", reframe: fresh, reframeOriginal: freshHr });
     expect(generateReframe).not.toHaveBeenCalled();
+  });
+});
+
+describe("withoutGraveJokes", () => {
+  const ordinary: ReadyDecision = {
+    ...decision,
+    thought: "I keep worrying about the news and I can't focus at work.",
+    styles: ["stoic", "optimistic", "humorous", "tough_love"],
+  };
+  const push: ReframeResult = { style: "tough_love", reframe: "Close the tab and do one task." };
+
+  it("drops a joke that names real harm, and the push with it, and makes the cook solemn", () => {
+    const joke: ReframeResult = {
+      style: "humorous",
+      reframe: "Your brain set the soundtrack: heavy drums and a chorus of air raid sirens. Next: an urge to bake pierogi.",
+    };
+    const guarded = withoutGraveJokes(ordinary, [clean, cliched, joke, push]);
+
+    expect(guarded.results.map((result) => result.style)).toEqual(["stoic", "optimistic"]);
+    expect(guarded.decision.solemn).toBe(true);
+    expect(guarded.decision.styles).toEqual(["stoic", "optimistic"]);
+    expect(guarded.decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+  });
+
+  it("keeps an ordinary joke", () => {
+    const joke: ReframeResult = {
+      style: "humorous",
+      reframe: "Your brain filed three hours of silence as a unanimous vote. Someone is just in the shower.",
+    };
+    const guarded = withoutGraveJokes(ordinary, [clean, cliched, joke, push]);
+    expect(guarded.results).toHaveLength(4);
+    expect(guarded.decision).toBe(ordinary);
   });
 });

@@ -4,7 +4,8 @@
  */
 
 import type { FollowUpAnswer, ReframeResult, SafetyFlag, Style } from "../types/index.js";
-import { runDecision, type ReadyDecision } from "./decision.js";
+import { asSolemn, runDecision, type ReadyDecision } from "./decision.js";
+import { screensAsGrave } from "./graveScreen.js";
 import {
   generateJson,
   generateReframe,
@@ -506,6 +507,35 @@ export function uniqueStyles(styles: readonly Style[]): Style[] {
   return unique;
 }
 
+/**
+ * A joke that itself names real harm proves the thought was grave and both checks
+ * missed it. The cook turns solemn: the joke and any push are dropped, never rewritten.
+ */
+export function withoutGraveJokes(
+  decision: ReadyDecision,
+  results: ReframeResult[],
+): { decision: ReadyDecision; results: ReframeResult[] } {
+  const joke = results.find((result) => result.style === "humorous");
+  if (decision.solemn || !joke || !screensAsGrave([joke.reframe, joke.reframeOriginal])) {
+    return { decision, results };
+  }
+  const solemn = asSolemn(decision);
+  const kept = results.filter((result) => solemn.styles.includes(result.style));
+  if (kept.length === 0) {
+    throw new LlmError("Every answer was dropped on a grave thought");
+  }
+  return { decision: { ...solemn, styles: kept.map((result) => result.style) }, results: kept };
+}
+
+/** Every style a ready decision chose, written and guarded. The decision may come back solemn. */
+export async function writeCook(
+  decision: ReadyDecision,
+  options: CookCallOptions,
+): Promise<{ decision: ReadyDecision; results: ReframeResult[] }> {
+  const results = await writeStyleBatch(decision, uniqueStyles(decision.styles), options);
+  return withoutGraveJokes(decision, results);
+}
+
 /** A full cook: the decision, then every style it chose in one batch. `model` is the writer. */
 export async function runCook(
   input: { text: string; followUps: FollowUpAnswer[]; decisionModel?: LlmModelId } & CookCallOptions,
@@ -528,6 +558,5 @@ export async function runCook(
       safety: decision.safety,
     };
   }
-  const results = await writeStyleBatch(decision, uniqueStyles(decision.styles), input);
-  return { kind: "ready", decision, results };
+  return { kind: "ready", ...(await writeCook(decision, input)) };
 }

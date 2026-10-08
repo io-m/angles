@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DECISION_PROMPT, STYLE_BATCH_PROMPT, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
+import { DECISION_PROMPT, GRAVE_HUMOR_SKIP_REASON, GRAVE_TOUGH_LOVE_SKIP_REASON, STYLE_BATCH_PROMPT, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
 import { signCook, signResult, verifyCook, type SignableMeta } from "./lib/cookSignature.js";
 import { CATEGORIES, STYLES, type Style } from "./types/index.js";
 
@@ -100,6 +100,7 @@ function readyDecision(overrides: DecisionOverrides = {}): string {
     thought_original_cleaned: null,
     styles: [...STYLES],
     skipped_styles: [],
+    solemn: false,
     category: "work",
     proposed_category: null,
     proposed_label: null,
@@ -122,6 +123,7 @@ function continueDecision(overrides: DecisionOverrides = {}): string {
     thought_original_cleaned: null,
     styles: [],
     skipped_styles: [],
+    solemn: false,
     category: null,
     proposed_category: null,
     proposed_label: null,
@@ -598,7 +600,7 @@ describe("POST /reframe", () => {
     expect(body.meta.inputLanguage).toBe("hr");
   });
 
-  it("skips humorous on grief and reports why", async () => {
+  it("never writes a joke or a push on grief, and reports why", async () => {
     stubDecision(
       readyDecision({
         thought_en: "My mother died last week and the house is unbearably quiet.",
@@ -615,12 +617,37 @@ describe("POST /reframe", () => {
 
     const body = (await jsonOf(await post({ text: "my mum died last week" }))) as ReadyBody;
 
-    expect(body.results.map((item) => item.style)).toEqual(["stoic", "optimistic", "tough_love"]);
+    expect(body.results.map((item) => item.style)).toEqual(["stoic", "optimistic"]);
     expect(body.meta.skippedStyles).toEqual([
-      { style: "humorous", reason: "A joke would land wrong on a loss this fresh." },
+      { style: "humorous", reason: GRAVE_HUMOR_SKIP_REASON },
+      { style: "tough_love", reason: GRAVE_TOUGH_LOVE_SKIP_REASON },
     ]);
     expect(generateJson).toHaveBeenCalledTimes(2);
     expect(generateReframe).not.toHaveBeenCalled();
+  });
+
+  it("drops a written joke that names real harm before signing the cook", async () => {
+    stubDecision(readyDecision({ thought_en: "I keep worrying about the news and can't focus at work." }));
+    stubStyleBatch(
+      styleBatch({
+        humorous: "Your brain set the soundtrack: heavy drums and a chorus of air raid sirens, then a sudden urge to bake.",
+      }),
+    );
+
+    const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+
+    expect(body.results.map((item) => item.style)).toEqual(["stoic", "optimistic"]);
+    expect(body.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    expect(
+      verifyCook({
+        ownerId: DEV_USER_ID,
+        thought: body.thought,
+        model: body.model,
+        meta: (({ matching: _matching, ...rest }) => rest)(body.meta) as SignableMeta,
+        signature: body.signature,
+        results: [],
+      }),
+    ).toBe(true);
   });
 
   it("keeps category inside the closed set", async () => {
@@ -778,6 +805,27 @@ describe("POST /reframe", () => {
         safety: "none",
       });
       expect(body.usage.creditsUsed).toBe(0);
+      expect(generateJson).not.toHaveBeenCalled();
+      expect(generateReframe).not.toHaveBeenCalled();
+    });
+
+    it("refuses a joke or a push on a grave cook signed before solemn existed", async () => {
+      const ordinary = await signedCook();
+      const thought = "I am deeply concerned about Russian bombing of civilians in Ukraine.";
+      const signature = signCook({
+        ownerId: DEV_USER_ID,
+        thought,
+        model: ordinary.model,
+        meta: (({ matching: _matching, ...rest }) => rest)(ordinary.meta) as SignableMeta,
+      });
+      const grave = { ...ordinary, thought, signature, results: [] };
+
+      for (const style of ["humorous", "tough_love"] as const) {
+        const body = (await jsonOf(await post(recookOf(grave, style)))) as ContinueBody;
+        expect(body).toMatchObject({ kind: "continue", options: [], safety: "none" });
+        expect(body.message).toMatch(/grave/);
+        expect(body.usage.creditsUsed).toBe(0);
+      }
       expect(generateJson).not.toHaveBeenCalled();
       expect(generateReframe).not.toHaveBeenCalled();
     });

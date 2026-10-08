@@ -13,17 +13,11 @@ import {
   type StartedMeterOperation,
 } from "../db/metering.js";
 import { getOwnerUserId, requireAuth } from "../lib/authStub.js";
-import {
-  FORCE_READY_AFTER,
-  recookStyle,
-  uniqueStyles,
-  writeStyleBatch,
-  type CookCallOptions,
-} from "../lib/cook.js";
+import { FORCE_READY_AFTER, recookStyle, writeCook, type CookCallOptions } from "../lib/cook.js";
 import { signedMetaSchema } from "../lib/cookSchema.js";
 import { signCook, signResult, verifyCook } from "../lib/cookSignature.js";
 import { crisisMessage, crisisResourceLine } from "../lib/crisisResources.js";
-import { runDecision } from "../lib/decision.js";
+import { runDecision, solemnSkipFor } from "../lib/decision.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import {
   COOK_DEADLINE_MS,
@@ -312,7 +306,8 @@ reframeRoute.post(
       if (recook) {
         const { cook, style, previous } = recook;
         // A style the cook held back gets its reason, with no model call and no charge.
-        const skipped = cook.meta.skippedStyles.find((item) => item.style === style);
+        const skipped =
+          cook.meta.skippedStyles.find((item) => item.style === style) ?? solemnSkipFor(style, cook);
         if (skipped) {
           const payload = continueBody({ message: skipped.reason, options: [], safety: "none" }, validated.region);
           return c.json(await finish(payload, "continue"));
@@ -346,7 +341,7 @@ reframeRoute.post(
       if (text === undefined) {
         throw new LlmError("compose turn without text");
       }
-      const decision = await runDecision({
+      const decided = await runDecision({
         text,
         followUps,
         model: decisionModels.primary,
@@ -357,11 +352,12 @@ reframeRoute.post(
         ...meteredCallOptions,
       });
 
-      if (decision.kind === "continue") {
-        return c.json(await finish(continueBody(decision, validated.region), "continue"));
+      if (decided.kind === "continue") {
+        return c.json(await finish(continueBody(decided, validated.region), "continue"));
       }
 
-      const results = await writeStyleBatch(decision, uniqueStyles(decision.styles), options);
+      // The guard can turn the decision solemn, so the signed meta comes from its result.
+      const { decision, results } = await writeCook(decided, options);
       const payload: ReframePayload = {
         kind: "ready",
         thought: decision.thought,

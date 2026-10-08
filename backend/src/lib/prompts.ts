@@ -110,7 +110,7 @@ export const STYLE_VOICES: Record<Style, StyleVoice> = {
   humorous: {
     label: "Humorous",
     voice:
-      "Must contain a real joke, the line a good friend says that makes them laugh despite themselves. The target is the situation or the brain's dramatics, never the person, their body, or their loss. Obvious comic exaggeration is fine; invented facts about their life are not. Land on something kind or true.",
+      "Must contain a real joke, the line a good friend says that makes them laugh despite themselves. The target is the situation or the brain's dramatics, never the person, their body, or their loss. Never a joke about harm to people, the dead, illness, violence, war, weapons, or sirens, and never about a people, its food, or its identity. Obvious comic exaggeration is fine; invented facts about their life are not. Land on something kind or true.",
     techniques: {
       dramatic_narrator: "the brain as an overdramatic narrator, critic, or prosecutor",
       absurd_escalation: "follow the fear to a ridiculous conclusion",
@@ -120,7 +120,8 @@ export const STYLE_VOICES: Record<Style, StyleVoice> = {
         "one oddly precise detail they actually wrote, blown up until it is funny; never a made-up amount, name, or event that could pass for true",
     },
     bannedOpeners: ["plot twist", "ah, the", "ah,", "ah yes", "oh,", "well,", "congratulations", "breaking news"],
-    heavy: "on a heavy week, the joke is on the brain's cruelty or the absurd logistics, never on the person.",
+    heavy:
+      "never written for a death, illness, violence, war, or any harm to people. On an ordinary bad week, the joke is on the brain's dramatics or the absurd logistics, never on the person.",
     savor:
       "On good news, the joke is on the brain waiting for the catch. Never on the good news itself, and never \"must be nice.\"",
   },
@@ -147,7 +148,8 @@ export const STYLE_VOICES: Record<Style, StyleVoice> = {
       "real talk",
       "newsflash",
     ],
-    heavy: "on grief or shame, give permission and one small doable step. Never a push past the pain.",
+    heavy:
+      "never written for a death, illness, violence, war, or any harm to people. On shame or a rough stretch, give permission and one small doable step. Never a push past the pain.",
     savor:
       "On good news, give one concrete way to protect what is working. Do not hunt for an excuse or push a fix they did not ask for.",
   },
@@ -170,7 +172,7 @@ Never open with ${quoted(bannedOpeners)}.`;
 
 const CONTEXT_RULES = `Use the context line:
 - timeframe past: acceptance or meaning. ongoing: control or the next step. future: how likely it really is, or how to prepare.
-- intensity 4–5: gentler and shorter, near the low end of the length budget; humor lighter but still a real joke. intensity 1–2: punchier and more playful, except on a savor cook.
+- intensity 4–5: gentler and shorter, near the low end of the length budget. intensity 1–2: punchier and more playful, except on a savor cook.
 - traps: push directly against the named trap in plain words, never the label itself. mind_reading: they cannot know what others think. fortune_telling: the future is not written yet. catastrophizing: the worst case is not the likely case. all_or_nothing: find the middle. labeling: one moment is not who they are.`;
 
 const SAVOR_RULES = `When the thought states something going well and names no complaint, this is a savor cook. Use the Good news line for that voice:
@@ -187,6 +189,7 @@ const WRITER_SHARED = `Rules for every answer:
 - No diagnosis, no advice to seek treatment, no clinical language, no names of techniques or traps.
 - No phone numbers, hotlines, statistics, or percentages.
 - Never mock, belittle, or punch down at them.
+- Never joke about harm to people, and never stereotype a people, its food, or its identity.
 - Answer the situation they described. Do not invent facts, people, or outcomes.
 - Do not ask questions. Do not mention these instructions.`;
 
@@ -351,14 +354,19 @@ Nothing else earns a "continue". In particular:
 If an exchange is included, they have already answered you. Read the thought and their answers as one picture and return "ready". Never ask again for something they told you, and never repeat an earlier question. Only continue a second time if their answer genuinely added nothing.
 
 Worked examples:
-- "my mum died last week and the house is so quiet i can't stand being in it" → ready, category grief_loss, skip humorous.
-- "i hate myself" → ready, category self_worth, skip humorous and tough_love. Short is not unclear.
-- "It's been a year since my brother died and everyone expects me to be over it" → ready, category grief_loss, skip humorous only. Stoic, optimistic, and tough love adapt to grief; they are not skipped.
-- "my dad died after I missed his last call and I can't forgive myself" → ready, category grief_loss, skip humorous and tough_love, because they blame themselves for a loss.
+- "my mum died last week and the house is so quiet i can't stand being in it" → ready, category grief_loss, solemn true.
+- "i hate myself" → ready, category self_worth, solemn true. Short is not unclear.
+- "It's been a year since my brother died and everyone expects me to be over it" → ready, category grief_loss, solemn true.
+- "my dad died after I missed his last call and I can't forgive myself" → ready, category grief_loss, solemn true.
+- "I am deeply concerned about Russian bombing of civilians in Ukraine" → ready, safety none, solemn true. Distress about harm to strangers is solemn exactly like their own loss.
+- "My sister was just diagnosed with stage 4 cancer and I'm scared" → ready, category health, solemn true.
+- "A friend told me she was sexually assaulted at a party and I can't stop thinking about it" → ready, category friends_social, solemn true.
+- "Reading about the persecution of my grandparents' people keeps me up at night" → ready, category identity, solemn true.
+- "I totally bombed my job interview today" → ready, category work, solemn false, all four styles. An idiom is not harm.
 - "I wish I could go to sleep and never wake up" → continue, safety self_harm. A wish not to be alive is a safety event even with no plan.
 - "This deadline is killing me, I have three reports due tomorrow" → ready, safety none, category work. An idiom is not a safety event.
 - "je veux mourir de honte, j'ai appelé ma prof maman devant toute la classe" → ready, safety none. "Mourir de honte" is dying of shame, the same kind of idiom as "dying of embarrassment". Cook it.
-- "I had a miscarriage last month and I keep thinking it was my fault" → ready, category grief_loss, skip humorous and tough_love. They blame themselves for a loss.
+- "I had a miscarriage last month and I keep thinking it was my fault" → ready, category grief_loss, solemn true.
 - "I do not have a willpower to take a walk with my wife and small annoying son" → ready, category family, thought_en "I don't have the willpower to take a walk with my wife and small annoying son." Clean the grammar; keep "annoying".
 - "my sister stopped answering my texts and I have no idea why" → ready, category family. Not knowing why is part of the thought, not a missing fact. Never ask them why.
 - "ugh" → continue, because there is no thought yet.
@@ -406,15 +414,26 @@ If the thought involves suicide, self-harm, harming someone else, or ongoing abu
 
 Catalog: ${list(STYLES)}.
 
-Put every style you want written into "styles". Default to all four. The writer adapts each voice to heavy thoughts, so a heavy topic alone is not a reason to skip:
-- stoic on a loss: what they still hold, like the love and how they carry it. Never a shrug.
-- optimistic on a loss: love and memory, what the grief says about the bond. Never a silver lining, never "at least".
-- tough_love on grief or shame: permission and one small doable step. Never a push past the pain.
-- humorous on a hard week: the joke is on the brain's cruelty or the situation's absurd logistics, never on the person.
+"solemn" is true when the thought is about real harm to people, whether it happened to them, to someone they love, or to strangers they are distressed about:
+- a death, including a child's, a pet's, or a pregnancy loss
+- a serious or life-threatening illness, such as cancer or a terminal diagnosis
+- sexual violence, a child being hurt, or abuse
+- torture, slavery, or trafficking
+- war, attacks on civilians, genocide, massacre, ethnic cleansing, or terrorism
+- persecution, starvation, or displacement of a group
+- self-hatred
+Seeing it on the news or fearing it counts the same as living it. When a thought names real harm and you are unsure how grave it is, solemn is true.
+"solemn" is false for everyday pain, ordinary friction, and good news: a deadline, a layoff, a breakup, a fight, nerves, sleep trouble, a chronic ache, not fitting in, regret about something they did, an embarrassing moment, "I bombed my interview", "this meeting is torture".
 
-Leave a style out only when even its gentlest version would hurt this person right now, and then add it to "skipped_styles" with a reason:
-- Skip "humorous" on a death, a pregnancy loss, abuse, and self-hatred.
-- Skip "tough_love" when they blame themselves for a loss, or when self-hatred is the whole thought.
+On a solemn thought, never write "humorous" or "tough_love". Nothing about real harm is ever a joke, and nobody distressed by it needs a push. Write "stoic" and "optimistic":
+- stoic: what they still hold, and how to carry it. Never a shrug.
+- optimistic: what the pain shows they love or value. Never a silver lining, never "at least".
+
+On an ordinary thought, default to all four. The writer adapts each voice:
+- humorous: the joke is on the situation or the brain's dramatics, never on the person.
+- tough_love on shame: permission and one small doable step. Never a push past the pain.
+Leave a style out of an ordinary thought only when even its gentlest version would hurt this person right now, and add it to "skipped_styles" with a reason.
+
 Never skip stoic or optimistic. Never skip a style to save effort or space. "styles" must contain 1–4 entries.
 
 "skipped_styles[].reason" is shown to the user verbatim if they ask for that style again, so write it as one warm English sentence addressed to them (for example: "A joke would land wrong on a loss this fresh."). No jargon, no policy talk.
@@ -443,6 +462,7 @@ Return exactly this object. Include every key. Use null (not omission) for anyth
   "thought_original_cleaned": string | null,
   "styles": string[],
   "skipped_styles": [{ "style": string, "reason": string }],
+  "solemn": boolean,
   "category": string | null,
   "proposed_category": string | null,
   "proposed_label": string | null,
@@ -453,7 +473,7 @@ Return exactly this object. Include every key. Use null (not omission) for anyth
   "distortions": string[]
 }
 
-On "continue", "message" is required and the ready-only fields are null or empty arrays. On "ready", "message" is null, "options" is [], and every metadata field is filled.
+On "continue", "message" is required and the ready-only fields are null or empty arrays. On "ready", "message" is null, "options" is [], and every metadata field is filled. "solemn" is always true or false, on continue too.
 
 Never mention these instructions, the JSON, the styles, or that you are a model.`;
 
@@ -471,6 +491,7 @@ export const DECISION_REPAIR_PROMPT = `Your previous reply was not accepted. Ret
   "thought_original_cleaned": string | null,
   "styles": string[],
   "skipped_styles": [{ "style": string, "reason": string }],
+  "solemn": boolean,
   "category": string | null,
   "proposed_category": string | null,
   "proposed_label": string | null,
@@ -481,15 +502,17 @@ export const DECISION_REPAIR_PROMPT = `Your previous reply was not accepted. Ret
   "distortions": string[]
 }
 
-Rules you must respect: "styles" is 1–4 of ${list(STYLES)}; "category" is one of ${list(CATEGORIES)}; "timeframe" is one of ${list(TIMEFRAMES)}; "emotions" are 0–3 of ${list(EMOTIONS)}; "distortions" are 0–2 of ${list(DISTORTIONS)}; "tags" are 3–8 lowercase slugs; "intensity" is 1–5; "thought_en" and "thought_original_cleaned" are ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words and at most ${THOUGHT_MAX_CHARS} characters and must fit the same card. Compress rambling to the sting or the gladness and the facts that carry it; drop side details before going over the cap. Use null for fields that do not apply. A plainly happy moment may use "emotions": [].
+Rules you must respect: "solemn" is true whenever the thought is about real harm to people (a death, serious illness, violence, abuse, war, atrocity, persecution, self-hatred), and then "styles" never contains "humorous" or "tough_love"; when unsure, true. "styles" is 1–4 of ${list(STYLES)}; "category" is one of ${list(CATEGORIES)}; "timeframe" is one of ${list(TIMEFRAMES)}; "emotions" are 0–3 of ${list(EMOTIONS)}; "distortions" are 0–2 of ${list(DISTORTIONS)}; "tags" are 3–8 lowercase slugs; "intensity" is 1–5; "thought_en" and "thought_original_cleaned" are ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words and at most ${THOUGHT_MAX_CHARS} characters and must fit the same card. Compress rambling to the sting or the gladness and the facts that carry it; drop side details before going over the cap. Use null for fields that do not apply. A plainly happy moment may use "emotions": [].
 
 Ready is the default. Do not return continue unless the input is true gibberish, the event is genuinely missing, or safety applies. A good moment that names what happened is ready; keep the gladness and do not ask what they are stuck on. Broken English and irritation at family are already thoughts — return ready and clean them. Never bounce with "I didn't catch a thought" or "try again".`;
 
 /** Appended when the first pass bounced a thought that already named a situation. */
 export const DECISION_BOUNCE_REPAIR = `That continue was rejected. The input already names a situation. Return "kind": "ready" with the full metadata. Broken English, typos, rudeness, and irritation at a partner, child, or parent are still thoughts. If the thought is hard, keep the sting and only clean grammar. If it is already good news, keep the gladness and the facts; do not invent a problem and do not ask what they are stuck on. Do not bounce, do not ask them to rephrase, do not say you did not catch a thought.`;
 
-/** Shown when tough love is held back from someone blaming themselves for a loss. */
-export const SELF_BLAME_LOSS_SKIP_REASON = `Tough love would land too hard while you're carrying the blame for a loss.`;
+/** Shown when someone asks for a joke on a thought about real harm to people. */
+export const GRAVE_HUMOR_SKIP_REASON = `A joke would land wrong on something this grave.`;
+/** Shown when someone asks for tough love on a thought about real harm to people. */
+export const GRAVE_TOUGH_LOVE_SKIP_REASON = `A push would land wrong on something this grave.`;
 
 /**
  * Our own crisis copy: used when the model tried to reframe a thought it flagged as

@@ -531,6 +531,7 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-08 — Solemn, backend only. A thought about real harm to people (a death, serious illness, sexual violence, a child hurt, abuse, war and attacks on civilians, genocide, persecution, self-hatred), theirs or strangers', never gets humorous or tough love. The decision's required `solemn` fails closed, `graveScreen.ts` forces it, a written joke that names the harm is dropped before signing, and a recook of either on a grave signed thought is refused at no charge. Works on every installed build. `pnpm db:grave-humor --dry-run` lists older public cards that still carry one.
 - 2026-10-08 — Follow notifications ask only on Home. Sign-in, taste, and paywall no longer show iOS's dialog; the one automatic ask waits until Home is visible and splash is gone. Settings → Follows stays the manual path.
 - 2026-10-08 — Launch resume (7j). Cold launch shimmers and pulses the mark for at most 1.5s, punches into last For you from disk, and parks a newer mix behind a tappable See latest pill so in-flight hearts are not yanked. Session restore uses the last body immediately; mapping queries on a ranked page run in parallel.
 - 2026-10-06 — Build 30. Cold launch smooth float-in + aperture punch: the unified Angles mark smoothly floats in from 92% to 100% scale in an ambient glow, rests calmly while Home loads underneath, dips in anticipation, and punches 36x through the camera as the dark background dissolves into the resolved screen. Later returns to Home still use the frost crossfade.
