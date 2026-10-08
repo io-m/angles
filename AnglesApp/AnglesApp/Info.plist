@@ -4,6 +4,8 @@
 <dict>
 	<key>AnglesAPIBaseURL</key>
 	<string>$(ANGLES_API_BASE_URL)</string>
+	<key>AnglesAppStoreID</key>
+	<string>$(ANGLES_APP_STORE_ID)</string>
 	<key>AnglesPrivacyPolicyURL</key>
 	<string>$(ANGLES_PRIVACY_POLICY_URL)</string>
 	<key>AnglesSupportEmail</key>

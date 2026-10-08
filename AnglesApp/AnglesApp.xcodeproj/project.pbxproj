@@ -37,6 +37,7 @@
 		475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */; };
 		48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */; };
 		58A035A5DC5F50F8E711CA76 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B056E3708A9AE432904A684 /* SessionStore.swift */; };
+		5F9DE55921916F8DB11069B1 /* AppStoreReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE196A945D914407B9D5E204 /* AppStoreReviewTests.swift */; };
 		60F6C4C6A6EA7BCE18678424 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5CF2FAA5DE1D4F14A82CD8F2 /* Assets.xcassets */; };
 		6B24BAA80221DF85876BB30A /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EBC59EB491832949278518 /* APIClient.swift */; };
 		6F472A68899B089E43ED8A99 /* HomeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3BCFBFF2318D9F3BE56CB22 /* HomeFilterSheet.swift */; };
@@ -79,6 +80,7 @@
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
 		E85F482E086576383A6F83CB /* HomeFeedShelfTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */; };
 		E893FFE90BB36CD6A2D17F5C /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */; };
+		E90699FB7AC129D6439D9CC9 /* AppStoreReviewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E0CF5E6E50D343C47DF23D3 /* AppStoreReviewCoordinator.swift */; };
 		E92BDD00E9E6E12F499CEE70 /* WidgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D5F569663CAAFC626FF889 /* WidgetTests.swift */; };
 		EE449FD94B007E40F14F28AF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 74967E0B0593CCC6912B35AE /* PrivacyInfo.xcprivacy */; };
 		EE8E07A7F73337E8CA5259D1 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC7B9755403A895A57D2CB8D /* WidgetSnapshot.swift */; };
@@ -149,6 +151,7 @@
 		4C7366F06DED44B5C9EFBFDF /* BlockedPeopleSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedPeopleSheet.swift; sourceTree = "<group>"; };
 		4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
+		4E0CF5E6E50D343C47DF23D3 /* AppStoreReviewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreReviewCoordinator.swift; sourceTree = "<group>"; };
 		54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		551EA9251B494B0E82C36D47 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
 		564F37666F47FDFD54D03D2D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
@@ -196,6 +199,7 @@
 		E6FCF753D2258E381FAEC971 /* FavoriteAngleWidgetPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteAngleWidgetPublisher.swift; sourceTree = "<group>"; };
 		EAC3C2E3C735CDB1A8F28E87 /* ProfileIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileIdentityStore.swift; sourceTree = "<group>"; };
 		EC7B9755403A895A57D2CB8D /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
+		EE196A945D914407B9D5E204 /* AppStoreReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreReviewTests.swift; sourceTree = "<group>"; };
 		F0F4006AE6DACF0D19171814 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileService.swift; sourceTree = "<group>"; };
 		F2D55F6643C769B38928FD8B /* ReframeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeModels.swift; sourceTree = "<group>"; };
 		FA72C92F4982795D86D0E015 /* AnglesWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnglesWidgets.swift; sourceTree = "<group>"; };
@@ -335,6 +339,7 @@
 		A59AA755777F25A8864F3351 /* StoreKit */ = {
 			isa = PBXGroup;
 			children = (
+				4E0CF5E6E50D343C47DF23D3 /* AppStoreReviewCoordinator.swift */,
 				7498958071766D66B285676C /* StoreKitManager.swift */,
 			);
 			path = StoreKit;
@@ -427,6 +432,7 @@
 			isa = PBXGroup;
 			children = (
 				9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */,
+				EE196A945D914407B9D5E204 /* AppStoreReviewTests.swift */,
 				38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */,
 				1C07632E47BCD7EC8BB5F033 /* ForYouCoversTests.swift */,
 				BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */,
@@ -577,6 +583,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */,
+				5F9DE55921916F8DB11069B1 /* AppStoreReviewTests.swift in Sources */,
 				BBDCFC5DAA64296BE09CD43A /* FeedRefreshPlanTests.swift in Sources */,
 				2040896C35F90189E3FBB9BD /* ForYouCoversTests.swift in Sources */,
 				E85F482E086576383A6F83CB /* HomeFeedShelfTests.swift in Sources */,
@@ -597,6 +604,7 @@
 				48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */,
 				9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */,
 				77767A426BAC877733A44558 /* AppGate.swift in Sources */,
+				E90699FB7AC129D6439D9CC9 /* AppStoreReviewCoordinator.swift in Sources */,
 				7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */,
 				21764DF278A00D1C7C01FFE0 /* AppleReauthorization.swift in Sources */,
 				44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */,
@@ -889,6 +897,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ANGLES_API_BASE_URL = "http://192.168.0.39:8787";
+				ANGLES_APP_STORE_ID = 6811873869;
 				ANGLES_PRIVACY_POLICY_URL = "https://useangles.app/privacy";
 				ANGLES_SUPPORT_EMAIL = "info@bithavn.app";
 				ANGLES_SUPPORT_URL = "https://useangles.app/support";
@@ -917,6 +926,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ANGLES_API_BASE_URL = "https://api-production-61c9.up.railway.app";
+				ANGLES_APP_STORE_ID = 6811873869;
 				ANGLES_PRIVACY_POLICY_URL = "https://useangles.app/privacy";
 				ANGLES_SUPPORT_EMAIL = "info@bithavn.app";
 				ANGLES_SUPPORT_URL = "https://useangles.app/support";

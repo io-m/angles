@@ -117,6 +117,19 @@ struct SettingsView: View {
                                 destination: supportMailURL
                             )
                         }
+
+                        if showsRateAngles, let writeReviewURL = AppConfig.writeReviewURL {
+                            if showsPrivacyPolicy || showsTermsOfService || showsSupport
+                                || showsSupportEmail {
+                                rowDivider
+                            }
+                            externalRow(
+                                symbol: "star",
+                                title: "Rate Angles",
+                                destination: writeReviewURL,
+                                beforeOpen: { AppStoreReviewCoordinator.noteSettingsWriteReview() }
+                            )
+                        }
                     }
                     .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .padding(.bottom, 24)
@@ -240,8 +253,20 @@ struct SettingsView: View {
         AppConfig.supportContactURL != nil || !AppConfig.isSubmissionBuild
     }
 
+    private var showsSupportEmail: Bool {
+        guard let supportMailURL = AppConfig.supportMailURL else {
+            return false
+        }
+        return supportMailURL != AppConfig.supportContactURL
+    }
+
+    /// Hidden when `ANGLES_APP_STORE_ID` is empty. Debug does not guess an App Store page.
+    private var showsRateAngles: Bool {
+        AppConfig.writeReviewURL != nil
+    }
+
     private var showsLegalSection: Bool {
-        showsPrivacyPolicy || showsTermsOfService || showsSupport
+        showsPrivacyPolicy || showsTermsOfService || showsSupport || showsRateAngles
     }
 
     /// Banners are an iOS permission. This row never pretends to be a switch: it asks once,
@@ -431,13 +456,19 @@ struct SettingsView: View {
             .padding(.leading, 70)
     }
 
-    private func externalRow(symbol: String, title: String, destination: URL?) -> some View {
+    private func externalRow(
+        symbol: String,
+        title: String,
+        destination: URL?,
+        beforeOpen: (() -> Void)? = nil
+    ) -> some View {
         cardRow(
             symbol: symbol,
             title: title,
             subtitle: destination == nil ? "Unavailable in this build" : "Opens outside Angles"
         ) {
             guard let destination else { return }
+            beforeOpen?()
             openURL(destination)
         } trailing: {
             EmptyView()

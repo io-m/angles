@@ -60,6 +60,7 @@ targets:
           ANGLES_TERMS_OF_SERVICE_URL: "https://useangles.app/terms"
           ANGLES_SUPPORT_URL: "https://useangles.app/support"
           ANGLES_SUPPORT_EMAIL: "info@bithavn.app"
+          ANGLES_APP_STORE_ID: "6811873869"
           INFOPLIST_FILE: AnglesApp/Info-Debug.plist
         # The Railway production API (`api` service in the `angles` project).
         Release:
@@ -69,6 +70,7 @@ targets:
           ANGLES_TERMS_OF_SERVICE_URL: "https://useangles.app/terms"
           ANGLES_SUPPORT_URL: "https://useangles.app/support"
           ANGLES_SUPPORT_EMAIL: "info@bithavn.app"
+          ANGLES_APP_STORE_ID: "6811873869"
     scheme:
       testTargets:
         - AnglesAppTests

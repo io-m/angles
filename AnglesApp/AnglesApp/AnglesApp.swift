@@ -36,6 +36,7 @@ struct AnglesApp: App {
 struct AppRoot: View {
     @State private var viewModel = HomeViewModel()
     @State private var storeKitManager = StoreKitManager()
+    @State private var reviewCoordinator = AppStoreReviewCoordinator()
     @State private var identityStore = ProfileIdentityStore()
     @State private var sessionStore = SessionStore()
     /// Sparkle compose over Home. The onboarding taste is a destination, not this flag.
@@ -991,13 +992,31 @@ struct AppRoot: View {
             }
             saveCoverLabel = nil
             completion()
+            reviewCoordinator.considerPrompt(context: settledSaveReviewContext)
         }
+    }
+
+    /// Read after the save cover has left. A covered or off-home screen never asks.
+    private var settledSaveReviewContext: AppRatingPromptContext {
+        let onRootList = browsePath.isEmpty && (selectedTab == .home || selectedTab == .profile)
+        return AppRatingPromptContext(
+            destinationIsHome: destination == .home,
+            homeIsRevealed: isHomeRevealed,
+            composeVisible: isComposePresented,
+            saveCoverVisible: saveCoverPresented || saveCoverLabel != nil,
+            onHomeOrProfile: onRootList,
+            sceneIsActive: scenePhase == .active
+        )
     }
 
     /// The server stamped `tasteCompletedAt` in the same transaction as the card. Recording it
     /// locally moves the destination to the celebrating paywall in this frame.
     private func handleSavedCard(_ card: HomeCard) {
         guard destination == .taste else {
+            reviewCoordinator.noteSuccessfulEntitledSave(
+                isEntitled: storeKitManager.isEntitledForGate,
+                safetyClear: !viewModel.composeSessionNeedsCare
+            )
             if card.isPublic {
                 lastContentTab = .home
                 selectedTab = .home

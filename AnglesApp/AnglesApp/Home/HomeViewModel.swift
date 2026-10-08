@@ -3358,6 +3358,18 @@ final class HomeViewModel {
         }
     }
 
+    /// A crisis continue, or a cook whose safety is not `none`, blocks an App Store review.
+    /// Anything other than a finished cook fails closed.
+    var composeSessionNeedsCare: Bool {
+        if turns.contains(where: { $0.safety.needsCare }) {
+            return true
+        }
+        guard case .ready(let cook) = phase else {
+            return true
+        }
+        return cook.meta.safety.needsCare
+    }
+
     func resetCompose() {
         refineGeneration &+= 1
         refineTask?.cancel()

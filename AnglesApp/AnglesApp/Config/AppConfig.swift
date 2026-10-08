@@ -8,6 +8,20 @@ enum AppConfig {
     static let privacyPolicyURL = configuredWebURL(for: "AnglesPrivacyPolicyURL")
     static let termsOfServiceURL = configuredWebURL(for: "AnglesTermsOfServiceURL")
     static let supportURL = configuredWebURL(for: "AnglesSupportURL")
+    /// Numeric App Store ID (`ANGLES_APP_STORE_ID`). Empty or non-numeric hides Settings → Rate Angles.
+    /// Debug must not invent an ID.
+    static let appStoreID: String? = {
+        guard let raw = configuredString(for: "AnglesAppStoreID"), raw.allSatisfy(\.isNumber) else {
+            return nil
+        }
+        return raw
+    }()
+    static let writeReviewURL: URL? = {
+        guard let appStoreID else {
+            return nil
+        }
+        return URL(string: "https://apps.apple.com/app/id\(appStoreID)?action=write-review")
+    }()
     /// The app ships under Apple's standard licensed application EULA, not a custom one.
     static let appleStandardEULAURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
 
