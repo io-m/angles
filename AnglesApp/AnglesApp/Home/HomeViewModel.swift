@@ -2887,13 +2887,6 @@ final class HomeViewModel {
                             at: 0
                         )
                     }
-                    // Following someone who followed you is answering a follow, even from
-                    // their page, so it never asks.
-                    let answersAFollow = origin == .followBack
-                        || followNotices.contains(where: { $0.actorId == authorId })
-                    if !answersAFollow, !FollowPush.promptSeen {
-                        Task { await FollowPush.askOnceAfterOwnFollow() }
-                    }
                 }
             } catch {
                 guard !Task.isCancelled,

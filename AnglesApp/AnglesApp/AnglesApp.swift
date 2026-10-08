@@ -306,6 +306,13 @@ struct AppRoot: View {
                 return
             }
             Task { await loadDeferredSignedInWork() }
+            Task { await askFollowPushOnHomeIfNeeded() }
+        }
+        .onChange(of: homeRevealPhase) { _, phase in
+            guard phase == .visible else {
+                return
+            }
+            Task { await askFollowPushOnHomeIfNeeded() }
         }
         .onChange(of: destination) { old, new in
             handleDestinationChange(from: old, to: new)
@@ -712,7 +719,7 @@ struct AppRoot: View {
     }
 
     /// iOS permission is the only off switch. If this phone can show banners, keep a token
-    /// and heal a leftover account flag from the old in-app toggle.
+    /// and heal a leftover account flag from the old in-app toggle. Does not show the OS dialog.
     private func syncFollowPush() async {
         await FollowPush.reconcile(notifyFollows: true)
         let status = await FollowPush.authorizationStatus()
@@ -720,6 +727,17 @@ struct AppRoot: View {
             _ = await sessionStore.setNotifyFollows(true)
         }
         if let token = pushCenter.deviceToken, FollowPush.isAllowed(status) {
+            await registerPushToken(token)
+        }
+    }
+
+    /// iOS's dialog only after Home is up and splash is gone — never over login, taste, or paywall.
+    private func askFollowPushOnHomeIfNeeded() async {
+        guard sessionStore.isSignedIn, isHomeRevealed, splashPhase == .finished else {
+            return
+        }
+        await FollowPush.askOnceOnHome()
+        if let token = pushCenter.deviceToken, FollowPush.isAllowed(await FollowPush.authorizationStatus()) {
             await registerPushToken(token)
         }
     }

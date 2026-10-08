@@ -23,8 +23,8 @@ enum FollowPush {
         set { UserDefaults.standard.set(newValue, forKey: promptSeenKey) }
     }
 
-    /// Cleared on reinstall. Stops a second iOS dialog in the same install after the
-    /// account already has Follows on and we asked at session start.
+    /// Cleared on reinstall. Stops a second iOS dialog in the same install after Home
+    /// already asked, or the person tapped Follows in Settings.
     static var osPromptedThisInstall: Bool {
         get { UserDefaults.standard.bool(forKey: osPromptedThisInstallKey) }
         set { UserDefaults.standard.set(newValue, forKey: osPromptedThisInstallKey) }
@@ -50,10 +50,9 @@ enum FollowPush {
         UNUserNotificationCenter.current().setNotificationCategories([category])
     }
 
-    /// Session start and every foreground. Follows off, or iOS blocking banners: drop the
-    /// stored token so the server does not send into nothing. Follows on and iOS already
-    /// allowed: ask for the token. Follows on and iOS has never asked on this install: ask
-    /// once, so a reinstall of an account that already wants banners does not sit silent.
+    /// Session start and every foreground. Never the iOS permission dialog — that waits
+    /// for Home. Follows off, or iOS blocking banners: drop the stored token so the server
+    /// does not send into nothing. Already allowed: ask for the token.
     static func reconcile(notifyFollows: Bool) async {
         let status = await authorizationStatus()
         if !notifyFollows {
@@ -62,12 +61,6 @@ enum FollowPush {
         }
         if isAllowed(status) {
             UIApplication.shared.registerForRemoteNotifications()
-            return
-        }
-        if status == .notDetermined, !osPromptedThisInstall {
-            osPromptedThisInstall = true
-            promptSeen = true
-            _ = await requestAuthorization()
             return
         }
         await forgetStoredToken()
@@ -109,21 +102,22 @@ enum FollowPush {
         }
     }
 
-    /// The one time the app asks on its own: after the person follows someone they found,
-    /// never while they answer a follow. Only iOS's dialog shows, and whatever the answer,
-    /// the next ask is theirs to make in Settings.
-    static func askOnceAfterOwnFollow() async {
-        guard !promptSeen, !osPromptedThisInstall else {
+    /// The one automatic ask: Home is on screen. Login, taste, paywall, and splash never
+    /// call this. Whatever they answer, the next ask is theirs in Settings.
+    static func askOnceOnHome() async {
+        guard !osPromptedThisInstall else {
             return
         }
-        promptSeen = true
-        osPromptedThisInstall = true
         let status = await authorizationStatus()
-        if status == .notDetermined {
-            _ = await requestAuthorization()
-        } else if isAllowed(status) {
-            UIApplication.shared.registerForRemoteNotifications()
+        guard status == .notDetermined else {
+            if isAllowed(status) {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+            return
         }
+        osPromptedThisInstall = true
+        promptSeen = true
+        _ = await requestAuthorization()
     }
 
     /// Settings row and the Follows switch replacement: iOS's dialog if it never asked,
