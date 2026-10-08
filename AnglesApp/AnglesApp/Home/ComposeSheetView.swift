@@ -1099,6 +1099,11 @@ private enum SaveRide {
         loading[dark] = task
         return await task.value
     }
+
+    /// Drops the unzipped files once the cover is gone; the next answer preloads again.
+    static func release() {
+        loading.removeAll()
+    }
 }
 
 struct SaveCelebrationCover: View {
@@ -1150,6 +1155,7 @@ struct SaveCelebrationCover: View {
         }
         .frame(width: size.width, height: size.height)
         .clipped()
+        .onDisappear { SaveRide.release() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityIdentifier("save.cover")

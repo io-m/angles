@@ -16,6 +16,21 @@ export const LEGACY_STYLES: readonly Style[] = ["stoic", "optimistic", "humorous
 
 const EXTENDED_STYLE_SET = "2";
 
+/**
+ * What a build that sends `Angles-Style-Set: 2` knows: these six, frozen. `STYLES` grows
+ * (append only), but an installed build cannot decode a style it never shipped with, and it
+ * fails the whole cook on one. A seventh style gets a new header value and its own frozen
+ * set; it is never added here.
+ */
+export const STYLE_SET_2: readonly Style[] = [
+  "stoic",
+  "optimistic",
+  "humorous",
+  "tough_love",
+  "tender",
+  "values",
+];
+
 const styleSetContext = new AsyncLocalStorage<readonly Style[]>();
 
 /** The calling app's styles. Outside a request (scripts, the eval) every style. */
@@ -38,6 +53,6 @@ export function shownStyleSchema() {
 }
 
 export const styleSetMiddleware: MiddlewareHandler = async (c, next) => {
-  const styles = c.req.header(STYLE_SET_HEADER)?.trim() === EXTENDED_STYLE_SET ? STYLES : LEGACY_STYLES;
+  const styles = c.req.header(STYLE_SET_HEADER)?.trim() === EXTENDED_STYLE_SET ? STYLE_SET_2 : LEGACY_STYLES;
   await styleSetContext.run(styles, () => next());
 };

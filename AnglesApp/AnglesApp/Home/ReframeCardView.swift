@@ -164,6 +164,7 @@ struct ReframeCardView: View, Equatable {
     }
 
     var body: some View {
+        let _ = RenderCounter.hit("ReframeCardView")
         menuedCard
             .onAppear {
                 if selectedStyle == nil {

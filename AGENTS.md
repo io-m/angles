@@ -42,7 +42,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/lib/cook.ts` — the cook pipeline without HTTP: decision, batch writer, lint rewrite, recook, bilingual answers. The route and `pnpm llm:eval` both run it
 - `backend/src/lib/reframeLint.ts` — deterministic checks on written answers (length, questions, foreign digits, markdown, clichés, banned openers, overlap)
 - `backend/src/lib/safetyScreen.ts` — self-harm phrase screen for English and 15 other languages written with spaces between words; runs over the user's words and, on a ready turn, the model's cleaned copy (so the English `thought` covers any other language); overrides a model's `none`
-- `backend/src/lib/styleSet.ts` — the request's style catalog from `Angles-Style-Set` (absent: the original four), `shownStyleSchema()` for every style at the HTTP boundary
+- `backend/src/lib/styleSet.ts` — the request's style catalog from `Angles-Style-Set` (absent: the original four), `shownStyleSchema()` for every style at the HTTP boundary. Header `2` serves the frozen `STYLE_SET_2` (six literals); `STYLES` only appends, so a new style needs a new header value and a new frozen set, never an edit to `STYLE_SET_2`
 - `backend/src/lib/graveScreen.ts` — English phrase screen for real harm to people (death, serious illness, violence, war, atrocity, persecution, self-hatred); runs over the user's words and the model's English `thought`, forces `solemn`, and guards a written joke. Idioms ("I bombed my interview") stay out
 - `backend/src/lib/crisisResources.ts` — region → crisis line table; the model never writes numbers
 - `backend/src/lib/reframeReplay.ts` — seals a finished `/reframe` response under the client's `Replay-Key`
@@ -60,11 +60,13 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Root/AppGate.swift` — the pure funnel resolver (launching / login / taste / paywall / home); AppRoot renders only from it
 - `AnglesApp/AnglesApp/Root/RootTabBar.swift` — `RootTab` (Home, Sparkle compose, Profile)
 - `AnglesApp/AnglesApp/Home/HomeView.swift` — community Home: For you + a native single-select style menu (six styles) aligned with trailing filter; tinted glass header; no Home Settings gear
+- `AnglesApp/AnglesApp/Home/StyleTabPager.swift` — the style menu and the pager state shared by Home, Profile, and author pages. The menu pill is as wide as its longest label and Profile's Favorites chip keeps one width, so nothing resizes when a style is picked; a pick is one request-driven crossfade (`StyleTabPagerState.requestPage`), not per-frame scroll tracking. Pages build the first time they are chosen (`visitedTabs`)
+- `AnglesApp/AnglesApp/Theme/RenderCounter.swift`, `FrameMonitor.swift` — DEBUG-only `RENDER <view> n` and `HITCH <ms>` console lines (read with `devicectl ... launch --console`); compiled out of Release
 - `AnglesApp/AnglesApp/Home/HomeFeedShelf.swift` — one Home card record, one page per tab. A heart, follow, or removal updates every shelf that is showing that post. Profile and author pages do not use this ranking.
 - `AnglesApp/AnglesApp/Home/HomeFilterSheet.swift` — draft/apply Life area and Mood tabbed multi-select
 - `AnglesApp/AnglesApp/Home/HeaderChrome.swift` — shared header metrics and the bottom fade stops
 - `AnglesApp/AnglesApp/Home/ProfileView.swift` — private library with a fixed compact identity header (avatar, session name), Favorites-first tabs and one list per style, chosen from the menu (no sideways swipe); Settings gear and Following sheet; opaque style wash chrome
-- `AnglesApp/AnglesApp/Home/AuthorProfileView.swift` — one author's public posts, same five tabs, follow badge; swipe back from the left 40% on iOS 26+ (`wideBackSwipe`, `Theme/InteractivePop.swift`)
+- `AnglesApp/AnglesApp/Home/AuthorProfileView.swift` — one author's public posts, same five tabs, follow badge; swipe back from anywhere on the page on iOS 26+, the edge strip before that (`wideBackSwipe`, `Theme/InteractivePop.swift`; scoped to this page and handed back when it goes away)
 - `AnglesApp/AnglesApp/Home/FollowingSheet.swift` — who the viewer follows; unfollow, open, its own write banner
 - `AnglesApp/AnglesApp/Home/AIConsentSheet.swift` — the one-time per-account "Before you start" sheet before the first Send: AI providers, what is sent, community rules, Terms and Privacy acceptance
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — one card per row (`LazyVStack`)

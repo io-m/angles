@@ -1803,6 +1803,8 @@ final class HomeViewModel {
         guard feedBoard.clearVisitHistory(on: tab, generation: generation) == .applied else {
             return
         }
+        // What the reader reached belongs to the visit that just ended, like `seenIDs`.
+        feedDisplayedIDs[tab] = nil
         await fetchFeedPage(on: tab, replacing: true, generation: generation, visibility: visibility)
     }
 

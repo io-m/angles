@@ -4,7 +4,6 @@ import SwiftUI
 private enum ProfileMetrics {
     static let identityHeight: CGFloat = 132
     static let tabBarHeight = StyleTabMetrics.tabBarHeight
-    static let pagerSpace = "profilePager"
 
     static func expandedChromeHeight(safeTop: CGFloat) -> CGFloat {
         HeaderCollapse.overlayHeight(safeTop: safeTop)
@@ -81,6 +80,7 @@ struct ProfileView: View {
     }
 
     var body: some View {
+        let _ = RenderCounter.hit("ProfileView")
         // Read the photo here so the header updates when the server copy arrives after sign-in.
         let _ = identityStore?.photo
         ZStack(alignment: .top) {
@@ -212,7 +212,7 @@ struct ProfileView: View {
     }
 
     private var pager: some View {
-        GeometryReader { proxy in
+        GeometryReader { _ in
             ScrollViewReader { scrollProxy in
                 ScrollView(.horizontal) {
                     HStack(spacing: 0) {
@@ -258,30 +258,15 @@ struct ProfileView: View {
                             .id(tab)
                         }
                     }
-                    .background(alignment: .leading) {
-                        StyleTabPagerOffsetProbe(space: ProfileMetrics.pagerSpace)
-                    }
-                    .scrollTargetLayout()
                 }
                 .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.paging)
                 // Styles are picked from the menu, never by dragging sideways. The vertical
                 // lists in each page switch scrolling back on below.
                 .scrollDisabled(true)
-                .coordinateSpace(name: ProfileMetrics.pagerSpace)
-                .modifier(
-                    StyleTabPagerTracking(
-                        state: pagerState,
-                        fallbackWidth: proxy.size.width,
-                        onReachPage: commitPage
-                    )
-                )
                 .onChange(of: pagerState.requestSerial) { _, _ in
-                    let animation: Animation? = pagerState.requestAnimated ? tabAnimation : nil
-                    var transaction = Transaction(animation: animation)
-                    if animation == nil {
-                        transaction.disablesAnimations = true
-                    }
+                    // The strip jumps; the chrome does the cross-fade (StyleTabPagerState).
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
                     withTransaction(transaction) {
                         scrollProxy.scrollTo(
                             pagerState.requestedTab,
@@ -320,22 +305,14 @@ struct ProfileView: View {
                 viewModel.profileGridFilter = filter
             }
         }
-        pagerState.requestPage(filter, animated: false)
+        pagerState.requestPage(filter, animation: nil)
     }
 
     private func selectTab(_ filter: ProfileGridFilter) {
         guard filter != committedTab else {
             return
         }
-        visitedTabs.insert(filter)
-        pagerState.requestPage(filter)
-    }
-
-    private func commitPage(_ filter: ProfileGridFilter) {
-        guard filter != committedTab else {
-            return
-        }
-
+        // Committed at the pick, not after a scroll settles: there is no scroll to wait for.
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -345,6 +322,7 @@ struct ProfileView: View {
                 viewModel.profileGridFilter = filter
             }
         }
+        pagerState.requestPage(filter, animation: tabAnimation)
     }
 
     private func deleteCard(_ card: HomeCard) {
@@ -628,6 +606,7 @@ private struct ProfileTabPage: View {
     }
 
     var body: some View {
+        let _ = RenderCounter.hit("ProfileTabPage")
         GeometryReader { proxy in
             // Same cap as Home: space under the chrome, minus the 16-point list gap,
             // minus a peek of the next card. Favorites never receive it.

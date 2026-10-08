@@ -27,6 +27,7 @@ struct HomeView: View {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
+        let _ = RenderCounter.hit("HomeView")
         HomeFeedPager(
             safeAreaInsets: safeAreaInsets,
             cards: cards(for:),
@@ -198,7 +199,6 @@ struct HomeFeedPager<Chrome: View>: View {
     /// Shelves that have been shown. The rest are empty placeholders until first chosen.
     @State private var visitedTabs: Set<HomeFeedTab> = [.all]
     @State private var sameTabScrollToken = 0
-    @State private var pagerSpace = UUID()
 
     init(
         safeAreaInsets: EdgeInsets,
@@ -320,7 +320,7 @@ struct HomeFeedPager<Chrome: View>: View {
     }
 
     private var pager: some View {
-        GeometryReader { proxy in
+        GeometryReader { _ in
             ScrollViewReader { scrollProxy in
                 ScrollView(.horizontal) {
                     HStack(spacing: 0) {
@@ -371,32 +371,15 @@ struct HomeFeedPager<Chrome: View>: View {
                             .id(tab)
                         }
                     }
-                    .background(alignment: .leading) {
-                        StyleTabPagerOffsetProbe(space: pagerSpace)
-                    }
-                    .scrollTargetLayout()
                 }
                 .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.paging)
                 // Styles are picked from the menu, never by dragging sideways. The pages'
                 // own vertical lists set `scrollDisabled` themselves, so this stays here.
                 .scrollDisabled(true)
-                .coordinateSpace(name: pagerSpace)
-                .modifier(
-                    StyleTabPagerTracking(
-                        state: pagerState,
-                        fallbackWidth: proxy.size.width,
-                        onReachPage: commitPage
-                    )
-                )
                 .onChange(of: pagerState.requestSerial) { _, _ in
-                    let animation: Animation? = pagerState.requestAnimated
-                        ? tabAnimation
-                        : nil
-                    var transaction = Transaction(animation: animation)
-                    if animation == nil {
-                        transaction.disablesAnimations = true
-                    }
+                    // The strip jumps; the chrome does the cross-fade (StyleTabPagerState).
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
                     withTransaction(transaction) {
                         scrollProxy.scrollTo(
                             pagerState.requestedTab,
@@ -427,15 +410,9 @@ struct HomeFeedPager<Chrome: View>: View {
             sameTabScrollToken &+= 1
             return
         }
-        visitedTabs.insert(tab)
-        pagerState.requestPage(tab)
-    }
-
-    private func commitPage(_ tab: HomeFeedTab) {
-        guard tab != committedTab else {
-            return
-        }
+        // Committed at the pick, not after a scroll settles: there is no scroll to wait for.
         settle(tab)
+        pagerState.requestPage(tab, animation: tabAnimation)
     }
 
     private func settleExternalSelection() {
@@ -443,7 +420,7 @@ struct HomeFeedPager<Chrome: View>: View {
             return
         }
         settle(externalSelectionTab)
-        pagerState.requestPage(externalSelectionTab, animated: false)
+        pagerState.requestPage(externalSelectionTab, animation: nil)
     }
 
     private func settle(_ tab: HomeFeedTab) {
@@ -543,6 +520,7 @@ struct HomeFeedTabPage: View {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
+        let _ = RenderCounter.hit("HomeFeedTabPage")
         GeometryReader { proxy in
             // Cards hug their text. The cap is the space under the header, minus the
             // same 16-point gap the list uses, minus a peek of the next card.

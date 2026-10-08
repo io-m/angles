@@ -77,95 +77,75 @@ extension HomeFeedTab: StyleTabRepresentable {
 }
 
 struct StyleTabPagerSnapshot: Equatable {
-    var offset: CGFloat = 0
-    var width: CGFloat = 1
     var fromIndex = 0
     var toIndex = 0
     var pageProgress: CGFloat = 0
 }
 
+/// Which style page is showing, and the one short crossfade between two of them.
+///
+/// Styles are picked from a menu, so there is no finger to follow. A pick jumps the strip to
+/// its page and animates `pageProgress` from 0 to 1 once; the wash, glass and chips cross-fade
+/// as opacities, so the chrome is evaluated at the start and the end, not once per frame.
 @MainActor
 @Observable
 final class StyleTabPagerState<T: StyleTabRepresentable> {
-    private(set) var snapshot = StyleTabPagerSnapshot()
+    private(set) var snapshot: StyleTabPagerSnapshot
     private(set) var requestedTab: T
+    /// Bumped on every pick; the strip scrolls to `requestedTab` when it changes.
     private(set) var requestSerial = 0
-    private(set) var requestAnimated = true
 
     private let tabs: [T]
+    @ObservationIgnored private var transitionSerial = 0
 
     init(initialTab: T) {
+        let tabs = Array(T.allCases)
+        let index = tabs.firstIndex(of: initialTab) ?? 0
         self.requestedTab = initialTab
-        self.tabs = Array(T.allCases)
+        self.tabs = tabs
+        self.snapshot = StyleTabPagerSnapshot(fromIndex: index, toIndex: index, pageProgress: 0)
     }
 
     var pageCount: Int { tabs.count }
 
-    func update(offset rawOffset: CGFloat, width rawWidth: CGFloat) {
-        guard rawOffset.isFinite, rawWidth.isFinite, rawWidth > 0 else {
+    /// Picks a page. A nil `animation` (Reduce Motion, a jump from a deep link) settles at once.
+    func requestPage(_ tab: T, animation: Animation? = StyleTabMetrics.chipSpring) {
+        guard let target = tabs.firstIndex(of: tab) else {
             return
         }
-
-        let maximumOffset = rawWidth * CGFloat(pageCount - 1)
-        let newOffset = min(maximumOffset, max(0, rawOffset))
-        guard abs(snapshot.offset - newOffset) > 0.5
-                || abs(snapshot.width - rawWidth) > 0.5
-        else {
-            return
-        }
-
-        let position = newOffset / rawWidth
-        let lowerIndex = min(pageCount - 1, max(0, Int(floor(position))))
-        let upperIndex = min(pageCount - 1, lowerIndex + 1)
-        let progress = upperIndex == lowerIndex
-            ? 0
-            : min(1, max(0, position - CGFloat(lowerIndex)))
-
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            snapshot = StyleTabPagerSnapshot(
-                offset: newOffset,
-                width: rawWidth,
-                fromIndex: lowerIndex,
-                toIndex: progress < 0.0001 ? lowerIndex : upperIndex,
-                pageProgress: progress < 0.0001 ? 0 : progress
-            )
-        }
-    }
-
-    func requestPage(_ tab: T, animated: Bool = true) {
-        requestAnimated = animated
         requestedTab = tab
         requestSerial &+= 1
+        transitionSerial &+= 1
+        let serial = transitionSerial
+
+        // Leaving from wherever the picture is closest to, so a quick second pick starts clean.
+        let origin = snapshot.pageProgress < 0.5 ? snapshot.fromIndex : snapshot.toIndex
+        guard let animation, origin != target else {
+            settle(on: target)
+            return
+        }
+
+        var start = Transaction(animation: nil)
+        start.disablesAnimations = true
+        withTransaction(start) {
+            snapshot = StyleTabPagerSnapshot(fromIndex: origin, toIndex: target, pageProgress: 0)
+        }
+        withAnimation(animation, completionCriteria: .logicallyComplete) {
+            snapshot.pageProgress = 1
+        } completion: { [weak self] in
+            guard let self, self.transitionSerial == serial else {
+                return
+            }
+            self.settle(on: target)
+        }
     }
 
-    func normalizeAtEndpoint() -> T? {
-        guard snapshot.width > 0 else {
-            return nil
-        }
-
-        let index = min(
-            pageCount - 1,
-            max(0, Int((snapshot.offset / snapshot.width).rounded()))
-        )
-        guard abs(snapshot.offset - (CGFloat(index) * snapshot.width)) <= 1
-        else {
-            return nil
-        }
-
+    private func settle(on index: Int) {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            snapshot = StyleTabPagerSnapshot(
-                offset: CGFloat(index) * snapshot.width,
-                width: snapshot.width,
-                fromIndex: index,
-                toIndex: index,
-                pageProgress: 0
-            )
+            snapshot = StyleTabPagerSnapshot(fromIndex: index, toIndex: index, pageProgress: 0)
         }
-        return tabs[index]
     }
 
     func expansion(at index: Int) -> CGFloat {
@@ -185,80 +165,9 @@ final class StyleTabPagerState<T: StyleTabRepresentable> {
     }
 }
 
-private struct StyleTabPagerGeometry: Equatable {
-    let offset: CGFloat
-    let width: CGFloat
-}
-
-private struct StyleTabPagerOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat?
-
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        if let next = nextValue() {
-            value = next
-        }
-    }
-}
-
-struct StyleTabPagerOffsetProbe<Space: Hashable>: View {
-    let space: Space
-
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(
-                key: StyleTabPagerOffsetKey.self,
-                value: proxy.frame(in: .named(space)).minX
-            )
-        }
-    }
-}
-
-struct StyleTabPagerTracking<T: StyleTabRepresentable>: ViewModifier {
-    let state: StyleTabPagerState<T>
-    let fallbackWidth: CGFloat
-    let onReachPage: (T) -> Void
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content
-                .onScrollGeometryChange(for: StyleTabPagerGeometry.self) { geometry in
-                    StyleTabPagerGeometry(
-                        offset: max(0, geometry.contentOffset.x),
-                        width: geometry.containerSize.width
-                    )
-                } action: { _, newValue in
-                    state.update(offset: newValue.offset, width: newValue.width)
-                }
-                .onScrollPhaseChange { _, newPhase in
-                    guard newPhase == .idle else {
-                        return
-                    }
-                    commitEndpoint()
-                }
-        } else {
-            content
-                .onPreferenceChange(StyleTabPagerOffsetKey.self) { minX in
-                    guard let minX else {
-                        return
-                    }
-                    state.update(offset: max(0, -minX), width: fallbackWidth)
-                    commitEndpoint()
-                }
-        }
-    }
-
-    private func commitEndpoint() {
-        guard let tab = state.normalizeAtEndpoint() else {
-            return
-        }
-        onReachPage(tab)
-    }
-}
-
 /// The style picker in a page header: a native single-select menu, plus a chip for any
 /// tab pinned outside it (Profile's Favorites). Six styles do not fit a row of chips on a
-/// narrow phone, so they live in the menu. The pages no longer swipe sideways.
+/// narrow phone, so they live in the menu. The pages do not swipe sideways.
 struct AdaptiveStyleTabBar<T: StyleTabRepresentable>: View {
     let pagerState: StyleTabPagerState<T>
     let settledSelection: T
@@ -269,10 +178,10 @@ struct AdaptiveStyleTabBar<T: StyleTabRepresentable>: View {
     let onSelect: (T) -> Void
 
     var body: some View {
+        let _ = RenderCounter.hit("AdaptiveStyleTabBar")
         let tabs = Array(T.allCases)
-        let snapshot = pagerState.snapshot
-        // Follows a swipe as it passes halfway, not only once the page settles.
-        let nearest = tabs[snapshot.pageProgress < 0.5 ? snapshot.fromIndex : snapshot.toIndex]
+        // The menu names the page that was picked, not the one the fade is leaving.
+        let nearest = pagerState.requestedTab
 
         HStack(spacing: ReframeCardMetrics.chipSpacing) {
             ForEach(Array(tabs.enumerated()), id: \.element) { index, tab in
@@ -364,17 +273,19 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
             }
             .pickerStyle(.inline)
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: isActive ? current.systemImage : "square.stack.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(isActive ? current.chipTitle : "Styles")
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .fixedSize()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .opacity(0.7)
+            // The pill is as wide as the longest label it can show, so picking another style
+            // never resizes it and the native menu has nothing to re-anchor or animate.
+            ZStack {
+                ForEach(sizingLabels, id: \.title) { label in
+                    labelContent(symbol: label.symbol, title: label.title)
+                        .hidden()
+                        .accessibilityHidden(true)
+                }
+                labelContent(
+                    symbol: isActive ? current.systemImage : "square.stack.fill",
+                    title: isActive ? current.chipTitle : "Styles"
+                )
+                .transaction { $0.animation = nil }
             }
             .foregroundStyle(ink)
             .padding(.horizontal, 12)
@@ -394,6 +305,37 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
         .sensoryFeedback(.selection, trigger: selectHaptic)
         .accessibilityLabel(isActive ? "Style: \(current.title)" : "Styles")
         .accessibilityHint("Opens the list of styles")
+    }
+
+    private struct SizingLabel {
+        let symbol: String
+        let title: String
+    }
+
+    /// Every label the pill can show. Only the widest one decides its width.
+    private var sizingLabels: [SizingLabel] {
+        var labels = T.allCases.compactMap { tab -> SizingLabel? in
+            tab.isPinnedOutsideMenu ? nil : SizingLabel(symbol: tab.systemImage, title: tab.chipTitle)
+        }
+        if T.allCases.contains(where: { $0.isPinnedOutsideMenu }) {
+            labels.append(SizingLabel(symbol: "square.stack.fill", title: "Styles"))
+        }
+        return labels
+    }
+
+    private func labelContent(symbol: String, title: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 14, weight: .semibold))
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .fixedSize()
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+                .opacity(0.7)
+        }
     }
 
     /// A native menu draws row icons as one template colour. A pre-tinted image keeps each
@@ -459,6 +401,7 @@ struct StyleTabPageBackground<T: StyleTabRepresentable>: View {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
+        let _ = RenderCounter.hit("StyleTabPageBackground")
         let tabs = Array(T.allCases)
         let snapshot = pagerState.snapshot
         let amount = min(1, max(0, snapshot.pageProgress))
@@ -485,7 +428,6 @@ struct StyleTabPageBackground<T: StyleTabRepresentable>: View {
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
-        .animation(nil, value: snapshot)
     }
 
     private func styleWash(ink: Color, tint: CGFloat) -> some View {
@@ -538,7 +480,6 @@ struct StyleTabBottomFade<T: StyleTabRepresentable>: View {
         .frame(maxWidth: .infinity)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .animation(nil, value: snapshot)
     }
 
     private func footerWash(ink: Color, tint: CGFloat) -> some View {
@@ -679,8 +620,10 @@ private struct StyleTabChip<T: StyleTabRepresentable>: View {
             selectHaptic += 1
             onSelect()
         } label: {
+            // Always laid out at full width: a chip that grows and shrinks drags the menu
+            // beside it sideways every frame. Only its colour follows the selection.
             StyleTabChipLayout(
-                expansion: clampedExpansion,
+                expansion: 1,
                 density: density
             ) {
                 Image(systemName: tab.systemImage)
@@ -695,11 +638,6 @@ private struct StyleTabChip<T: StyleTabRepresentable>: View {
                     )
                     .lineLimit(1)
                     .fixedSize()
-                    .opacity(clampedExpansion)
-                    .scaleEffect(
-                        0.84 + (0.16 * clampedExpansion),
-                        anchor: .leading
-                    )
             }
             .foregroundStyle(ink.opacity(inkOpacity(for: clampedExpansion)))
             .frame(height: side)

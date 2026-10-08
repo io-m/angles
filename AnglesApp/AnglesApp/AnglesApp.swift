@@ -29,6 +29,7 @@ struct AnglesApp: App {
         WindowGroup {
             AppRoot()
                 .modifier(UserAppearance(store: themeStore))
+                .task { FrameMonitor.start() }
         }
     }
 }
@@ -68,6 +69,7 @@ struct AppRoot: View {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
+        let _ = RenderCounter.hit("AppRoot")
         ZStack {
             theme.paper
                 .ignoresSafeArea()
@@ -841,19 +843,32 @@ struct AppRoot: View {
     // MARK: - Navigation
 
     private func openFollowed(_ person: FollowedPerson) {
-        if case .author(let current) = browsePath.last, current.id == person.id {
-            return
-        }
-        browsePath.append(
-            .author(
-                AuthorRoute(
-                    id: person.id,
-                    initials: person.initials,
-                    avatarPath: person.avatarPath,
-                    isSelf: false
-                )
+        pushAuthor(
+            AuthorRoute(
+                id: person.id,
+                initials: person.initials,
+                avatarPath: person.avatarPath,
+                isSelf: false
             )
         )
+    }
+
+    /// An author already in the stack is returned to, not pushed again, so going back and forth
+    /// between two people never grows the stack.
+    private func pushAuthor(_ route: AuthorRoute) {
+        let existing = browsePath.lastIndex { entry in
+            if case .author(let author) = entry {
+                return author.id == route.id
+            }
+            return false
+        }
+        if let existing {
+            if existing < browsePath.count - 1 {
+                browsePath.removeSubrange((existing + 1)...)
+            }
+            return
+        }
+        browsePath.append(.author(route))
     }
 
     private func openAuthor(_ card: HomeCard) {
@@ -864,17 +879,12 @@ struct AppRoot: View {
         guard let authorId = card.authorId else {
             return
         }
-        if case .author(let current) = browsePath.last, current.id == authorId {
-            return
-        }
-        browsePath.append(
-            .author(
-                AuthorRoute(
-                    id: authorId,
-                    initials: card.authorInitials,
-                    avatarPath: card.authorAvatarPath,
-                    isSelf: card.isOwner
-                )
+        pushAuthor(
+            AuthorRoute(
+                id: authorId,
+                initials: card.authorInitials,
+                avatarPath: card.authorAvatarPath,
+                isSelf: card.isOwner
             )
         )
     }

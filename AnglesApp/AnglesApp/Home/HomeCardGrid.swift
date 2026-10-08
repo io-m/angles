@@ -124,6 +124,8 @@ struct TallHomeCardGrid: View, Equatable {
     var onCardAppear: ((HomeCard) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Low Power Mode drops the per-card scroll scaling; it re-evaluates every frame of a scroll.
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     static func == (lhs: TallHomeCardGrid, rhs: TallHomeCardGrid) -> Bool {
         lhs.cards == rhs.cards
@@ -164,7 +166,7 @@ struct TallHomeCardGrid: View, Equatable {
                         )
                     }
                 }
-                .modifier(TallCardFocusTransition(enabled: !reduceMotion))
+                .modifier(TallCardFocusTransition(enabled: !reduceMotion && !lowPower))
                 .onAppear {
                     onCardAppear?(card)
                     guard let onReachEnd, card.id == loadMoreTriggerID else {
@@ -173,6 +175,9 @@ struct TallHomeCardGrid: View, Equatable {
                     onReachEnd()
                 }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
     }
 
