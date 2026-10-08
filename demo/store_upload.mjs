@@ -4,7 +4,7 @@
 //   node demo/store_upload.mjs
 //   node demo/store_upload.mjs --preview-only
 import { createHash } from "node:crypto";
-import { createReadStream, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { api } from "/tmp/asc/asc.mjs";
 
@@ -18,8 +18,8 @@ const SUBS = [
 const FRAMES = [
   "01-four-ways.png",
   "02-write.png",
-  "03-people.png",
-  "04-shelf.png",
+  "03-voice.png",
+  "04-possible.png",
   "05-keep.png",
 ];
 
@@ -98,6 +98,15 @@ async function addImage(setId, path) {
   console.error(`screenshot ${basename(path)}`);
 }
 
+function previewPosterTimeCode() {
+  const editPath = join(STORE, "edit.json");
+  if (existsSync(editPath)) {
+    const edit = JSON.parse(readFileSync(editPath, "utf8"));
+    if (edit.posterFrameTimeCode) return edit.posterFrameTimeCode;
+  }
+  return "00:00:05:00";
+}
+
 async function addPreview(setId, path) {
   const created = await reserve("appPreviews", {
     fileName: basename(path),
@@ -108,7 +117,22 @@ async function addPreview(setId, path) {
   });
   await uploadParts(created.attributes.uploadOperations, path);
   await commit("appPreviews", created.id, path);
-  console.error(`preview ${basename(path)}`);
+  for (let i = 0; i < 36; i++) {
+    const row = await api("GET", `/v1/appPreviews/${created.id}`);
+    const video = row.data.attributes.videoDeliveryState?.state;
+    if (video === "COMPLETE") break;
+    if (video === "FAILED") throw new Error("preview video FAILED");
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  const posterFrameTimeCode = previewPosterTimeCode();
+  await api("PATCH", `/v1/appPreviews/${created.id}`, {
+    data: {
+      type: "appPreviews",
+      id: created.id,
+      attributes: { previewFrameTimeCode: posterFrameTimeCode },
+    },
+  });
+  console.error(`preview ${basename(path)} poster ${posterFrameTimeCode}`);
 }
 
 async function addReviewShot(subscriptionId, path) {

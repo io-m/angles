@@ -1,11 +1,11 @@
 {
-  "line": "My flight to Lisbon is in 9 days and I've packed nothing except anxiety and three outfit ideas.",
-  "followupReply": "Next Thursday, carry-on only — weekend with two friends.",
+  "line": "It's Sunday at 7pm and I'm already rehearsing Monday's small talk like it's a job interview.",
+  "followupReply": "Hybrid three days in the office, quiet team, nothing big on Monday.",
   "bestStyle": "auto",
   "storeHook": [
     [
-      { "text": "Lisbon", "look": "big" },
-      { "text": "in 9 days.", "look": "big" },
+      { "text": "Sunday", "look": "big" },
+      { "text": "7pm.", "look": "big" },
       { "text": "4 ways.", "look": "slam" }
     ]
   ],
@@ -17,9 +17,9 @@
   ],
   "hook": [
     [
-      { "text": "Lisbon", "look": "big" },
-      { "text": "in 9 days.", "look": "big" },
-      { "text": "Still not packed.", "look": "small" }
+      { "text": "Sunday", "look": "big" },
+      { "text": "7pm.", "look": "big" },
+      { "text": "Dreading Monday.", "look": "small" }
     ],
     [
       { "text": "So I asked AI", "look": "small" },

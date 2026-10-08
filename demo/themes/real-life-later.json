@@ -1,11 +1,11 @@
 {
-  "line": "My flight to Lisbon is in 9 days and I've packed nothing except anxiety and three outfit ideas.",
-  "followupReply": "Next Thursday, carry-on only — weekend with two friends.",
+  "line": "I turned 35 last month and I've been telling myself I'm about to start my real life for twelve years.",
+  "followupReply": "Same field, same city, fine on paper, just quietly stuck.",
   "bestStyle": "auto",
   "storeHook": [
     [
-      { "text": "Lisbon", "look": "big" },
-      { "text": "in 9 days.", "look": "big" },
+      { "text": "35.", "look": "big" },
+      { "text": "Still waiting.", "look": "big" },
       { "text": "4 ways.", "look": "slam" }
     ]
   ],
@@ -17,9 +17,9 @@
   ],
   "hook": [
     [
-      { "text": "Lisbon", "look": "big" },
-      { "text": "in 9 days.", "look": "big" },
-      { "text": "Still not packed.", "look": "small" }
+      { "text": "Turned 35", "look": "big" },
+      { "text": "last month.", "look": "big" },
+      { "text": "Still on pause.", "look": "small" }
     ],
     [
       { "text": "So I asked AI", "look": "small" },

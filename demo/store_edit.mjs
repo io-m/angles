@@ -6,10 +6,10 @@
 // is the same recording, cut so the first angle is on screen at 5 seconds
 // (Apple's default poster) and the whole piece stays between 15 and 30 seconds.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderStoreEnd, renderStoreHook } from "./lib/storePreviewHook.mjs";
+import { layoutStoreCards, renderStoreEnd, renderStoreHook } from "./lib/storePreviewHook.mjs";
 
 const DEMO = join(dirname(fileURLToPath(import.meta.url)));
 const ROOT = join(DEMO, "..");
@@ -26,6 +26,10 @@ const BAND = 420;
 const STATUS = 186;
 const PREVIEW_W = 886;
 const PREVIEW_H = 1920;
+/** Trim sim rounded-corner matte before scaling (cropdetect on store takes). */
+const PREVIEW_SRC_CROP = { w: 1312, h: 2864, x: 4, y: 2 };
+/** Inset so Connect’s device preview mask does not clip the status bar. */
+const PREVIEW_SAFE_PAD = 28;
 const FPS = 30;
 const PAPER = "0x151413";
 const YELLOW = "0xFFD21F";
@@ -140,17 +144,24 @@ if kind == "band":
     img.save(out)
 elif kind == "chapter":
     w, h = spec.get("width", 886), spec.get("height", 1920)
+    # Same header scrim as demo/lib/composition.template.html #scrim (620px @ 1920).
+    scrim_h = int(h * 620 / 1920)
+    paper = (10, 9, 8)
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    scrim_h = int(h * 0.26)
     for row in range(scrim_h):
         t = row / max(1, scrim_h - 1)
-        a = int(235 * (1.0 - t * 0.88))
-        draw.line([(0, row), (w, row)], fill=(10, 9, 8, a))
+        if t <= 0.62:
+            a = 0.94 - (0.14 * t / 0.62)
+        else:
+            a = 0.8 * (1.0 - (t - 0.62) / 0.38)
+        a = max(0.0, min(1.0, a))
+        draw.line([(0, row), (w, row)], fill=(*paper, int(255 * a)))
     font = fit(spec["text"], spec.get("max", 118), spec.get("maxWidth", w - 60))
     tw = font.getlength(spec["text"])
-    y = spec.get("y", 148)
-    draw.text(((w - tw) / 2, y), spec["text"], font=font, fill=(0xFF, 0xD2, 0x1F, 255))
+    y = spec.get("y", 168)
+    tx = (w - tw) / 2
+    draw.text((tx, y), spec["text"], font=font, fill=(0xFF, 0xD2, 0x1F, 255))
     img.save(out)
 else:
     font = fit(spec["text"], spec.get("max", 52), spec.get("maxWidth", 780))
@@ -196,15 +207,41 @@ function shotFile(name) {
   return path;
 }
 
+/** simctl recordVideo frames lag Maestro wall-clock marks on store sims (~2.4s). */
+const SIMCTL_VIDEO_LAG_MS = 2400;
+
+function takeMarks(result) {
+  const t0 = Number(readFileSync(join(take, "record_start_ms"), "utf8").trim()) + SIMCTL_VIDEO_LAG_MS;
+  const marks = {};
+  for (const [name, at] of result.marks ?? []) {
+    marks[name] = (at - t0) / 1000;
+  }
+  const need = (name) => {
+    if (marks[name] === undefined) throw new Error(`mark ${name} missing from result.json`);
+    return marks[name];
+  };
+  return { marks, need };
+}
+
+function chapterOrder(result, marks) {
+  const firstStyle = result.firstStyle && NAMES[result.firstStyle] ? result.firstStyle : "stoic";
+  const tapOrder = ["optimistic", "humorous", "stoic", "tough_love"];
+  const rest = tapOrder.filter((style) => style !== firstStyle && marks[`shown_${style}`] !== undefined);
+  return [firstStyle, ...rest];
+}
+
 function buildFrames(font) {
   const result = JSON.parse(readFileSync(join(take, "result.json"), "utf8"));
-  // The stoic line is the one that reads in a glance. Humorous is the contrast.
+  const first = result.firstStyle && NAMES[result.firstStyle] ? result.firstStyle : "stoic";
+  const initial = existsSync(join(take, "shots", "style-initial.png"))
+    ? shotFile("style-initial.png")
+    : shotFile(`style-${first.replace("_", "-")}.png`);
   const frames = [
-    { raw: shotFile("style-stoic.png"), lines: ["FOUR WAYS", "TO SEE IT."], out: "01-four-ways.png", cropTop: 320 },
+    { raw: initial, lines: ["FOUR WAYS", "TO SEE IT."], out: "01-four-ways.png", cropTop: 320 },
     { raw: shotFile("composer.png"), lines: ["WRITE THE", "HARD THOUGHT."], out: "02-write.png", cropTop: 300 },
     { raw: shotFile("style-humorous.png"), lines: ["SAME THOUGHT.", "DIFFERENT VOICE."], out: "03-voice.png", cropTop: 320 },
-    { raw: shotFile("home.png"), lines: ["ANGLES FROM", "OTHER PEOPLE."], out: "04-home.png", cropTop: 150 },
-    { raw: shotFile("favorites.png"), lines: ["KEEP THE ONE", "THAT FITS."], out: "05-keep.png", cropTop: 150 },
+    { raw: shotFile("style-optimistic.png"), lines: ["STILL", "POSSIBLE."], out: "04-possible.png", cropTop: 320 },
+    { raw: shotFile("style-tough-love.png"), lines: ["KEEP THE ONE", "THAT FITS."], out: "05-keep.png", cropTop: 320 },
   ];
   mkdirSync(STORE, { recursive: true });
   for (const frame of frames) {
@@ -233,25 +270,44 @@ function ensureCfr() {
   const tools = join(STORE, ".tools");
   mkdirSync(tools, { recursive: true });
   const screenRaw = join(take, "screen.mp4");
-  const heartRaw = join(take, "heart.mp4");
   const screen = join(tools, "cfr-screen.mp4");
-  const heart = join(tools, "cfr-heart.mp4");
-  for (const [raw, out] of [[screenRaw, screen], [heartRaw, heart]]) {
-    const stamp = `${out}.stamp`;
-    if (existsSync(out) && existsSync(stamp)) continue;
-    log(`CFR ${out}`);
+  const stamp = `${screen}.stamp`;
+  const token = `${take}\n${statSync(screenRaw).mtimeMs}`;
+  if (!(existsSync(screen) && existsSync(stamp) && readFileSync(stamp, "utf8") === token)) {
+    log(`CFR ${screen}`);
     run("ffmpeg", [
-      "-y", "-v", "error", "-i", raw,
+      "-y", "-v", "error", "-i", screenRaw,
       "-vf", `fps=${FPS},format=yuv420p`,
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-g", "15", "-an", out,
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-g", "15", "-an", screen,
     ]);
-    writeFileSync(stamp, "ok");
+    writeFileSync(stamp, token);
   }
-  return { screen, heart };
+  return { screen };
 }
 
 function scaleVf() {
-  return `scale=${PREVIEW_W}:${PREVIEW_H}:force_original_aspect_ratio=increase,crop=${PREVIEW_W}:${PREVIEW_H},setsar=1,format=yuv420p`;
+  const { w, h, x, y } = PREVIEW_SRC_CROP;
+  const pad = PREVIEW_SAFE_PAD;
+  const innerW = PREVIEW_W - pad * 2;
+  const innerH = PREVIEW_H - pad * 2;
+  return [
+    `crop=${w}:${h}:${x}:${y}`,
+    `scale=${innerW}:${innerH}:force_original_aspect_ratio=increase`,
+    `crop=${innerW}:${innerH}:(iw-${innerW})/2:0`,
+    `pad=${PREVIEW_W}:${PREVIEW_H}:${pad}:${pad}:color=${PAPER}`,
+    "setsar=1",
+    "format=yuv420p",
+  ].join(",");
+}
+
+function formatTimeCode(sec, fps = FPS) {
+  const totalFrames = Math.round(sec * fps);
+  const frames = totalFrames % fps;
+  const wholeSec = Math.floor(totalFrames / fps);
+  const s = wholeSec % 60;
+  const m = Math.floor(wholeSec / 60) % 60;
+  const h = Math.floor(wholeSec / 3600);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}:${String(frames).padStart(2, "0")}`;
 }
 
 function encodeClip({ file, start, end, outSec, chapterPath, segPath }) {
@@ -293,14 +349,14 @@ function buildPreview(result, font) {
     );
     theme.storeEnd = fallback.storeEnd;
   }
-  const { screen, heart } = ensureCfr();
+  const { screen } = ensureCfr();
   const tools = join(STORE, ".tools");
   const segDir = join(tools, "segs");
   rmSync(segDir, { recursive: true, force: true });
   mkdirSync(segDir, { recursive: true });
 
   const hookMp4 = join(tools, "hook.mp4");
-  const thumbPng = join(STORE, "preview-thumbnail.png");
+  const thumbPng = join(STORE, "preview-hook-thumbnail.png");
   const { hookOut, lines: hookLines } = renderStoreHook({
     theme,
     toolsDir: tools,
@@ -313,20 +369,102 @@ function buildPreview(result, font) {
     log,
   });
 
-  const typeOut = 1.75;
-  const cookOut = 0.95;
-  const stoicOut = 3.15;
-  const styleOut = 2.4;
-  const heartOut = 2.0;
+  const { marks, need } = takeMarks(result);
+  const screenDur = Number(probe(screen).duration);
+  const chapters = chapterOrder(result, marks);
+  const lastStyle = chapters[chapters.length - 1];
+  const shownLastKey = `shown_${lastStyle}`;
+  let lastOut = 3.3;
+  const typeOut = 1.65;
+  const sendOut = 0.55;
+  const angleOut = 1.7;
+  const endHold = layoutStoreCards(theme.storeEnd, PREVIEW_W, PREVIEW_H, {
+    endHold: 1.05,
+    centerRatio: 0.4,
+  }).duration;
+  const hookOutForMin = hookOut;
+  const bodyForMin = typeOut + sendOut + 1.0 + angleOut * Math.max(0, chapters.length - 1);
+  let estimatedForMin = hookOutForMin + bodyForMin + lastOut + endHold;
+  if (estimatedForMin < 15.05) lastOut += 15.05 - estimatedForMin;
+  if (marks[shownLastKey] === undefined) {
+    throw new Error(`missing ${shownLastKey} in result.json`);
+  }
+  if (marks[shownLastKey] > screenDur - 0.35) {
+    throw new Error(
+      `${shownLastKey} at ${marks[shownLastKey].toFixed(2)}s with only ${screenDur.toFixed(2)}s on tape — `
+      + "Tough Love is not in the recording. Re-run demo/make_store.sh (longer post-flow wait).",
+    );
+  }
+  if (marks[shownLastKey] + lastOut > screenDur - 0.04) {
+    lastOut = Math.max(1.0, screenDur - 0.04 - marks[shownLastKey]);
+    log(`tough love clip ${lastOut.toFixed(2)}s (tape ends ${screenDur.toFixed(2)}s)`);
+  }
+  const typeStart = need("type_start");
+  const typeEnd = need("type_end");
+  const sendAt = need("send");
+  const cardAt = need("card");
+  let cookFrom = (marks.cooking_after_followup ?? marks.cooking ?? sendAt) + 0.45;
+  if (cookFrom >= cardAt - 0.35) cookFrom = Math.max(sendAt + 0.15, cardAt - 0.8);
+  const cookRaw = Math.max(0.4, cardAt - cookFrom);
+  const cookOut = Math.min(1.0, cookRaw / 1.5);
+  const body = typeOut + sendOut + cookOut + angleOut * Math.max(0, chapters.length - 1);
+  const estimated = hookOut + body + lastOut + endHold;
+  if (estimated < 15.05) lastOut += 15.05 - estimated;
+  if (hookOut + body + lastOut + endHold > 30) {
+    throw new Error(`preview would be ${(hookOut + body + lastOut + endHold).toFixed(2)}s, over 30s`);
+  }
+  // Keep the in-point on the style mark; shorten the clip if we are near end of tape.
+  // Sliding the window backward (old behavior) put the wrong style under the yellow title.
+  const windowAt = (start, wanted) => {
+    const maxEnd = Math.max(0.2, screenDur - 0.04);
+    const s = Math.max(0, Math.min(start, maxEnd - 0.12));
+    const e = Math.min(maxEnd, s + wanted);
+    if (e - s < 0.12) {
+      throw new Error(`clip at ${start.toFixed(2)}s overruns the take (${screenDur.toFixed(2)}s)`);
+    }
+    return { start: s, end: e };
+  };
+  const sendWin = windowAt(sendAt, sendOut);
   const clips = [
-    { kind: "type", file: screen, start: 26.2, end: 37.0, out: typeOut },
-    { kind: "cook", file: screen, start: 38.4, end: 43.6, out: cookOut },
-    { kind: "style", file: screen, start: 44.0, end: 48.0, out: stoicOut, label: "STOIC" },
-    { kind: "style", file: screen, start: 74.6, end: 78.0, out: styleOut, label: "OPTIMISTIC" },
-    { kind: "style", file: screen, start: 83.6, end: 87.0, out: styleOut, label: "HUMOROUS" },
-    { kind: "style", file: screen, start: 97.0, end: 99.8, out: styleOut, label: "TOUGH LOVE" },
-    { kind: "heart", file: heart, start: 17.2, end: 20.4, out: heartOut },
+    { kind: "type", file: screen, start: typeStart, end: typeEnd, out: typeOut },
+    { kind: "send", file: screen, start: sendWin.start, end: sendWin.end, out: sendOut },
+    { kind: "cook", file: screen, start: cookFrom, end: Math.min(cardAt, screenDur - 0.04), out: cookOut },
   ];
+  chapters.forEach((style, index) => {
+    let marked;
+    if (index === 0) {
+      marked = cardAt;
+    } else {
+      const shown = marks[`shown_${style}`];
+      if (shown === undefined) {
+        throw new Error(`missing shown_${style} in result.json`);
+      }
+      if (index === chapters.length - 1) {
+        marked = Math.min(screenDur - 0.18, shown + 0.5);
+      } else {
+        marked = Math.max(0, shown - 0.12);
+      }
+    }
+    const wanted = index === chapters.length - 1 ? lastOut : angleOut;
+    const win = windowAt(marked, wanted);
+    const out = win.end - win.start;
+    clips.push({
+      kind: "style",
+      file: screen,
+      start: win.start,
+      end: win.end,
+      out,
+      label: NAMES[style],
+    });
+  });
+
+  const previewMin = 15.05;
+  let bodySansHook = clips.reduce((sum, clip) => sum + clip.out, 0);
+  const projected = hookOut + bodySansHook + endHold;
+  if (projected < previewMin) {
+    clips[0].out += previewMin - projected;
+    log(`pad type +${(previewMin - projected).toFixed(2)}s (Apple 15s minimum)`);
+  }
 
   let at = hookOut;
   clips.forEach((clip, index) => {
@@ -342,7 +480,7 @@ function buildPreview(result, font) {
         maxWidth: PREVIEW_W - 80,
         width: PREVIEW_W,
         height: PREVIEW_H,
-        y: 148,
+        y: 168,
       }, chapterPath);
     }
     log(`segment ${index} ${clip.kind} ${clip.label || ""} → ${clip.out.toFixed(2)}s`);
@@ -357,7 +495,8 @@ function buildPreview(result, font) {
   });
 
   const endMp4 = join(tools, "end.mp4");
-  const endAt = hookOut + clips.reduce((sum, c) => sum + c.out, 0);
+  const bodyAt = hookOut + clips.reduce((sum, c) => sum + c.out, 0);
+  const endAt = bodyAt;
   const { duration: endOut, lines: endLines } = renderStoreEnd({
     theme,
     toolsDir: tools,
@@ -369,7 +508,8 @@ function buildPreview(result, font) {
     log,
   });
 
-  const total = hookOut + clips.reduce((sum, c) => sum + c.out, 0) + endOut;
+  const bodyTotal = hookOut + clips.reduce((sum, c) => sum + c.out, 0) + endOut;
+  const total = bodyTotal;
   if (total < 15 || total > 30) {
     throw new Error(`preview duration ${total.toFixed(2)}s is outside 15–30s`);
   }
@@ -392,16 +532,19 @@ function buildPreview(result, font) {
     whoosh: { d: 0.55, expr: "0.4*(2*random(0)-1)*pow(sin(PI*t/0.55),3)" },
   };
   const cues = [];
+  const t0 = 0;
   for (const line of hookLines) {
-    cues.push(["thump", line.at + 0.05]);
+    cues.push(["thump", t0 + line.at + 0.05]);
   }
   for (const clip of clips) {
     if (clip.kind === "type") {
-      for (let time = 0.1; time < clip.out - 0.2; time += 0.35) cues.push(["click", clip.at + time]);
+      for (let time = 0.1; time < clip.out - 0.2; time += 0.35) {
+        cues.push(["click", t0 + clip.at + time]);
+      }
     }
-    if (clip.kind === "cook") cues.push(["whoosh", clip.at + 0.04]);
-    if (clip.kind === "style") cues.push(["hit", clip.at + 0.06]);
-    if (clip.kind === "heart") cues.push(["click", clip.at + 0.55]);
+    if (clip.kind === "send") cues.push(["click", t0 + clip.at + 0.08]);
+    if (clip.kind === "cook") cues.push(["whoosh", t0 + clip.at + 0.04]);
+    if (clip.kind === "style") cues.push(["hit", t0 + clip.at + 0.06]);
   }
   for (const line of endLines) {
     cues.push(["hit", endAt + line.at + 0.05]);
@@ -416,7 +559,9 @@ function buildPreview(result, font) {
   const audio = `${sfxChains.join(";")};${bed};${cues.map((_, i) => `[s${i}]`).join("")}amix=inputs=${cues.length}:normalize=0:duration=longest,volume=0.85,alimiter=limit=0.8:level=false,atrim=0:${total.toFixed(3)},apad=whole_dur=${total.toFixed(3)}[sfx];[sfx][bed]amix=inputs=2:normalize=0:duration=first[aout]`;
 
   const out = join(STORE, "preview.mp4");
-  log(`preview ${total.toFixed(2)}s (hook ${hookOut.toFixed(2)}s, end ${endOut.toFixed(2)}s, poster @ 5s Stoic)`);
+  const firstAngleAt = hookOut + typeOut + sendOut + cookOut;
+  const posterFrameTimeCode = formatTimeCode(firstAngleAt);
+  log(`preview ${total.toFixed(2)}s (hook ${hookOut.toFixed(2)}s, first angle @ ${firstAngleAt.toFixed(2)}s, end ${endOut.toFixed(2)}s)`);
   run("ffmpeg", [
     "-y", "-v", "error",
     "-i", picture,
@@ -439,8 +584,23 @@ function buildPreview(result, font) {
       join(frames, `t${String(time).replace(".", "_")}.png`),
     ]);
   }
-  writeFileSync(join(STORE, "edit.json"), `${JSON.stringify({ total, hookOut, endOut, endAt, clips, posterAt: 5 }, null, 2)}\n`);
-  log(`wrote ${out} and ${thumbPng}`);
+  writeFileSync(
+    join(STORE, "edit.json"),
+    `${JSON.stringify(
+      {
+        total,
+        hookOut,
+        endOut,
+        endAt,
+        clips,
+        firstAngleAt,
+        posterFrameTimeCode,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  log(`wrote ${out} frame ${posterFrameTimeCode}`);
 }
 
 function buildListFrames() {

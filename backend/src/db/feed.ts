@@ -335,7 +335,10 @@ export async function listRankedFeed(
     });
 
     return {
-      cards: await storedCardsForViewer(ordered, viewerId, db, { coverAvoidsKept: !query.style }),
+      cards: await storedCardsForViewer(ordered, viewerId, db, {
+        coverAvoidsKept: !query.style,
+        followed,
+      }),
       arrivalsAfter,
     };
   } catch (error) {

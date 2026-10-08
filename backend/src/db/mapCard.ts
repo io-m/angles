@@ -66,27 +66,30 @@ export async function storedCardsForViewer(
   viewerId: string = getOwnerUserId(),
   db: Selectable = getDb(),
   /** For you: someone else's card opens on an answer the viewer has not hearted, when it has one. */
-  options: { coverAvoidsKept?: boolean } = {},
+  options: { coverAvoidsKept?: boolean; followed?: ReadonlySet<string> } = {},
 ): Promise<StoredCard[]> {
-  const saves = await loadViewerSaves(
-    rows.map((row) => row.id),
-    viewerId,
-    db,
-  );
-  const followed = await followedAuthorIds(
-    viewerId,
-    rows.map((row) => row.userId),
-    db,
-  );
-  // Only ever queried for the viewer's own published cards, so there is nothing to
-  // leak even if a later caller forgets the owner check below.
-  const hearts = await loadStyleHeartCounts(
-    rows.filter((row) => row.userId === viewerId && row.isPublic).map((row) => row.id),
-    db,
-  );
-  const taste = rows.some((row) => row.userId !== viewerId)
-    ? await loadViewerStyleTaste(viewerId, db)
-    : null;
+  const ownPublicIds = rows
+    .filter((row) => row.userId === viewerId && row.isPublic)
+    .map((row) => row.id);
+  const needsTaste = rows.some((row) => row.userId !== viewerId);
+  const [saves, followed, hearts, taste] = await Promise.all([
+    loadViewerSaves(
+      rows.map((row) => row.id),
+      viewerId,
+      db,
+    ),
+    options.followed
+      ? Promise.resolve(new Set(options.followed))
+      : followedAuthorIds(
+          viewerId,
+          rows.map((row) => row.userId),
+          db,
+        ),
+    // Only ever queried for the viewer's own published cards, so there is nothing to
+    // leak even if a later caller forgets the owner check below.
+    loadStyleHeartCounts(ownPublicIds, db),
+    needsTaste ? loadViewerStyleTaste(viewerId, db) : Promise.resolve(null),
+  ]);
   return rows.map((row) =>
     toStoredCard(row, saves, viewerId, followed, hearts.get(row.id), taste, options.coverAvoidsKept),
   );

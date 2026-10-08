@@ -36,13 +36,15 @@ struct HomeView: View {
             glimpseCard: glimpseCard,
             scrollToTopToken: viewModel.saveLanding == .home
                 ? viewModel.saveLandingToken
-                : 0,
+                : viewModel.forYouLatestToken,
             shiningCardID: viewModel.shiningCardID,
             isScrollDisabled: isGlimpseActive,
             canPullToRefresh: canLoadFullAppContent && !isGlimpseActive,
             refreshOutcome: viewModel.feedRefreshOutcome,
             refreshToken: viewModel.feedRefreshToken,
             onConsumeRefresh: { viewModel.consumeFeedRefreshBanner() },
+            showsLatestPill: viewModel.showsLatestForYouPill,
+            onSeeLatest: { viewModel.applyPendingForYouMix() },
             offersOwnerPrivacyMenu: true,
             externalSelectionTab: viewModel.saveLanding == .home ? .all : nil,
             externalSelectionToken: viewModel.saveLandingToken,
@@ -164,6 +166,8 @@ struct HomeFeedPager<Chrome: View>: View {
     let refreshOutcome: FeedRefreshOutcome?
     let refreshToken: Int
     let onConsumeRefresh: () -> Void
+    let showsLatestPill: Bool
+    let onSeeLatest: () -> Void
     let offersOwnerPrivacyMenu: Bool
     let externalSelectionTab: HomeFeedTab?
     let externalSelectionToken: Int
@@ -208,6 +212,8 @@ struct HomeFeedPager<Chrome: View>: View {
         refreshOutcome: FeedRefreshOutcome? = nil,
         refreshToken: Int = 0,
         onConsumeRefresh: @escaping () -> Void = {},
+        showsLatestPill: Bool = false,
+        onSeeLatest: @escaping () -> Void = {},
         offersOwnerPrivacyMenu: Bool = false,
         externalSelectionTab: HomeFeedTab? = nil,
         externalSelectionToken: Int = 0,
@@ -245,6 +251,8 @@ struct HomeFeedPager<Chrome: View>: View {
         self.refreshOutcome = refreshOutcome
         self.refreshToken = refreshToken
         self.onConsumeRefresh = onConsumeRefresh
+        self.showsLatestPill = showsLatestPill
+        self.onSeeLatest = onSeeLatest
         self.offersOwnerPrivacyMenu = offersOwnerPrivacyMenu
         self.externalSelectionTab = externalSelectionTab
         self.externalSelectionToken = externalSelectionToken
@@ -286,6 +294,14 @@ struct HomeFeedPager<Chrome: View>: View {
                 token: refreshToken,
                 noun: "post",
                 onConsumed: onConsumeRefresh
+            )
+            .padding(.top, chromeHeight + 8)
+            .ignoresSafeArea(edges: .top)
+            .opacity(showsLatestPill && committedTab == .all ? 0 : 1)
+
+            FeedLatestPill(
+                isVisible: showsLatestPill && committedTab == .all,
+                onTap: onSeeLatest
             )
             .padding(.top, chromeHeight + 8)
             .ignoresSafeArea(edges: .top)

@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import UIKit
 
 struct HomeCardSlide: Identifiable, Equatable {
     let id: UUID
@@ -480,6 +481,13 @@ private struct AuthorFeed {
     var refreshToken = 0
 }
 
+private struct PendingForYouMix {
+    var cards: [StoredCard]
+    var nextCursor: String?
+    var arrivalsAfter: String?
+    var hasMore: Bool
+}
+
 private struct BlockAuthorSnapshot {
     let libraryEntries: [(index: Int, card: HomeCard)]
     let shelfEntries: [(placement: HomeFeedPlacement, card: HomeCard)]
@@ -546,6 +554,17 @@ final class HomeViewModel {
     /// The banner for the shelf that was just pulled. Switching tabs must not replay it.
     private(set) var feedRefreshOutcome: FeedRefreshOutcome?
     private(set) var feedRefreshToken = 0
+    /// Sticky See latest pill. A newer For you mix is parked, never swapped under a finger.
+    private(set) var forYouLatestToken = 0
+    var showsLatestForYouPill: Bool { pendingLaunchMix != nil }
+    private var feedSnapshotStore = HomeFeedSnapshotStore()
+    private var feedAccountID: String?
+    private var pendingLaunchMix: PendingForYouMix?
+    /// Ids that were on the snapshot when this visit opened, so a local delete is not undone.
+    private var launchSnapshotIDs: Set<UUID> = []
+    private var launchPrefetchStarted = false
+    /// Live For you prefetch finished (loaded or failed). Splash waits on this in Debug.
+    private(set) var launchPrefetchFinished = false
     private(set) var isSaving = false
     private(set) var saveError: String?
     /// Set when a non-taste save should already be on screen under the compose overlay.
@@ -1300,6 +1319,12 @@ final class HomeViewModel {
         feedDisplayedIDs = [:]
         appliedFilter = HomeFeedFilter()
         homeFeedTab = .all
+        pendingLaunchMix = nil
+        launchSnapshotIDs = []
+        launchPrefetchStarted = false
+        launchPrefetchFinished = false
+        feedAccountID = nil
+        feedSnapshotStore.delete()
 
         cards = []
         libraryLoadState = .loading
@@ -1335,6 +1360,166 @@ final class HomeViewModel {
             return
         }
         feedBoard.markLoading(on: .all, replacing: true)
+    }
+
+    /// Paints last For you from disk so splash can punch without waiting on GET /feed.
+    func hydrateForYouSnapshot(userId: String) {
+        feedAccountID = userId
+        guard !feedBoard.shelf(.all).hasLoaded,
+              appliedFilter == HomeFeedFilter(),
+              let snapshot = feedSnapshotStore.load(userId: userId)
+        else {
+            return
+        }
+        let cards = snapshot.cards.compactMap(HomeCard.init(stored:))
+        guard !cards.isEmpty else {
+            return
+        }
+        launchSnapshotIDs = Set(cards.map(\.id))
+        _ = feedBoard.replace(
+            cards,
+            on: .all,
+            before: snapshot.nextCursor,
+            hasMore: snapshot.hasMore,
+            generation: feedBoard.shelf(.all).generation,
+            filter: { matchesFeedFilter($0, appliedFilter) },
+            pageSize: Self.feedPageSize,
+            arrivalsAfter: snapshot.arrivalsAfter
+        )
+    }
+
+    /// Starts the live For you fetch as soon as the bearer token exists. A snapshot
+    /// stays on screen; a different mix is parked for See latest.
+    func prefetchLaunchFeed(userId: String? = nil) async {
+        if let userId {
+            feedAccountID = userId
+        }
+        guard !launchPrefetchStarted else {
+            return
+        }
+        launchPrefetchStarted = true
+        defer { launchPrefetchFinished = true }
+        if feedBoard.shelf(.all).hasLoaded {
+            await fetchPendingLaunchMix()
+            return
+        }
+        await loadFeedIfNeeded()
+    }
+
+    func applyPendingForYouMix() {
+        guard let pending = pendingLaunchMix else {
+            return
+        }
+        dropPendingLaunchMix()
+        forYouLatestToken &+= 1
+        let stored = mergeLaunchMix(pending.cards)
+        let generation = feedBoard.shelf(.all).generation
+        withAnimation(
+            reduceMotionLaunchMix
+                ? nil
+                : .spring(response: 0.42, dampingFraction: 0.86)
+        ) {
+            _ = feedBoard.replace(
+                stored,
+                on: .all,
+                before: pending.nextCursor,
+                hasMore: pending.hasMore,
+                generation: generation,
+                filter: { matchesFeedFilter($0, appliedFilter) },
+                pageSize: Self.feedPageSize,
+                arrivalsAfter: pending.arrivalsAfter
+            )
+        }
+        persistForYouSnapshot(
+            cards: pending.cards,
+            nextCursor: pending.nextCursor,
+            arrivalsAfter: pending.arrivalsAfter,
+            hasMore: pending.hasMore
+        )
+        launchSnapshotIDs = Set(stored.map(\.id))
+    }
+
+    private var reduceMotionLaunchMix: Bool {
+        UIAccessibility.isReduceMotionEnabled
+    }
+
+    private func dropPendingLaunchMix() {
+        pendingLaunchMix = nil
+    }
+
+    private func fetchPendingLaunchMix() async {
+        guard appliedFilter == HomeFeedFilter() else {
+            return
+        }
+        do {
+            let response = try await cardsService.listFeed(limit: Self.feedPageSize)
+            let pendingIDs = response.cards.compactMap { UUID(uuidString: $0.id) }
+            let onScreen = feedBoard.shelf(.all).order
+            guard ForYouMix.differs(pendingIDs: pendingIDs, onScreenIDs: onScreen) else {
+                persistForYouSnapshot(
+                    cards: response.cards,
+                    nextCursor: response.page.nextCursor,
+                    arrivalsAfter: response.page.arrivalsAfter,
+                    hasMore: response.page.hasMore(pageSize: Self.feedPageSize)
+                )
+                return
+            }
+            pendingLaunchMix = PendingForYouMix(
+                cards: response.cards,
+                nextCursor: response.page.nextCursor,
+                arrivalsAfter: response.page.arrivalsAfter,
+                hasMore: response.page.hasMore(pageSize: Self.feedPageSize)
+            )
+        } catch {
+            // Keep the snapshot. Pull-to-refresh is the retry.
+        }
+    }
+
+    private func persistForYouSnapshot(
+        cards: [StoredCard],
+        nextCursor: String?,
+        arrivalsAfter: String?,
+        hasMore: Bool
+    ) {
+        guard let feedAccountID, appliedFilter == HomeFeedFilter(), !cards.isEmpty else {
+            return
+        }
+        feedSnapshotStore.save(
+            HomeFeedSnapshot(
+                userId: feedAccountID,
+                cards: cards,
+                nextCursor: nextCursor,
+                arrivalsAfter: arrivalsAfter,
+                hasMore: hasMore,
+                savedAt: Date()
+            )
+        )
+    }
+
+    private func mergeLaunchMix(_ stored: [StoredCard]) -> [HomeCard] {
+        let locals = feedBoard.records
+        return merged(Array(locals.values), with: stored).compactMap { card in
+            if launchSnapshotIDs.contains(card.id), locals[card.id] == nil {
+                return nil
+            }
+            guard let local = locals[card.id] else {
+                return card
+            }
+            var next = card
+            next.isPublic = local.isPublic
+            if !next.isOwner {
+                next.authorFollowing = local.authorFollowing
+            }
+            for index in next.slides.indices {
+                let style = next.slides[index].result.style
+                guard let previous = local.slides.first(where: { $0.result.style == style }) else {
+                    continue
+                }
+                next.slides[index].isFavorite = previous.isFavorite
+                next.slides[index].favoritedAt = previous.favoritedAt
+            }
+            return next
+        }
     }
 
     func loadFeedIfNeeded() async {
@@ -1388,6 +1573,7 @@ final class HomeViewModel {
         }
 
         appliedFilter = filter
+        dropPendingLaunchMix()
         cancelFeedTasks()
         feedBoard.invalidate(blank: true)
         startFeedTask(on: homeFeedTab, replacing: true)
@@ -1408,6 +1594,9 @@ final class HomeViewModel {
     /// Pull-to-refresh for the shelf that was pulled. Each tab keeps its own cursor,
     /// so a Stoic pull cannot rotate For you, and the other way around.
     func refreshFeed(_ tab: HomeFeedTab = .all) async {
+        if tab == .all {
+            dropPendingLaunchMix()
+        }
         guard let generation = feedBoard.beginRefresh(on: tab) else {
             return
         }
@@ -1710,6 +1899,14 @@ final class HomeViewModel {
                 if let visibility {
                     applyOwnerVisibility(visibility, syncsLibrary: true)
                 }
+            }
+            if commit == .applied, replacing, tab == .all {
+                persistForYouSnapshot(
+                    cards: response.cards,
+                    nextCursor: response.page.nextCursor,
+                    arrivalsAfter: response.page.arrivalsAfter,
+                    hasMore: response.page.hasMore(pageSize: Self.feedPageSize)
+                )
             }
             return commit == .stale ? .discarded : .success
         } catch {

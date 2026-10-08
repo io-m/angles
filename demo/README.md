@@ -20,7 +20,7 @@ Nothing in the phone is mocked. The AI output is whatever the local API returned
 demo/make_video.sh
 ```
 
-The output is `demo/output/final_9x16.mp4` (1080x1920, 30 fps, H.264/AAC). Next to it are `report.md` (the answers and the checks), `contact_sheet.png`, `frames/` (hook cards, every beat, the end card), and `edl.json` (the cut list).
+The output is `demo/output/final_9x16.mp4` (1080x1920, 30 fps, H.264/AAC). Next to it are `report.md` (the answers and the checks), `contact_sheet.png`, `cover.png` (TikTok cover: first hook card, same as `frames/01-hook-1.png`), `frames/` (hook cards, every beat, the end card), and `edl.json` (the cut list). `make_video.sh` also keeps `demo/output/<theme>_cover.png` beside the themed `.mp4` copy.
 
 Before you run it:
 
@@ -76,7 +76,7 @@ Each video is one theme file in `demo/themes/`. It holds the thought that gets t
 
 To have an LLM make one, give it this:
 
-> Read `demo/README.md` from the top (**Cut contract**) and `demo/themes/lisbon-flight.json`. Write `demo/themes/<short-name>.json` for this theme: **<your theme>**. Do not add Post, Home, or a fifth chapter. Then run `demo/make_video.sh --theme <short-name>`, read `demo/output/report.md` and `demo/output/contact_sheet.png`, and tell me if it is postable.
+> Read `demo/README.md` from the top (**Cut contract**) and `demo/themes/lisbon-flight.json`. Write `demo/themes/<short-name>.json` for this theme: **<your theme>**. Do not add Post, Home, or a fifth chapter. Then run `demo/make_video.sh --theme <short-name>`, read `demo/output/report.md` and `demo/output/contact_sheet.png`, and tell me if it is postable. Use `demo/output/<short-name>_cover.png` (or `cover.png`) as the TikTok cover — do not generate a separate cover graphic.
 
 Rules for the theme file:
 

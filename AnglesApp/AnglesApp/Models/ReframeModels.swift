@@ -365,7 +365,7 @@ struct SignedReframeResult: Codable, Equatable, Sendable {
     }
 }
 
-struct StoredReframeResult: Decodable, Equatable, Sendable {
+struct StoredReframeResult: Codable, Equatable, Sendable {
     let style: Style
     let reframe: String
     /// Sent to the author only.
@@ -397,6 +397,16 @@ struct StoredReframeResult: Decodable, Equatable, Sendable {
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         favoritedAt = try container.decodeIfPresent(String.self, forKey: .favoritedAt)
         heartCount = try container.decodeIfPresent(Int.self, forKey: .heartCount)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(style, forKey: .style)
+        try container.encode(reframe, forKey: .reframe)
+        try container.encodeIfPresent(reframeOriginal, forKey: .reframeOriginal)
+        try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encodeIfPresent(favoritedAt, forKey: .favoritedAt)
+        try container.encodeIfPresent(heartCount, forKey: .heartCount)
     }
 }
 
@@ -633,7 +643,7 @@ struct FollowNotice: Identifiable, Equatable, Sendable {
     }
 }
 
-struct SessionBody: Decodable, Equatable, Sendable {
+struct SessionBody: Codable, Equatable, Sendable {
     let id: String
     let initials: String
     let name: String
@@ -685,6 +695,18 @@ struct SessionBody: Decodable, Equatable, Sendable {
 
     var hasAcceptedTerms: Bool {
         termsAcceptedAt?.isEmpty == false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(initials, forKey: .initials)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(tasteCompletedAt, forKey: .tasteCompletedAt)
+        try container.encodeIfPresent(tasteConsumedAt, forKey: .tasteConsumedAt)
+        try container.encodeIfPresent(termsAcceptedAt, forKey: .termsAcceptedAt)
+        try container.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
+        try container.encode(notifyFollows, forKey: .notifyFollows)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -771,7 +793,7 @@ struct AuthorCardsResponse: Decodable, Equatable, Sendable {
     }
 }
 
-struct StoredCard: Decodable, Equatable, Sendable {
+struct StoredCard: Codable, Equatable, Sendable {
     let id: String
     let thought: String
     let thoughtOriginal: String?
@@ -882,6 +904,33 @@ struct StoredCard: Decodable, Equatable, Sendable {
                 tags: tags.map(\.slug),
                 intensityBand: intensityBand
             )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(thought, forKey: .thought)
+        try container.encodeIfPresent(thoughtOriginal, forKey: .thoughtOriginal)
+        try container.encode(inputLanguage, forKey: .inputLanguage)
+        try container.encode(category, forKey: .category)
+        try container.encodeIfPresent(proposedCategory, forKey: .proposedCategory)
+        try container.encodeIfPresent(proposedLabel, forKey: .proposedLabel)
+        try container.encode(tags, forKey: .tags)
+        try container.encode(intensity, forKey: .intensity)
+        try container.encode(intensityBand, forKey: .intensityBand)
+        try container.encode(timeframe, forKey: .timeframe)
+        try container.encode(emotions, forKey: .emotions)
+        try container.encode(safety, forKey: .safety)
+        try container.encode(skippedStyles, forKey: .skippedStyles)
+        try container.encode(matching, forKey: .matching)
+        try container.encode(results, forKey: .results)
+        try container.encode(model, forKey: .model)
+        try container.encode(spotlightStyle, forKey: .spotlightStyle)
+        try container.encode(isPublic, forKey: .isPublic)
+        try container.encodeIfPresent(moderationHidden, forKey: .moderationHidden)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(isOwner, forKey: .isOwner)
+        try container.encode(author, forKey: .author)
     }
 }
 

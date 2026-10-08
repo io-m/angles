@@ -14,7 +14,7 @@ STORE="$ROOT/store"
 DEVICE_NAME="Angles Store iPhone 17 Pro Max"
 DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max"
 RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-26-5"
-THEME="$DEMO/themes/lost-job.json"
+THEME="$DEMO/themes/lisbon-flight.json"
 
 TAKE=""
 SKIP_BUILD=0
@@ -107,9 +107,6 @@ fi
 log "installing"
 xcrun simctl install "$udid" "$ROOT/AnglesApp/DerivedDataSimulator/Build/Products/Debug-iphonesimulator/Angles.app"
 
-log "refreshing local Home dates"
-(cd "$ROOT/backend" && pnpm db:seed-realistic)
-
 token="$(cd "$ROOT/backend" && pnpm --silent demo:session)"
 log "launching entitled demo"
 xcrun simctl launch --terminate-running-process "$udid" app.angles.ios \
@@ -136,6 +133,8 @@ maestro --device "$udid" test --debug-output "$TAKE/maestro" \
   -e SHOT_DIR="$TAKE/shots" \
   "$DEMO/store_flow.yaml" >"$TAKE/maestro.txt" 2>&1 || flow_status=$?
 
+# Let the last style (Tough love hold) and shown_tough_love land before we stop.
+sleep 6.0
 kill -INT "$rec_pid" 2>/dev/null || true
 wait "$rec_pid" 2>/dev/null || true
 
@@ -147,16 +146,45 @@ fi
 
 node "$DEMO/lib/extract_result.mjs" "$TAKE"
 
-log "paywall, without the demo entitlement"
-xcrun simctl terminate "$udid" app.angles.ios >/dev/null 2>&1 || true
-xcrun simctl launch "$udid" app.angles.ios \
-  -AnglesDemoSessionToken "$token" -AnglesDemoEntitled NO >/dev/null
-if maestro --device "$udid" test --debug-output "$TAKE/paywall-maestro" \
-  -e SHOT_DIR="$TAKE/shots" \
-  "$DEMO/store_paywall.yaml" >"$TAKE/paywall.txt" 2>&1; then
-  log "paywall screenshot saved"
+# Maestro --debug-output often keeps takeScreenshot copies under the debug tree
+# instead of writing the destination path. Harvest those into $TAKE/shots.
+python3 - "$TAKE" <<'PY'
+from pathlib import Path
+import sys
+take = Path(sys.argv[1])
+shots = take / "shots"
+shots.mkdir(exist_ok=True)
+for path in take.joinpath("maestro").rglob("*"):
+    if not path.is_file():
+        continue
+    name = path.name
+    if "/takeScreenshot/" not in str(path).replace("\\", "/"):
+        continue
+    if name.endswith(".png.png"):
+        dest = shots / name[:-4]
+    elif name.endswith(".png"):
+        dest = shots / name
+    else:
+        continue
+    if not dest.exists() or dest.stat().st_size < path.stat().st_size:
+        dest.write_bytes(path.read_bytes())
+print(f"[make_store] harvested {len(list(shots.glob('*.png')))} shots", file=sys.stderr)
+PY
+
+if [[ -f "$STORE/paywall.png" ]]; then
+  log "keeping existing paywall.png for subscription review shots"
 else
-  log "simulator paywall had no prices (see $TAKE/paywall.txt); the phone capture still has to happen"
+  log "paywall, without the demo entitlement"
+  xcrun simctl terminate "$udid" app.angles.ios >/dev/null 2>&1 || true
+  xcrun simctl launch "$udid" app.angles.ios \
+    -AnglesDemoSessionToken "$token" -AnglesDemoEntitled NO >/dev/null
+  if maestro --device "$udid" test --debug-output "$TAKE/paywall-maestro" \
+    -e SHOT_DIR="$TAKE/shots" \
+    "$DEMO/store_paywall.yaml" >"$TAKE/paywall.txt" 2>&1; then
+    log "paywall screenshot saved"
+  else
+    log "simulator paywall had no prices (see $TAKE/paywall.txt)"
+  fi
 fi
 
 node "$DEMO/store_edit.mjs" "$TAKE"

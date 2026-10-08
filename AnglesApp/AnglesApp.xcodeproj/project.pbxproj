@@ -25,9 +25,12 @@
 		26A08E6364A8DE4F54636D29 /* ThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */; };
 		2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */; };
 		2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B602E536EA39A5C8524CE6 /* ReframeService.swift */; };
+		2E16450FC828BFB80751BF37 /* HomeFeedSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5A65FF031FA9FA96B9D636 /* HomeFeedSnapshotStore.swift */; };
 		2EB391598577F25425C75DFF /* Angles.icon in Resources */ = {isa = PBXBuildFile; fileRef = 277F500C2565CC7DF5621C5A /* Angles.icon */; };
+		323C852404B7B64CD719B869 /* LaunchResumeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41166FA3D9D53F3AC9DC6EBE /* LaunchResumeTests.swift */; };
 		327D88731148A1E04A936513 /* ReframeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05847EC66A8A1B53179B539 /* ReframeCardView.swift */; };
 		3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D55F6643C769B38928FD8B /* ReframeModels.swift */; };
+		379C2850E7C0BCFA12492CDB /* FeedLatestPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 265E75893DCF1EF830A8EC3E /* FeedLatestPill.swift */; };
 		3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */; };
 		3AC3B1905991BF3CE20A9601 /* ForYouCovers.swift in Sources */ = {isa = PBXBuildFile; fileRef = C43E1D6BE1E7EBC18B58660A /* ForYouCovers.swift */; };
 		44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */; };
@@ -39,6 +42,7 @@
 		6F472A68899B089E43ED8A99 /* HomeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3BCFBFF2318D9F3BE56CB22 /* HomeFilterSheet.swift */; };
 		729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */; };
 		77767A426BAC877733A44558 /* AppGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01BEA95023B9310D87B3474C /* AppGate.swift */; };
+		782C4F5E524AEDC24CF82EDF /* SessionSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 344BB52CC2E7BFFC4E838D5B /* SessionSnapshotStore.swift */; };
 		7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */; };
 		7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391AB20557C346784058025E /* LoginView.swift */; };
 		7F5EE095F1DE06721C601E1A /* AIConsentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12BA34429811E6158E351C4 /* AIConsentSheet.swift */; };
@@ -130,12 +134,15 @@
 		1FFD1F9D62B1D72EFFFBFEAE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallCardMarquee.swift; sourceTree = "<group>"; };
 		245774EE58FAD79304953B8A /* AuthNonce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthNonce.swift; sourceTree = "<group>"; };
+		265E75893DCF1EF830A8EC3E /* FeedLatestPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedLatestPill.swift; sourceTree = "<group>"; };
 		277F500C2565CC7DF5621C5A /* Angles.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Angles.icon; sourceTree = "<group>"; };
 		338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
+		344BB52CC2E7BFFC4E838D5B /* SessionSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSnapshotStore.swift; sourceTree = "<group>"; };
 		3726E6089528365BA6EC3BA8 /* AnglesApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AnglesApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshPlanTests.swift; sourceTree = "<group>"; };
 		391AB20557C346784058025E /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		40B602E536EA39A5C8524CE6 /* ReframeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeService.swift; sourceTree = "<group>"; };
+		41166FA3D9D53F3AC9DC6EBE /* LaunchResumeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchResumeTests.swift; sourceTree = "<group>"; };
 		4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthCredentials.swift; sourceTree = "<group>"; };
 		4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModalScreen.swift; sourceTree = "<group>"; };
 		4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowingSheet.swift; sourceTree = "<group>"; };
@@ -163,6 +170,7 @@
 		9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGateTests.swift; sourceTree = "<group>"; };
 		A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleIcon.swift; sourceTree = "<group>"; };
+		AB5A65FF031FA9FA96B9D636 /* HomeFeedSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedSnapshotStore.swift; sourceTree = "<group>"; };
 		B05847EC66A8A1B53179B539 /* ReframeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeCardView.swift; sourceTree = "<group>"; };
 		B0D5F569663CAAFC626FF889 /* WidgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTests.swift; sourceTree = "<group>"; };
 		B13ED3B345E39F024359E6C0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -287,6 +295,7 @@
 				CB09EE79B4A27D757AD2944A /* AuthService.swift */,
 				4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */,
 				391AB20557C346784058025E /* LoginView.swift */,
+				344BB52CC2E7BFFC4E838D5B /* SessionSnapshotStore.swift */,
 				7B056E3708A9AE432904A684 /* SessionStore.swift */,
 			);
 			path = Auth;
@@ -367,6 +376,7 @@
 				338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */,
 				6A473004998C2F650FCA971D /* DrawerStubView.swift */,
 				E6FCF753D2258E381FAEC971 /* FavoriteAngleWidgetPublisher.swift */,
+				265E75893DCF1EF830A8EC3E /* FeedLatestPill.swift */,
 				01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */,
 				152DEA2974BB51116C07132D /* FeedRefreshPlan.swift */,
 				4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */,
@@ -376,6 +386,7 @@
 				81C5B019F4524ED6129C8297 /* HomeCardGrid.swift */,
 				926E1968DC6C213D5BAAAF2E /* HomeFeedPullRefresh.swift */,
 				901B8CF15E35B2C5BA5880E0 /* HomeFeedShelf.swift */,
+				AB5A65FF031FA9FA96B9D636 /* HomeFeedSnapshotStore.swift */,
 				D3BCFBFF2318D9F3BE56CB22 /* HomeFilterSheet.swift */,
 				CECAAC54ED5DE586764B6970 /* HomePalette.swift */,
 				564F37666F47FDFD54D03D2D /* HomeView.swift */,
@@ -420,6 +431,7 @@
 				1C07632E47BCD7EC8BB5F033 /* ForYouCoversTests.swift */,
 				BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */,
 				00CF35C326325A9D9BF41E63 /* HomeOwnerVisibilityTests.swift */,
+				41166FA3D9D53F3AC9DC6EBE /* LaunchResumeTests.swift */,
 				9147DA97E362AE10C8A58A59 /* ReframeContractTests.swift */,
 				B0D5F569663CAAFC626FF889 /* WidgetTests.swift */,
 			);
@@ -569,6 +581,7 @@
 				2040896C35F90189E3FBB9BD /* ForYouCoversTests.swift in Sources */,
 				E85F482E086576383A6F83CB /* HomeFeedShelfTests.swift in Sources */,
 				82D2D975563E2B65E2BC4633 /* HomeOwnerVisibilityTests.swift in Sources */,
+				323C852404B7B64CD719B869 /* LaunchResumeTests.swift in Sources */,
 				07C7B3E2F8C3F83F1A83C0B0 /* ReframeContractTests.swift in Sources */,
 				E92BDD00E9E6E12F499CEE70 /* WidgetTests.swift in Sources */,
 			);
@@ -598,6 +611,7 @@
 				729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */,
 				A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */,
 				DE82C4F9220F52D1290B0658 /* FavoriteAngleWidgetPublisher.swift in Sources */,
+				379C2850E7C0BCFA12492CDB /* FeedLatestPill.swift in Sources */,
 				EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */,
 				057F225336671B92CC069930 /* FeedRefreshPlan.swift in Sources */,
 				2552C717E0FF01245A757BAA /* FollowNotificationsSheet.swift in Sources */,
@@ -608,6 +622,7 @@
 				2779E2EB32F85742922E9932 /* HomeCardGrid.swift in Sources */,
 				BD5651910EFAA74B0C7C11AD /* HomeFeedPullRefresh.swift in Sources */,
 				98B2CABD3E648ED26E9CB614 /* HomeFeedShelf.swift in Sources */,
+				2E16450FC828BFB80751BF37 /* HomeFeedSnapshotStore.swift in Sources */,
 				6F472A68899B089E43ED8A99 /* HomeFilterSheet.swift in Sources */,
 				A1C1D453B6464DB6C697F341 /* HomePalette.swift in Sources */,
 				C98539C9157F9AF96E5D7E1E /* HomeView.swift in Sources */,
@@ -626,6 +641,7 @@
 				3757699E99EFAA8E1CC7BC52 /* ReframeModels.swift in Sources */,
 				2984AA64204BC95B478A7D30 /* ReframeService.swift in Sources */,
 				1D22451B85DD4655BFC0D891 /* RootTabBar.swift in Sources */,
+				782C4F5E524AEDC24CF82EDF /* SessionSnapshotStore.swift in Sources */,
 				58A035A5DC5F50F8E711CA76 /* SessionStore.swift in Sources */,
 				ACF747D184DD8A0A4227F2A2 /* SettingsView.swift in Sources */,
 				99EEAB90C5E209CBF852F02A /* StoreKitManager.swift in Sources */,

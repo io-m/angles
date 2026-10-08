@@ -138,3 +138,10 @@ if [[ "$(basename "$THEME")" == theme.json ]]; then
 fi
 cp "$DEMO/output/final_9x16.mp4" "$KEEP"
 log "kept a copy at ${KEEP#"$ROOT/"}"
+
+COVER_KEEP="$DEMO/output/$(basename "$THEME" .json)_cover.png"
+if [[ "$(basename "$THEME")" == theme.json ]]; then
+  COVER_KEEP="$DEMO/output/$(basename "$TAKE")_cover.png"
+fi
+cp "$DEMO/output/cover.png" "$COVER_KEEP"
+log "cover at ${COVER_KEEP#"$ROOT/"}"

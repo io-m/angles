@@ -32,6 +32,11 @@ final class SessionStore {
     private var pendingAppleNonce: String?
     private let authService = AuthService()
     private let profileService = ProfileService()
+    private let snapshotStore: SessionSnapshotStore
+
+    init(snapshotStore: SessionSnapshotStore = SessionSnapshotStore()) {
+        self.snapshotStore = snapshotStore
+    }
 
     var isSignedIn: Bool {
         session != nil
@@ -142,6 +147,9 @@ final class SessionStore {
             avatarUrl: current.avatarUrl,
             notifyFollows: current.notifyFollows
         )
+        if let session {
+            snapshotStore.save(session)
+        }
     }
 
     var hasAcceptedTerms: Bool {
@@ -172,6 +180,9 @@ final class SessionStore {
                 avatarUrl: latest.avatarUrl,
                 notifyFollows: latest.notifyFollows
             )
+            if let session {
+                snapshotStore.save(session)
+            }
             return true
         } catch {
             return false
@@ -198,6 +209,9 @@ final class SessionStore {
                 avatarUrl: latest.avatarUrl,
                 notifyFollows: updated.notifyFollows
             )
+            if let session {
+                snapshotStore.save(session)
+            }
             return true
         } catch {
             return false
@@ -221,12 +235,30 @@ final class SessionStore {
         let token = KeychainStore.read()
         #endif
         AuthCredentials.shared.bearerToken = token
-        defer { isRestored = true }
         guard let token, !token.isEmpty else {
             session = nil
             committedToken = nil
+            snapshotStore.delete()
+            isRestored = true
             return
         }
+        if let cached = snapshotStore.load() {
+            commit(cached, token: token)
+            isRestored = true
+            if preparingAccess {
+                await revalidateSession(token: token, preparingAccess: true)
+            } else {
+                Task { await revalidateSession(token: token, preparingAccess: false) }
+            }
+            return
+        }
+        await revalidateSession(token: token, preparingAccess: preparingAccess)
+        isRestored = true
+    }
+
+    /// Confirms the cached or Keychain session. A 401 clears it; a network failure keeps
+    /// a cached body so launch is not dumped at login.
+    private func revalidateSession(token: String, preparingAccess: Bool) async {
         do {
             let body = try await retryingNetworkFailures { try await profileService.session() }
             if preparingAccess {
@@ -239,7 +271,9 @@ final class SessionStore {
         } catch let APIError.httpStatus(code, _, _) where code == 401 {
             clearLocal()
         } catch {
-            errorMessage = "Couldn't reach Angles. Try again."
+            if session == nil {
+                errorMessage = "Couldn't reach Angles. Try again."
+            }
         }
     }
 
@@ -311,6 +345,7 @@ final class SessionStore {
     private func commit(_ body: SessionBody, token: String) {
         committedToken = token
         session = body
+        snapshotStore.save(body)
     }
 
     private func clearLocal() {
@@ -318,6 +353,7 @@ final class SessionStore {
         committedToken = nil
         AuthCredentials.shared.bearerToken = nil
         KeychainStore.delete()
+        snapshotStore.delete()
         pendingAppleNonce = nil
     }
 }

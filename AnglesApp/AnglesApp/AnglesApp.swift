@@ -50,6 +50,7 @@ struct AppRoot: View {
     @State private var homeRevealPhase: HomeRevealPhase = .hidden
     @State private var splashPhase: LaunchSplashPhase = .holding
     @State private var splashHoldElapsed = false
+    @State private var splashMaximumElapsed = false
     @State private var homeFeedTask: Task<Void, Never>?
     @State private var homeArrivalCapTask: Task<Void, Never>?
     @State private var homeArrivalTimedOut = false
@@ -61,7 +62,7 @@ struct AppRoot: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
 
-    private static let homeArrivalCap: Duration = .seconds(10)
+    private static let homeArrivalCap: Duration = LaunchSplashMotion.maximumHold
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -284,15 +285,27 @@ struct AppRoot: View {
             tryFinishLaunchSplashIfReady()
             advanceHomeRevealIfPossible()
         }
-        .task(id: sessionStore.session?.id) {
-            viewModel.configureUsageAccount(userID: sessionStore.session?.id)
-            guard sessionStore.isSignedIn else {
+        .task {
+            try? await Task.sleep(for: LaunchSplashMotion.maximumHold)
+            guard splashPhase == .holding else {
                 return
             }
-            await viewModel.loadUsageIfNeeded()
-            await viewModel.loadFollowNotifications()
-            consumeFollowPush()
-            await syncFollowPush()
+            splashMaximumElapsed = true
+            tryFinishLaunchSplashIfReady()
+            advanceHomeRevealIfPossible()
+        }
+        .task(id: sessionStore.session?.id) {
+            viewModel.configureUsageAccount(userID: sessionStore.session?.id)
+            guard sessionStore.isSignedIn, splashPhase == .finished else {
+                return
+            }
+            await loadDeferredSignedInWork()
+        }
+        .onChange(of: splashPhase) { _, phase in
+            guard phase == .finished, sessionStore.isSignedIn else {
+                return
+            }
+            Task { await loadDeferredSignedInWork() }
         }
         .onChange(of: destination) { old, new in
             handleDestinationChange(from: old, to: new)
@@ -318,6 +331,8 @@ struct AppRoot: View {
             } else {
                 storeKitManager.configureAccount(userID: nil)
                 viewModel.configureUsageAccount(userID: nil)
+                viewModel.resetForSignOut()
+                identityStore.reset()
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -361,6 +376,9 @@ struct AppRoot: View {
             handleCheckoutStateChange()
         }
         .onChange(of: viewModel.feedLoadState) { _, _ in
+            advanceHomeRevealIfPossible()
+        }
+        .onChange(of: viewModel.launchPrefetchFinished) { _, _ in
             advanceHomeRevealIfPossible()
         }
         .background {
@@ -427,15 +445,10 @@ struct AppRoot: View {
     }
 
     private var hasResolvedInitialHomeLoad: Bool {
-        if homeArrivalTimedOut {
+        if homeArrivalTimedOut || splashMaximumElapsed {
             return true
         }
-        switch viewModel.feedLoadState {
-        case .loading:
-            return false
-        case .loaded, .failed:
-            return true
-        }
+        return viewModel.launchPrefetchFinished
     }
 
     private var coveringFrostAnimation: Animation? {
@@ -466,9 +479,19 @@ struct AppRoot: View {
         async let sessionRestore: Void = sessionStore.restore()
         async let productLoad: Void = storeKitManager.loadProducts()
         _ = await (sessionRestore, productLoad)
+        if let session = sessionStore.session {
+            Task { await viewModel.prefetchLaunchFeed(userId: session.id) }
+        }
         storeKitManager.configureAccount(userID: sessionStore.session?.id)
         viewModel.configureUsageAccount(userID: sessionStore.session?.id)
         await storeKitManager.prepare(hasAccountSession: sessionStore.isSignedIn)
+    }
+
+    private func loadDeferredSignedInWork() async {
+        await viewModel.loadUsageIfNeeded()
+        await viewModel.loadFollowNotifications()
+        consumeFollowPush()
+        await syncFollowPush()
     }
 
     /// The server's consumed/completed timestamps are the only taste flags since Auth.

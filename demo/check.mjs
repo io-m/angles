@@ -1,9 +1,9 @@
 // Checks demo/output/final_9x16.mp4 and writes what a person should look at:
-// demo/output/frames/*.png, a contact sheet, and demo/output/report.md.
+// demo/output/frames/*.png, contact_sheet.png, cover.png (first hook frame), report.md.
 //
 //   node demo/check.mjs demo/raw/take-YYYYMMDD-HHMMSS
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -90,6 +90,7 @@ run("ffmpeg", [
   "-filter_complex", `${picks.map((_, i) => `[${i}:v]scale=360:640[t${i}]`).join(";")};${picks.map((_, i) => `[t${i}]`).join("")}xstack=inputs=${picks.length}:layout=${layout}:fill=black`,
   sheet,
 ]);
+copyFileSync(picks[0].file, join(outDir, "cover.png"));
 
 const best = answers.best;
 const lines = [
