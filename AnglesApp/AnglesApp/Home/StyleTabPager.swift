@@ -12,48 +12,6 @@ enum StyleTabMetrics {
     }
 }
 
-enum StyleTabDensity: Equatable {
-    case standard
-    case compact
-
-    static let standardMinimumWidth: CGFloat = 304
-
-    var side: CGFloat {
-        switch self {
-        case .standard: ReframeCardMetrics.chipSize
-        case .compact: ReframeCardMetrics.chipSizeCompact
-        }
-    }
-
-    var spacing: CGFloat {
-        switch self {
-        case .standard: ReframeCardMetrics.chipSpacing
-        case .compact: 4
-        }
-    }
-
-    var expandedHorizontalPadding: CGFloat {
-        switch self {
-        case .standard: 10
-        case .compact: 8
-        }
-    }
-
-    var iconLabelSpacing: CGFloat {
-        switch self {
-        case .standard: 6
-        case .compact: 5
-        }
-    }
-
-    var glyphSize: CGFloat {
-        switch self {
-        case .standard: 14
-        case .compact: 12
-        }
-    }
-}
-
 protocol StyleTabRepresentable: Hashable, CaseIterable {
     var title: String { get }
     var chipTitle: String { get }
@@ -61,19 +19,12 @@ protocol StyleTabRepresentable: Hashable, CaseIterable {
     var matchingStyle: Style? { get }
     func symbolColor(ink: Color) -> Color
     var headerWashInk: Color { get }
-    var usesNeutralChip: Bool { get }
-    /// Its own chip beside the style menu instead of a row inside it.
-    var isPinnedOutsideMenu: Bool { get }
 }
 
 extension ProfileGridFilter: StyleTabRepresentable {
-    var usesNeutralChip: Bool { self == .favorites }
-    var isPinnedOutsideMenu: Bool { self == .favorites }
 }
 
 extension HomeFeedTab: StyleTabRepresentable {
-    var usesNeutralChip: Bool { self == .all }
-    var isPinnedOutsideMenu: Bool { false }
 }
 
 struct StyleTabPagerSnapshot: Equatable {
@@ -184,20 +135,8 @@ struct AdaptiveStyleTabBar<T: StyleTabRepresentable>: View {
         let nearest = pagerState.requestedTab
 
         HStack(spacing: ReframeCardMetrics.chipSpacing) {
-            ForEach(Array(tabs.enumerated()), id: \.element) { index, tab in
-                if tab.isPinnedOutsideMenu {
-                    StyleTabChip(
-                        tab: tab,
-                        expansion: pagerState.expansion(at: index),
-                        isSettledSelection: settledSelection == tab,
-                        density: .standard,
-                        onSelect: { onSelect(tab) }
-                    )
-                }
-            }
-
             StyleTabMenu(
-                tabs: tabs.filter { !$0.isPinnedOutsideMenu },
+                tabs: tabs,
                 current: nearest,
                 onSelect: onSelect
             )
@@ -239,10 +178,8 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
     @State private var selectHaptic = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-    /// False while a pinned tab is on screen: the menu then reads as a plain "Styles" button.
-    private var isActive: Bool { tabs.contains(current) }
     private var appearance: CardStyleAppearance? {
-        isActive ? current.matchingStyle.map(CardStyleAppearance.init) : nil
+        current.matchingStyle.map(CardStyleAppearance.init)
     }
 
     private var selection: Binding<T> {
@@ -282,8 +219,8 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
                         .accessibilityHidden(true)
                 }
                 labelContent(
-                    symbol: isActive ? current.systemImage : "square.stack.fill",
-                    title: isActive ? current.chipTitle : "Styles"
+                    symbol: current.systemImage,
+                    title: current.chipTitle
                 )
                 .transaction { $0.animation = nil }
             }
@@ -303,7 +240,7 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
         .menuOrder(.fixed)
         .buttonStyle(.plain)
         .sensoryFeedback(.selection, trigger: selectHaptic)
-        .accessibilityLabel(isActive ? "Style: \(current.title)" : "Styles")
+        .accessibilityLabel("Style: \(current.title)")
         .accessibilityHint("Opens the list of styles")
     }
 
@@ -314,13 +251,7 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
 
     /// Every label the pill can show. Only the widest one decides its width.
     private var sizingLabels: [SizingLabel] {
-        var labels = T.allCases.compactMap { tab -> SizingLabel? in
-            tab.isPinnedOutsideMenu ? nil : SizingLabel(symbol: tab.systemImage, title: tab.chipTitle)
-        }
-        if T.allCases.contains(where: { $0.isPinnedOutsideMenu }) {
-            labels.append(SizingLabel(symbol: "square.stack.fill", title: "Styles"))
-        }
-        return labels
+        tabs.map { SizingLabel(symbol: $0.systemImage, title: $0.chipTitle) }
     }
 
     private func labelContent(symbol: String, title: String) -> some View {
@@ -363,15 +294,12 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
     }
 
     private var ink: Color {
-        guard isActive else {
-            return theme.ink.opacity(colorScheme == .dark ? 0.84 : 0.72)
-        }
-        return current.symbolColor(ink: theme.ink)
+        current.symbolColor(ink: theme.ink)
     }
 
     private var fill: Color {
         guard let appearance else {
-            return theme.surface.opacity(isActive ? 1 : (colorScheme == .dark ? 0.72 : 0.68))
+            return theme.surface
         }
         return appearance.ink.opacity(appearance.chipFillOpacity(for: colorScheme))
     }
@@ -492,210 +420,5 @@ struct StyleTabBottomFade<T: StyleTabRepresentable>: View {
             startPoint: .top,
             endPoint: .bottom
         )
-    }
-}
-
-private struct StyleTabChipLayout: Layout {
-    struct Cache {
-        var iconSize: CGSize
-        var labelSize: CGSize
-    }
-
-    var expansion: CGFloat
-    let density: StyleTabDensity
-
-    var animatableData: CGFloat {
-        get { expansion }
-        set { expansion = newValue }
-    }
-
-    func makeCache(subviews: Subviews) -> Cache {
-        Cache(
-            iconSize: subviews.indices.contains(0)
-                ? subviews[0].sizeThatFits(.unspecified)
-                : .zero,
-            labelSize: subviews.indices.contains(1)
-                ? subviews[1].sizeThatFits(.unspecified)
-                : .zero
-        )
-    }
-
-    func updateCache(_ cache: inout Cache, subviews: Subviews) {
-        cache = makeCache(subviews: subviews)
-    }
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout Cache
-    ) -> CGSize {
-        guard subviews.count == 2 else {
-            return .zero
-        }
-
-        let side = density.side
-        let horizontalPadding = density.expandedHorizontalPadding
-        let expandedWidth = max(
-            side,
-            (horizontalPadding * 2)
-                + cache.iconSize.width
-                + density.iconLabelSpacing
-                + cache.labelSize.width
-        )
-
-        return CGSize(
-            width: side + ((expandedWidth - side) * expansion),
-            height: side
-        )
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout Cache
-    ) {
-        guard subviews.count == 2 else {
-            return
-        }
-
-        let side = density.side
-        let iconSize = cache.iconSize
-        let labelSize = cache.labelSize
-        let collapsedIconX = (side - iconSize.width) / 2
-        let expandedIconX = density.expandedHorizontalPadding
-        let iconX = collapsedIconX
-            + ((expandedIconX - collapsedIconX) * expansion)
-        let iconY = bounds.midY - (iconSize.height / 2)
-
-        subviews[0].place(
-            at: CGPoint(x: bounds.minX + iconX, y: iconY),
-            anchor: .topLeading,
-            proposal: ProposedViewSize(iconSize)
-        )
-
-        subviews[1].place(
-            at: CGPoint(
-                x: bounds.minX
-                    + expandedIconX
-                    + iconSize.width
-                    + density.iconLabelSpacing,
-                y: bounds.midY - (labelSize.height / 2)
-            ),
-            anchor: .topLeading,
-            proposal: ProposedViewSize(labelSize)
-        )
-    }
-}
-
-private struct StyleTabChip<T: StyleTabRepresentable>: View {
-    let tab: T
-    let expansion: CGFloat
-    let isSettledSelection: Bool
-    let density: StyleTabDensity
-    let onSelect: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var selectHaptic = 0
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-    private var appearance: CardStyleAppearance? {
-        tab.matchingStyle.map(CardStyleAppearance.init)
-    }
-
-    private var ink: Color {
-        tab.symbolColor(ink: theme.ink)
-    }
-
-    var body: some View {
-        let side = density.side
-        let slop = (ReframeCardMetrics.chipHitSize - side) / 2
-        let clampedExpansion = min(1, max(0, expansion))
-
-        Button {
-            if isSettledSelection {
-                onSelect()
-                return
-            }
-            selectHaptic += 1
-            onSelect()
-        } label: {
-            // Always laid out at full width: a chip that grows and shrinks drags the menu
-            // beside it sideways every frame. Only its colour follows the selection.
-            StyleTabChipLayout(
-                expansion: 1,
-                density: density
-            ) {
-                Image(systemName: tab.systemImage)
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: density.glyphSize, weight: .semibold))
-
-                Text(tab.chipTitle)
-                    .font(
-                        density == .standard
-                            ? .caption.weight(.semibold)
-                            : .caption2.weight(.semibold)
-                    )
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-            .foregroundStyle(ink.opacity(inkOpacity(for: clampedExpansion)))
-            .frame(height: side)
-            .clipped()
-            .background {
-                Capsule(style: .continuous)
-                    .fill(chipFill(for: clampedExpansion))
-                    .overlay {
-                        Capsule(style: .continuous)
-                            .strokeBorder(
-                                tab.usesNeutralChip ? theme.cardHairline : .clear,
-                                lineWidth: 0.5
-                            )
-                    }
-            }
-            .padding(slop)
-            .contentShape(Capsule())
-            .padding(-slop)
-        }
-        .buttonStyle(.plain)
-        .sensoryFeedback(.selection, trigger: selectHaptic)
-        .accessibilityLabel(tab.title)
-        .accessibilityAddTraits(
-            isSettledSelection ? [.isButton, .isSelected] : .isButton
-        )
-    }
-
-    private func chipFill(for expansion: CGFloat) -> Color {
-        if tab.usesNeutralChip {
-            let unselected = colorScheme == .dark ? 0.72 : 0.68
-            return theme.surface.opacity(
-                unselected + ((1 - unselected) * Double(expansion))
-            )
-        }
-        return ink.opacity(fillOpacity(for: expansion))
-    }
-
-    private func fillOpacity(for expansion: CGFloat) -> Double {
-        let selected: Double
-        let unselected: Double
-        if let appearance {
-            selected = appearance.chipFillOpacity(for: colorScheme)
-            unselected = appearance.chipUnselectedFillOpacity(for: colorScheme)
-        } else {
-            selected = colorScheme == .dark ? 0.16 : 0.22
-            unselected = colorScheme == .dark ? 0.13 : 0.16
-        }
-
-        return unselected + ((selected - unselected) * Double(expansion))
-    }
-
-    private var unselectedInkOpacity: Double {
-        appearance?.chipUnselectedInkOpacity(for: colorScheme)
-            ?? (colorScheme == .dark ? 0.84 : 0.72)
-    }
-
-    private func inkOpacity(for expansion: CGFloat) -> Double {
-        unselectedInkOpacity
-            + ((1 - unselectedInkOpacity) * Double(expansion))
     }
 }
