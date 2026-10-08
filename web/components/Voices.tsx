@@ -15,18 +15,26 @@ const VOICES = [
     name: 'Tough love',
     body: 'Names the part you are avoiding and points at the next move.',
   },
+  {
+    name: 'Tender',
+    body: 'Stays with the feeling. No fix, no task, no bright side.',
+  },
+  {
+    name: 'Values',
+    body: 'Names what the feeling is protecting, the thing you hold dear.',
+  },
 ] as const;
 
 export function Voices() {
   return (
     <section className="section page-shell" id="voices">
       <div className="section-heading">
-        <p className="eyebrow">Four voices</p>
-        <h2>The same thought, seen four ways.</h2>
+        <p className="eyebrow">Six voices</p>
+        <h2>Four angles, chosen for the thought.</h2>
         <p>
-          Each line is a sentence or two, written for the thought you actually
-          typed. When a voice would land wrong — a joke on grief, toughness
-          when you are already crushed — that angle is left out.
+          Angles writes the four that fit, each a sentence or two. A thought
+          about real harm to people never gets Humorous or Tough love. Those
+          two are left out, and Tender and Values stay.
         </p>
       </div>
       <ul className="voice-grid">

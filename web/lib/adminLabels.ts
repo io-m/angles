@@ -71,6 +71,8 @@ const STYLES: Record<string, string> = {
   optimistic: 'Optimistic',
   humorous: 'Humorous',
   tough_love: 'Tough love',
+  tender: 'Tender',
+  values: 'Values',
 };
 
 export function isUuid(value: string): boolean {

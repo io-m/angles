@@ -47,10 +47,12 @@ export default function TermsPage() {
 
       <h2>The service</h2>
       <p>
-        Angles accepts a thought and uses AI providers to generate reframes in
-        several styles. You can save cards privately or choose to post them
-        publicly, view public cards, favorite angles, follow people, and use
-        blocks and reports.
+        Angles accepts a thought and uses AI providers to write four short
+        reframes, chosen from six styles: Stoic, Optimistic, Humorous, Tough
+        love, Tender, and Values. A thought about real harm to people is not
+        answered with Humorous or Tough love. You can save cards privately or
+        choose to post them publicly, view public cards, favorite angles,
+        follow people, and use blocks and reports.
       </p>
       <p>
         Before your first thought is sent, the app asks you to agree to these

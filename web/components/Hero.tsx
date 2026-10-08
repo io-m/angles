@@ -19,12 +19,12 @@ export function Hero() {
         <p className="hero-lead">Keep it private, or share it.</p>
         <p className="hero-copy">
           Write the thought down. If it needs a little more context, Angles
-          asks one short follow-up. Then you get the same moment back as four
-          brief takes, each with a different job.
+          asks one short follow-up. Then you get four brief takes, chosen from
+          six voices.
         </p>
         <div className="hero-actions">
           <a className="button button-primary" href="#voices">
-            See the four voices
+            See the voices
           </a>
           <a className="button button-secondary" href="#how">
             How it works

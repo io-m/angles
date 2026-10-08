@@ -20,8 +20,9 @@ export function HowItWorks() {
         <p className="eyebrow">How it works</p>
         <h2>Private by default.</h2>
         <p>
-          Home opens on For you, with a tab for each style. You can narrow it
-          by life area and mood. A card you did not post never appears there.
+          Home opens on For you. A menu picks one style at a time. You can
+          narrow it by life area and mood. A card you did not post never
+          appears there.
         </p>
       </div>
       <ol className="steps">

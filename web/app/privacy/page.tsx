@@ -156,6 +156,11 @@ export default function PrivacyPage() {
         providers.
       </p>
       <p>
+        Each result is four short reframes chosen from six styles: Stoic,
+        Optimistic, Humorous, Tough love, Tender, and Values. When a thought is
+        about real harm to people, Humorous and Tough love are not written.
+      </p>
+      <p>
         Angles does not use what you write to train or improve any model. We
         send it only to generate your angles and, if you post a card, to check
         that post. We use each provider’s paid API, and those terms do not

@@ -3,7 +3,7 @@
  * Verified against CVR 46705130 (Bithavn, Enkeltmandsvirksomhed, Denmark).
  */
 
-export const LEGAL_EFFECTIVE_DATE = '2 October 2026';
+export const LEGAL_EFFECTIVE_DATE = '8 October 2026';
 export const LEGAL_EFFECTIVE_ISO = '2026-10-02';
 
 export const MINIMUM_AGE = 13;

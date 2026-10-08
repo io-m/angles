@@ -1,7 +1,7 @@
 export const SITE_URL = 'https://useangles.app';
 export const SITE_TITLE = 'Angles — Four short takes on a stuck thought';
 export const SITE_DESCRIPTION =
-  'Angles is an iPhone app for the moment a negative thought gets stuck. Write it down and get four short takes: Stoic, Optimistic, Humorous, and Tough love. Keep it private, or share it.';
+  'Angles is an iPhone app for the moment a negative thought gets stuck. Write it down and get four short takes, chosen from six voices: Stoic, Optimistic, Humorous, Tough love, Tender, and Values. Keep it private, or share it.';
 
 export const softwareApplicationJsonLd = {
   '@context': 'https://schema.org',

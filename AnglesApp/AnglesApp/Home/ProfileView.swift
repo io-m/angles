@@ -1,38 +1,6 @@
 import Observation
 import SwiftUI
 
-private enum ProfileMetrics {
-    static let identityHeight: CGFloat = 132
-
-    static func expandedChromeHeight(safeTop: CGFloat) -> CGFloat {
-        HeaderCollapse.overlayHeight(safeTop: safeTop)
-            + identityHeight
-    }
-
-    static func chromeHeight(safeTop: CGFloat, collapseDistance: CGFloat) -> CGFloat {
-        expandedChromeHeight(safeTop: safeTop)
-            - min(identityHeight, max(0, collapseDistance))
-    }
-
-    static func identityProgress(_ collapseDistance: CGFloat) -> CGFloat {
-        min(1, max(0, collapseDistance / identityHeight))
-    }
-
-    static func compactProgress(_ collapseDistance: CGFloat) -> CGFloat {
-        let revealDistance = HeaderCollapse.collapsedRevealDistance
-        return min(
-            1,
-            max(0, (collapseDistance - (identityHeight - revealDistance)) / revealDistance)
-        )
-    }
-}
-
-@MainActor
-@Observable
-private final class ProfileHeaderState {
-    let distance = ProfileMetrics.identityHeight
-}
-
 struct ProfileView: View {
 
     let safeAreaInsets: EdgeInsets
@@ -52,7 +20,6 @@ struct ProfileView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var themeStore: ThemeStore
 
-    @State private var headerState = ProfileHeaderState()
     @State private var pagerState = StyleTabPagerState<ProfileGridFilter>(initialTab: .favorites)
     @State private var showSettings = false
     @State private var showFollowing = false
@@ -64,10 +31,7 @@ struct ProfileView: View {
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var fixedChromeHeight: CGFloat {
-        ProfileMetrics.chromeHeight(
-            safeTop: safeAreaInsets.top,
-            collapseDistance: ProfileMetrics.identityHeight
-        )
+        HomeFeedPagerMetrics.chromeHeight(safeTop: safeAreaInsets.top)
     }
 
     private var profileTitle: String {
@@ -92,7 +56,6 @@ struct ProfileView: View {
             ProfileChrome(
                 title: profileTitle,
                 safeTop: safeAreaInsets.top,
-                headerState: headerState,
                 pagerState: pagerState,
                 settledSelection: committedTab,
                 showSettings: $showSettings,
@@ -383,7 +346,6 @@ struct ProfileView: View {
 private struct ProfileChrome: View {
     let title: String
     let safeTop: CGFloat
-    let headerState: ProfileHeaderState
     let pagerState: StyleTabPagerState<ProfileGridFilter>
     let settledSelection: ProfileGridFilter
     @Binding var showSettings: Bool
@@ -393,14 +355,10 @@ private struct ProfileChrome: View {
     let onSelectTab: (ProfileGridFilter) -> Void
 
     var body: some View {
-        let collapseDistance = headerState.distance
-        let identityProgress = ProfileMetrics.identityProgress(collapseDistance)
-
         VStack(spacing: 0) {
             ProfileTopBar(
                 title: title,
                 safeTop: safeTop,
-                collapseDistance: collapseDistance,
                 pagerState: pagerState,
                 settledSelection: settledSelection,
                 showSettings: $showSettings,
@@ -409,23 +367,9 @@ private struct ProfileChrome: View {
                 onOpenFollowing: onOpenFollowing,
                 onSelectTab: onSelectTab
             )
-
-            ProfileIdentityHeader(title: title, identityStore: identityStore)
-                .frame(
-                    height: ProfileMetrics.identityHeight - collapseDistance,
-                    alignment: .top
-                )
-                .clipped()
-                .opacity(Double(1 - identityProgress))
-                .allowsHitTesting(identityProgress < 0.5)
-                .accessibilityHidden(identityProgress >= 0.5)
-                .animation(nil, value: collapseDistance)
         }
         .frame(
-            height: ProfileMetrics.chromeHeight(
-                safeTop: safeTop,
-                collapseDistance: collapseDistance
-            ),
+            height: HomeFeedPagerMetrics.chromeHeight(safeTop: safeTop),
             alignment: .top
         )
         .background {
@@ -440,44 +384,9 @@ private enum ProfileViewAvatar {
     static let compact: CGFloat = 28
 }
 
-private struct ProfileIdentityHeader: View {
-    let title: String
-    var identityStore: ProfileIdentityStore? = nil
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ProfileAvatar(
-                identityStore: identityStore,
-                letters: UserInitials.letters,
-                side: ProfileViewAvatar.large,
-                fill: theme.ink,
-                symbol: theme.paper
-            )
-
-            Text(title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .accessibilityAddTraits(.isHeader)
-        }
-        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-    }
-}
-
 private struct ProfileTopBar: View {
     let title: String
     let safeTop: CGFloat
-    let collapseDistance: CGFloat
     let pagerState: StyleTabPagerState<ProfileGridFilter>
     let settledSelection: ProfileGridFilter
     @Binding var showSettings: Bool
@@ -487,15 +396,16 @@ private struct ProfileTopBar: View {
     let onSelectTab: (ProfileGridFilter) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
-        let progress = ProfileMetrics.compactProgress(collapseDistance)
+        VStack(spacing: 0) {
+            Color.clear
+                .frame(height: safeTop + HeaderCollapse.headerTopPad)
+                .allowsHitTesting(false)
 
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
                 ProfileAvatar(
                     identityStore: identityStore,
                     letters: UserInitials.letters,
@@ -503,6 +413,7 @@ private struct ProfileTopBar: View {
                     fill: theme.ink,
                     symbol: theme.paper
                 )
+                .accessibilityHidden(true)
 
                 Text(title)
                     .font(.headline.weight(.bold))
@@ -510,58 +421,55 @@ private struct ProfileTopBar: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                     .layoutPriority(-1)
-            }
-            .opacity(progress)
-            .offset(y: reduceMotion ? 0 : HeaderCollapse.collapseSlide * (1 - progress))
-            .animation(nil, value: collapseDistance)
-            .accessibilityAddTraits(.isHeader)
-            .accessibilityHidden(progress <= 0.4)
+                    .accessibilityAddTraits(.isHeader)
 
-            Spacer(minLength: 8)
-
-            AdaptiveStyleTabBar(
-                pagerState: pagerState,
-                settledSelection: settledSelection,
-                includesTrailingSpacer: false,
-                padded: false,
-                onSelect: onSelectTab
-            )
-
-            Button(action: onOpenFollowing) {
-                CircleIcon(
-                    systemName: "person.2",
-                    fill: theme.surface,
-                    symbol: theme.ink,
-                    hairline: theme.cardHairline
+                AdaptiveStyleTabBar(
+                    pagerState: pagerState,
+                    settledSelection: settledSelection,
+                    includesTrailingSpacer: true,
+                    padded: false,
+                    onSelect: onSelectTab
                 )
-                .overlay(alignment: .topTrailing) {
-                    if hasUnreadFollows {
-                        Circle()
-                            .fill(theme.ink)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 1, y: -1)
+
+                Button(action: onOpenFollowing) {
+                    CircleIcon(
+                        systemName: "person.2",
+                        fill: theme.surface,
+                        symbol: theme.ink,
+                        hairline: theme.cardHairline
+                    )
+                    .overlay(alignment: .topTrailing) {
+                        if hasUnreadFollows {
+                            Circle()
+                                .fill(theme.ink)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 1, y: -1)
+                        }
                     }
                 }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(hasUnreadFollows ? "People, new" : "People")
+                .buttonStyle(.plain)
+                .accessibilityLabel(hasUnreadFollows ? "People, new" : "People")
 
-            Button {
-                showSettings = true
-            } label: {
-                CircleIcon(
-                    systemName: "gearshape",
-                    fill: theme.surface,
-                    symbol: theme.ink,
-                    hairline: theme.cardHairline
-                )
+                Button {
+                    showSettings = true
+                } label: {
+                    CircleIcon(
+                        systemName: "gearshape",
+                        fill: theme.surface,
+                        symbol: theme.ink,
+                        hairline: theme.cardHairline
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
+            .padding(.horizontal, HeaderCollapse.horizontalPadding)
+            .frame(height: HeaderCollapse.headerHeight)
+
+            Color.clear
+                .frame(height: StyleTabMetrics.chromeBottomInset)
+                .allowsHitTesting(false)
         }
-        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-        .padding(.top, safeTop + HeaderCollapse.headerTopPad)
-        .frame(height: HeaderCollapse.overlayHeight(safeTop: safeTop))
     }
 }
 

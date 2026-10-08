@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 **No product work is queued.** Rows 9w through 23 are done. Do not invent screens or features. Report review for the operator is `https://useangles.app/admin` (`docs/operator-admin.md`); `pnpm reports` over SSH remains the backup.
 
-What is left is launch setup outside the app. The Railway API (`https://api-production-61c9.up.railway.app`) is up: `/health` returns `{"status":"ok","db":"ok"}`, with `APPLE_CLIENT_SECRET` and `APPLE_APP_ID` set. The client secret expires on 3 April 2027 and has to be renewed before then. Still open: App Store Connect settings and the listing. Privacy, terms, and support are live at `https://useangles.app`, including the 2 October 2026 text. The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
+What is left is launch setup outside the app. The Railway API (`https://api-production-61c9.up.railway.app`) is up: `/health` returns `{"status":"ok","db":"ok"}`, with `APPLE_CLIENT_SECRET` and `APPLE_APP_ID` set. The client secret expires on 3 April 2027 and has to be renewed before then. Still open: App Store Connect settings and the listing. Privacy, terms, and support are live at `https://useangles.app`, including the 8 October 2026 text (six voices, four angles, no Humorous or Tough love on real harm). The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
 
 ## Core loop
 
@@ -532,6 +532,7 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-08 — The site names all six voices and says a cook writes four of them. Privacy and Terms (8 October 2026) say Humorous and Tough love are not written for real harm to people.
 - 2026-10-08 — People has two tabs, Following and Notifications, like the Home filter. Notifications is the follow list. Opening that tab clears the unread dot.
 - 2026-10-08 — Profile's style menu sits in the icon row with People and Settings, so the header loses that extra row. Short names stay on the pill only; cards keep Optimistic, Humorous, Tough love, and Favorites.
 - 2026-10-08 — Home's header has the same Settings gear as Profile, trailing the filter, and it opens the same sheet. The style pill uses short labels of similar length (For you, Stoic, Hopeful, Witty, Tough, Tender, Values, Hearts) so it stays narrow.

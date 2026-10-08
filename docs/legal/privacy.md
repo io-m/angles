@@ -1,6 +1,6 @@
 # Angles Privacy Policy
 
-Last updated: October 2, 2026
+Last updated: October 8, 2026
 
 Published at `https://useangles.app/privacy` (`ANGLES_PRIVACY_POLICY_URL`).
 
@@ -37,6 +37,8 @@ We use this information to:
 Before your first thought leaves your phone, the app shows a **Before you start** screen that names the AI providers and asks you to agree. Nothing is sent to an AI provider until you tap **Agree and continue**.
 
 Angles sends the thought you write and your answers to follow-up questions to a large-language-model provider. We choose the provider for each step on our servers: **Mistral AI** (France) or **OpenAI** (United States). If the first provider is unavailable, the same request may be sent to the other. When you post a card publicly, its text is also sent to one of these providers for an automated moderation check before anyone else can see it. Your region, name, email address, and account identifiers are not sent to AI providers.
+
+Each result is four short reframes chosen from six styles: Stoic, Optimistic, Humorous, Tough love, Tender, and Values. When a thought is about real harm to people, Humorous and Tough love are not written.
 
 Angles does not use what you write to train or improve any model. We send it only to generate your angles and, if you post a card, to check that post. We use each provider's paid API, and those terms do not allow Mistral AI or OpenAI to use what you send to train or improve their models. A provider may keep a request for a limited time for abuse monitoring and legal compliance, as its terms allow. Do not use Angles for emergencies.
 
