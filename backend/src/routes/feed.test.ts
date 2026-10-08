@@ -196,6 +196,19 @@ describe("GET /feed", () => {
     expect(listFeed).not.toHaveBeenCalled();
   });
 
+  it("serves a tender shelf only to an app that knows tender", async () => {
+    const old = await app.request("/feed?style=tender");
+    expect(old.status).toBe(400);
+    await expect(jsonOf(old)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(listFeed).not.toHaveBeenCalled();
+
+    const heart = await app.request(`/feed/cards/${CARD_ID}/angles/values`, { method: "PUT" });
+    expect(heart.status).toBe(400);
+
+    const current = await app.request("/feed?style=tender", { headers: { "Angles-Style-Set": "2" } });
+    expect(current.status).toBe(200);
+  });
+
   it("404s the retired grouped Home route", async () => {
     const response = await app.request("/feed/home");
     expect(response.status).toBe(404);

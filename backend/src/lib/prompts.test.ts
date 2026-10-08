@@ -5,7 +5,7 @@ import {
   lintRewriteUserPrompt,
   localLanguage,
   REFRAME_MAX_WORDS,
-  STYLE_BATCH_PROMPT,
+  styleBatchPrompt,
   STYLE_VOICES,
   SYSTEM_PROMPTS,
 } from "./prompts.js";
@@ -54,7 +54,7 @@ describe("bilingual prompts", () => {
     for (const style of STYLES) {
       expect(SYSTEM_PROMPTS[style]).toContain('"en" and "local"');
     }
-    expect(STYLE_BATCH_PROMPT).toContain("## Their language");
+    expect(styleBatchPrompt([...STYLES])).toContain("## Their language");
   });
 });
 
@@ -91,10 +91,25 @@ describe("writer prompts", () => {
   });
 
   it("the batch prompt asks for the plan first and keeps its marker", () => {
-    expect(STYLE_BATCH_PROMPT).toContain("Each JSON field is that style only");
-    expect(STYLE_BATCH_PROMPT).toContain('"plan"');
+    const prompt = styleBatchPrompt([...STYLES]);
+    expect(prompt).toContain("Each JSON field is that style only");
+    expect(prompt).toContain('"plan"');
     for (const style of STYLES) {
-      expect(STYLE_BATCH_PROMPT).toContain(`${style} (${STYLE_VOICES[style].label})`);
+      expect(prompt).toContain(`${style} (${STYLE_VOICES[style].label})`);
     }
+  });
+
+  it("the batch prompt carries only the voices this cook writes", () => {
+    const chosen = ["stoic", "optimistic", "tender", "values"] as const;
+    const prompt = styleBatchPrompt(chosen);
+    for (const style of STYLES) {
+      expect(prompt.includes(`${style} (${STYLE_VOICES[style].label})`), style).toBe(
+        (chosen as readonly string[]).includes(style),
+      );
+    }
+    expect(prompt).not.toContain(GOLD_CARDS[0]?.answers.humorous ?? "unreachable");
+    expect(prompt).toContain(GOLD_CARDS[0]?.answers.tender ?? "unreachable");
+    expect(styleBatchPrompt(chosen)).toBe(prompt);
+    expect(prompt.length).toBeLessThan(styleBatchPrompt([...STYLES]).length);
   });
 });

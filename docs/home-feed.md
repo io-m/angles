@@ -8,7 +8,7 @@ Everything here applies when the server runs with `FEED_RANKING=resonance` (prod
 
 A **visit** starts when Home loads its first page: a cold open, a filter change, or a pull that starts over. At that moment the server fixes the list of cards the visit can show and the order they come in. It also fixes everything the order depends on: who you follow, every heart (yours and other people's), your themes, and the clock. Nothing you do during the visit reorders it. A heart or a follow takes effect on the next visit.
 
-Each Home tab (For you, Stoic, Optimistic, Humorous, Tough love) has its own visit and its own order.
+Each Home tab (For you, Stoic, Optimistic, Humorous, Tough love, Tender, Values) has its own visit and its own order. An app build that does not send `Angles-Style-Set: 2` only has the first five: its cards, kept angles, covers, and primary tabs are all worked out over the original four styles.
 
 ## Cold open
 

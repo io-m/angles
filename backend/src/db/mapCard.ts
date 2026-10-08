@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
 import { openingStyle } from "../lib/feedRanking.js";
+import { isStyleShown } from "../lib/styleSet.js";
 import { intensityBand, type StoredCard, type StoredReframeResult, type Style } from "../types/index.js";
 import { getDb } from "./client.js";
 import { followedAuthorIds } from "./follows.js";
@@ -62,12 +63,14 @@ export function authorOf(
 }
 
 export async function storedCardsForViewer(
-  rows: CardLoaded[],
+  loaded: CardLoaded[],
   viewerId: string = getOwnerUserId(),
   db: Selectable = getDb(),
   /** For you: someone else's card opens on an answer the viewer has not hearted, when it has one. */
   options: { coverAvoidsKept?: boolean; followed?: ReadonlySet<string> } = {},
 ): Promise<StoredCard[]> {
+  // An app that cannot show any of a card's angles would fail to decode it; it never sees it.
+  const rows = loaded.filter((row) => row.reframes.some((item) => isStyleShown(item.style)));
   const ownPublicIds = rows
     .filter((row) => row.userId === viewerId && row.isPublic)
     .map((row) => row.id);
@@ -95,6 +98,10 @@ export async function storedCardsForViewer(
   );
 }
 
+function shownCover(cover: Style, results: readonly StoredReframeResult[]): Style {
+  return results.some((item) => item.style === cover) ? cover : (results[0]?.style ?? cover);
+}
+
 export function toStoredCard(
   row: CardLoaded,
   saves: ViewerSaves,
@@ -112,7 +119,9 @@ export function toStoredCard(
     slug: join.tag.slug,
     label: join.tag.label,
   }));
-  const results: StoredReframeResult[] = [...row.reframes]
+  // The calling app's styles only: an older build fails a card on a style it does not know.
+  const results: StoredReframeResult[] = row.reframes
+    .filter((item) => isStyleShown(item.style))
     .sort((left, right) => left.position - right.position)
     .map((item) => {
       if (isOwner) {
@@ -160,7 +169,7 @@ export function toStoredCard(
     timeframe: row.timeframe,
     emotions: row.emotions,
     safety: row.safety,
-    skippedStyles: row.skippedStyles,
+    skippedStyles: row.skippedStyles.filter((item) => isStyleShown(item.style)),
     matching: {
       category: row.category,
       tags: tagList.map((tag) => tag.slug),
@@ -170,16 +179,20 @@ export function toStoredCard(
     model: row.model,
     // Your own card keeps the cover you saved it with; someone else's can open on the
     // angle you keep hearting, some of the time, and on For you never on one you kept.
-    spotlightStyle: isOwner
-      ? row.spotlightStyle
-      : openingStyle({
-          cardId: row.id,
-          viewerId,
-          cover: row.spotlightStyle,
-          available: results.map((item) => item.style),
-          preferred: preferredStyle ?? null,
-          kept: coverAvoidsKept && savedStyles ? new Set(savedStyles.keys()) : undefined,
-        }),
+    // Either way it is an angle this card returns, which an older build requires.
+    spotlightStyle: shownCover(
+      isOwner
+        ? row.spotlightStyle
+        : openingStyle({
+            cardId: row.id,
+            viewerId,
+            cover: row.spotlightStyle,
+            available: results.map((item) => item.style),
+            preferred: preferredStyle ?? null,
+            kept: coverAvoidsKept && savedStyles ? new Set(savedStyles.keys()) : undefined,
+          }),
+      results,
+    ),
     isPublic: row.isPublic,
     createdAt: row.createdAt.toISOString(),
     isOwner,

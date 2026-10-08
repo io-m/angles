@@ -2,11 +2,14 @@ import Foundation
 
 /// Mirrors backend `src/types/index.ts`. Keep JSON keys in sync.
 
+/// Append only. The server sends `tender` and `values` only to builds that send `Angles-Style-Set: 2`.
 enum Style: String, Codable, CaseIterable, Sendable {
     case stoic
     case optimistic
     case humorous
     case toughLove = "tough_love"
+    case tender
+    case values
 }
 
 /// Closed set on the backend. Anything new decodes as `.other` so a server-side
@@ -881,9 +884,10 @@ struct StoredCard: Codable, Equatable, Sendable {
         skippedStyles = (
             try container.decodeIfPresent([Failable<SkippedStyle>].self, forKey: .skippedStyles) ?? []
         ).compactMap(\.value)
-        results = (try container.decodeIfPresent([Failable<StoredReframeResult>].self, forKey: .results) ?? [])
+        let decodedResults = (try container.decodeIfPresent([Failable<StoredReframeResult>].self, forKey: .results) ?? [])
             .compactMap(\.value)
-        guard !results.isEmpty else {
+        results = decodedResults
+        guard let firstResult = decodedResults.first else {
             throw DecodingError.dataCorruptedError(
                 forKey: .results,
                 in: container,
@@ -891,7 +895,10 @@ struct StoredCard: Codable, Equatable, Sendable {
             )
         }
         model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
-        spotlightStyle = try container.decode(Style.self, forKey: .spotlightStyle)
+        // A cover this build does not know opens on the first angle it does, not a lost card.
+        let cover = try container.decodeIfPresent(String.self, forKey: .spotlightStyle).flatMap(Style.init(rawValue:))
+        spotlightStyle = cover.flatMap { style in decodedResults.contains { $0.style == style } ? style : nil }
+            ?? firstResult.style
         isPublic = try container.decodeIfPresent(Bool.self, forKey: .isPublic) ?? false
         moderationHidden = try container.decodeIfPresent(Bool.self, forKey: .moderationHidden)
         createdAt = try container.decode(String.self, forKey: .createdAt)

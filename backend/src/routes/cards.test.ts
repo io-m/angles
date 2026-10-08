@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEV_USER_ID } from "../lib/authStub.js";
 import { signCook, signResult } from "../lib/cookSignature.js";
-import { STYLES, type CreateCardInput, type StoredCard } from "../types/index.js";
+import { type CreateCardInput, type StoredCard } from "../types/index.js";
+import { LEGACY_STYLES } from "../lib/styleSet.js";
 
 vi.mock("../db/client.js", () => {
   class DbError extends Error {
@@ -84,7 +85,7 @@ const cookMeta = {
 
 const cookBody = {
   thought: cookThought,
-  results: STYLES.map((style) => ({
+  results: LEGACY_STYLES.map((style) => ({
     style,
     reframe: `A ${style} take.`,
     signature: signResult(DEV_USER_ID, cookThought, style, `A ${style} take.`),

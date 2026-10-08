@@ -109,6 +109,17 @@ appId: app.angles.ios
     timeout: 2000
 - evalScript: ${output.demo.marks.push(['card', Date.now()])}
 
+# The cut is exactly these four chapters. A cook that ranked Tender or Values in place
+# of one of them cannot make this video: fail the take here and record another.
+- assertVisible:
+    id: "chip.stoic"
+- assertVisible:
+    id: "chip.optimistic"
+- assertVisible:
+    id: "chip.humorous"
+- assertVisible:
+    id: "chip.tough_love"
+
 # 5. Hold on the first answer.
 - runFlow:
     file: flows/hold.yaml

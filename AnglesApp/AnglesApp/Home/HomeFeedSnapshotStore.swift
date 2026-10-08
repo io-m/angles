@@ -9,6 +9,33 @@ struct HomeFeedSnapshot: Codable, Equatable, Sendable {
     var arrivalsAfter: String?
     var hasMore: Bool
     var savedAt: Date
+
+    init(
+        userId: String,
+        cards: [StoredCard],
+        nextCursor: String?,
+        arrivalsAfter: String?,
+        hasMore: Bool,
+        savedAt: Date
+    ) {
+        self.userId = userId
+        self.cards = cards
+        self.nextCursor = nextCursor
+        self.arrivalsAfter = arrivalsAfter
+        self.hasMore = hasMore
+        self.savedAt = savedAt
+    }
+
+    /// One card a later build cannot read drops that card, not the whole cold-launch page.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try container.decode(String.self, forKey: .userId)
+        cards = try container.decode([Failable<StoredCard>].self, forKey: .cards).compactMap(\.value)
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+        arrivalsAfter = try container.decodeIfPresent(String.self, forKey: .arrivalsAfter)
+        hasMore = try container.decode(Bool.self, forKey: .hasMore)
+        savedAt = try container.decode(Date.self, forKey: .savedAt)
+    }
 }
 
 enum ForYouMix {

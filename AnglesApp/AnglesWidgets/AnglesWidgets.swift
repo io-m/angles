@@ -161,6 +161,10 @@ private struct FavoriteAngleView: View {
             return [Color(red: 0.88, green: 0.91, blue: 0.72), Color(red: 0.73, green: 0.86, blue: 0.70)]
         case "tough_love":
             return [Color(red: 0.96, green: 0.76, blue: 0.67), Color(red: 0.88, green: 0.64, blue: 0.60)]
+        case "tender":
+            return [Color(red: 0.97, green: 0.80, blue: 0.88), Color(red: 0.90, green: 0.68, blue: 0.80)]
+        case "values":
+            return [Color(red: 0.84, green: 0.79, blue: 0.97), Color(red: 0.73, green: 0.67, blue: 0.92)]
         default:
             return [Color(red: 0.77, green: 0.87, blue: 0.91), Color(red: 0.66, green: 0.78, blue: 0.84)]
         }
@@ -171,6 +175,8 @@ private struct FavoriteAngleView: View {
         case "optimistic": return "sun.max.fill"
         case "humorous": return "face.smiling.fill"
         case "tough_love": return "flame.fill"
+        case "tender": return "hands.and.sparkles.fill"
+        case "values": return "shield.lefthalf.filled"
         default: return "mountain.2.fill"
         }
     }

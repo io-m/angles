@@ -21,6 +21,7 @@ import { LLM_MODEL_IDS } from "../lib/llmClient.js";
 import { REPORT_REASONS } from "../lib/communitySafetyTypes.js";
 import { moderatePublicCard } from "../lib/publicModeration.js";
 import { announceReport } from "../lib/reportAlerts.js";
+import { shownStyleSchema } from "../lib/styleSet.js";
 import { CATEGORIES, STYLES } from "../types/index.js";
 
 const MAX_THOUGHT_LENGTH = 2000;
@@ -40,7 +41,7 @@ const createCardSchema = z
     results: z
       .array(
         z.object({
-          style: z.enum(STYLES),
+          style: shownStyleSchema(),
           reframe: z
             .string()
             .transform((value) => value.trim())
@@ -61,7 +62,7 @@ const createCardSchema = z
     meta: signedMetaSchema,
     signature: z.string().min(1).max(128),
     model: z.enum(LLM_MODEL_IDS),
-    spotlightStyle: z.enum(STYLES),
+    spotlightStyle: shownStyleSchema(),
     isPublic: z.boolean().optional(),
   })
   .refine((body) => body.results.some((item) => item.style === body.spotlightStyle), {
@@ -72,7 +73,7 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional().default(50),
   before: cardCursorSchema().optional(),
   category: z.enum(CATEGORIES).optional(),
-  style: z.enum(STYLES).optional(),
+  style: shownStyleSchema().optional(),
   favorite: z
     .enum(["true", "false"])
     .optional()
@@ -86,7 +87,7 @@ const idParamSchema = z.object({
 const patchCardSchema = z
   .object({
     isFavorite: z.boolean().optional(),
-    style: z.enum(STYLES).optional(),
+    style: shownStyleSchema().optional(),
     isPublic: z.boolean().optional(),
   })
   .refine((body) => body.isFavorite !== undefined || body.isPublic !== undefined, {

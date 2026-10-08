@@ -1,4 +1,5 @@
-export const STYLES = ["stoic", "optimistic", "humorous", "tough_love"] as const;
+/** Append only: app builds before the style set header know only the first four. */
+export const STYLES = ["stoic", "optimistic", "humorous", "tough_love", "tender", "values"] as const;
 
 export type Style = (typeof STYLES)[number];
 

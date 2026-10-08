@@ -5,6 +5,7 @@ import { logger } from "hono/logger";
 import { DbError } from "./db/client.js";
 import { getAuth } from "./auth.js";
 import { errorBody } from "./lib/http.js";
+import { styleSetMiddleware } from "./lib/styleSet.js";
 import { adminRoute } from "./routes/admin.js";
 import { appStoreNotificationsRoute } from "./routes/appStoreNotifications.js";
 import { cardsRoute } from "./routes/cards.js";
@@ -31,6 +32,7 @@ export function createApp(): Hono {
   const app = new Hono();
 
   app.use("*", logger());
+  app.use("*", styleSetMiddleware);
   app.use("*", async (c, next) => {
     if (
       c.req.method === "POST" &&

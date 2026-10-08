@@ -1,5 +1,6 @@
 import { and, arrayOverlaps, asc, desc, eq, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
+import { isStyleShown } from "../lib/styleSet.js";
 import {
   assignPrimaryStyles,
   buildAffinity,
@@ -139,7 +140,7 @@ export async function listFeed(
     );
     let ownShown = 0;
     const rows = found.filter((row) => {
-      const styles = row.reframes.map((item) => item.style);
+      const styles = row.reframes.map((item) => item.style).filter(isStyleShown);
       if (isKeptOnShelf(kept.get(row.id), query.style, styles)) {
         return false;
       }
@@ -478,6 +479,8 @@ async function loadViewerStyleTabs(
     optimistic: tab("optimistic"),
     humorous: tab("humorous"),
     tough_love: tab("tough_love"),
+    tender: tab("tender"),
+    values: tab("values"),
   };
 }
 
@@ -541,6 +544,10 @@ async function loadCardStyles(
     .from(cardReframes)
     .where(inArray(cardReframes.cardId, cardIds));
   for (const row of rows) {
+    // Ranking only weighs angles the calling app can show: a tab, a kept card, a cover.
+    if (!isStyleShown(row.style)) {
+      continue;
+    }
     const list = styles.get(row.cardId) ?? [];
     list.push(row.style);
     styles.set(row.cardId, list);

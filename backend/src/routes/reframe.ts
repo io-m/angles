@@ -18,6 +18,7 @@ import { signedMetaSchema } from "../lib/cookSchema.js";
 import { signCook, signResult, verifyCook } from "../lib/cookSignature.js";
 import { crisisMessage, crisisResourceLine } from "../lib/crisisResources.js";
 import { runDecision, solemnSkipFor } from "../lib/decision.js";
+import { shownStyleSchema, stylesForRequest } from "../lib/styleSet.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
 import {
   COOK_DEADLINE_MS,
@@ -37,7 +38,6 @@ import {
 import { openReplay, parseReplayKey, REPLAY_KEY_HEADER, sealReplay } from "../lib/reframeReplay.js";
 import {
   matchingFor,
-  STYLES,
   type ContinueResponse,
   type FollowUpAnswer,
   type ReadyResponse,
@@ -81,7 +81,7 @@ const trimmedText = (label: string, max: number) =>
 
 const recookSchema = z
   .object({
-    style: z.enum(STYLES),
+    style: shownStyleSchema(),
     cook: z
       .object({
         thought: trimmedText("thought", MAX_TEXT_LENGTH),
@@ -344,6 +344,7 @@ reframeRoute.post(
       const decided = await runDecision({
         text,
         followUps,
+        catalog: stylesForRequest(),
         model: decisionModels.primary,
         fallbackModel: decisionModels.fallback,
         forceReady: followUps.length >= FORCE_READY_AFTER,

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DECISION_PROMPT, GRAVE_HUMOR_SKIP_REASON, GRAVE_TOUGH_LOVE_SKIP_REASON, STYLE_BATCH_PROMPT, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
+import { DECISION_PROMPT, GRAVE_HUMOR_SKIP_REASON, GRAVE_TOUGH_LOVE_SKIP_REASON, styleBatchPrompt, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
 import { signCook, signResult, verifyCook, type SignableMeta } from "./lib/cookSignature.js";
 import { CATEGORIES, STYLES, type Style } from "./types/index.js";
+import { LEGACY_STYLES } from "./lib/styleSet.js";
 
 vi.mock("./lib/llmClient.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./lib/llmClient.js")>();
@@ -201,13 +202,16 @@ function stubReframes(): void {
   });
 }
 
-async function post(body: unknown): Promise<Response> {
+async function post(body: unknown, headers: Record<string, string> = {}): Promise<Response> {
   return app.request("/reframe", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
 }
+
+/** What a build that knows all six styles sends. */
+const EXTENDED = { "Angles-Style-Set": "2" };
 
 async function jsonOf(response: Response): Promise<unknown> {
   return response.json();
@@ -260,7 +264,7 @@ describe("SYSTEM_PROMPTS", () => {
   });
 
   it("defines a batched style prompt", () => {
-    expect(STYLE_BATCH_PROMPT).toContain("Each JSON field is that style only");
+    expect(styleBatchPrompt([...STYLES])).toContain("Each JSON field is that style only");
   });
 
   it("cooks a named situation instead of bouncing it as nonsense", () => {
@@ -568,7 +572,7 @@ describe("POST /reframe", () => {
       granted: 600,
       creditCost: 1,
     });
-    expect(body.results.map((item) => item.style)).toEqual([...STYLES]);
+    expect(body.results.map((item) => item.style)).toEqual([...LEGACY_STYLES]);
     expect(body.meta.matching).toEqual({
       category: "work",
       tags: ["job_interview", "shame", "rejection"],
@@ -579,9 +583,9 @@ describe("POST /reframe", () => {
     const batchCall = vi.mocked(generateJson).mock.calls.find(([call]) =>
       isStyleBatchPrompt(call.systemPrompt),
     );
-    expect(batchCall?.[0].maxOutputTokens).toBe(writerMaxOutputTokens(STYLES.length));
+    expect(batchCall?.[0].maxOutputTokens).toBe(writerMaxOutputTokens(LEGACY_STYLES.length));
     expect(batchCall?.[0].maxOutputTokens).toBeGreaterThanOrEqual(
-      STYLES.length * Math.ceil(REFRAME_HARD_MAX_CHARS / 3),
+      LEGACY_STYLES.length * Math.ceil(REFRAME_HARD_MAX_CHARS / 3),
     );
   });
 
@@ -624,6 +628,70 @@ describe("POST /reframe", () => {
     ]);
     expect(generateJson).toHaveBeenCalledTimes(2);
     expect(generateReframe).not.toHaveBeenCalled();
+  });
+
+  describe("style set", () => {
+    const ranked = ["tender", "values", "humorous", "stoic", "optimistic", "tough_love"];
+    const sixAnswers = () =>
+      styleBatch({
+        tender: "Watching your sister go through this is its own kind of weight, and you are allowed to feel all of it.",
+        values: "The fear comes from how much she means to you, and that love is worth every sleepless hour it costs.",
+      });
+
+    it("never offers tender or values to an app that did not ask for them", async () => {
+      stubDecision(readyDecision({ styles: ranked }));
+      stubStyleBatch(sixAnswers());
+
+      const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+
+      expect(body.results.map((item) => item.style)).toEqual(["humorous", "stoic", "optimistic", "tough_love"]);
+      expect(JSON.stringify(body)).not.toMatch(/"(tender|values)"/);
+    });
+
+    it("writes the model's four best for an app that knows all six, best first", async () => {
+      stubDecision(readyDecision({ styles: ranked }));
+      stubStyleBatch(sixAnswers());
+
+      const body = (await jsonOf(await post({ text: LONG_TEXT }, EXTENDED))) as ReadyBody;
+
+      expect(body.results.map((item) => item.style)).toEqual(["tender", "values", "humorous", "stoic"]);
+      const batch = vi.mocked(generateJson).mock.calls.find(([call]) => call.callKind === "batch")?.[0];
+      expect(batch?.systemPrompt).toContain("tender (Tender)");
+      expect(batch?.systemPrompt).not.toContain("tough_love (Tough Love)");
+    });
+
+    it("gives a solemn thought tender and values instead of a joke and a push", async () => {
+      stubDecision(
+        readyDecision({
+          thought_en: "I am deeply concerned about Russian bombing of civilians in Ukraine.",
+          solemn: true,
+          styles: ["humorous", "stoic", "tender", "optimistic", "values"],
+        }),
+      );
+      stubStyleBatch(sixAnswers());
+
+      const body = (await jsonOf(await post({ text: LONG_TEXT }, EXTENDED))) as ReadyBody;
+
+      expect(body.results.map((item) => item.style)).toEqual(["stoic", "tender", "optimistic", "values"]);
+      expect(body.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    });
+
+    it("refuses a recook of a style the app cannot show", async () => {
+      stubDecision(readyDecision());
+      const cook = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
+      vi.mocked(generateJson).mockClear();
+
+      const response = await post({
+        recook: {
+          style: "tender",
+          cook: { thought: cook.thought, meta: cook.meta, model: cook.model, signature: cook.signature },
+        },
+      });
+
+      expect(response.status).toBe(400);
+      await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+      expect(generateJson).not.toHaveBeenCalled();
+    });
   });
 
   it("drops a written joke that names real harm before signing the cook", async () => {
@@ -871,7 +939,8 @@ describe("POST /reframe", () => {
     });
 
     it("signs both versions of a bilingual cook, and a recook must echo the pair it replaces", async () => {
-      const pairs: Record<Style, { en: string; local: string }> = {
+      // A request without the style set header writes only the original four.
+      const pairs: Partial<Record<Style, { en: string; local: string }>> = {
         stoic: {
           en: "One rough interview is a single afternoon, not a verdict on your whole career. Keep the lesson and let the tape stop.",
           local: "Jedan loš intervju je jedno poslijepodne, a ne presuda cijeloj karijeri. Zadrži lekciju i pusti snimku da stane.",
@@ -889,7 +958,7 @@ describe("POST /reframe", () => {
           local: "Vrtjeti to neće promijeniti ishod. Zapiši dva odgovora koja si zeznuo, popravi ih večeras i pošalji zahvalu.",
         },
       };
-      const pair = (style: Style) => pairs[style];
+      const pair = (style: Style) => pairs[style] ?? { en: "", local: "" };
       const fresh = {
         en: "The interview happened once; the replay is happening hourly. Only one of those is still up to you tonight.",
         local: "Intervju se dogodio jednom, a vrtiš ga svaki sat. Samo je jedno od toga još uvijek na tebi večeras.",
@@ -1336,7 +1405,7 @@ describe("POST /reframe", () => {
 
     expect(generateJson).toHaveBeenCalledTimes(3);
     expect(generateReframe).not.toHaveBeenCalled();
-    expect(body.results.map((item) => item.style)).toEqual([...STYLES]);
+    expect(body.results.map((item) => item.style)).toEqual([...LEGACY_STYLES]);
   });
 
   it("fails the whole request when the batch repair fails", async () => {

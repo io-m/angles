@@ -65,6 +65,8 @@ export type ReadyDecision = {
   styles: Style[];
   /** Real harm to people: no joke and no push. Never on the wire; `meta.skippedStyles` carries it. */
   solemn: boolean;
+  /** The styles the calling app can show; `styles` is chosen from these. */
+  catalog: readonly Style[];
   meta: ReframeMeta;
 };
 
@@ -77,6 +79,8 @@ export type RunDecisionInput = {
   forceReady: boolean;
   deadlineAt?: number;
   abortSignal?: AbortSignal;
+  /** The styles the calling app can show. Every style when absent. */
+  catalog?: readonly Style[];
 } & Pick<LlmCallOptions, "beforeProviderCall" | "usageSink" | "fallbackModel">;
 
 const MAX_OPTIONS = 3;
@@ -186,6 +190,8 @@ export type ParseOptions = {
   requireReady?: boolean;
   /** The last chance: a long cleaned thought is accepted up to the repair cap. */
   repairPass?: boolean;
+  /** The styles the calling app can show. Every style when absent. */
+  catalog?: readonly Style[];
 };
 
 export class DecisionParseError extends Error {
@@ -400,21 +406,53 @@ const SOLEMN_SKIP_REASONS: Partial<Record<Style, string>> = {
   tough_love: GRAVE_TOUGH_LOVE_SKIP_REASON,
 };
 
+/** How many angles a card gets whenever the catalog has room for them. */
+export const ANGLES_PER_CARD = 4;
+
+/** On the original four, a model never skips these: they are the only voices left on a solemn card. */
+const LEGACY_ALWAYS_WRITTEN: readonly Style[] = ["stoic", "optimistic"];
+
 type StyleChoice = { styles: Style[]; skippedStyles: SkippedStyle[] };
 
 /**
- * Removes the voices a solemn thought never gets and records our own reason for each,
- * whatever the model wrote, so a later "New answer" on them is refused too.
+ * The model ranks; this decides. A solemn thought never gets the blocked voices, and
+ * our own reason is recorded for each so a later "New answer" on them is refused too.
+ * A voice the model chose and skipped counts as skipped. The model's order is kept, so
+ * the phone opens its first choice; unranked voices follow in catalog order.
+ *
+ * A catalog larger than a card always fills four, from the model's skips only when
+ * nothing else is left. The legacy catalog keeps a model's skip of humorous or tough
+ * love, so it can write fewer, but always writes stoic and optimistic, as it always has.
  */
-function withoutSolemnBlocked(styles: readonly Style[], skippedStyles: readonly SkippedStyle[]): StyleChoice {
-  const allowed = styles.filter((style) => !SOLEMN_BLOCKED_STYLES.includes(style));
+function chooseStyles(
+  requested: readonly Style[],
+  skipped: readonly SkippedStyle[],
+  solemn: boolean,
+  catalog: readonly Style[],
+): StyleChoice {
+  const blocked = solemn ? SOLEMN_BLOCKED_STYLES : [];
+  const allowed = catalog.filter((style) => !blocked.includes(style));
+  const modelSkipped = new Set(skipped.map((item) => item.style));
+  const fillsFour = catalog.length > ANGLES_PER_CARD;
+  const ranked = [
+    ...requested.filter((style) => allowed.includes(style) && !modelSkipped.has(style)),
+    ...allowed.filter((style) => !requested.includes(style) && !modelSkipped.has(style)),
+    ...allowed.filter((style) => modelSkipped.has(style) && (fillsFour || LEGACY_ALWAYS_WRITTEN.includes(style))),
+  ];
+  const styles = uniqueOrdered(ranked).slice(0, ANGLES_PER_CARD);
   return {
-    styles: allowed.length > 0 ? allowed : STYLES.filter((style) => !SOLEMN_BLOCKED_STYLES.includes(style)),
+    styles,
     skippedStyles: [
-      ...skippedStyles.filter((item) => !SOLEMN_BLOCKED_STYLES.includes(item.style)),
-      ...SOLEMN_BLOCKED_STYLES.map((style) => ({ style, reason: SOLEMN_SKIP_REASONS[style] ?? GRAVE_HUMOR_SKIP_REASON })),
+      ...skipped.filter(
+        (item) => catalog.includes(item.style) && !styles.includes(item.style) && !blocked.includes(item.style),
+      ),
+      ...blocked.map((style) => ({ style, reason: SOLEMN_SKIP_REASONS[style] ?? GRAVE_HUMOR_SKIP_REASON })),
     ],
   };
+}
+
+function uniqueOrdered(styles: readonly Style[]): Style[] {
+  return styles.filter((style, index) => styles.indexOf(style) === index);
 }
 
 /**
@@ -433,38 +471,18 @@ export function solemnSkipFor(
   return grave ? { style, reason } : undefined;
 }
 
-/** The same ready decision, made solemn after the fact by a screen or the output guard. */
-export function asSolemn(decision: ReadyDecision): ReadyDecision {
-  const { styles, skippedStyles } = withoutSolemnBlocked(decision.styles, decision.meta.skippedStyles);
-  return { ...decision, solemn: true, styles, meta: { ...decision.meta, skippedStyles } };
-}
-
 /**
- * A style the model both chose and skipped counts as skipped. Stoic and optimistic
- * are written even if the model tried to skip them. A solemn thought never gets
- * humorous or tough love, even when the model wrote them in.
+ * The same ready decision, made solemn after the fact by a screen or the output guard.
+ * Its styles keep their order; a voice it gains to reach four comes after them.
  */
-function chooseStyles(requested: Style[], skipped: SkippedStyle[], solemn: boolean): StyleChoice {
-  let skippedStyles = skipped.filter((item) => item.style !== "stoic" && item.style !== "optimistic");
-  const base =
-    requested.length > 0 ? requested : STYLES.filter((style) => !skipped.some((item) => item.style === style));
-  let styles = base.filter((style) => !skippedStyles.some((item) => item.style === style));
-  let restored = false;
-  for (const style of ["stoic", "optimistic"] as const) {
-    if (skipped.some((item) => item.style === style) && !styles.includes(style)) {
-      styles.push(style);
-      restored = true;
-    }
-  }
-  if (restored) {
-    styles = STYLES.filter((style) => styles.includes(style));
-  }
-  if (styles.length === 0) {
-    styles = base;
-    skippedStyles = skipped.filter((item) => !base.includes(item.style));
-  }
-
-  return solemn ? withoutSolemnBlocked(styles, skippedStyles) : { styles, skippedStyles };
+export function asSolemn(decision: ReadyDecision): ReadyDecision {
+  const { styles, skippedStyles } = chooseStyles(
+    decision.styles,
+    decision.meta.skippedStyles,
+    true,
+    decision.catalog,
+  );
+  return { ...decision, solemn: true, styles, meta: { ...decision.meta, skippedStyles } };
 }
 
 export function parseDecision(raw: string, options: ParseOptions = {}): Decision {
@@ -516,10 +534,12 @@ export function parseDecision(raw: string, options: ParseOptions = {}): Decision
   const distortions = normalizeDistortions(value.distortions);
   // Fails closed: only an explicit `false` allows a joke or a push. A loss is always solemn.
   const solemn = value.solemn !== false || category === "grief_loss";
+  const catalog = options.catalog ?? STYLES;
   const { styles, skippedStyles } = chooseStyles(
     normalizeStyles(value.styles),
     normalizeSkipped(value.skipped_styles),
     solemn,
+    catalog,
   );
   if (styles.length === 0) {
     throw new DecisionParseError("ready decision chose no styles");
@@ -565,6 +585,7 @@ export function parseDecision(raw: string, options: ParseOptions = {}): Decision
     thoughtOriginal: original && original !== thought ? original : undefined,
     styles,
     solemn,
+    catalog,
     meta,
   };
 }
@@ -660,7 +681,7 @@ async function decide(input: RunDecisionInput): Promise<Decision> {
   let repairHint: string | undefined;
   try {
     const decision = refuseUnsafeReframe(
-      parseDecision(first, { requireReady: input.forceReady }),
+      parseDecision(first, { requireReady: input.forceReady, catalog: input.catalog }),
     );
     if (isRejectedBounceContinue(decision, input)) {
       bounceRejected = true;
@@ -691,7 +712,7 @@ async function decide(input: RunDecisionInput): Promise<Decision> {
   try {
     // The second pass accepts a `continue` even on a forced turn: a stubborn
     // model gets to keep the conversation rather than fail the request.
-    return refuseUnsafeReframe(parseDecision(repaired, { repairPass: true }));
+    return refuseUnsafeReframe(parseDecision(repaired, { repairPass: true, catalog: input.catalog }));
   } catch (error) {
     if (error instanceof DecisionParseError || error instanceof SyntaxError) {
       throw new LlmError("Decision reply could not be parsed");

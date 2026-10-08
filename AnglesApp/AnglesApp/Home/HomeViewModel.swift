@@ -194,6 +194,10 @@ extension Style {
             return "Humorous"
         case .toughLove:
             return "Tough Love"
+        case .tender:
+            return "Tender"
+        case .values:
+            return "Values"
         }
     }
 }
@@ -260,6 +264,8 @@ enum HomeFeedTab: Equatable, Hashable, CaseIterable {
     case optimistic
     case humorous
     case toughLove
+    case tender
+    case values
 
     var title: String {
         matchingStyle?.displayName ?? "For you"
@@ -281,6 +287,10 @@ enum HomeFeedTab: Equatable, Hashable, CaseIterable {
             return .humorous
         case .toughLove:
             return .toughLove
+        case .tender:
+            return .tender
+        case .values:
+            return .values
         }
     }
 
@@ -375,6 +385,8 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
     case optimistic
     case humorous
     case toughLove
+    case tender
+    case values
 
     var title: String {
         matchingStyle?.displayName ?? "Favorite angles"
@@ -394,6 +406,10 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
             return .humorous
         case .toughLove:
             return .toughLove
+        case .tender:
+            return .tender
+        case .values:
+            return .values
         case .favorites:
             return nil
         }
@@ -423,7 +439,7 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
         switch self {
         case .favorites:
             return "No favorite angles"
-        case .stoic, .optimistic, .humorous, .toughLove:
+        case .stoic, .optimistic, .humorous, .toughLove, .tender, .values:
             return "No cards with a \(title) angle yet"
         }
     }
@@ -446,6 +462,10 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
             self = .humorous
         case .toughLove:
             self = .toughLove
+        case .tender:
+            self = .tender
+        case .values:
+            self = .values
         }
     }
 }
@@ -731,7 +751,7 @@ final class HomeViewModel {
         switch filter {
         case .favorites:
             return favoriteAngleCards
-        case .stoic, .optimistic, .humorous, .toughLove:
+        case .stoic, .optimistic, .humorous, .toughLove, .tender, .values:
             guard let style = filter.matchingStyle else {
                 return []
             }

@@ -19,7 +19,7 @@ import {
   localLanguage,
   recookUserPrompt,
   REFRAME_HARD_MAX_CHARS,
-  STYLE_BATCH_PROMPT,
+  styleBatchPrompt,
   SYSTEM_PROMPTS,
   styleBatchUserPrompt,
   type LocalTarget,
@@ -299,7 +299,7 @@ async function requestStyleBatch(
   const local = localTarget(decision);
   return generateJson({
     text: styleBatchUserPrompt(decision.thought, decision.meta, chosen, local),
-    systemPrompt: STYLE_BATCH_PROMPT,
+    systemPrompt: styleBatchPrompt(chosen),
     maxOutputTokens: writerMaxOutputTokens(chosen.length, local !== undefined),
     jsonSchema: batchSchema(chosen, local !== undefined),
     callKind: "batch",
@@ -507,42 +507,54 @@ export function uniqueStyles(styles: readonly Style[]): Style[] {
   return unique;
 }
 
+type WrittenCook = { decision: ReadyDecision; results: ReframeResult[] };
+
 /**
  * A joke that itself names real harm proves the thought was grave and both checks
- * missed it. The cook turns solemn: the joke and any push are dropped, never rewritten.
+ * missed it. The cook turns solemn: the joke and any push are dropped, never rewritten,
+ * and the voices a solemn card has instead are written in one call. If that call fails
+ * the cook fails, so no card ships short of what it should have.
  */
-export function withoutGraveJokes(
+export async function withoutGraveJokes(
   decision: ReadyDecision,
   results: ReframeResult[],
-): { decision: ReadyDecision; results: ReframeResult[] } {
+  options: CookCallOptions,
+): Promise<WrittenCook> {
   const joke = results.find((result) => result.style === "humorous");
   if (decision.solemn || !joke || !screensAsGrave([joke.reframe, joke.reframeOriginal])) {
     return { decision, results };
   }
   const solemn = asSolemn(decision);
   const kept = results.filter((result) => solemn.styles.includes(result.style));
-  if (kept.length === 0) {
-    throw new LlmError("Every answer was dropped on a grave thought");
+  const missing = solemn.styles.filter((style) => !kept.some((result) => result.style === style));
+  const written = missing.length > 0 ? await writeStyleBatch(solemn, missing, options) : [];
+  const byStyle = new Map([...kept, ...written].map((result) => [result.style, result]));
+  const ordered = solemn.styles.flatMap((style) => byStyle.get(style) ?? []);
+  if (ordered.length === 0 || ordered.length !== solemn.styles.length) {
+    throw new LlmError("A grave cook could not be written without the joke");
   }
-  return { decision: { ...solemn, styles: kept.map((result) => result.style) }, results: kept };
+  return { decision: solemn, results: ordered };
 }
 
 /** Every style a ready decision chose, written and guarded. The decision may come back solemn. */
-export async function writeCook(
-  decision: ReadyDecision,
-  options: CookCallOptions,
-): Promise<{ decision: ReadyDecision; results: ReframeResult[] }> {
+export async function writeCook(decision: ReadyDecision, options: CookCallOptions): Promise<WrittenCook> {
   const results = await writeStyleBatch(decision, uniqueStyles(decision.styles), options);
-  return withoutGraveJokes(decision, results);
+  return withoutGraveJokes(decision, results, options);
 }
 
 /** A full cook: the decision, then every style it chose in one batch. `model` is the writer. */
 export async function runCook(
-  input: { text: string; followUps: FollowUpAnswer[]; decisionModel?: LlmModelId } & CookCallOptions,
+  input: {
+    text: string;
+    followUps: FollowUpAnswer[];
+    decisionModel?: LlmModelId;
+    catalog?: readonly Style[];
+  } & CookCallOptions,
 ): Promise<CookOutcome> {
   const decision = await runDecision({
     text: input.text,
     followUps: input.followUps,
+    catalog: input.catalog,
     model: input.decisionModel,
     forceReady: input.followUps.length >= FORCE_READY_AFTER,
     deadlineAt: input.deadlineAt,

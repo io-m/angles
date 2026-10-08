@@ -103,6 +103,16 @@ appId: app.angles.ios
 - waitForAnimationToEnd:
     timeout: 2000
 - evalScript: ${output.demo.marks.push(['card', Date.now()])}
+# The store shots are these four styles. A cook that ranked Tender or Values in place of
+# one of them cannot make them: fail the take here and record another.
+- assertVisible:
+    id: "chip.stoic"
+- assertVisible:
+    id: "chip.optimistic"
+- assertVisible:
+    id: "chip.humorous"
+- assertVisible:
+    id: "chip.tough_love"
 - hideKeyboard
 - runFlow:
     file: flows/hold.yaml

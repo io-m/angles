@@ -165,6 +165,36 @@ struct SafetyContractTests {
     }
 }
 
+struct StyleCatalogContractTests {
+    private func card(results: [String], spotlight: String) -> String {
+        let angles = results.map { #"{"style":"\#($0)","reframe":"An angle.","isFavorite":false}"# }.joined(separator: ",")
+        return #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[\#(angles)],"spotlightStyle":"\#(spotlight)","isPublic":true,"createdAt":"2026-10-08T10:00:00.000Z","isOwner":false,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"AL","following":false}}"#
+    }
+
+    @Test func tenderAndValuesDecodeLikeEveryOtherStyle() throws {
+        let stored = try JSONDecoder().decode(
+            StoredCard.self,
+            from: Data(card(results: ["tender", "values", "stoic", "optimistic"], spotlight: "values").utf8)
+        )
+        #expect(stored.results.map(\.style) == [.tender, .values, .stoic, .optimistic])
+        #expect(stored.spotlightStyle == .values)
+        #expect(Style.allCases.map(\.rawValue) == ["stoic", "optimistic", "humorous", "tough_love", "tender", "values"])
+    }
+
+    @Test func aFutureStyleDropsOnlyThatAngleAndItsCover() throws {
+        let stored = try JSONDecoder().decode(
+            StoredCard.self,
+            from: Data(card(results: ["some_future_voice", "tender", "stoic"], spotlight: "some_future_voice").utf8)
+        )
+        #expect(stored.results.map(\.style) == [.tender, .stoic])
+        #expect(stored.spotlightStyle == .tender)
+    }
+
+    @Test func everyRequestNamesTheStyleSetThisBuildDecodes() {
+        #expect(APIClient.styleSet == "2")
+    }
+}
+
 struct ReplayContractTests {
     @Test func replayKeyIsThirtyTwoBytesOfUnpaddedBase64URL() {
         let key = ReframeAttempt.newReplayKey()

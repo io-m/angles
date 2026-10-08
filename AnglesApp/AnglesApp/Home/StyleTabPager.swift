@@ -61,14 +61,18 @@ protocol StyleTabRepresentable: Hashable, CaseIterable {
     func symbolColor(ink: Color) -> Color
     var headerWashInk: Color { get }
     var usesNeutralChip: Bool { get }
+    /// Its own chip beside the style menu instead of a row inside it.
+    var isPinnedOutsideMenu: Bool { get }
 }
 
 extension ProfileGridFilter: StyleTabRepresentable {
     var usesNeutralChip: Bool { self == .favorites }
+    var isPinnedOutsideMenu: Bool { self == .favorites }
 }
 
 extension HomeFeedTab: StyleTabRepresentable {
     var usesNeutralChip: Bool { self == .all }
+    var isPinnedOutsideMenu: Bool { false }
 }
 
 struct StyleTabPagerSnapshot: Equatable {
@@ -251,68 +255,42 @@ struct StyleTabPagerTracking<T: StyleTabRepresentable>: ViewModifier {
     }
 }
 
+/// The style picker in a page header: a native single-select menu, plus a chip for any
+/// tab pinned outside it (Profile's Favorites). Six styles do not fit a row of chips on a
+/// narrow phone, so they live in the menu. Swiping the pager still moves between them.
 struct AdaptiveStyleTabBar<T: StyleTabRepresentable>: View {
     let pagerState: StyleTabPagerState<T>
     let settledSelection: T
+    /// Kept for call sites that reserve trailing room; the menu never needs it.
     var reservedTrailingWidth: CGFloat = 0
     var includesTrailingSpacer = true
     var padded = true
     let onSelect: (T) -> Void
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
     var body: some View {
-        GeometryReader { proxy in
-            let horizontalInsets = padded
-                ? HeaderCollapse.horizontalPadding * 2
-                : 0
-            let usableWidth = max(
-                0,
-                proxy.size.width - horizontalInsets - reservedTrailingWidth
-            )
-            let density: StyleTabDensity =
-                usableWidth < StyleTabDensity.standardMinimumWidth
-                    || dynamicTypeSize > .large
-                ? .compact
-                : .standard
+        let tabs = Array(T.allCases)
+        let snapshot = pagerState.snapshot
+        // Follows a swipe as it passes halfway, not only once the page settles.
+        let nearest = tabs[snapshot.pageProgress < 0.5 ? snapshot.fromIndex : snapshot.toIndex]
 
-            StyleTabBar(
-                pagerState: pagerState,
-                settledSelection: settledSelection,
-                density: density,
-                includesTrailingSpacer: includesTrailingSpacer,
-                padded: padded,
+        HStack(spacing: ReframeCardMetrics.chipSpacing) {
+            ForEach(Array(tabs.enumerated()), id: \.element) { index, tab in
+                if tab.isPinnedOutsideMenu {
+                    StyleTabChip(
+                        tab: tab,
+                        expansion: pagerState.expansion(at: index),
+                        isSettledSelection: settledSelection == tab,
+                        density: .standard,
+                        onSelect: { onSelect(tab) }
+                    )
+                }
+            }
+
+            StyleTabMenu(
+                tabs: tabs.filter { !$0.isPinnedOutsideMenu },
+                current: nearest,
                 onSelect: onSelect
             )
-        }
-        .frame(
-            height: padded
-                ? StyleTabMetrics.tabBarHeight
-                : CircleIcon.Size.normal.side
-        )
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-    }
-}
-
-private struct StyleTabBar<T: StyleTabRepresentable>: View {
-    let pagerState: StyleTabPagerState<T>
-    let settledSelection: T
-    let density: StyleTabDensity
-    var includesTrailingSpacer = true
-    var padded = true
-    let onSelect: (T) -> Void
-
-    var body: some View {
-        HStack(spacing: density.spacing) {
-            ForEach(Array(T.allCases.enumerated()), id: \.element) { index, tab in
-                StyleTabChip(
-                    tab: tab,
-                    expansion: pagerState.expansion(at: index),
-                    isSettledSelection: settledSelection == tab,
-                    density: density,
-                    onSelect: { onSelect(tab) }
-                )
-            }
 
             if includesTrailingSpacer {
                 Spacer(minLength: 0)
@@ -327,6 +305,94 @@ private struct StyleTabBar<T: StyleTabRepresentable>: View {
                 : CircleIcon.Size.normal.side
         )
         .accessibilityElement(children: .contain)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+    }
+}
+
+/// One capsule that names the tab on screen and opens a single-select list of the rest.
+private struct StyleTabMenu<T: StyleTabRepresentable>: View {
+    let tabs: [T]
+    let current: T
+    let onSelect: (T) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var selectHaptic = 0
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    /// False while a pinned tab is on screen: the menu then reads as a plain "Styles" button.
+    private var isActive: Bool { tabs.contains(current) }
+    private var appearance: CardStyleAppearance? {
+        isActive ? current.matchingStyle.map(CardStyleAppearance.init) : nil
+    }
+
+    private var selection: Binding<T> {
+        Binding(
+            get: { current },
+            set: { tab in
+                if tab != current {
+                    selectHaptic += 1
+                }
+                onSelect(tab)
+            }
+        )
+    }
+
+    var body: some View {
+        Menu {
+            Picker(selection: selection) {
+                ForEach(tabs, id: \.self) { tab in
+                    Label(tab.title, systemImage: tab.systemImage)
+                        .tag(tab)
+                }
+            } label: {
+                Text("Style")
+            }
+            .pickerStyle(.inline)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isActive ? current.systemImage : "square.stack.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(isActive ? current.chipTitle : "Styles")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(ink)
+            .padding(.horizontal, 12)
+            .frame(height: ReframeCardMetrics.chipSize)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(fill)
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(appearance == nil ? theme.cardHairline : .clear, lineWidth: 0.5)
+                    }
+            }
+            .contentShape(Capsule())
+        }
+        .menuOrder(.fixed)
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: selectHaptic)
+        .accessibilityLabel(isActive ? "Style: \(current.title)" : "Styles")
+        .accessibilityHint("Opens the list of styles")
+    }
+
+    private var ink: Color {
+        guard isActive else {
+            return theme.ink.opacity(colorScheme == .dark ? 0.84 : 0.72)
+        }
+        return current.symbolColor(ink: theme.ink)
+    }
+
+    private var fill: Color {
+        guard let appearance else {
+            return theme.surface.opacity(isActive ? 1 : (colorScheme == .dark ? 0.72 : 0.68))
+        }
+        return appearance.ink.opacity(appearance.chipFillOpacity(for: colorScheme))
     }
 }
 

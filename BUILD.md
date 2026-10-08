@@ -93,6 +93,7 @@ Loading and error are **states on Results**, not their own screens.
 | 20 | Release gaps (reports, Apple revoke, Terms gate) | feature | done | `db/reportReview.ts`; `scripts/reports.ts`; `lib/reportAlerts.ts`; `lib/appleRevoke.ts`; `db/communitySafety.ts`; `db/cards.ts`; `db/users.ts`; `routes/cards.ts`; `routes/profile.ts`; `schema.ts`; `0018_report_review.sql`; `0019_terms_acceptance.sql`; `types/index.ts`; `ReframeModels.swift`; `AppleReauthorization.swift`; `SessionStore.swift`; `ProfileService.swift`; `APIClient.swift`; `AppGate.swift`; `AnglesApp.swift`; `AIConsentSheet.swift`; `ComposeSheetView.swift`; `SettingsView.swift`; `AppConfig.swift`; `project.yml` | Every new report emails the operator, and `pnpm reports` lists open reports and hides, keeps, deletes, or suspends; Delete account revokes the Sign in with Apple grant; a paid account must accept the Terms (stored on the server) before Home; support email, a "not therapy" line, and no empty app icon set. |
 | 21 | Operator admin | feature | done | `routes/admin.ts`; `lib/adminSession.ts`; `lib/adminMail.ts`; `db/adminLogin.ts`; `db/reportReview.ts`; `0020_admin_login_challenges.sql`; `web/app/admin/*`; `web/worker.ts`; `docs/operator-admin.md` | Allowlisted operators sign in with a Resend magic link at `useangles.app/admin` and keep, hide, delete, or suspend from the report inbox. The site proxies to Railway `/admin`. `pnpm reports` over SSH still works. |
 | 22 | Follow notifications | feature | done | `schema.ts`; `0022_follow_notifications.sql`; `follows.ts`; `followNotifications.ts`; `communitySafety.ts`; `apns.ts`; `profile.ts`; `users.ts`; `types/index.ts`; `ReframeModels.swift`; `ProfileService.swift`; `FollowNotificationsSheet.swift`; `FollowPush.swift`; `ProfileView.swift`; `SettingsView.swift`; `AnglesApp.swift`; `HomeViewModel.swift`; `project.yml` | A new follow stores one in-app row and can push with Follow back. Unread rows do not stack. A block deletes both directions. Follows and push use the actor's display name when set, else initials. One bell open clears both badges; the only automatic permission ask is iOS's dialog once Home is on screen. |
+| 24 | Six voices, four angles, style menu | feature | done | `types/index.ts`; `styleSet.ts`; `decision.ts`; `prompts.ts`; `cook.ts`; `graveScreen.ts`; `mapCard.ts`; `db/feed.ts`; `routes/{reframe,cards,feed}.ts`; `0023_tender_values_styles.sql`; `llmEval.ts`; `ReframeModels.swift`; `APIClient.swift`; `HomeViewModel.swift`; `HomePalette.swift`; `StyleTabPager.swift`; `HomeFeedSnapshotStore.swift`; `AnglesWidgets.swift`; `PaywallView.swift` | Tender (rose) and Values (violet) join the four styles. A cook writes the four that fit the thought best, ranked by the decision, with no style guaranteed; a solemn thought is always Stoic, Optimistic, Tender, and Values. Builds that send `Angles-Style-Set: 2` get all six; anything older is served the original four on every route. Home, Profile, and author pages pick a style from a native menu instead of a chip row; Profile keeps Favorites as its own chip. |
 | 23 | In-app App Store rating | feature | done | `StoreKit/AppStoreReviewCoordinator.swift`; `AnglesApp.swift`; `HomeViewModel.swift`; `SettingsView.swift`; `AppConfig.swift`; `project.yml`; `Info.plist`; `Info-Debug.plist` | After the third entitled Save or Post, once the celebration has left Home or Profile, the system review dialog may appear; at most twice, 90 days apart. Settings → Rate Angles opens the App Store write-review page. Taste and crisis cooks never count. |
 
 ### 1. Compose (home)
@@ -124,7 +125,7 @@ Profile-gear Settings sheet. Gradient chrome, large title that collapses to inli
 
 ### 3. Multi-style results
 
-Always all four styles. Style picker and per-style checkboxes are gone. Home cards store four slides; the carousel is the default face.
+Four angles per card, chosen from six styles by the decision (24). Style picker and per-style checkboxes are gone. Home cards store four slides; the carousel is the default face.
 
 ### 4. Hook up fetching
 
@@ -235,7 +236,7 @@ Not a new screen. This replaces the grouped Home and flip-card language from 9b�
 
 Not a new screen. Replaces the scrolling **Home** title from 9f/9h with Profile-like chrome.
 
-- **Tabs.** Five expanding chips: **For you** (default, mixed `spotlightStyle`) plus the four styles. No Favorites. For you is one ranked `GET /feed`. Each style tab is its own ranked shelf (`GET /feed?style=`), opened on that angle. Profile and author pages still filter one library list in memory. The filter sheet resets every Home shelf.
+- **Tabs.** A native single-select style menu (24): **For you** (default, mixed `spotlightStyle`) plus the six styles. It replaced five expanding chips, which did not fit six styles on a narrow phone; swiping still pages between them. No Favorites. For you is one ranked `GET /feed`. Each style tab is its own ranked shelf (`GET /feed?style=`), opened on that angle. Profile and author pages still filter one library list in memory. The filter sheet resets every Home shelf.
 - **Layout.** One overlay row: expanding tabs leading, filter trailing, same height and center as the filter icon, with a little extra space under the chips. No Home Settings gear (Profile keeps it). Quiet style-tinted paper-to-grey canvas, style-tinted glass header, tab-bar footer fade. `StyleTabPager.swift` shares pager state, chips, and wash with Profile. Each tab is its own vertical `ScrollView` + lazy `HomeCardGrid`.
 - **API.** Each style tab calls `GET /feed?style=` and keeps its own page. For you omits `style`. Profile and author pages do not.
 
@@ -297,7 +298,7 @@ Not a new screen. Profile is a private identity page, not a greeting plus two ca
 Not a new screen. Polish on 9i.
 
 - **Chrome.** Opaque paper plus a stronger style wash, lit from -45° (top-leading to bottom-trailing). Favorites uses a quiet ink tint. Cards cannot show through the identity or tab row. Wash crossfades when the settled tab changes.
-- **Tabs.** Favorites is first and the default. The selected tab is a labeled pill (glyph + name) like card chips; the rest stay icon circles. Spring only on selection change.
+- **Tabs.** Favorites is first and the default, as its own chip. The six styles are one native single-select menu beside it (24), which reads "Styles" while Favorites is on screen. Spring only on selection change.
 - **Paging.** Identity, tabs, and Settings stay put. Card lists page horizontally (`scrollTargetBehavior(.paging)`), not an inner TabView. Each page is its own vertical `ScrollView` + `HomeCardGrid`.
 
 ### 9k. Interactive Profile pager
@@ -531,6 +532,7 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-08 — Six voices (24). Tender and Values join the catalog; each cook writes the four that fit best, ranked, and a solemn thought is Stoic, Optimistic, Tender, and Values. Only builds that send `Angles-Style-Set: 2` see the new styles; every route projects cards onto the original four for older builds, so build 30 decodes everything it gets. The writer prompt carries only the voices a cook writes, so cost per cook is flat. The style chip row is a native menu on Home, Profile, and author pages.
 - 2026-10-08 — Solemn, backend only. A thought about real harm to people (a death, serious illness, sexual violence, a child hurt, abuse, war and attacks on civilians, genocide, persecution, self-hatred), theirs or strangers', never gets humorous or tough love. The decision's required `solemn` fails closed, `graveScreen.ts` forces it, a written joke that names the harm is dropped before signing, and a recook of either on a grave signed thought is refused at no charge. Works on every installed build. `pnpm db:grave-humor --dry-run` lists older public cards that still carry one.
 - 2026-10-08 — Follow notifications ask only on Home. Sign-in, taste, and paywall no longer show iOS's dialog; the one automatic ask waits until Home is visible and splash is gone. Settings → Follows stays the manual path.
 - 2026-10-08 — Launch resume (7j). Cold launch shimmers and pulses the mark for at most 1.5s, punches into last For you from disk, and parks a newer mix behind a tappable See latest pill so in-flight hearts are not yanked. Session restore uses the last body immediately; mapping queries on a ranked page run in parallel.

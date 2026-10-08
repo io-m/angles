@@ -119,7 +119,7 @@ function modelArg(name: string): LlmModelId | undefined {
   return value as LlmModelId;
 }
 
-const JUDGE_PROMPT = `You grade reframes written for Angles, an app where someone types a thought, hard or good, and gets angles on it in up to four styles on a small card. Be a demanding editor: 3 is merely acceptable, 5 is something a person would screenshot and share.
+const JUDGE_PROMPT = `You grade reframes written for Angles, an app where someone types a thought, hard or good, and gets four angles on it, chosen from six styles, on a small card. Be a demanding editor: 3 is merely acceptable, 5 is something a person would screenshot and share.
 
 If the thought is already good news and names no complaint, grade the card on sharpening and keeping that feeling. Hunting for a hidden problem, warning that it will not last, or pushing a fix they did not ask for lowers specific and kind. On that thought, tough love protects what is working with one concrete move.
 
@@ -128,6 +128,10 @@ Style targets:
 - optimistic: genuinely hopeful and warm, with real energy, grounded in something already true in what they said. Never toxic positivity.
 - humorous: actually funny. A real joke a good friend would make, on the situation or the brain's dramatics, never on the person.
 - tough_love: a blunt coach. Names what they are avoiding or the pattern, points at one concrete move. Warm underneath, no softeners.
+- tender: stays with the feeling and names it precisely. No fix, no task, no joke, no bright side. Warm, never sugary.
+- values: names what the feeling protects or the belief it comes from. No lecture, no task, no silver lining.
+
+On a thought about real harm to people (a death, serious illness, violence, war, persecution), any joke or push is a failure: score that style 1 on tone and kind.
 
 Score each style that is present, 1–5:
 - tone: how strongly and unmistakably it sounds like its own style.

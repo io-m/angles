@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { LEGACY_STYLES, runWithStyleSet } from "../lib/styleSet.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -133,7 +134,7 @@ const safetyApp = createApp();
 
 const baseInput: CreateCardInput = {
   thought: "I bombed my interview and I keep replaying every shaky answer.",
-  results: STYLES.map((style) => ({ style, reframe: `A ${style} take on showing up.` })),
+  results: LEGACY_STYLES.map((style) => ({ style, reframe: `A ${style} take on showing up.` })),
   meta: {
     category: "work",
     tags: ["job_interview", "shame"],
@@ -1163,7 +1164,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
   it("round-trips a card with four reframes and tags", async () => {
     const stored = await createCard(baseInput);
     expect(stored.results).toHaveLength(4);
-    expect(stored.results.map((item) => item.style)).toEqual([...STYLES]);
+    expect(stored.results.map((item) => item.style)).toEqual([...LEGACY_STYLES]);
     expect(stored.tags.map((tag) => tag.slug)).toEqual(["job_interview", "shame"]);
     expect(stored.matching).toEqual({
       category: "work",
@@ -1378,7 +1379,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       throw new Error("insert failed");
     }
     await db.insert(cardReframes).values(
-      STYLES.map((style, position) => ({
+      LEGACY_STYLES.map((style, position) => ({
         cardId,
         style,
         reframe: `A ${style} take that stays with the original sting.`,
@@ -1671,6 +1672,35 @@ describe.skipIf(!testUrl)("cards integration", () => {
       offset: overrides.offset ?? 0,
     });
 
+    it("projects every card onto the styles the calling app can show", async () => {
+      const cardId = await insertOtherCard({ thought: "A card written with the new voices.", isPublic: true });
+      const styles: Style[] = ["tender", "values", "stoic", "humorous"];
+      await getDb().delete(cardReframes).where(eq(cardReframes.cardId, cardId));
+      await getDb()
+        .insert(cardReframes)
+        .values(styles.map((style, position) => ({ cardId, style, reframe: `A ${style} take.`, position })));
+      await getDb().update(cards).set({ spotlightStyle: "tender" }).where(eq(cards.id, cardId));
+
+      const lists = async () => [
+        ...(await listFeed({ limit: 50 })),
+        ...(await rankedCards({ limit: 24, session: session() })),
+        ...(await rankedCards({ limit: 24, style: "stoic", session: session() })),
+      ];
+      const legacy = (await runWithStyleSet(LEGACY_STYLES, lists)).filter((card) => card.id === cardId);
+      expect(legacy).toHaveLength(3);
+      for (const card of legacy) {
+        expect(card.results.map((item) => item.style)).toEqual(["stoic", "humorous"]);
+        expect(["stoic", "humorous"]).toContain(card.spotlightStyle);
+      }
+      expect(JSON.stringify(legacy)).not.toMatch(/"(tender|values)"/);
+
+      const extended = (await runWithStyleSet(STYLES, lists)).filter((card) => card.id === cardId);
+      expect(extended).toHaveLength(3);
+      for (const card of extended) {
+        expect(card.results.map((item) => item.style)).toEqual(styles);
+      }
+    });
+
     async function heart(cardId: string, userId: string, style: Style = "stoic"): Promise<void> {
       await getDb()
         .insert(users)
@@ -1823,13 +1853,13 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
       const seeded = session();
       const pages = new Map<Style, string[]>();
-      for (const style of STYLES) {
+      for (const style of LEGACY_STYLES) {
         const page = await rankedCards({ limit: 12, style, session: seeded });
         expect(page).toHaveLength(12);
         pages.set(style, page.map((card) => card.id));
       }
-      for (const left of STYLES) {
-        for (const right of STYLES) {
+      for (const left of LEGACY_STYLES) {
+        for (const right of LEGACY_STYLES) {
           if (left >= right) {
             continue;
           }

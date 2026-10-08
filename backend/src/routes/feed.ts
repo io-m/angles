@@ -17,10 +17,10 @@ import {
   rankingEnabled,
 } from "../lib/feedRanking.js";
 import { errorBody, validationErrorMessage } from "../lib/http.js";
+import { shownStyleSchema } from "../lib/styleSet.js";
 import {
   CATEGORIES,
   EMOTIONS,
-  STYLES,
   type FeedCursor,
   type FeedListResponse,
   type FeedSessionCursor,
@@ -84,7 +84,7 @@ const listQuerySchema = z
     after: cardCursorSchema().optional(),
     categories: enumCsvSchema(CATEGORIES).optional(),
     emotions: enumCsvSchema(EMOTIONS).optional(),
-    style: z.enum(STYLES).optional(),
+    style: shownStyleSchema().optional(),
   })
   .strict()
   // Paging backwards and forwards at once has no meaning, and silently honouring one
@@ -100,7 +100,7 @@ const idParamSchema = z.object({
 
 const angleParamSchema = z.object({
   id: z.uuid(),
-  style: z.enum(STYLES),
+  style: shownStyleSchema(),
 });
 
 export const feedRoute = new Hono();

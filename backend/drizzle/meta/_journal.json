@@ -162,6 +162,13 @@
       "when": 1791271298485,
       "tag": "0022_follow_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791463783322,
+      "tag": "0023_tender_values_styles",
+      "breakpoints": true
     }
   ]
 }

@@ -841,6 +841,8 @@ describe("primary tab", () => {
     optimistic: { affinity: EMPTY_AFFINITY, hearts: 0 },
     humorous: { affinity: EMPTY_AFFINITY, hearts: 0 },
     tough_love: { affinity: EMPTY_AFFINITY, hearts: 0 },
+    tender: { affinity: EMPTY_AFFINITY, hearts: 0 },
+    values: { affinity: EMPTY_AFFINITY, hearts: 0 },
   };
 
   function catalog(count: number): RankableCard[] {
@@ -940,9 +942,10 @@ describe("primary tab", () => {
     for (const style of primaries.values()) {
       counts.set(style, (counts.get(style) ?? 0) + 1);
     }
+    const even = 400 / STYLES.length;
     for (const style of STYLES) {
-      expect(counts.get(style) ?? 0).toBeGreaterThan(400 * 0.15);
-      expect(counts.get(style) ?? 0).toBeLessThan(400 * 0.35);
+      expect(counts.get(style) ?? 0).toBeGreaterThan(even * 0.6);
+      expect(counts.get(style) ?? 0).toBeLessThan(even * 1.4);
     }
   });
 

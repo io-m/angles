@@ -65,7 +65,7 @@ struct CardStyleAppearance {
 
     init(style: Style) {
         self.style = style
-        // Stoic blue, optimistic orange, humorous green, tough love red.
+        // Stoic blue, optimistic orange, humorous green, tough love red, tender rose, values violet.
         switch style {
         case .stoic:
             systemImage = "mountain.2.fill"
@@ -106,6 +106,26 @@ struct CardStyleAppearance {
             responseInk = Color.adaptive(
                 light: UIColor(red: 0.55, green: 0.08, blue: 0.06, alpha: 1),
                 dark: UIColor(red: 1.0, green: 0.82, blue: 0.78, alpha: 1)
+            )
+        case .tender:
+            systemImage = "hands.and.sparkles.fill"
+            ink = Color.adaptive(
+                light: UIColor(red: 0.80, green: 0.32, blue: 0.56, alpha: 1),
+                dark: UIColor(red: 1.0, green: 0.62, blue: 0.80, alpha: 1)
+            )
+            responseInk = Color.adaptive(
+                light: UIColor(red: 0.56, green: 0.16, blue: 0.36, alpha: 1),
+                dark: UIColor(red: 1.0, green: 0.88, blue: 0.94, alpha: 1)
+            )
+        case .values:
+            systemImage = "shield.lefthalf.filled"
+            ink = Color.adaptive(
+                light: UIColor(red: 0.48, green: 0.26, blue: 0.82, alpha: 1),
+                dark: UIColor(red: 0.72, green: 0.58, blue: 1.0, alpha: 1)
+            )
+            responseInk = Color.adaptive(
+                light: UIColor(red: 0.32, green: 0.14, blue: 0.58, alpha: 1),
+                dark: UIColor(red: 0.90, green: 0.84, blue: 1.0, alpha: 1)
             )
         }
     }

@@ -10,6 +10,8 @@ A 20–32 s vertical TikTok of a **real** cook. Every video uses the same cut. C
 4. **Exactly four** chapters: the style that opened, then the other chips in tap order, ending on Tough love. Each of the first three is ~1.4 s. Yellow `CHAPTER n` + style name on the cut, no extra pause before the title.
 5. Last chapter (Tough love) holds **~2 s extra** (~3.4 s) with a small slow zoom, then the end card (wordmark, App Store badge, follow).
 
+The four chapters are Stoic, Optimistic, Humorous, and Tough love. A cook now writes the four of six styles that fit best, so `demo_flow.yaml` fails a take straight after the card if any of those four chips is missing; record another take.
+
 **Do not add** (these were tried and dropped): a fifth “best” chapter, jumping back to Stoic, a `bestNote` line, **undefined** chapter numbers, Post, the bike save cover, or Home / border glow. `pick_best.js` still scores answers for `report.md` only; it does not change the cut.
 
 Nothing in the phone is mocked. The AI output is whatever the local API returned on that take. Timings live in `edit.config.json`. Full pipeline: `demo/README.md` below.

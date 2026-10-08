@@ -1002,7 +1002,7 @@ private struct PaywallHeroWash: View {
     }
 
     private static func weight(index: Int, t: Double) -> Double {
-        let center = (Double(index) + 0.5) / 4.0
+        let center = (Double(index) + 0.5) / Double(Style.allCases.count)
         let delta = abs(t - center)
         let dist = min(delta, 1 - delta)
         return max(0, 1 - dist / 0.35)

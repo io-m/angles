@@ -36,6 +36,9 @@ extension APIError: LocalizedError {
 }
 
 final class APIClient: @unchecked Sendable {
+    /// The style catalog this build decodes: all six in `Style`.
+    static let styleSet = "2"
+
     private let session: URLSession
     private let baseURL: URL?
     private let decoder: JSONDecoder
@@ -260,6 +263,8 @@ final class APIClient: @unchecked Sendable {
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
+        // Without it the server keeps this build to the four styles older builds know.
+        request.setValue(Self.styleSet, forHTTPHeaderField: "Angles-Style-Set")
         if let origin = originHeader(for: url) {
             request.setValue(origin, forHTTPHeaderField: "Origin")
         }

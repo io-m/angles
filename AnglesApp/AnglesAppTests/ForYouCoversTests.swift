@@ -100,7 +100,7 @@ struct ForYouCoversTests {
 
     @Test("an unread angle beats avoiding a repeat")
     func unreadBeatsNoRepeat() {
-        let card = cover(.stoic, styles: Style.allCases, day: 2, kept: [.stoic, .humorous, .toughLove])
+        let card = cover(.stoic, styles: [.stoic, .optimistic, .humorous, .toughLove], day: 2, kept: [.stoic, .humorous, .toughLove])
         #expect(ForYouCovers.assign([card], above: .optimistic).first?.spotlightStyle == .optimistic)
     }
 

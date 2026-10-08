@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReframeResult } from "../types/index.js";
+import { STYLES, type ReframeResult } from "../types/index.js";
+import { LEGACY_STYLES } from "./styleSet.js";
 import {
   recookStyle,
   REWRITE_MIN_REMAINING_MS,
@@ -21,6 +22,7 @@ const decision: ReadyDecision = {
   thought: "I bombed my interview and I keep replaying every shaky answer.",
   styles: ["stoic", "optimistic"],
   solemn: false,
+  catalog: LEGACY_STYLES,
   meta: {
     category: "work",
     tags: ["job_interview"],
@@ -218,26 +220,57 @@ describe("withoutGraveJokes", () => {
     styles: ["stoic", "optimistic", "humorous", "tough_love"],
   };
   const push: ReframeResult = { style: "tough_love", reframe: "Close the tab and do one task." };
+  const graveJoke: ReframeResult = {
+    style: "humorous",
+    reframe: "Your brain set the soundtrack: heavy drums and a chorus of air raid sirens. Next: an urge to bake pierogi.",
+  };
 
-  it("drops a joke that names real harm, and the push with it, and makes the cook solemn", () => {
-    const joke: ReframeResult = {
-      style: "humorous",
-      reframe: "Your brain set the soundtrack: heavy drums and a chorus of air raid sirens. Next: an urge to bake pierogi.",
-    };
-    const guarded = withoutGraveJokes(ordinary, [clean, cliched, joke, push]);
+  beforeEach(() => {
+    vi.mocked(generateJson).mockReset();
+    vi.mocked(generateReframe).mockReset();
+  });
+
+  it("drops a joke that names real harm, and the push with it, on the original four", async () => {
+    const guarded = await withoutGraveJokes(ordinary, [clean, cliched, graveJoke, push], { deadlineAt: soon() });
 
     expect(guarded.results.map((result) => result.style)).toEqual(["stoic", "optimistic"]);
     expect(guarded.decision.solemn).toBe(true);
     expect(guarded.decision.styles).toEqual(["stoic", "optimistic"]);
     expect(guarded.decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    expect(generateJson).not.toHaveBeenCalled();
   });
 
-  it("keeps an ordinary joke", () => {
+  it("writes tender and values in their place when the app shows all six", async () => {
+    const tender = "Watching this from far away is its own kind of heavy, and it is allowed to sit with you tonight.";
+    const values = "The ache comes from believing every one of those lives matters, and that belief is worth keeping.";
+    vi.mocked(generateJson).mockResolvedValueOnce(
+      JSON.stringify({ plan: { tender: "name_it: x", values: "belief_underneath: y" }, tender, values }),
+    );
+    const guarded = await withoutGraveJokes(
+      { ...ordinary, catalog: STYLES },
+      [clean, cliched, graveJoke, push],
+      { deadlineAt: soon() },
+    );
+
+    expect(guarded.results.map((result) => result.style)).toEqual(["stoic", "optimistic", "tender", "values"]);
+    expect(guarded.decision.styles).toEqual(["stoic", "optimistic", "tender", "values"]);
+    const call = vi.mocked(generateJson).mock.calls[0]?.[0];
+    expect(call?.text).toContain("Write these styles only: tender, values");
+  });
+
+  it("fails the cook rather than ship it short when the replacement cannot be written", async () => {
+    vi.mocked(generateJson).mockRejectedValue(new LlmError("provider down"));
+    await expect(
+      withoutGraveJokes({ ...ordinary, catalog: STYLES }, [clean, cliched, graveJoke, push], { deadlineAt: soon() }),
+    ).rejects.toThrow(LlmError);
+  });
+
+  it("keeps an ordinary joke", async () => {
     const joke: ReframeResult = {
       style: "humorous",
       reframe: "Your brain filed three hours of silence as a unanimous vote. Someone is just in the shower.",
     };
-    const guarded = withoutGraveJokes(ordinary, [clean, cliched, joke, push]);
+    const guarded = await withoutGraveJokes(ordinary, [clean, cliched, joke, push], { deadlineAt: soon() });
     expect(guarded.results).toHaveLength(4);
     expect(guarded.decision).toBe(ordinary);
   });
