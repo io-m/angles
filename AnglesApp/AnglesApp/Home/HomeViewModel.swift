@@ -640,6 +640,7 @@ final class HomeViewModel {
     private var blocksGeneration = 0
     private var writeSessionGeneration = 0
     private var authorFeeds: [UUID: AuthorFeed] = [:]
+    @ObservationIgnored private var authorFeedOrder: [UUID] = []
     private var writeErrorTask: Task<Void, Never>?
     private var shineTask: Task<Void, Never>?
     private var usageBannerTask: Task<Void, Never>?
@@ -1333,6 +1334,7 @@ final class HomeViewModel {
         blockTasks = [:]
         blockGeneration = [:]
         authorFeeds = [:]
+        authorFeedOrder = []
 
         feedTasks = [:]
         feedBoard.reset()
@@ -3554,8 +3556,23 @@ final class HomeViewModel {
         authorFeeds[authorId]?.footerState ?? .idle
     }
 
+    /// Author pages are kept so a back and forth costs no fetch, but not without limit: past
+    /// `maxAuthorFeeds`, the oldest idle ones go. Opening them again just refetches.
+    private static let maxAuthorFeeds = 16
+
+    private func evictOldAuthorFeeds(keeping id: UUID) {
+        authorFeedOrder.removeAll { $0 == id || authorFeeds[$0] == nil }
+        while authorFeeds.count >= Self.maxAuthorFeeds,
+              let oldest = authorFeedOrder.first(where: { authorFeeds[$0]?.task == nil }) {
+            authorFeeds[oldest] = nil
+            authorFeedOrder.removeAll { $0 == oldest }
+        }
+        authorFeedOrder.append(id)
+    }
+
     func loadAuthorIfNeeded(_ route: AuthorRoute) async {
         if authorFeeds[route.id] == nil {
+            evictOldAuthorFeeds(keeping: route.id)
             authorFeeds[route.id] = AuthorFeed(
                 initials: route.initials,
                 avatarPath: route.avatarPath,

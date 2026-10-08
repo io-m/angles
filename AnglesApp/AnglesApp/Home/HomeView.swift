@@ -195,6 +195,8 @@ struct HomeFeedPager<Chrome: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pagerState = StyleTabPagerState<HomeFeedTab>(initialTab: .all)
     @State private var committedTab: HomeFeedTab = .all
+    /// Shelves that have been shown. The rest are empty placeholders until first chosen.
+    @State private var visitedTabs: Set<HomeFeedTab> = [.all]
     @State private var sameTabScrollToken = 0
     @State private var pagerSpace = UUID()
 
@@ -323,6 +325,10 @@ struct HomeFeedPager<Chrome: View>: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 0) {
                         ForEach(HomeFeedTab.allCases, id: \.self) { tab in
+                            // A shelf is built the first time it is chosen and then kept, so
+                            // its scroll place survives. Six shelves are not built up front.
+                            Group {
+                            if visitedTabs.contains(tab) {
                             HomeFeedTabPage(
                                 tab: tab,
                                 cards: cards(tab),
@@ -356,6 +362,10 @@ struct HomeFeedPager<Chrome: View>: View {
                                 offersOwnerPrivacyMenu: offersOwnerPrivacyMenu,
                                 onCardAppear: { card in onCardAppear(tab, card) }
                             )
+                            } else {
+                                Color.clear
+                            }
+                            }
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
                             .id(tab)
@@ -417,6 +427,7 @@ struct HomeFeedPager<Chrome: View>: View {
             sameTabScrollToken &+= 1
             return
         }
+        visitedTabs.insert(tab)
         pagerState.requestPage(tab)
     }
 
@@ -439,6 +450,7 @@ struct HomeFeedPager<Chrome: View>: View {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
+            visitedTabs.insert(tab)
             committedTab = tab
             onCommitPage(tab)
         }

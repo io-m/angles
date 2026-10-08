@@ -68,6 +68,7 @@ struct AuthorProfileView: View {
             )
         }
         .toolbar(.hidden, for: .navigationBar)
+        .wideBackSwipe()
         .tint(theme.ink)
         .accessibilityAction(named: "Back") {
             dismiss()

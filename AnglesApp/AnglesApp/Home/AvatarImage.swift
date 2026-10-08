@@ -16,7 +16,8 @@ enum ImageDownsampler {
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ] as CFDictionary
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
-            return UIImage(data: data)
+            // Never fall back to a full-size decode: initials show instead.
+            return nil
         }
         return UIImage(cgImage: thumbnail, scale: 1, orientation: .up)
     }

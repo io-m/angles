@@ -61,6 +61,8 @@ struct ProfileView: View {
     @State private var showFollowing = false
     @State private var showNotifications = false
     @State private var committedTab: ProfileGridFilter = .favorites
+    /// Lists that have been shown. The rest are empty placeholders until first chosen.
+    @State private var visitedTabs: Set<ProfileGridFilter> = [.favorites]
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var fixedChromeHeight: CGFloat {
@@ -215,6 +217,10 @@ struct ProfileView: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 0) {
                         ForEach(ProfileGridFilter.allCases, id: \.self) { tab in
+                            // Built the first time it is chosen, then kept; the others stay
+                            // empty so a list is not sorted and laid out for every style.
+                            Group {
+                            if visitedTabs.contains(tab) {
                             ProfileTabPage(
                                 tab: tab,
                                 cards: viewModel.profileCards(for: tab),
@@ -243,6 +249,10 @@ struct ProfileView: View {
                                 onOpenAuthor: onOpenAuthor,
                                 onToggleFollow: toggleFollow
                             )
+                            } else {
+                                Color.clear
+                            }
+                            }
                             .containerRelativeFrame(.horizontal)
                             .frame(maxHeight: .infinity)
                             .id(tab)
@@ -304,6 +314,7 @@ struct ProfileView: View {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
+            visitedTabs.insert(filter)
             committedTab = filter
             if viewModel.profileGridFilter != filter {
                 viewModel.profileGridFilter = filter
@@ -316,6 +327,7 @@ struct ProfileView: View {
         guard filter != committedTab else {
             return
         }
+        visitedTabs.insert(filter)
         pagerState.requestPage(filter)
     }
 
@@ -327,6 +339,7 @@ struct ProfileView: View {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
+            visitedTabs.insert(filter)
             committedTab = filter
             if filter != viewModel.profileGridFilter {
                 viewModel.profileGridFilter = filter

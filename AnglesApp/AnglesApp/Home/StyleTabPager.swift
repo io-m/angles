@@ -310,6 +310,16 @@ struct AdaptiveStyleTabBar<T: StyleTabRepresentable>: View {
     }
 }
 
+/// Tinted menu symbols, built once per style and appearance. At most six styles times two
+/// appearances, and the system evicts them under memory pressure.
+private enum MenuIconCache {
+    static let images: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 24
+        return cache
+    }()
+}
+
 /// One capsule that names the tab on screen and opens a single-select list of the rest.
 private struct StyleTabMenu<T: StyleTabRepresentable>: View {
     let tabs: [T]
@@ -392,8 +402,13 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
         guard let style = tab.matchingStyle else {
             return Image(systemName: tab.systemImage)
         }
+        let isDark = colorScheme == .dark
+        let key = "\(tab.systemImage)|\(style.rawValue)|\(isDark)" as NSString
+        if let cached = MenuIconCache.images.object(forKey: key) {
+            return Image(uiImage: cached)
+        }
         let ink = UIColor(CardStyleAppearance(style: style).ink)
-            .resolvedColor(with: UITraitCollection(userInterfaceStyle: colorScheme == .dark ? .dark : .light))
+            .resolvedColor(with: UITraitCollection(userInterfaceStyle: isDark ? .dark : .light))
         let configuration = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         guard
             let symbol = UIImage(systemName: tab.systemImage, withConfiguration: configuration)?
@@ -401,6 +416,7 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
         else {
             return Image(systemName: tab.systemImage)
         }
+        MenuIconCache.images.setObject(symbol, forKey: key)
         return Image(uiImage: symbol)
     }
 
