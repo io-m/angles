@@ -5,7 +5,7 @@
  *   pnpm db:grave-humor --dry-run     list the cards and the angles that would go
  *   pnpm db:grave-humor --apply       remove those angles and their hearts
  *
- * `--apply` removes only humorous and tough love, moves the cover to an angle that
+ * `--apply` removes only witty and tough, moves the cover to an angle that
  * stays, and records our skip reason on the card. A card with no other angle is left
  * alone and listed. Production Postgres has no public URL, so it runs in the API container:
  *   railway ssh --service api --environment production node dist/scripts/graveHumor.js --dry-run
@@ -43,7 +43,7 @@ async function findings(): Promise<Finding[]> {
     join card_reframes r on r.card_id = c.id
     where c.is_public = true
     group by c.id
-    having bool_or(r.style::text in ('humorous', 'tough_love'))
+    having bool_or(r.style::text in ('witty', 'tough'))
   `;
   const out: Finding[] = [];
   for (const card of rows) {

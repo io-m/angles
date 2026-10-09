@@ -74,7 +74,7 @@ const listQuerySchema = z.object({
   before: cardCursorSchema().optional(),
   category: z.enum(CATEGORIES).optional(),
   style: shownStyleSchema().optional(),
-  favorite: z
+  hearted: z
     .enum(["true", "false"])
     .optional()
     .transform((value) => (value === undefined ? undefined : value === "true")),
@@ -86,15 +86,15 @@ const idParamSchema = z.object({
 
 const patchCardSchema = z
   .object({
-    isFavorite: z.boolean().optional(),
+    isHearted: z.boolean().optional(),
     style: shownStyleSchema().optional(),
     isPublic: z.boolean().optional(),
   })
-  .refine((body) => body.isFavorite !== undefined || body.isPublic !== undefined, {
-    message: "patch must set isFavorite or isPublic",
+  .refine((body) => body.isHearted !== undefined || body.isPublic !== undefined, {
+    message: "patch must set isHearted or isPublic",
   })
-  .refine((body) => body.isFavorite === undefined || body.style !== undefined, {
-    message: "style is required when setting isFavorite",
+  .refine((body) => body.isHearted === undefined || body.style !== undefined, {
+    message: "style is required when setting isHearted",
   });
 
 const reportCardSchema = z
@@ -178,7 +178,7 @@ cardsRoute.get(
       before: query.before,
       category: query.category,
       style: query.style,
-      favorite: query.favorite,
+      hearted: query.hearted,
     });
     return c.json({ cards: cardList });
   },

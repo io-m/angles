@@ -8,7 +8,7 @@ Everything here applies when the server runs with `FEED_RANKING=resonance` (prod
 
 A **visit** starts when Home loads its first page: a cold open, a filter change, or a pull that starts over. At that moment the server fixes the list of cards the visit can show and the order they come in. It also fixes everything the order depends on: who you follow, every heart (yours and other people's), your themes, and the clock. Nothing you do during the visit reorders it. A heart or a follow takes effect on the next visit.
 
-Each Home tab (For you, Stoic, Optimistic, Humorous, Tough love, Tender, Values) has its own visit and its own order. An app build that does not send `Angles-Style-Set: 2` only has the first five: its cards, kept angles, covers, and primary tabs are all worked out over the original four styles.
+Each Home tab (For you, Stoic, Hopeful, Witty, Tough, Tender, Values) has its own visit and its own order. An app build that does not send `Angles-Style-Set: 2` only has the first five: its cards, kept angles, covers, and primary tabs are all worked out over the original four styles.
 
 ## Cold open
 
@@ -37,7 +37,7 @@ You heart an **answer**, not the whole card. So:
 
 - **For you** still shows a card when you have hearted some of its answers. It sits a little lower, and it opens on an answer you have not hearted yet.
 - A card disappears from For you only once you have hearted **every** answer it has.
-- A **style tab** hides a card once you heart that tab's answer. The Stoic tab drops a card whose stoic answer you hearted; the Humorous tab can still show it.
+- A **style tab** hides a card once you heart that tab's answer. The Stoic tab drops a card whose stoic answer you hearted; the Witty tab can still show it.
 
 ## Load more
 

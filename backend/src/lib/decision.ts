@@ -36,7 +36,7 @@ import {
   DECISION_PROMPT,
   DECISION_REPAIR_PROMPT,
   GRAVE_HUMOR_SKIP_REASON,
-  GRAVE_TOUGH_LOVE_SKIP_REASON,
+  GRAVE_TOUGH_SKIP_REASON,
   SAFETY_FALLBACK_MESSAGE,
   THOUGHT_HARD_MAX_CHARS,
   THOUGHT_HARD_MAX_WORDS,
@@ -399,18 +399,18 @@ function normalizeSkipped(values: readonly SkippedStyle[] | null | undefined): S
 }
 
 /** Never written for a thought about real harm to people. */
-export const SOLEMN_BLOCKED_STYLES: readonly Style[] = ["humorous", "tough_love"];
+export const SOLEMN_BLOCKED_STYLES: readonly Style[] = ["witty", "tough"];
 
 const SOLEMN_SKIP_REASONS: Partial<Record<Style, string>> = {
-  humorous: GRAVE_HUMOR_SKIP_REASON,
-  tough_love: GRAVE_TOUGH_LOVE_SKIP_REASON,
+  witty: GRAVE_HUMOR_SKIP_REASON,
+  tough: GRAVE_TOUGH_SKIP_REASON,
 };
 
 /** How many angles a card gets whenever the catalog has room for them. */
 export const ANGLES_PER_CARD = 4;
 
 /** On the original four, a model never skips these: they are the only voices left on a solemn card. */
-const LEGACY_ALWAYS_WRITTEN: readonly Style[] = ["stoic", "optimistic"];
+const LEGACY_ALWAYS_WRITTEN: readonly Style[] = ["stoic", "hopeful"];
 
 type StyleChoice = { styles: Style[]; skippedStyles: SkippedStyle[] };
 
@@ -421,8 +421,8 @@ type StyleChoice = { styles: Style[]; skippedStyles: SkippedStyle[] };
  * the phone opens its first choice; unranked voices follow in catalog order.
  *
  * A catalog larger than a card always fills four, from the model's skips only when
- * nothing else is left. The legacy catalog keeps a model's skip of humorous or tough
- * love, so it can write fewer, but always writes stoic and optimistic, as it always has.
+ * nothing else is left. The legacy catalog keeps a model's skip of witty or tough,
+ * so it can write fewer, but always writes stoic and hopeful, as it always has.
  */
 function chooseStyles(
   requested: readonly Style[],

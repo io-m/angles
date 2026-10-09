@@ -60,9 +60,9 @@ function feedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     safety: "none",
     skippedStyles: [],
     matching: { category: "work", tags: ["waiting"], intensityBand: "high" },
-    results: STYLES.map((style) => ({ style, reframe: `A ${style} take.`, isFavorite: false })),
+    results: STYLES.map((style) => ({ style, reframe: `A ${style} take.`, isHearted: false })),
     model: "mistral-small-latest",
-    spotlightStyle: "optimistic",
+    spotlightStyle: "hopeful",
     isPublic: true,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: false,
@@ -328,7 +328,7 @@ describe("PUT /feed/cards/:id/angles/:style", () => {
       results: STYLES.map((style) => ({
         style,
         reframe: `A ${style} take.`,
-        isFavorite: style === "stoic",
+        isHearted: style === "stoic",
       })),
     });
     vi.mocked(saveFeedAngle).mockResolvedValue({ ok: true, card });

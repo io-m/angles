@@ -116,7 +116,7 @@ function storedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     safety: "none",
     skippedStyles: [],
     matching: { category: "work", tags: ["job_interview", "shame"], intensityBand: "high" },
-    results: cookBody.results.map(({ style, reframe }) => ({ style, reframe, isFavorite: false })),
+    results: cookBody.results.map(({ style, reframe }) => ({ style, reframe, isHearted: false })),
     model: cookBody.model,
     spotlightStyle: "stoic",
     isPublic: false,
@@ -198,7 +198,7 @@ describe("POST /cards", () => {
       expect(response.status).toBe(201);
       const payload = vi.mocked(createCard).mock.calls[0]?.[0] as CreateCardInput;
       expect(payload.results[0]).toEqual({ style: "stoic", reframe: "A stoic take.", reframeOriginal: stoicHr });
-      expect(payload.results[1]).toEqual({ style: "optimistic", reframe: "A optimistic take." });
+      expect(payload.results[1]).toEqual({ style: "hopeful", reframe: "A hopeful take." });
     });
 
     it.each([
@@ -417,7 +417,7 @@ describe("GET /cards", () => {
       before: undefined,
       category: undefined,
       style: undefined,
-      favorite: undefined,
+      hearted: undefined,
     });
   });
 
@@ -425,7 +425,7 @@ describe("GET /cards", () => {
     vi.mocked(listCards).mockResolvedValue([]);
     const createdAt = "2026-09-10T12:00:00.000Z";
     const response = await app.request(
-      `/cards?limit=10&before=${encodeURIComponent(`${createdAt}|${CARD_ID}`)}&category=work&style=stoic&favorite=true`,
+      `/cards?limit=10&before=${encodeURIComponent(`${createdAt}|${CARD_ID}`)}&category=work&style=stoic&hearted=true`,
     );
     expect(response.status).toBe(200);
     expect(listCards).toHaveBeenCalledWith({
@@ -433,7 +433,7 @@ describe("GET /cards", () => {
       before: { createdAt: new Date(createdAt), id: CARD_ID },
       category: "work",
       style: "stoic",
-      favorite: true,
+      hearted: true,
     });
   });
 });
@@ -470,24 +470,24 @@ describe("PATCH /cards/:id", () => {
     vi.mocked(moderatePublicCard).mockResolvedValue(true);
   });
 
-  it("sets a per-style favorite", async () => {
+  it("sets a per-style heart", async () => {
     const stored = storedCard({
       results: storedCard().results.map((item) =>
         item.style === "stoic"
-          ? { ...item, isFavorite: true, favoritedAt: "2026-09-10T12:01:00.000Z" }
+          ? { ...item, isHearted: true, heartedAt: "2026-09-10T12:01:00.000Z" }
           : item,
       ),
     });
     vi.mocked(patchCard).mockResolvedValue({ ok: true, card: stored });
 
     const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isFavorite: true, style: "stoic" }),
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isHearted: true, style: "stoic" }),
     );
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual(stored);
     expect(patchCard).toHaveBeenCalledWith(
       CARD_ID,
-      expect.objectContaining({ isFavorite: true, style: "stoic" }),
+      expect.objectContaining({ isHearted: true, style: "stoic" }),
     );
   });
 
@@ -565,9 +565,9 @@ describe("PATCH /cards/:id", () => {
     expect(patchCard).not.toHaveBeenCalled();
   });
 
-  it("rejects favorite without a style", async () => {
+  it("rejects heart without a style", async () => {
     const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isFavorite: true }),
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isHearted: true }),
     );
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
@@ -584,7 +584,7 @@ describe("PATCH /cards/:id", () => {
   it("returns 400 when the style is not on the card", async () => {
     vi.mocked(patchCard).mockResolvedValue({ ok: false, reason: "unknown_style" });
     const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isFavorite: true, style: "humorous" }),
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isHearted: true, style: "witty" }),
     );
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });

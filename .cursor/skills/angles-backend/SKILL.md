@@ -10,8 +10,8 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 - `src/app.ts` — middleware, route mount, `onError`
 - `src/index.ts` — Node `serve()`, signing-key and schema checks, pool shutdown
 - `src/routes/reframe.ts` — `POST /reframe`; signs the cook and every result (`src/lib/cookSignature.ts`)
-- `src/routes/cards.ts` — card CRUD. `POST` verifies the `/reframe` signatures and `safety: none` before storing. `PATCH` sets per-style `isFavorite` (requires `style`) and/or `isPublic`. `GET ?style=` means the card has that reframe; `?favorite=` means any liked style; `?before=createdAt|id` pages.
-- `src/db/schema.ts` / `src/db/cards.ts` — Drizzle schema and SQL seam. Favorites live on `card_reframes`; `isPublic` lives on `cards`. There are no pins. The library includes hearted cards only while they are public.
+- `src/routes/cards.ts` — card CRUD. `POST` verifies the `/reframe` signatures and `safety: none` before storing. `PATCH` sets per-style `isHearted` (requires `style`) and/or `isPublic`. `GET ?style=` means the card has that reframe; `?heart=` means any liked style; `?before=createdAt|id` pages.
+- `src/db/schema.ts` / `src/db/cards.ts` — Drizzle schema and SQL seam. Hearts live on `card_reframes`; `isPublic` lives on `cards`. There are no pins. The library includes hearted cards only while they are public.
 - `src/db/cursor.ts` / `src/lib/cursor.ts` — one `createdAt|id` cursor for author and library pages, and for Home when ranking is off. `cards.created_at` has millisecond precision so the cursor round-trips through a JS `Date`.
 - `src/lib/feedRanking.ts` — the only place to tune Home order. `src/db/feed.ts` loads the signals and pages the result.
 - `src/routes/feed.ts` — `GET /feed`. Optional `style` selects a Home shelf. Life area and mood are the facets.

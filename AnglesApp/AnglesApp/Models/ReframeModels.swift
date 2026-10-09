@@ -5,9 +5,9 @@ import Foundation
 /// Append only. The server sends `tender` and `values` only to builds that send `Angles-Style-Set: 2`.
 enum Style: String, Codable, CaseIterable, Sendable {
     case stoic
-    case optimistic
-    case humorous
-    case toughLove = "tough_love"
+    case hopeful
+    case witty
+    case tough = "tough"
     case tender
     case values
 }
@@ -373,8 +373,8 @@ struct StoredReframeResult: Codable, Equatable, Sendable {
     let reframe: String
     /// Sent to the author only.
     let reframeOriginal: String?
-    let isFavorite: Bool
-    let favoritedAt: String?
+    let isHearted: Bool
+    let heartedAt: String?
     /// How many other people hearted this angle. The server sends it only on your own
     /// public cards, and only above zero, so nil means "no number to show".
     let heartCount: Int?
@@ -383,8 +383,8 @@ struct StoredReframeResult: Codable, Equatable, Sendable {
         case style
         case reframe
         case reframeOriginal
-        case isFavorite
-        case favoritedAt
+        case isHearted
+        case heartedAt
         case heartCount
     }
 
@@ -397,8 +397,8 @@ struct StoredReframeResult: Codable, Equatable, Sendable {
         style = try container.decode(Style.self, forKey: .style)
         reframe = try container.decode(String.self, forKey: .reframe)
         reframeOriginal = try container.decodeIfPresent(String.self, forKey: .reframeOriginal)
-        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
-        favoritedAt = try container.decodeIfPresent(String.self, forKey: .favoritedAt)
+        isHearted = try container.decodeIfPresent(Bool.self, forKey: .isHearted) ?? false
+        heartedAt = try container.decodeIfPresent(String.self, forKey: .heartedAt)
         heartCount = try container.decodeIfPresent(Int.self, forKey: .heartCount)
     }
 
@@ -407,8 +407,8 @@ struct StoredReframeResult: Codable, Equatable, Sendable {
         try container.encode(style, forKey: .style)
         try container.encode(reframe, forKey: .reframe)
         try container.encodeIfPresent(reframeOriginal, forKey: .reframeOriginal)
-        try container.encode(isFavorite, forKey: .isFavorite)
-        try container.encodeIfPresent(favoritedAt, forKey: .favoritedAt)
+        try container.encode(isHearted, forKey: .isHearted)
+        try container.encodeIfPresent(heartedAt, forKey: .heartedAt)
         try container.encodeIfPresent(heartCount, forKey: .heartCount)
     }
 }
@@ -976,19 +976,19 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
 }
 
 struct PatchCardRequest: Encodable, Equatable, Sendable {
-    var isFavorite: Bool?
+    var isHearted: Bool?
     var style: Style?
     var isPublic: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case isFavorite
+        case isHearted
         case style
         case isPublic
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(isFavorite, forKey: .isFavorite)
+        try container.encodeIfPresent(isHearted, forKey: .isHearted)
         try container.encodeIfPresent(style, forKey: .style)
         try container.encodeIfPresent(isPublic, forKey: .isPublic)
     }

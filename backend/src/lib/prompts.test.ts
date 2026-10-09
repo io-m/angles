@@ -100,14 +100,14 @@ describe("writer prompts", () => {
   });
 
   it("the batch prompt carries only the voices this cook writes", () => {
-    const chosen = ["stoic", "optimistic", "tender", "values"] as const;
+    const chosen = ["stoic", "hopeful", "tender", "values"] as const;
     const prompt = styleBatchPrompt(chosen);
     for (const style of STYLES) {
       expect(prompt.includes(`${style} (${STYLE_VOICES[style].label})`), style).toBe(
         (chosen as readonly string[]).includes(style),
       );
     }
-    expect(prompt).not.toContain(GOLD_CARDS[0]?.answers.humorous ?? "unreachable");
+    expect(prompt).not.toContain(GOLD_CARDS[0]?.answers.witty ?? "unreachable");
     expect(prompt).toContain(GOLD_CARDS[0]?.answers.tender ?? "unreachable");
     expect(styleBatchPrompt(chosen)).toBe(prompt);
     expect(prompt.length).toBeLessThan(styleBatchPrompt([...STYLES]).length);

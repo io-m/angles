@@ -956,7 +956,7 @@ const PREFERRED_COVER_SHARE = 0.5;
 /**
  * Which angle a card opens on for this viewer.
  *
- * Someone who hearts Humorous should meet Humorous more often, but the mix is the point
+ * Someone who hearts Witty should meet Witty more often, but the mix is the point
  * of the For you tab, so the choice is a stable coin flip per card rather than a takeover.
  * Deterministic in the card and the viewer, so a card does not change face on a reload.
  *

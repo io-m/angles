@@ -2,7 +2,7 @@
 // answers for the strongest concrete line: everyday objects, times, numbers, and
 // a direct next step count up; stock comfort phrases, abstractions, questions,
 // and length count down. Repeating the thought's own words earns little.
-var STYLES = ['stoic', 'optimistic', 'humorous', 'tough_love'];
+var STYLES = ['stoic', 'hopeful', 'witty', 'tough'];
 var CONCRETE = [
   'inbox', 'email', 'résumé', 'resume', 'cover letter', 'application', 'role', 'interview',
   'phone', 'call', 'desk', 'chair', 'calendar', 'laptop', 'tab', 'screen', 'notification',
@@ -73,5 +73,5 @@ if (forced !== 'auto' && answers[forced] !== undefined) {
   best = forced;
 }
 output.demo.scores = scores;
-output.demo.best = best || 'tough_love';
+output.demo.best = best || 'tough';
 output.demo.bestForced = forced !== 'auto';

@@ -18,7 +18,7 @@ private func card(
                 id: UUID(),
                 thought: "A thought.",
                 result: ReframeResult(style: style, reframe: "An answer."),
-                isFavorite: false
+                isHearted: false
             )
         ],
         spotlightStyle: style,

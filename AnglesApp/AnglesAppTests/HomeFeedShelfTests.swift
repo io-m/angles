@@ -8,7 +8,7 @@ struct HomeFeedShelfTests {
     func independentCursors() {
         var board = HomeFeedBoard()
         let older = card(.stoic, day: 1)
-        let newer = card(.humorous, day: 2)
+        let newer = card(.witty, day: 2)
 
         #expect(
             board.replace(
@@ -40,13 +40,13 @@ struct HomeFeedShelfTests {
             generation: 0, filter: { _ in true }, pageSize: 24
         )
         _ = board.replace(
-            [kept], on: .optimistic, before: "style", hasMore: true,
+            [kept], on: .hopeful, before: "style", hasMore: true,
             generation: 0, filter: { _ in true }, pageSize: 24
         )
 
         board.invalidate(blank: true)
         #expect(board.cards(on: .all).isEmpty)
-        #expect(board.cards(on: .optimistic).isEmpty)
+        #expect(board.cards(on: .hopeful).isEmpty)
         #expect(
             board.replace(
                 [kept], on: .all, before: "stale", hasMore: true,
@@ -78,10 +78,10 @@ struct HomeFeedShelfTests {
         )
 
         board.update(shared.id) { item in
-            item.slides[0].isFavorite = true
+            item.slides[0].isHearted = true
         }
-        #expect(board.cards(on: .all)[0].slides[0].isFavorite)
-        #expect(board.cards(on: .stoic)[0].slides[0].isFavorite)
+        #expect(board.cards(on: .all)[0].slides[0].isHearted)
+        #expect(board.cards(on: .stoic)[0].slides[0].isHearted)
 
         board.remove(shared.id)
         #expect(board.cards(on: .all).isEmpty)
@@ -93,7 +93,7 @@ struct HomeFeedShelfTests {
     func selectedShelfRefresh() {
         var board = HomeFeedBoard()
         let first = card(.stoic, day: 2)
-        let second = card(.optimistic, day: 1)
+        let second = card(.hopeful, day: 1)
         _ = board.replace(
             [first, second], on: .all, before: "all", hasMore: true,
             generation: 0, filter: { _ in true }, pageSize: 24
@@ -156,7 +156,7 @@ struct HomeFeedShelfTests {
     @Test("a new post lands on loaded shelves that contain its angle")
     func publishedCardJoinsLoadedShelves() {
         var board = HomeFeedBoard()
-        let existing = card(.humorous, day: 1)
+        let existing = card(.witty, day: 1)
         _ = board.replace(
             [existing], on: .all, before: nil, hasMore: false,
             generation: 0, filter: { _ in true }, pageSize: 24
@@ -171,7 +171,7 @@ struct HomeFeedShelfTests {
 
         #expect(board.cards(on: .all).first?.id == posted.id)
         #expect(board.cards(on: .stoic).first?.id == posted.id)
-        #expect(board.cards(on: .humorous).isEmpty)
+        #expect(board.cards(on: .witty).isEmpty)
     }
 
     @Test("a private owner library record evicts every shelf and its anchor")
@@ -222,9 +222,9 @@ struct HomeFeedShelfTests {
     @Test("hide, then publish: the card comes back once in place, anchored, without a restart")
     func hiddenThenPublishedReturnsOnce() {
         var board = HomeFeedBoard()
-        let newest = card(.optimistic, day: 5)
+        let newest = card(.hopeful, day: 5)
         let mine = card(.stoic, day: 3, isOwner: true)
-        let oldest = card(.humorous, day: 1)
+        let oldest = card(.witty, day: 1)
         _ = board.replace(
             [newest, mine, oldest], on: .all, before: "cursor", hasMore: true,
             generation: 0, filter: { _ in true }, pageSize: 3
@@ -266,7 +266,7 @@ struct HomeFeedShelfTests {
     @Test("a republished card older than every loaded card still lands, at the tail")
     func republishedPastTheTailStillLands() {
         var board = HomeFeedBoard()
-        let newer = card(.optimistic, day: 5)
+        let newer = card(.hopeful, day: 5)
         let mine = card(.stoic, day: 1, isOwner: true)
         _ = board.replace(
             [newer], on: .all, before: "cursor", hasMore: true,
@@ -289,7 +289,7 @@ struct HomeFeedShelfTests {
     @Test("a republished card the filter excludes is not placed, and is not placed later")
     func filteredRepublishIsNotPlaced() {
         var board = HomeFeedBoard()
-        let other = card(.optimistic, day: 5)
+        let other = card(.hopeful, day: 5)
         let mine = card(.stoic, day: 3, isOwner: true)
         _ = board.replace(
             [other], on: .all, before: nil, hasMore: false,
@@ -309,27 +309,27 @@ struct HomeFeedShelfTests {
     @Test("a public owner card the library repeats keeps its Home value, face, order, and anchor")
     func unchangedPublicOwnerCardIsUntouched() {
         var board = HomeFeedBoard()
-        let other = card(.optimistic, day: 1)
-        let mine = card(.stoic, day: 2, isOwner: true, styles: [.stoic, .humorous])
+        let other = card(.hopeful, day: 1)
+        let mine = card(.stoic, day: 2, isOwner: true, styles: [.stoic, .witty])
         _ = board.replace(
             [other], on: .all, before: nil, hasMore: false,
             generation: 0, filter: { _ in true }, pageSize: 24
         )
         board.insertPublishedAtFront(mine)
-        _ = board.update(mine.id) { $0.spotlightStyle = .humorous }
+        _ = board.update(mine.id) { $0.spotlightStyle = .witty }
         let record = board.record(mine.id)
         let anchor = board.anchors[mine.id]
         let order = board.cards(on: .all).map(\.id)
 
         var library = mine
         library.spotlightStyle = .stoic
-        library.slides[0].isFavorite = true
+        library.slides[0].isHearted = true
         library.slides[0].heartCount = 9
         let change = board.reconcileOwnerVisibility([library], admits: { _ in true })
 
         #expect(!change.changed)
         #expect(board.record(mine.id) == record)
-        #expect(board.record(mine.id)?.spotlightStyle == .humorous)
+        #expect(board.record(mine.id)?.spotlightStyle == .witty)
         #expect(board.anchors[mine.id] == anchor)
         #expect(board.cards(on: .all).map(\.id) == order)
     }
@@ -337,7 +337,7 @@ struct HomeFeedShelfTests {
     @Test("a still-public posted owner card survives refresh at the top")
     func publicOwnerAnchorSurvivesRefresh() {
         var board = HomeFeedBoard()
-        let existing = card(.optimistic, day: 1)
+        let existing = card(.hopeful, day: 1)
         _ = board.replace(
             [existing], on: .all, before: nil, hasMore: false,
             generation: 0, filter: { _ in true }, pageSize: 24
@@ -432,7 +432,7 @@ private func card(
                 id: UUID(),
                 thought: "A thought",
                 result: ReframeResult(style: style, reframe: "An angle"),
-                isFavorite: false
+                isHearted: false
             )
         },
         spotlightStyle: style,

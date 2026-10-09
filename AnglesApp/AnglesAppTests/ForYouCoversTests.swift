@@ -23,10 +23,10 @@ struct ForYouCoversTests {
     func keepsServerFace() {
         let page = [
             cover(.stoic, styles: Style.allCases, day: 3),
-            cover(.humorous, styles: Style.allCases, day: 2),
-            cover(.optimistic, styles: Style.allCases, day: 1),
+            cover(.witty, styles: Style.allCases, day: 2),
+            cover(.hopeful, styles: Style.allCases, day: 1),
         ]
-        #expect(ForYouCovers.assign(page).map(\.spotlightStyle) == [.stoic, .humorous, .optimistic])
+        #expect(ForYouCovers.assign(page).map(\.spotlightStyle) == [.stoic, .witty, .hopeful])
     }
 
     @Test("your own cards keep their saved cover and the neighbour steps aside")
@@ -51,14 +51,14 @@ struct ForYouCoversTests {
 
     @Test("an appended page avoids the card already shown above it")
     func appendRespectsAbove() {
-        let faced = ForYouCovers.assign([cover(.humorous, styles: Style.allCases, day: 1)], above: .humorous)
-        #expect(faced[0].spotlightStyle != .humorous)
+        let faced = ForYouCovers.assign([cover(.witty, styles: Style.allCases, day: 1)], above: .witty)
+        #expect(faced[0].spotlightStyle != .witty)
     }
 
     @Test("arrivals avoid the card they sit on")
     func prependRespectsBelow() {
-        let faced = ForYouCovers.assign([cover(.optimistic, styles: Style.allCases, day: 9)], below: .optimistic)
-        #expect(faced[0].spotlightStyle != .optimistic)
+        let faced = ForYouCovers.assign([cover(.hopeful, styles: Style.allCases, day: 9)], below: .hopeful)
+        #expect(faced[0].spotlightStyle != .hopeful)
     }
 
     @Test("the board faces only For you and keeps cards already there")
@@ -100,14 +100,14 @@ struct ForYouCoversTests {
 
     @Test("an unread angle beats avoiding a repeat")
     func unreadBeatsNoRepeat() {
-        let card = cover(.stoic, styles: [.stoic, .optimistic, .humorous, .toughLove], day: 2, kept: [.stoic, .humorous, .toughLove])
-        #expect(ForYouCovers.assign([card], above: .optimistic).first?.spotlightStyle == .optimistic)
+        let card = cover(.stoic, styles: [.stoic, .hopeful, .witty, .tough], day: 2, kept: [.stoic, .witty, .tough])
+        #expect(ForYouCovers.assign([card], above: .hopeful).first?.spotlightStyle == .hopeful)
     }
 
     @Test("a card with every angle hearted keeps the face it came with")
     func everyAngleKept() {
-        let card = cover(.humorous, styles: Style.allCases, day: 2, kept: Set(Style.allCases))
-        #expect(ForYouCovers.assign([card]).first?.spotlightStyle == .humorous)
+        let card = cover(.witty, styles: Style.allCases, day: 2, kept: Set(Style.allCases))
+        #expect(ForYouCovers.assign([card]).first?.spotlightStyle == .witty)
     }
 }
 
@@ -126,7 +126,7 @@ private func cover(
                 id: UUID(),
                 thought: "A thought",
                 result: ReframeResult(style: style, reframe: "An angle"),
-                isFavorite: kept.contains(style)
+                isHearted: kept.contains(style)
             )
         },
         spotlightStyle: face,

@@ -1175,7 +1175,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(stored.isPublic).toBe(false);
     expect(stored.isOwner).toBe(true);
     expect(stored.author).toEqual({ id: DEV_USER_ID, initials: "JM", following: false });
-    expect(stored.results.every((item) => item.isFavorite === false)).toBe(true);
+    expect(stored.results.every((item) => item.isHearted === false)).toBe(true);
 
     const listed = await listCards({ limit: 50 });
     expect(listed).toHaveLength(1);
@@ -1233,7 +1233,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         ...baseInput.meta,
         tags: ["job_interview", "waiting"],
       },
-      spotlightStyle: "optimistic",
+      spotlightStyle: "hopeful",
     });
 
     const db = (await import("./client.js")).getDb();
@@ -1281,34 +1281,34 @@ describe.skipIf(!testUrl)("cards integration", () => {
       thought: "I keep waiting for the offer that is not coming.",
       results: [
         { style: "stoic", reframe: "A stoic take on waiting." },
-        { style: "optimistic", reframe: "An optimistic take on waiting." },
+        { style: "hopeful", reframe: "A hopeful take on waiting." },
       ],
-      spotlightStyle: "optimistic",
+      spotlightStyle: "hopeful",
       meta: {
         ...baseInput.meta,
         skippedStyles: [
-          { style: "humorous", reason: "A joke would land wrong on a wait this raw." },
-          { style: "tough_love", reason: "Pushing would punch down." },
+          { style: "witty", reason: "A joke would land wrong on a wait this raw." },
+          { style: "tough", reason: "Pushing would punch down." },
         ],
       },
     });
 
-    const humorous = await listCards({ limit: 50, style: "humorous" });
-    expect(humorous.map((card) => card.id)).toEqual([withHumor.id]);
+    const witty = await listCards({ limit: 50, style: "witty" });
+    expect(witty.map((card) => card.id)).toEqual([withHumor.id]);
 
-    const optimistic = await listCards({ limit: 50, style: "optimistic" });
-    expect(optimistic).toHaveLength(2);
+    const hopeful = await listCards({ limit: 50, style: "hopeful" });
+    expect(hopeful).toHaveLength(2);
   });
 
-  it("patches per-style favorite and public independently", async () => {
+  it("patches per-style heart and public independently", async () => {
     const stored = await createCard(baseInput);
-    const liked = await patchCard(stored.id, { isFavorite: true, style: "stoic" });
+    const liked = await patchCard(stored.id, { isHearted: true, style: "stoic" });
     expect(liked.ok).toBe(true);
     if (!liked.ok) {
       return;
     }
-    expect(liked.card.results.find((item) => item.style === "stoic")?.isFavorite).toBe(true);
-    expect(liked.card.results.find((item) => item.style === "optimistic")?.isFavorite).toBe(false);
+    expect(liked.card.results.find((item) => item.style === "stoic")?.isHearted).toBe(true);
+    expect(liked.card.results.find((item) => item.style === "hopeful")?.isHearted).toBe(false);
 
     const published = await patchCard(stored.id, { isPublic: true });
     expect(published.ok).toBe(true);
@@ -1316,21 +1316,21 @@ describe.skipIf(!testUrl)("cards integration", () => {
       return;
     }
     expect(published.card.isPublic).toBe(true);
-    expect(published.card.results.find((item) => item.style === "stoic")?.isFavorite).toBe(true);
+    expect(published.card.results.find((item) => item.style === "stoic")?.isHearted).toBe(true);
 
-    const favorites = await listCards({ limit: 50, favorite: true });
-    expect(favorites.map((card) => card.id)).toEqual([stored.id]);
+    const hearts = await listCards({ limit: 50, hearted: true });
+    expect(hearts.map((card) => card.id)).toEqual([stored.id]);
 
     const slim = await createCard({
       ...baseInput,
       thought: "I keep waiting for the offer that is not coming.",
       results: [
         { style: "stoic", reframe: "A stoic take on waiting." },
-        { style: "optimistic", reframe: "An optimistic take on waiting." },
+        { style: "hopeful", reframe: "A hopeful take on waiting." },
       ],
-      spotlightStyle: "optimistic",
+      spotlightStyle: "hopeful",
     });
-    const missing = await patchCard(slim.id, { isFavorite: true, style: "humorous" });
+    const missing = await patchCard(slim.id, { isHearted: true, style: "witty" });
     expect(missing).toEqual({ ok: false, reason: "unknown_style" });
   });
 
@@ -1369,7 +1369,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         emotions: input.emotions ?? ["shame", "sadness"],
         skippedStyles: [],
         model: "mistral-small-latest",
-        spotlightStyle: "humorous",
+        spotlightStyle: "witty",
         isPublic: input.isPublic,
         createdAt: input.createdAt,
       })
@@ -1384,7 +1384,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         style,
         reframe: `A ${style} take that stays with the original sting.`,
         position,
-        isFavorite: style === "stoic",
+        isHearted: style === "stoic",
       })),
     );
     return cardId;
@@ -1429,7 +1429,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(feed.every((card) => card.isPublic)).toBe(true);
     expect(feed.map((card) => card.id)).not.toContain(minePrivate.id);
     expect(feed.map((card) => card.id)).not.toContain(privateOther);
-    expect(feed[0]?.results.every((item) => item.isFavorite === false)).toBe(true);
+    expect(feed[0]?.results.every((item) => item.isHearted === false)).toBe(true);
   });
 
   it("uses OR within each feed facet and AND between facets", async () => {
@@ -1525,25 +1525,25 @@ describe.skipIf(!testUrl)("cards integration", () => {
       isPublic: true,
     });
 
-    const liked = await saveFeedAngle(publicOther, "optimistic");
+    const liked = await saveFeedAngle(publicOther, "hopeful");
     expect(liked.ok).toBe(true);
     if (!liked.ok) {
       return;
     }
-    expect(liked.card.results.find((item) => item.style === "optimistic")?.isFavorite).toBe(true);
-    expect(liked.card.results.find((item) => item.style === "stoic")?.isFavorite).toBe(false);
+    expect(liked.card.results.find((item) => item.style === "hopeful")?.isHearted).toBe(true);
+    expect(liked.card.results.find((item) => item.style === "stoic")?.isHearted).toBe(false);
 
     const authorRow = await getDb().query.cards.findFirst({
       where: eq(cards.id, publicOther),
       with: { reframes: true },
     });
-    expect(authorRow?.reframes.find((item) => item.style === "stoic")?.isFavorite).toBe(true);
-    expect(authorRow?.reframes.find((item) => item.style === "optimistic")?.isFavorite).toBe(false);
+    expect(authorRow?.reframes.find((item) => item.style === "stoic")?.isHearted).toBe(true);
+    expect(authorRow?.reframes.find((item) => item.style === "hopeful")?.isHearted).toBe(false);
 
     const library = await listCards({ limit: 50 });
     const saved = library.find((card) => card.id === publicOther);
     expect(saved?.isOwner).toBe(false);
-    expect(saved?.results.find((item) => item.style === "optimistic")?.isFavorite).toBe(true);
+    expect(saved?.results.find((item) => item.style === "hopeful")?.isHearted).toBe(true);
     expect(library.some((card) => card.isOwner)).toBe(false);
 
     const own = await createCard(baseInput);
@@ -1579,25 +1579,25 @@ describe.skipIf(!testUrl)("cards integration", () => {
       .onConflictDoNothing();
     await getDb().insert(savedAngles).values([
       { userId: OTHER_USER_ID, cardId: mine.id, style: "stoic" },
-      { userId: OTHER_USER_ID, cardId: mine.id, style: "humorous" },
+      { userId: OTHER_USER_ID, cardId: mine.id, style: "witty" },
       { userId: fan, cardId: mine.id, style: "stoic" },
     ]);
-    await saveFeedAngle(theirs, "optimistic");
+    await saveFeedAngle(theirs, "hopeful");
 
     const feed = await listFeed({ limit: 50 });
     const own = feed.find((card) => card.id === mine.id);
     expect(own?.isOwner).toBe(true);
     expect(own?.results.find((item) => item.style === "stoic")?.heartCount).toBe(2);
-    expect(own?.results.find((item) => item.style === "humorous")?.heartCount).toBe(1);
+    expect(own?.results.find((item) => item.style === "witty")?.heartCount).toBe(1);
     // Absent, not zero: a 0 on a post about your worst day is worse than no number.
-    expect(own?.results.find((item) => item.style === "optimistic")?.heartCount).toBeUndefined();
+    expect(own?.results.find((item) => item.style === "hopeful")?.heartCount).toBeUndefined();
 
     const other = feed.find((card) => card.id === theirs);
     expect(other?.isOwner).toBe(false);
     expect(other?.results.every((item) => item.heartCount === undefined)).toBe(true);
 
-    // The count survives the author toggling their own favorite, which answers from `loadCard`.
-    const patched = await patchCard(mine.id, { style: "stoic", isFavorite: true });
+    // The count survives the author toggling their own heart, which answers from `loadCard`.
+    const patched = await patchCard(mine.id, { style: "stoic", isHearted: true });
     expect(patched.ok).toBe(true);
     if (patched.ok) {
       expect(patched.card.results.find((item) => item.style === "stoic")?.heartCount).toBe(2);
@@ -1619,7 +1619,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       meta: { ...baseInput.meta, inputLanguage: "hr" },
       results: [
         { style: "stoic", reframe: "A stoic take on showing up.", reframeOriginal: "Stoički pogled na to da si se pojavio." },
-        { style: "humorous", reframe: "A humorous take on showing up.", reframeOriginal: "A humorous take on showing up." },
+        { style: "witty", reframe: "A witty take on showing up.", reframeOriginal: "A witty take on showing up." },
       ],
       isPublic: true,
     });
@@ -1627,7 +1627,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       "Stoički pogled na to da si se pojavio.",
     );
     // A second version that is just the English is not stored.
-    expect(mine.results.find((item) => item.style === "humorous")).not.toHaveProperty("reframeOriginal");
+    expect(mine.results.find((item) => item.style === "witty")).not.toHaveProperty("reframeOriginal");
 
     const theirs = await insertOtherCard({ thought: "Someone else's card in their own language.", isPublic: true });
     await getDb()
@@ -1655,7 +1655,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     await getDb().update(cards).set({ isPublic: false }).where(eq(cards.id, hearted));
 
     expect((await listCards({ limit: 50 })).some((card) => card.id === hearted)).toBe(false);
-    expect((await listCards({ limit: 50, favorite: true })).some((card) => card.id === hearted)).toBe(
+    expect((await listCards({ limit: 50, hearted: true })).some((card) => card.id === hearted)).toBe(
       false,
     );
     expect(await clearFeedSaves(hearted)).toEqual({ ok: true });
@@ -1674,7 +1674,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
     it("projects every card onto the styles the calling app can show", async () => {
       const cardId = await insertOtherCard({ thought: "A card written with the new voices.", isPublic: true });
-      const styles: Style[] = ["tender", "values", "stoic", "humorous"];
+      const styles: Style[] = ["tender", "values", "stoic", "witty"];
       await getDb().delete(cardReframes).where(eq(cardReframes.cardId, cardId));
       await getDb()
         .insert(cardReframes)
@@ -1689,8 +1689,8 @@ describe.skipIf(!testUrl)("cards integration", () => {
       const legacy = (await runWithStyleSet(LEGACY_STYLES, lists)).filter((card) => card.id === cardId);
       expect(legacy).toHaveLength(3);
       for (const card of legacy) {
-        expect(card.results.map((item) => item.style)).toEqual(["stoic", "humorous"]);
-        expect(["stoic", "humorous"]).toContain(card.spotlightStyle);
+        expect(card.results.map((item) => item.style)).toEqual(["stoic", "witty"]);
+        expect(["stoic", "witty"]).toContain(card.spotlightStyle);
       }
       expect(JSON.stringify(legacy)).not.toMatch(/"(tender|values)"/);
 
@@ -1731,7 +1731,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         "00000000-0000-4000-8000-0000000000a2",
         "00000000-0000-4000-8000-0000000000a3",
       ].entries()) {
-        await heart(loved, fan, index === 0 ? "stoic" : "optimistic");
+        await heart(loved, fan, index === 0 ? "stoic" : "hopeful");
       }
 
       const ranked = await rankedCards({ limit: 24, session: session() });
@@ -1916,7 +1916,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         isPublic: true,
         createdAt,
       });
-      expect((await saveFeedAngle(kept, "humorous")).ok).toBe(true);
+      expect((await saveFeedAngle(kept, "witty")).ok).toBe(true);
       const later = { ...session(), startedAt: new Date(Date.now() + 1_000) };
 
       // A heart is on one answer: For you still shows the card, lower, opening on an answer
@@ -1925,23 +1925,23 @@ describe.skipIf(!testUrl)("cards integration", () => {
       const all = forYou.map((card) => card.id);
       expect(all).toContain(kept);
       expect(all.indexOf(kept)).toBeGreaterThan(all.indexOf(untouched));
-      expect(forYou.find((card) => card.id === kept)?.spotlightStyle).not.toBe("humorous");
+      expect(forYou.find((card) => card.id === kept)?.spotlightStyle).not.toBe("witty");
 
       // Once every angle is kept, For you has nothing new to show from it.
-      for (const style of ["stoic", "optimistic", "tough_love"] as const) {
+      for (const style of ["stoic", "hopeful", "tough"] as const) {
         expect((await saveFeedAngle(kept, style)).ok).toBe(true);
       }
       const fullyKept = { ...session(), startedAt: new Date(Date.now() + 2_000) };
       expect((await rankedCards({ limit: 24, session: fullyKept })).map((card) => card.id)).not.toContain(
         kept,
       );
-      for (const style of ["stoic", "optimistic", "tough_love"] as const) {
+      for (const style of ["stoic", "hopeful", "tough"] as const) {
         await getDb()
           .delete(savedAngles)
           .where(and(eq(savedAngles.cardId, kept), eq(savedAngles.style, style)));
       }
 
-      const sameAngle = await rankedCards({ limit: 24, style: "humorous", session: later });
+      const sameAngle = await rankedCards({ limit: 24, style: "witty", session: later });
       expect(sameAngle.map((card) => card.id)).not.toContain(kept);
 
       // Another voice for the same thought is still worth meeting.
@@ -2027,18 +2027,18 @@ describe.skipIf(!testUrl)("cards integration", () => {
           }),
         );
       }
-      // Every fixture card covers "humorous", so a lean has to be visible to be real.
+      // Every fixture card covers "witty", so a lean has to be visible to be real.
       const before = await listFeed({ limit: 50 });
-      expect(before.every((card) => card.spotlightStyle === "humorous")).toBe(true);
+      expect(before.every((card) => card.spotlightStyle === "witty")).toBe(true);
 
       const target = ids[0];
       if (!target) {
         throw new Error("no fixture card");
       }
-      expect((await saveFeedAngle(target, "tough_love")).ok).toBe(true);
+      expect((await saveFeedAngle(target, "tough")).ok).toBe(true);
 
       const after = await listFeed({ limit: 50 });
-      const leaning = after.filter((card) => card.spotlightStyle === "tough_love");
+      const leaning = after.filter((card) => card.spotlightStyle === "tough");
       expect(leaning.length).toBeGreaterThan(0);
       // A lean, not a takeover: Home's For you tab is meant to show mixed covers.
       expect(leaning.length).toBeLessThan(after.length);
@@ -2067,7 +2067,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
           category: index === 0 ? "family" : "future",
           createdAt: new Date(Date.now() - (index + 1) * 60_000),
         });
-        expect((await saveFeedAngle(id, "humorous")).ok).toBe(true);
+        expect((await saveFeedAngle(id, "witty")).ok).toBe(true);
         theirs.push(id);
       }
 

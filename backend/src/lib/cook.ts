@@ -520,7 +520,7 @@ export async function withoutGraveJokes(
   results: ReframeResult[],
   options: CookCallOptions,
 ): Promise<WrittenCook> {
-  const joke = results.find((result) => result.style === "humorous");
+  const joke = results.find((result) => result.style === "witty");
   if (decision.solemn || !joke || !screensAsGrave([joke.reframe, joke.reframeOriginal])) {
     return { decision, results };
   }

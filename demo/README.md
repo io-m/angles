@@ -7,10 +7,10 @@ A 20–32 s vertical TikTok of a **real** cook. Every video uses the same cut. C
 1. Yellow kinetic hook (~3 s), then the whole phone in a device frame.
 2. Type the thought (~3.5 s sped up), tap Send at real speed.
 3. Cooking bubble at 1.5x, **capped at ~1.8 s**. The first yellow chapter title lands **on the same frame as the card**, not after a hold on the bubble.
-4. **Exactly four** chapters: the style that opened, then the other chips in tap order, ending on Tough love. Each of the first three is ~1.4 s. Yellow `CHAPTER n` + style name on the cut, no extra pause before the title.
-5. Last chapter (Tough love) holds **~2 s extra** (~3.4 s) with a small slow zoom, then the end card (wordmark, App Store badge, follow).
+4. **Exactly four** chapters: the style that opened, then the other chips in tap order, ending on Tough. Each of the first three is ~1.4 s. Yellow `CHAPTER n` + style name on the cut, no extra pause before the title.
+5. Last chapter (Tough) holds **~2 s extra** (~3.4 s) with a small slow zoom, then the end card (wordmark, App Store badge, follow).
 
-The four chapters are Stoic, Optimistic, Humorous, and Tough love. A cook now writes the four of six styles that fit best, so `demo_flow.yaml` fails a take straight after the card if any of those four chips is missing; record another take.
+The four chapters are Stoic, Hopeful, Witty, and Tough. A cook now writes the four of six styles that fit best, so `demo_flow.yaml` fails a take straight after the card if any of those four chips is missing; record another take.
 
 **Do not add** (these were tried and dropped): a fifth “best” chapter, jumping back to Stoic, a `bestNote` line, **undefined** chapter numbers, Post, the bike save cover, or Home / border glow. `pick_best.js` still scores answers for `report.md` only; it does not change the cut.
 
@@ -42,8 +42,8 @@ Before you run it:
    - open compose with the sparkle button and type the line
    - Send, then answer at most one follow-up (a chip if one fits, otherwise `FOLLOWUP_REPLY`)
    - wait for the card without tapping anything
-   - tap Optimistic, Humorous, Stoic, and Tough love in turn (short holds; the edit trims tighter)
-   - hold Tough love; the edit cuts from there to the end card
+   - tap Hopeful, Witty, Stoic, and Tough in turn (short holds; the edit trims tighter)
+   - hold Tough; the edit cuts from there to the end card
 
    It stops with a clear reason if Angles asks a second follow-up, answers with a crisis line, or shows an error.
 5. Each take is saved to `demo/raw/take-YYYYMMDD-HHMMSS/` and is never overwritten. A take holds `screen.mp4`, `answers.json`, the theme it was recorded with (`theme.json`), the Maestro logs, and the final view hierarchy.
@@ -51,7 +51,7 @@ Before you run it:
    - typing sped up to about 3.5 s, with the Send tap at real speed
    - cooking at 1.5x, capped at about 1.8 s
    - ~1.4 s for each of the first three styles, with the yellow chapter title on the same frame as the cut
-   - ~3.4 s on Tough love with a small zoom, then the end card
+   - ~3.4 s on Tough with a small zoom, then the end card
 
    It writes the cut, tap points, chapter cards, and camera moves into `video/index.html`, built from `lib/composition.template.html`. That file is a HyperFrames composition, and its footage is a constant-frame-rate copy of the take in `video/media/`. The phone is always shown whole, inside a device frame. The camera pushes in on the composer, the cooking bubble, and the answer card, so the card stays fully in frame. Taps the Simulator recording cannot show are drawn as ripples.
 
@@ -108,7 +108,7 @@ Put a track you have the rights to at `demo/assets/music.mp3`. It is looped or t
 - The answers are specific to this thought. If they read as generic, record another take or change `DEMO_LINE`.
 - Exactly zero or one follow-up was asked (`report.md`).
 - There is no notification banner, real name, or personal data. The account is "Angles Demo", shown with the initials "AD".
-- The last chapter (Tough love) is readable on a phone at arm's length.
+- The last chapter (Tough) is readable on a phone at arm's length.
 - The hook reads in one glance, and the end card's App Store and follow lines sit clear of TikTok's caption area.
 
 `report.md` marks the video NOT POSTABLE when the flow saw more than one follow-up, a crisis line, or a missing style. The flow itself refuses to finish a take in those cases.

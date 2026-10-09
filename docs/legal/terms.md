@@ -1,6 +1,6 @@
 # Angles Terms of Service
 
-Last updated: October 8, 2026
+Last updated: October 9, 2026
 
 Published at `https://useangles.app/terms` (`ANGLES_TERMS_OF_SERVICE_URL`). Support is at `https://useangles.app/support`.
 
@@ -12,7 +12,7 @@ You must be at least 13, or the higher minimum age required where you live, and 
 
 ## The service
 
-Angles accepts a thought and uses AI providers to write four short reframes, chosen from six styles: Stoic, Optimistic, Humorous, Tough love, Tender, and Values. A thought about real harm to people is not answered with Humorous or Tough love. You can save cards privately or choose to post them publicly, view public cards, favorite angles, follow people, and use blocks and reports.
+Angles accepts a thought and uses AI providers to write four short reframes, chosen from six styles: Stoic, Hopeful, Witty, Tough, Tender, and Values. A thought about real harm to people is not answered with Witty or Tough. You can save cards privately or choose to post them publicly, view public cards, heart angles, follow people, and use blocks and reports.
 
 Before your first thought is sent, the app asks you to agree to these Terms and the Privacy Policy and to allow what you write to be sent to our AI providers. Tapping **Agree and continue** records that agreement.
 

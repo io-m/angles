@@ -9,7 +9,7 @@ struct HomeCardGrid: View, Equatable {
         card.isOwner ? .owner : .savedFromFeed
     }
     var onDelete: (HomeCard) -> Void = { _ in }
-    var onToggleFavorite: (HomeCard, Style) -> Void = { _, _ in }
+    var onToggleHeart: (HomeCard, Style) -> Void = { _, _ in }
     var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
     var onReport: (HomeCard, ReportReason) -> Void = { _, _ in }
@@ -39,7 +39,7 @@ struct HomeCardGrid: View, Equatable {
                     menuRole: menuRole(card),
                     openingStyle: openingStyleFor(card),
                     onDelete: { onDelete(card) },
-                    onToggleFavorite: { style in onToggleFavorite(card, style) },
+                    onToggleHeart: { style in onToggleHeart(card, style) },
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
                     onRemoveFromBoard: { onRemoveFromBoard(card) },
                     onReport: { reason in onReport(card, reason) },
@@ -83,12 +83,12 @@ struct HomeCardGrid: View, Equatable {
         return { onToggleFollow(card) }
     }
 
-    /// `ForEach` keys on `card.id` alone. An explicit identity that folded in favorite state
+    /// `ForEach` keys on `card.id` alone. An explicit identity that folded in heart state
     /// rebuilt the card on every heart, which reset its selected style.
     private func openingStyleFor(_ card: HomeCard) -> Style? {
         switch presentation {
-        case .favoriteAngles:
-            return card.latestFavoriteStyle
+        case .heartAngles:
+            return card.latestHeartStyle
         case .library, .tallLibrary:
             return openingStyle
         }
@@ -107,7 +107,7 @@ struct TallHomeCardGrid: View, Equatable {
         card.isOwner ? .owner : .feed
     }
     var onDelete: (HomeCard) -> Void = { _ in }
-    var onToggleFavorite: (HomeCard, Style) -> Void = { _, _ in }
+    var onToggleHeart: (HomeCard, Style) -> Void = { _, _ in }
     var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
     var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
     var onReport: (HomeCard, ReportReason) -> Void = { _, _ in }
@@ -147,7 +147,7 @@ struct TallHomeCardGrid: View, Equatable {
                     openingStyle: openingStyle,
                     tallCardMaxHeight: cardMaxHeight,
                     onDelete: { onDelete(card) },
-                    onToggleFavorite: { style in onToggleFavorite(card, style) },
+                    onToggleHeart: { style in onToggleHeart(card, style) },
                     onSetPublic: { isPublic in onSetPublic(card, isPublic) },
                     onRemoveFromBoard: { onRemoveFromBoard(card) },
                     onReport: { reason in onReport(card, reason) },

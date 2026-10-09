@@ -93,8 +93,8 @@ describe("community readers", () => {
     for (const reader of readers) {
       for (const heart of reader.hearts) {
         const card = byId.get(heart.cardId);
-        expect(heart.favoritedAt.getTime()).toBeGreaterThan(card?.createdAt.getTime() ?? Infinity);
-        expect(heart.favoritedAt.getTime()).toBeLessThan(NOW.getTime());
+        expect(heart.heartedAt.getTime()).toBeGreaterThan(card?.createdAt.getTime() ?? Infinity);
+        expect(heart.heartedAt.getTime()).toBeLessThan(NOW.getTime());
         const key = `${heart.userId}:${heart.cardId}:${heart.style}`;
         expect(seen.has(key)).toBe(false);
         seen.add(key);
@@ -129,9 +129,9 @@ describe("community readers", () => {
     const byId = new Map(cards.map((card) => [card.id, card]));
     for (const heart of hearts) {
       expect(["work", "self_worth"]).toContain(byId.get(heart.cardId)?.category);
-      expect(["stoic", "tough_love"]).toContain(heart.style);
-      expect(NOW.getTime() - heart.favoritedAt.getTime()).toBeLessThanOrEqual(3 * DAY);
-      expect(heart.favoritedAt.getTime()).toBeGreaterThan(byId.get(heart.cardId)?.createdAt.getTime() ?? Infinity);
+      expect(["stoic", "tough"]).toContain(heart.style);
+      expect(NOW.getTime() - heart.heartedAt.getTime()).toBeLessThanOrEqual(3 * DAY);
+      expect(heart.heartedAt.getTime()).toBeGreaterThan(byId.get(heart.cardId)?.createdAt.getTime() ?? Infinity);
     }
   });
 });

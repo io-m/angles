@@ -17,9 +17,9 @@ PAPER = (10, 9, 8)
 # Dark-mode inks from CardStyleAppearance (HomePalette.swift).
 STYLES = [
     ("Stoic", (115, 166, 255)),
-    ("Optimistic", (255, 158, 56)),
-    ("Humorous", (89, 209, 115)),
-    ("Tough Love", (255, 107, 97)),
+    ("Hopeful", (255, 158, 56)),
+    ("Witty", (89, 209, 115)),
+    ("Tough", (255, 107, 97)),
 ]
 
 FONT_REGULAR = "/Library/Fonts/SF-Pro.ttf"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command: real cook on the demo Simulator, recorded, then edited to
 # demo/output/final_9x16.mp4. Cut contract: demo/README.md (hook, type, short
-# cook, four chapters, Tough love hold, outro). Do not add Post or Home.
+# cook, four chapters, Tough hold, outro). Do not add Post or Home.
 #
 #   demo/make_video.sh                         # full run (build, record, edit, check)
 #   demo/make_video.sh --theme lisbon-flight   # demo/themes/lisbon-flight.json

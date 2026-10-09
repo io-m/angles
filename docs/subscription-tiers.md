@@ -21,7 +21,7 @@ The annual product does not grant 7,200 credits at once. Its allowance is divide
 | Continue or clarification | 0 |
 | Safety response | 0 |
 | Failed operation | 0 |
-| Save, publish, favorite, follow, report, or block | 0 |
+| Save, publish, heart, follow, report, or block | 0 |
 
 The tariff is flat: 1 credit whichever model the server routed the cook to, including a fallback. Credits are reserved before provider work and charged only when the operation finishes `ready`. A discarded ready result was still generated and remains charged.
 

@@ -20,7 +20,7 @@ vi.mock("./llmClient.js", async (importOriginal) => {
 const decision: ReadyDecision = {
   kind: "ready",
   thought: "I bombed my interview and I keep replaying every shaky answer.",
-  styles: ["stoic", "optimistic"],
+  styles: ["stoic", "hopeful"],
   solemn: false,
   catalog: LEGACY_STYLES,
   meta: {
@@ -42,7 +42,7 @@ const clean: ReframeResult = {
   reframe: "The interview is over and the replay changes nothing about it. Keep what you learned and let the tape stop.",
 };
 const cliched: ReframeResult = {
-  style: "optimistic",
+  style: "hopeful",
   reframe: "On the bright side, every shaky answer showed you exactly which stories to tighten before the next interview.",
 };
 
@@ -57,7 +57,7 @@ describe("rewriteFlagged", () => {
     vi.mocked(generateReframe).mockResolvedValueOnce(
       "Every shaky answer just showed you which stories to tighten, and the next interview gets the sharper version.",
     );
-    const results = await rewriteFlagged(decision, [clean, cliched], { optimistic: "already_working: x" }, {
+    const results = await rewriteFlagged(decision, [clean, cliched], { hopeful: "already_working: x" }, {
       deadlineAt: soon(),
     });
 
@@ -116,9 +116,9 @@ describe("answers in their language", () => {
     "Your boss said a word in a meeting. The word is his; what you do tomorrow is yours. Let the work answer it.";
   const stoicHr =
     "Šef je izgovorio jednu riječ na sastanku. Riječ je njegova; ono što sutra napraviš je tvoje. Neka posao odgovori.";
-  const optimisticEn =
+  const hopefulEn =
     "Being called out stings because you care how the team sees you, and that care is exactly what makes you worth keeping.";
-  const optimisticHr =
+  const hopefulHr =
     "Boli jer ti je stalo kako te tim vidi, a upravo te ta briga čini nekim koga vrijedi zadržati u timu.";
 
   beforeEach(() => {
@@ -129,13 +129,13 @@ describe("answers in their language", () => {
   it("asks the batch for { en, local } pairs with double the room, and keeps both", async () => {
     vi.mocked(generateJson).mockResolvedValueOnce(
       JSON.stringify({
-        plan: { stoic: "dichotomy_of_control: his word, your work", optimistic: "what_it_proves: care" },
+        plan: { stoic: "dichotomy_of_control: his word, your work", hopeful: "what_it_proves: care" },
         stoic: { en: stoicEn, local: stoicHr },
-        optimistic: { en: optimisticEn, local: optimisticHr },
+        hopeful: { en: hopefulEn, local: hopefulHr },
       }),
     );
 
-    const results = await writeStyleBatch(croatian, ["stoic", "optimistic"], { deadlineAt: soon() });
+    const results = await writeStyleBatch(croatian, ["stoic", "hopeful"], { deadlineAt: soon() });
 
     const call = vi.mocked(generateJson).mock.calls[0]?.[0];
     expect(call?.text).toContain("They wrote in Croatian.");
@@ -147,7 +147,7 @@ describe("answers in their language", () => {
     expect(stoicSchema?.required).toEqual(["en", "local"]);
     expect(results).toEqual([
       { style: "stoic", reframe: stoicEn, reframeOriginal: stoicHr },
-      { style: "optimistic", reframe: optimisticEn, reframeOriginal: optimisticHr },
+      { style: "hopeful", reframe: hopefulEn, reframeOriginal: hopefulHr },
     ]);
     expect(generateReframe).not.toHaveBeenCalled();
   });
@@ -217,11 +217,11 @@ describe("withoutGraveJokes", () => {
   const ordinary: ReadyDecision = {
     ...decision,
     thought: "I keep worrying about the news and I can't focus at work.",
-    styles: ["stoic", "optimistic", "humorous", "tough_love"],
+    styles: ["stoic", "hopeful", "witty", "tough"],
   };
-  const push: ReframeResult = { style: "tough_love", reframe: "Close the tab and do one task." };
+  const push: ReframeResult = { style: "tough", reframe: "Close the tab and do one task." };
   const graveJoke: ReframeResult = {
-    style: "humorous",
+    style: "witty",
     reframe: "Your brain set the soundtrack: heavy drums and a chorus of air raid sirens. Next: an urge to bake pierogi.",
   };
 
@@ -233,10 +233,10 @@ describe("withoutGraveJokes", () => {
   it("drops a joke that names real harm, and the push with it, on the original four", async () => {
     const guarded = await withoutGraveJokes(ordinary, [clean, cliched, graveJoke, push], { deadlineAt: soon() });
 
-    expect(guarded.results.map((result) => result.style)).toEqual(["stoic", "optimistic"]);
+    expect(guarded.results.map((result) => result.style)).toEqual(["stoic", "hopeful"]);
     expect(guarded.decision.solemn).toBe(true);
-    expect(guarded.decision.styles).toEqual(["stoic", "optimistic"]);
-    expect(guarded.decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    expect(guarded.decision.styles).toEqual(["stoic", "hopeful"]);
+    expect(guarded.decision.meta.skippedStyles.map((item) => item.style)).toEqual(["witty", "tough"]);
     expect(generateJson).not.toHaveBeenCalled();
   });
 
@@ -252,8 +252,8 @@ describe("withoutGraveJokes", () => {
       { deadlineAt: soon() },
     );
 
-    expect(guarded.results.map((result) => result.style)).toEqual(["stoic", "optimistic", "tender", "values"]);
-    expect(guarded.decision.styles).toEqual(["stoic", "optimistic", "tender", "values"]);
+    expect(guarded.results.map((result) => result.style)).toEqual(["stoic", "hopeful", "tender", "values"]);
+    expect(guarded.decision.styles).toEqual(["stoic", "hopeful", "tender", "values"]);
     const call = vi.mocked(generateJson).mock.calls[0]?.[0];
     expect(call?.text).toContain("Write these styles only: tender, values");
   });
@@ -267,7 +267,7 @@ describe("withoutGraveJokes", () => {
 
   it("keeps an ordinary joke", async () => {
     const joke: ReframeResult = {
-      style: "humorous",
+      style: "witty",
       reframe: "Your brain filed three hours of silence as a unanimous vote. Someone is just in the shower.",
     };
     const guarded = await withoutGraveJokes(ordinary, [clean, cliched, joke, push], { deadlineAt: soon() });

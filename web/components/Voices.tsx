@@ -4,15 +4,15 @@ const VOICES = [
     body: 'Separates what you can still hold from what you cannot.',
   },
   {
-    name: 'Optimistic',
+    name: 'Hopeful',
     body: 'Finds a real opening already in what you said, without dismissing how hard it is.',
   },
   {
-    name: 'Humorous',
+    name: 'Witty',
     body: 'Takes the air out of the moment the way a good friend would, and never jokes at you.',
   },
   {
-    name: 'Tough love',
+    name: 'Tough',
     body: 'Names the part you are avoiding and points at the next move.',
   },
   {
@@ -33,7 +33,7 @@ export function Voices() {
         <h2>Four angles, chosen for the thought.</h2>
         <p>
           Angles writes the four that fit, each a sentence or two. A thought
-          about real harm to people never gets Humorous or Tough love. Those
+          about real harm to people never gets Witty or Tough. Those
           two are left out, and Tender and Values stay.
         </p>
       </div>

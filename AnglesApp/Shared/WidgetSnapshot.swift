@@ -2,13 +2,13 @@ import Foundation
 
 enum AnglesWidgetConstants {
     static let appGroupIdentifier = "group.app.angles.ios"
-    static let favoriteWidgetKind = "FavoriteAngleWidget"
-    static let favoritesURL = URL(string: "angles://favorites")!
+    static let heartWidgetKind = "HeartAngleWidget"
+    static let heartsURL = URL(string: "angles://hearts")!
     static let composeURL = URL(string: "angles://compose")!
 }
 
 enum AnglesDeepLink: String, Codable, Equatable {
-    case favorites
+    case hearts
     case compose
 
     init?(url: URL) {
@@ -23,33 +23,33 @@ enum AnglesDeepLink: String, Codable, Equatable {
 
     var url: URL {
         switch self {
-        case .favorites:
-            return AnglesWidgetConstants.favoritesURL
+        case .hearts:
+            return AnglesWidgetConstants.heartsURL
         case .compose:
             return AnglesWidgetConstants.composeURL
         }
     }
 }
 
-struct FavoriteAngleWidgetItem: Codable, Equatable, Identifiable {
+struct HeartAngleWidgetItem: Codable, Equatable, Identifiable {
     let id: String
     let cardID: String
     let answer: String
     let style: String
     let styleDisplayName: String
     let lifeAreaLabel: String?
-    let favoritedAt: Date
+    let heartedAt: Date
 }
 
-struct FavoriteAngleWidgetSnapshot: Codable, Equatable {
-    static let empty = FavoriteAngleWidgetSnapshot(items: [], updatedAt: .distantPast)
+struct HeartAngleWidgetSnapshot: Codable, Equatable {
+    static let empty = HeartAngleWidgetSnapshot(items: [], updatedAt: .distantPast)
 
-    let items: [FavoriteAngleWidgetItem]
+    let items: [HeartAngleWidgetItem]
     let updatedAt: Date
 }
 
 struct WidgetSnapshotStore {
-    private static let snapshotKey = "angles.favoriteAngleWidget.snapshot"
+    private static let snapshotKey = "angles.heartAngleWidget.snapshot"
 
     private let defaults: UserDefaults
 
@@ -64,23 +64,23 @@ struct WidgetSnapshotStore {
         self.defaults = defaults
     }
 
-    func loadFavoriteAngles() -> FavoriteAngleWidgetSnapshot {
+    func loadHeartAngles() -> HeartAngleWidgetSnapshot {
         guard let data = defaults.data(forKey: Self.snapshotKey),
-              let snapshot = try? JSONDecoder().decode(FavoriteAngleWidgetSnapshot.self, from: data)
+              let snapshot = try? JSONDecoder().decode(HeartAngleWidgetSnapshot.self, from: data)
         else {
             return .empty
         }
         return snapshot
     }
 
-    func saveFavoriteAngles(_ snapshot: FavoriteAngleWidgetSnapshot) {
+    func saveHeartAngles(_ snapshot: HeartAngleWidgetSnapshot) {
         guard let data = try? JSONEncoder().encode(snapshot) else {
             return
         }
         defaults.set(data, forKey: Self.snapshotKey)
     }
 
-    func clearFavoriteAngles() {
+    func clearHeartAngles() {
         defaults.removeObject(forKey: Self.snapshotKey)
     }
 }

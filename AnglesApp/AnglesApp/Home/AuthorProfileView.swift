@@ -48,7 +48,7 @@ struct AuthorProfileView: View {
             onLoadMore: { _ in viewModel.loadMoreAuthor(route.id) },
             onRetryLoadMore: { _ in viewModel.retryLoadMoreAuthor(route.id) },
             onDelete: deleteCard,
-            onToggleFavorite: toggleFavorite,
+            onToggleHeart: toggleHeart,
             onSetPublic: setPublic,
             onRemoveFromBoard: removeFromBoard,
             onReport: reportCard,
@@ -95,8 +95,8 @@ struct AuthorProfileView: View {
         viewModel.deleteCard(card.id)
     }
 
-    private func toggleFavorite(_ card: HomeCard, _ style: Style) {
-        viewModel.toggleFavorite(card.id, style: style)
+    private func toggleHeart(_ card: HomeCard, _ style: Style) {
+        viewModel.toggleHeart(card.id, style: style)
     }
 
     private func toggleFollow(_ card: HomeCard) {

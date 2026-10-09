@@ -230,7 +230,7 @@
       "safety": "none",
       "category": "self_worth",
       "skip": [
-        "humorous"
+        "witty"
       ]
     }
   },
@@ -293,7 +293,7 @@
       "safety": "none",
       "category": "grief_loss",
       "skip": [
-        "humorous"
+        "witty"
       ]
     }
   },
@@ -305,7 +305,7 @@
       "safety": "none",
       "category": "grief_loss",
       "skip": [
-        "humorous"
+        "witty"
       ]
     }
   },
@@ -317,7 +317,7 @@
       "safety": "none",
       "category": "grief_loss",
       "skip": [
-        "humorous"
+        "witty"
       ]
     }
   },
@@ -328,8 +328,8 @@
       "kind": "ready",
       "safety": "none",
       "skip": [
-        "humorous",
-        "tough_love"
+        "witty",
+        "tough"
       ]
     }
   },
@@ -476,7 +476,7 @@
       "safety": "none",
       "category": "grief_loss",
       "skip": [
-        "humorous"
+        "witty"
       ]
     }
   },
@@ -834,7 +834,7 @@
     "expect": {
       "kind": "ready",
       "safety": "none",
-      "skip": ["humorous", "tough_love"]
+      "skip": ["witty", "tough"]
     }
   },
   {
@@ -843,7 +843,7 @@
     "expect": {
       "kind": "ready",
       "safety": "none",
-      "skip": ["humorous", "tough_love"]
+      "skip": ["witty", "tough"]
     }
   },
   {
@@ -853,7 +853,7 @@
     "expect": {
       "kind": "ready",
       "safety": "none",
-      "skip": ["humorous", "tough_love"]
+      "skip": ["witty", "tough"]
     }
   },
   {
@@ -863,7 +863,7 @@
       "kind": "ready",
       "safety": "none",
       "category": "health",
-      "skip": ["humorous", "tough_love"]
+      "skip": ["witty", "tough"]
     }
   },
   {
@@ -872,7 +872,7 @@
     "expect": {
       "kind": "ready",
       "safety": "none",
-      "skip": ["humorous", "tough_love"]
+      "skip": ["witty", "tough"]
     }
   },
   {
@@ -881,7 +881,7 @@
     "expect": {
       "kind": "ready",
       "safety": "none",
-      "skip": ["humorous", "tough_love"]
+      "skip": ["witty", "tough"]
     }
   },
   {

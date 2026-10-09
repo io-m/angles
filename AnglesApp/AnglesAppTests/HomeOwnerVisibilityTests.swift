@@ -123,8 +123,8 @@ private func cardJSON(
         "id": id.uuidString.lowercased(),
         "thought": "A thought.",
         "category": "work",
-        "results": ["stoic", "optimistic", "humorous", "tough_love"].map { style in
-            ["style": style, "reframe": "An angle.", "isFavorite": false]
+        "results": ["stoic", "hopeful", "witty", "tough"].map { style in
+            ["style": style, "reframe": "An angle.", "isHearted": false]
         },
         "spotlightStyle": spotlight,
         "isPublic": isPublic,

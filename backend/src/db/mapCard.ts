@@ -43,7 +43,7 @@ export async function loadViewerSaves(
       byStyle = new Map();
       angles.set(row.cardId, byStyle);
     }
-    byStyle.set(row.style, row.favoritedAt);
+    byStyle.set(row.style, row.heartedAt);
   }
 
   return { angles };
@@ -128,14 +128,14 @@ export function toStoredCard(
         const stored: StoredReframeResult = {
           style: item.style,
           reframe: item.reframe,
-          isFavorite: item.isFavorite,
+          isHearted: item.isHearted,
         };
         // The public card is English; only its author reads the answer in their language.
         if (item.reframeOriginal) {
           stored.reframeOriginal = item.reframeOriginal;
         }
-        if (item.favoritedAt) {
-          stored.favoritedAt = item.favoritedAt.toISOString();
+        if (item.heartedAt) {
+          stored.heartedAt = item.heartedAt.toISOString();
         }
         // Absent at zero: a 0 on a post you just published about your worst day is
         // worse than no number at all.
@@ -146,14 +146,14 @@ export function toStoredCard(
         return stored;
       }
 
-      const favoritedAt = savedStyles?.get(item.style);
+      const heartedAt = savedStyles?.get(item.style);
       const stored: StoredReframeResult = {
         style: item.style,
         reframe: item.reframe,
-        isFavorite: favoritedAt !== undefined,
+        isHearted: heartedAt !== undefined,
       };
-      if (favoritedAt) {
-        stored.favoritedAt = favoritedAt.toISOString();
+      if (heartedAt) {
+        stored.heartedAt = heartedAt.toISOString();
       }
       return stored;
     });

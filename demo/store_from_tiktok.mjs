@@ -1,4 +1,4 @@
-// App Store preview from the TikTok cut: same picture through Tough love,
+// App Store preview from the TikTok cut: same picture through Tough,
 // only the end card copy changes (no "Coming soon", no "Follow").
 //
 //   node demo/store_from_tiktok.mjs

@@ -1,4 +1,4 @@
-# Find the card the private save just opened, heart it, then show Favorites.
+# Find the card the private save just opened, heart it, then show Hearts.
 appId: app.angles.ios
 ---
 - evalScript: "${output.demo = { marks: [], followups: 0, answers: {}, options: [] }}"
@@ -10,54 +10,54 @@ appId: app.angles.ios
 - takeScreenshot: tab-stoic
 - runFlow:
     when:
-      notVisible: "Add to favorite angles"
+      notVisible: "Add to Hearts"
     commands:
-      - tapOn: "Optimistic"
+      - tapOn: "Hopeful"
       - runFlow:
           file: flows/hold.yaml
           env:
             HOLD_MS: 600
-      - takeScreenshot: tab-optimistic
+      - takeScreenshot: tab-hopeful
 - runFlow:
     when:
-      notVisible: "Add to favorite angles"
+      notVisible: "Add to Hearts"
     commands:
-      - tapOn: "Humorous"
+      - tapOn: "Witty"
       - runFlow:
           file: flows/hold.yaml
           env:
             HOLD_MS: 600
-      - takeScreenshot: tab-humorous
+      - takeScreenshot: tab-witty
 - runFlow:
     when:
-      notVisible: "Add to favorite angles"
+      notVisible: "Add to Hearts"
     commands:
-      - tapOn: "Tough Love"
+      - tapOn: "Tough"
       - runFlow:
           file: flows/hold.yaml
           env:
             HOLD_MS: 600
       - takeScreenshot: tab-tough
 - extendedWaitUntil:
-    visible: "Add to favorite angles"
+    visible: "Add to Hearts"
     timeout: 8000
 - evalScript: ${output.demo.marks.push(['heart_tap', Date.now()])}
 - tapOn:
-    text: "Add to favorite angles"
+    text: "Add to Hearts"
     index: 0
 - extendedWaitUntil:
-    visible: "Remove from favorite angles"
+    visible: "Remove from Hearts"
     timeout: 8000
 - evalScript: ${output.demo.marks.push(['heart_shown', Date.now()])}
 - runFlow:
     file: flows/hold.yaml
     env:
       HOLD_MS: 1600
-- tapOn: "Favorites"
+- tapOn: "Hearts"
 - runFlow:
     file: flows/hold.yaml
     env:
       HOLD_MS: 1400
-- takeScreenshot: favorites
+- takeScreenshot: hearts
 - runScript:
     file: flows/report.js

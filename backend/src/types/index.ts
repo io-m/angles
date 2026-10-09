@@ -1,5 +1,5 @@
 /** Append only: app builds before the style set header know only the first four. */
-export const STYLES = ["stoic", "optimistic", "humorous", "tough_love", "tender", "values"] as const;
+export const STYLES = ["stoic", "hopeful", "witty", "tough", "tender", "values"] as const;
 
 export type Style = (typeof STYLES)[number];
 
@@ -286,8 +286,8 @@ export type StoredReframeResult = {
   reframe: string;
   /** Sent to the author only; everyone else reads the English. */
   reframeOriginal?: string;
-  isFavorite: boolean;
-  favoritedAt?: string;
+  isHearted: boolean;
+  heartedAt?: string;
   /**
    * How many other people hearted this angle. Present only on the author's own
    * public cards, so nobody can read another author's numbers. Omitted at zero.
@@ -342,7 +342,7 @@ export type CardListQuery = {
   /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
   style?: Style;
   /** Cards that have at least one liked style (owner heart or viewer save). */
-  favorite?: boolean;
+  hearted?: boolean;
 };
 
 export type FeedListQuery = {
@@ -387,7 +387,7 @@ export type FeedCursor = {
 };
 
 export type PatchCardInput = {
-  isFavorite?: boolean;
+  isHearted?: boolean;
   style?: Style;
   isPublic?: boolean;
 };

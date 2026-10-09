@@ -313,10 +313,10 @@ describe("style shelves", () => {
       seed: "shared-seed",
       style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
     }).map((item) => item.id);
-    const humorous = rankCards(pool, {
+    const witty = rankCards(pool, {
       now: NOW,
       seed: "shared-seed",
-      style: { style: "humorous", affinity: EMPTY_AFFINITY, hearts: 0 },
+      style: { style: "witty", affinity: EMPTY_AFFINITY, hearts: 0 },
     }).map((item) => item.id);
     expect(
       rankCards(pool, {
@@ -325,15 +325,15 @@ describe("style shelves", () => {
         style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
       }).map((item) => item.id),
     ).toEqual(stoic);
-    expect(humorous).not.toEqual(stoic);
+    expect(witty).not.toEqual(stoic);
   });
 
   it("gives a style shelf a different head from For you when that angle is the strong one", () => {
     const stoicId = "aaaaaaaa-0000-4000-8000-000000000001";
-    const humorousId = "bbbbbbbb-0000-4000-8000-000000000002";
+    const wittyId = "bbbbbbbb-0000-4000-8000-000000000002";
     const pool = [
       card({ id: stoicId, coverStyle: "stoic", createdAt: hoursAgo(6) }),
-      card({ id: humorousId, coverStyle: "humorous", createdAt: hoursAgo(1) }),
+      card({ id: wittyId, coverStyle: "witty", createdAt: hoursAgo(1) }),
     ];
     const all = rankCards(pool, { now: NOW, seed: "seed" }).map((item) => item.id);
     const stoic = rankCards(
@@ -344,17 +344,17 @@ describe("style shelves", () => {
         style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
       },
     );
-    const humorous = rankCards(
-      pool.map((item) => ({ ...item, angleHearts: item.id === humorousId ? 8 : 0 })),
+    const witty = rankCards(
+      pool.map((item) => ({ ...item, angleHearts: item.id === wittyId ? 8 : 0 })),
       {
         now: NOW,
         seed: "seed",
-        style: { style: "humorous", affinity: EMPTY_AFFINITY, hearts: 0 },
+        style: { style: "witty", affinity: EMPTY_AFFINITY, hearts: 0 },
       },
     );
     expect(stoic[0]?.id).toBe(stoicId);
-    expect(humorous[0]?.id).toBe(humorousId);
-    expect(stoic.map((item) => item.id)).not.toEqual(humorous.map((item) => item.id));
+    expect(witty[0]?.id).toBe(wittyId);
+    expect(stoic.map((item) => item.id)).not.toEqual(witty.map((item) => item.id));
     expect(all).not.toEqual(stoic.map((item) => item.id));
   });
 
@@ -405,7 +405,7 @@ describe("spreadPage", () => {
         authorId: `relief-author-${index}`,
         category: "health",
         emotions: ["hope"],
-        spotlightStyle: "humorous",
+        spotlightStyle: "witty",
       }),
     );
     const page = spreadPage([...wall, ...relief], 8);
@@ -477,7 +477,7 @@ describe("spreadRanked", () => {
 });
 
 describe("openingStyle", () => {
-  const available = ["stoic", "optimistic", "humorous", "tough_love"] as const;
+  const available = ["stoic", "hopeful", "witty", "tough"] as const;
 
   it("leaves the card's own cover alone for a viewer with no taste yet", () => {
     expect(
@@ -491,15 +491,15 @@ describe("openingStyle", () => {
         cardId: "a",
         viewerId: "v",
         cover: "stoic",
-        available: ["stoic", "optimistic"],
-        preferred: "humorous",
+        available: ["stoic", "hopeful"],
+        preferred: "witty",
       }),
     ).toBe("stoic");
   });
 
   it("is stable, so a card does not change face on a reload", () => {
     const pick = () =>
-      openingStyle({ cardId: "card-7", viewerId: "viewer-1", cover: "stoic", available, preferred: "humorous" });
+      openingStyle({ cardId: "card-7", viewerId: "viewer-1", cover: "stoic", available, preferred: "witty" });
     expect(pick()).toBe(pick());
   });
 
@@ -512,8 +512,8 @@ describe("openingStyle", () => {
           viewerId: "viewer-1",
           cover: "stoic",
           available,
-          preferred: "humorous",
-        }) === "humorous",
+          preferred: "witty",
+        }) === "witty",
     ).length;
     // Home's For you tab is meant to show mixed covers, so this is a lean, not a takeover.
     expect(preferredCount).toBeGreaterThan(cards.length * 0.35);
@@ -523,7 +523,7 @@ describe("openingStyle", () => {
   it("gives two viewers different faces on the same card", () => {
     const faces = new Set(
       ["viewer-1", "viewer-2", "viewer-3", "viewer-4"].map((viewerId) =>
-        openingStyle({ cardId: "card-1", viewerId, cover: "stoic", available, preferred: "humorous" }),
+        openingStyle({ cardId: "card-1", viewerId, cover: "stoic", available, preferred: "witty" }),
       ),
     );
     expect(faces.size).toBeGreaterThan(1);
@@ -838,9 +838,9 @@ describe("primary tab", () => {
   const VIEWER = "viewer-1";
   const coldTabs: StyleTabs = {
     stoic: { affinity: EMPTY_AFFINITY, hearts: 0 },
-    optimistic: { affinity: EMPTY_AFFINITY, hearts: 0 },
-    humorous: { affinity: EMPTY_AFFINITY, hearts: 0 },
-    tough_love: { affinity: EMPTY_AFFINITY, hearts: 0 },
+    hopeful: { affinity: EMPTY_AFFINITY, hearts: 0 },
+    witty: { affinity: EMPTY_AFFINITY, hearts: 0 },
+    tough: { affinity: EMPTY_AFFINITY, hearts: 0 },
     tender: { affinity: EMPTY_AFFINITY, hearts: 0 },
     values: { affinity: EMPTY_AFFINITY, hearts: 0 },
   };
@@ -906,11 +906,11 @@ describe("primary tab", () => {
 
   it("keeps the tabs apart for a viewer with hearts, and pulls a tab's own theme to it", () => {
     const pool = catalog(240);
-    // The viewer is mostly in Work overall, but hearts Humorous on grief.
+    // The viewer is mostly in Work overall, but hearts Witty on grief.
     const general = themes(["work"], ["shame"]);
     const tabs: StyleTabs = {
       ...coldTabs,
-      humorous: { affinity: themes(["grief_loss"], ["sadness"]), hearts: 6 },
+      witty: { affinity: themes(["grief_loss"], ["sadness"]), hearts: 6 },
     };
     const pages = STYLES.map((style) => firstPage(pool, style, tabs, general));
     for (let left = 0; left < pages.length; left += 1) {
@@ -920,19 +920,19 @@ describe("primary tab", () => {
       }
     }
     const byId = new Map(pool.map((item) => [item.id, item]));
-    const humorousPage = pages[STYLES.indexOf("humorous")] ?? [];
-    const grief = humorousPage.filter((id) => byId.get(id)?.category === "grief_loss").length;
-    expect(grief).toBeGreaterThan(humorousPage.length / 2);
+    const wittyPage = pages[STYLES.indexOf("witty")] ?? [];
+    const grief = wittyPage.filter((id) => byId.get(id)?.category === "grief_loss").length;
+    expect(grief).toBeGreaterThan(wittyPage.length / 2);
   });
 
   it("does not let one tab with hearts claim every card that matches the viewer", () => {
     const pool = catalog(400);
     const general = themes(["work"], ["shame"]);
-    // Hearts on Humorous are the same taste as the general one, so they add no pull.
-    const tabs: StyleTabs = { ...coldTabs, humorous: { affinity: general, hearts: 6 } };
+    // Hearts on Witty are the same taste as the general one, so they add no pull.
+    const tabs: StyleTabs = { ...coldTabs, witty: { affinity: general, hearts: 6 } };
     const primaries = assignPrimaryStyles(pool, { viewerId: VIEWER, general, tabs });
-    const humorous = [...primaries.values()].filter((style) => style === "humorous").length;
-    expect(humorous).toBeLessThan(400 * 0.35);
+    const witty = [...primaries.values()].filter((style) => style === "witty").length;
+    expect(witty).toBeLessThan(400 * 0.35);
   });
 
   it("splits a cold catalog roughly evenly, whatever covers the authors chose", () => {
@@ -959,30 +959,30 @@ describe("primary tab", () => {
   });
 
   it("never assigns an angle the card does not have", () => {
-    const pool = catalog(80).map((item) => ({ ...item, availableStyles: ["humorous"] as const }));
+    const pool = catalog(80).map((item) => ({ ...item, availableStyles: ["witty"] as const }));
     const primaries = assignPrimaryStyles(pool, { viewerId: VIEWER, general: EMPTY_AFFINITY, tabs: coldTabs });
-    expect(new Set(primaries.values())).toEqual(new Set(["humorous"]));
+    expect(new Set(primaries.values())).toEqual(new Set(["witty"]));
   });
 
   it("puts a card on the tab strangers hearted it on", () => {
-    const loved = card({ id: "dddddddd-0000-4000-8000-000000000001", angleHeartsByStyle: { humorous: 8 } });
+    const loved = card({ id: "dddddddd-0000-4000-8000-000000000001", angleHeartsByStyle: { witty: 8 } });
     expect(PRIMARY_TIE_WEIGHT).toBeLessThan(STYLE_RANKING_WEIGHTS.styleResonance);
     for (const viewerId of ["viewer-1", "viewer-2", "viewer-3", "viewer-4", "viewer-5"]) {
       const primaries = assignPrimaryStyles([loved], { viewerId, general: EMPTY_AFFINITY, tabs: coldTabs });
-      expect(primaries.get(loved.id)).toBe("humorous");
+      expect(primaries.get(loved.id)).toBe("witty");
     }
   });
 
   it("puts a card on the tab whose hearts match its theme", () => {
     const tabs: StyleTabs = {
       ...coldTabs,
-      tough_love: { affinity: themes(["money"], ["envy"]), hearts: 5 },
+      tough: { affinity: themes(["money"], ["envy"]), hearts: 5 },
     };
     const subject = card({ id: "dddddddd-0000-4000-8000-000000000002", category: "money", emotions: ["envy"] });
     for (const viewerId of ["viewer-1", "viewer-2", "viewer-3", "viewer-4", "viewer-5"]) {
       expect(
         assignPrimaryStyles([subject], { viewerId, general: EMPTY_AFFINITY, tabs }).get(subject.id),
-      ).toBe("tough_love");
+      ).toBe("tough");
     }
   });
 
@@ -992,7 +992,7 @@ describe("primary tab", () => {
     const away = card({ id: "eeeeeeee-0000-4000-8000-000000000002", createdAt: hoursAgo(24) });
     const primaryByCard = new Map<string, Style>([
       [home.id, "stoic"],
-      [away.id, "humorous"],
+      [away.id, "witty"],
     ]);
     const ranked = rankCards([away, home], {
       now: NOW,
@@ -1023,7 +1023,7 @@ describe("primary tab", () => {
     expect(offTabFade({ createdAt: hoursAgo(6) }, NOW)).toBe(1);
     expect(offTabFade({ createdAt: hoursAgo(200) }, NOW)).toBe(1);
 
-    const primaryByCard = new Map<string, Style>([["ffffffff-0000-4000-8000-000000000001", "humorous"]]);
+    const primaryByCard = new Map<string, Style>([["ffffffff-0000-4000-8000-000000000001", "witty"]]);
     const justPosted = card({ id: "ffffffff-0000-4000-8000-000000000001", createdAt: hoursAgo(1) });
     const onStoic = scoreCard(justPosted, {
       now: NOW,
@@ -1055,10 +1055,10 @@ describe("primary tab", () => {
 
 describe("isKeptOnShelf", () => {
   it("hides on For you only once every angle is kept, and on a tab as soon as its own is", () => {
-    const kept = new Set<Style>(["optimistic"]);
+    const kept = new Set<Style>(["hopeful"]);
     expect(isKeptOnShelf(kept, undefined)).toBe(false);
     expect(isPartlyKept(kept)).toBe(true);
-    expect(isKeptOnShelf(kept, "optimistic")).toBe(true);
+    expect(isKeptOnShelf(kept, "hopeful")).toBe(true);
     expect(isKeptOnShelf(kept, "stoic")).toBe(false);
 
     expect(isKeptOnShelf(new Set<Style>(STYLES), undefined)).toBe(true);
@@ -1066,10 +1066,10 @@ describe("isKeptOnShelf", () => {
   });
 
   it("judges a card by the angles it actually has", () => {
-    const kept = new Set<Style>(["stoic", "optimistic"]);
-    expect(isKeptOnShelf(kept, undefined, ["stoic", "optimistic"])).toBe(true);
-    expect(isKeptOnShelf(kept, undefined, ["stoic", "optimistic", "humorous"])).toBe(false);
-    expect(isPartlyKept(kept, ["stoic", "optimistic", "humorous"])).toBe(true);
+    const kept = new Set<Style>(["stoic", "hopeful"]);
+    expect(isKeptOnShelf(kept, undefined, ["stoic", "hopeful"])).toBe(true);
+    expect(isKeptOnShelf(kept, undefined, ["stoic", "hopeful", "witty"])).toBe(false);
+    expect(isPartlyKept(kept, ["stoic", "hopeful", "witty"])).toBe(true);
   });
 
   it("hides nothing for a card the viewer has not kept", () => {
@@ -1234,20 +1234,20 @@ describe("partly kept cards", () => {
     const face = openingStyle({
       cardId: "c",
       viewerId: "v",
-      cover: "humorous",
+      cover: "witty",
       available: STYLES,
-      preferred: "humorous",
-      kept: new Set<Style>(["humorous"]),
+      preferred: "witty",
+      kept: new Set<Style>(["witty"]),
     });
-    expect(face).toBe("tough_love");
+    expect(face).toBe("tough");
     expect(
       openingStyle({
         cardId: "c",
         viewerId: "v",
-        cover: "humorous",
+        cover: "witty",
         available: STYLES,
         preferred: "stoic",
-        kept: new Set<Style>(["humorous"]),
+        kept: new Set<Style>(["witty"]),
       }),
     ).toBe("stoic");
     // Nothing unkept left: the cover stands.
@@ -1255,11 +1255,11 @@ describe("partly kept cards", () => {
       openingStyle({
         cardId: "c",
         viewerId: "v",
-        cover: "humorous",
-        available: ["humorous"],
+        cover: "witty",
+        available: ["witty"],
         preferred: null,
-        kept: new Set<Style>(["humorous"]),
+        kept: new Set<Style>(["witty"]),
       }),
-    ).toBe("humorous");
+    ).toBe("witty");
   });
 });

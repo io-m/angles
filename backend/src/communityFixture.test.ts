@@ -66,8 +66,8 @@ describe("community fixture", () => {
       expect(styles.every((style) => (STYLES as readonly string[]).includes(style))).toBe(true);
       expect(styles).toContain(post.spotlightStyle);
       if (post.category === "grief_loss") {
-        expect(styles).not.toContain("humorous");
-        expect(styles).not.toContain("tough_love");
+        expect(styles).not.toContain("witty");
+        expect(styles).not.toContain("tough");
       }
       const reframes = new Set(post.results.map((item) => item.reframe));
       expect(reframes.size).toBe(4);

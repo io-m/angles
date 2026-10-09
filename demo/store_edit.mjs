@@ -36,15 +36,15 @@ const YELLOW = "0xFFD21F";
 
 const NAMES = {
   stoic: "STOIC",
-  optimistic: "OPTIMISTIC",
-  humorous: "HUMOROUS",
-  tough_love: "TOUGH LOVE",
+  hopeful: "HOPEFUL",
+  witty: "WITTY",
+  tough: "TOUGH",
 };
 const STYLE_FILES = {
   stoic: "style-stoic.png",
-  optimistic: "style-optimistic.png",
-  humorous: "style-humorous.png",
-  tough_love: "style-tough-love.png",
+  hopeful: "style-hopeful.png",
+  witty: "style-witty.png",
+  tough: "style-tough.png",
 };
 
 function log(message) {
@@ -225,7 +225,7 @@ function takeMarks(result) {
 
 function chapterOrder(result, marks) {
   const firstStyle = result.firstStyle && NAMES[result.firstStyle] ? result.firstStyle : "stoic";
-  const tapOrder = ["optimistic", "humorous", "stoic", "tough_love"];
+  const tapOrder = ["hopeful", "witty", "stoic", "tough"];
   const rest = tapOrder.filter((style) => style !== firstStyle && marks[`shown_${style}`] !== undefined);
   return [firstStyle, ...rest];
 }
@@ -239,9 +239,9 @@ function buildFrames(font) {
   const frames = [
     { raw: initial, lines: ["FOUR WAYS", "TO SEE IT."], out: "01-four-ways.png", cropTop: 320 },
     { raw: shotFile("composer.png"), lines: ["WRITE THE", "HARD THOUGHT."], out: "02-write.png", cropTop: 300 },
-    { raw: shotFile("style-humorous.png"), lines: ["SAME THOUGHT.", "DIFFERENT VOICE."], out: "03-voice.png", cropTop: 320 },
-    { raw: shotFile("style-optimistic.png"), lines: ["STILL", "POSSIBLE."], out: "04-possible.png", cropTop: 320 },
-    { raw: shotFile("style-tough-love.png"), lines: ["KEEP THE ONE", "THAT FITS."], out: "05-keep.png", cropTop: 320 },
+    { raw: shotFile("style-witty.png"), lines: ["SAME THOUGHT.", "DIFFERENT VOICE."], out: "03-voice.png", cropTop: 320 },
+    { raw: shotFile("style-hopeful.png"), lines: ["STILL", "POSSIBLE."], out: "04-possible.png", cropTop: 320 },
+    { raw: shotFile("style-tough.png"), lines: ["KEEP THE ONE", "THAT FITS."], out: "05-keep.png", cropTop: 320 },
   ];
   mkdirSync(STORE, { recursive: true });
   for (const frame of frames) {
@@ -392,12 +392,12 @@ function buildPreview(result, font) {
   if (marks[shownLastKey] > screenDur - 0.35) {
     throw new Error(
       `${shownLastKey} at ${marks[shownLastKey].toFixed(2)}s with only ${screenDur.toFixed(2)}s on tape — `
-      + "Tough Love is not in the recording. Re-run demo/make_store.sh (longer post-flow wait).",
+      + "Tough is not in the recording. Re-run demo/make_store.sh (longer post-flow wait).",
     );
   }
   if (marks[shownLastKey] + lastOut > screenDur - 0.04) {
     lastOut = Math.max(1.0, screenDur - 0.04 - marks[shownLastKey]);
-    log(`tough love clip ${lastOut.toFixed(2)}s (tape ends ${screenDur.toFixed(2)}s)`);
+    log(`tough clip ${lastOut.toFixed(2)}s (tape ends ${screenDur.toFixed(2)}s)`);
   }
   const typeStart = need("type_start");
   const typeEnd = need("type_end");

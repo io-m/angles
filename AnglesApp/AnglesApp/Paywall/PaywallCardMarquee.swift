@@ -43,19 +43,19 @@ struct PaywallSpecimen: Identifiable, Equatable {
             id: "deck",
             thought: "They presented my deck as theirs, and I sat there smiling like it was fine.",
             reframe: "Nothing about watching them take the deck cancels the person who noticed it. That noticing is already a kind of strength.",
-            style: .optimistic
+            style: .hopeful
         ),
         PaywallSpecimen(
             id: "roundtable",
             thought: "My manager skipped me in the roundtable again and nobody even noticed.",
             reframe: "Congratulations, your brain made a documentary about being skipped that nobody asked to stream. Credits can roll.",
-            style: .humorous
+            style: .witty
         ),
         PaywallSpecimen(
             id: "late-night",
             thought: "I said yes to another late night and I can feel myself disappearing.",
             reframe: "If saying yes again is true, act like it. If it is a story, stop feeding it snacks at midnight. The next move is yours.",
-            style: .toughLove
+            style: .tough
         ),
         PaywallSpecimen(
             id: "passed-over",
@@ -67,19 +67,19 @@ struct PaywallSpecimen: Identifiable, Equatable {
             id: "fluent",
             thought: "Everyone else seems fluent in the room and I am translating myself.",
             reframe: "Your inner narrator needs an editor with a red pen and a bedtime. Fire the intern. Severance package: one nap.",
-            style: .humorous
+            style: .witty
         ),
         PaywallSpecimen(
             id: "portal",
             thought: "I keep refreshing the hiring portal like staring will make them kinder.",
             reframe: "The sting is a hard chapter, not the whole book. You still get a next page that is not this refresh.",
-            style: .optimistic
+            style: .hopeful
         ),
         PaywallSpecimen(
             id: "recap",
             thought: "I sent the recap and now I am hunting for the sentence that ruined me.",
             reframe: "You already know what the hunt costs. Quit romanticizing the loop and pick one adult action today.",
-            style: .toughLove
+            style: .tough
         ),
         PaywallSpecimen(
             id: "slack",

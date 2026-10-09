@@ -20,7 +20,7 @@ describe("lintReframe", () => {
       "Pick one of the three reports and finish it in the next 24 hours, before anything new lands.",
       "Close the laptop at 6pm, and let tomorrow's version of you walk in rested enough to finish.",
     ]) {
-      expect(lintReframe("tough_love", reframe, thought), reframe).not.toContain("digits");
+      expect(lintReframe("tough", reframe, thought), reframe).not.toContain("digits");
     }
   });
 
@@ -33,14 +33,14 @@ describe("lintReframe", () => {
 
   it("flags a style's own banned opener but not another style's", () => {
     const listen = "Listen, the reports are not the problem; saying yes to every new one is, so say no once today.";
-    expect(lintReframe("tough_love", listen, thought)).toContain("opener");
+    expect(lintReframe("tough", listen, thought)).toContain("opener");
     expect(lintReframe("stoic", listen, thought)).not.toContain("opener");
   });
 
   it("flags shared openers, questions, and clichés on any style", () => {
-    expect(lintReframe("humorous", "It sounds like the reports have unionised against you and are winning the vote.", thought)).toContain("opener");
+    expect(lintReframe("witty", "It sounds like the reports have unionised against you and are winning the vote.", thought)).toContain("opener");
     expect(lintReframe("stoic", "What would it look like to finish one report before starting the next one tonight?", thought)).toContain("question");
-    expect(lintReframe("optimistic", "This is part of your journey, and every report you finish makes the next one easier.", thought)).toContain("cliche");
+    expect(lintReframe("hopeful", "This is part of your journey, and every report you finish makes the next one easier.", thought)).toContain("cliche");
   });
 });
 
@@ -65,11 +65,11 @@ describe("lintResults", () => {
     const issues = lintResults(
       [
         { style: "stoic", reframe: same },
-        { style: "tough_love", reframe: `${same} Really.` },
+        { style: "tough", reframe: `${same} Really.` },
       ],
       thought,
     );
     expect(issues.get("stoic")).not.toContain("overlap");
-    expect(issues.get("tough_love")).toContain("overlap");
+    expect(issues.get("tough")).toContain("overlap");
   });
 });

@@ -68,9 +68,9 @@ export function matchesQueue(
 
 const STYLES: Record<string, string> = {
   stoic: 'Stoic',
-  optimistic: 'Optimistic',
-  humorous: 'Humorous',
-  tough_love: 'Tough love',
+  hopeful: 'Hopeful',
+  witty: 'Witty',
+  tough: 'Tough',
   tender: 'Tender',
   values: 'Values',
 };

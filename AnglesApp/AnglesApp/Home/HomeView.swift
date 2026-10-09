@@ -59,7 +59,7 @@ struct HomeView: View {
             onLoadMore: viewModel.loadMoreFeed,
             onRetryLoadMore: viewModel.retryLoadMoreFeed,
             onDelete: deleteCard,
-            onToggleFavorite: toggleFavorite,
+            onToggleHeart: toggleHeart,
             onSetPublic: setPublic,
             onRemoveFromBoard: removeFromBoard,
             onReport: reportCard,
@@ -140,8 +140,8 @@ struct HomeView: View {
         viewModel.deleteCard(card.id)
     }
 
-    private func toggleFavorite(_ card: HomeCard, _ style: Style) {
-        viewModel.toggleFavorite(card.id, style: style)
+    private func toggleHeart(_ card: HomeCard, _ style: Style) {
+        viewModel.toggleHeart(card.id, style: style)
     }
 
     private func toggleFollow(_ card: HomeCard) {
@@ -211,7 +211,7 @@ struct HomeFeedPager<Chrome: View>: View {
     let onLoadMore: (HomeFeedTab) -> Void
     let onRetryLoadMore: (HomeFeedTab) -> Void
     let onDelete: (HomeCard) -> Void
-    let onToggleFavorite: (HomeCard, Style) -> Void
+    let onToggleHeart: (HomeCard, Style) -> Void
     let onSetPublic: (HomeCard, Bool) -> Void
     let onRemoveFromBoard: (HomeCard) -> Void
     let onReport: (HomeCard, ReportReason) -> Void
@@ -258,7 +258,7 @@ struct HomeFeedPager<Chrome: View>: View {
         onLoadMore: @escaping (HomeFeedTab) -> Void,
         onRetryLoadMore: @escaping (HomeFeedTab) -> Void,
         onDelete: @escaping (HomeCard) -> Void,
-        onToggleFavorite: @escaping (HomeCard, Style) -> Void,
+        onToggleHeart: @escaping (HomeCard, Style) -> Void,
         onSetPublic: @escaping (HomeCard, Bool) -> Void,
         onRemoveFromBoard: @escaping (HomeCard) -> Void,
         onReport: @escaping (HomeCard, ReportReason) -> Void,
@@ -297,7 +297,7 @@ struct HomeFeedPager<Chrome: View>: View {
         self.onLoadMore = onLoadMore
         self.onRetryLoadMore = onRetryLoadMore
         self.onDelete = onDelete
-        self.onToggleFavorite = onToggleFavorite
+        self.onToggleHeart = onToggleHeart
         self.onSetPublic = onSetPublic
         self.onRemoveFromBoard = onRemoveFromBoard
         self.onReport = onReport
@@ -384,7 +384,7 @@ struct HomeFeedPager<Chrome: View>: View {
                                 onLoadMore: { onLoadMore(tab) },
                                 onRetryLoadMore: { onRetryLoadMore(tab) },
                                 onDelete: onDelete,
-                                onToggleFavorite: onToggleFavorite,
+                                onToggleHeart: onToggleHeart,
                                 onSetPublic: onSetPublic,
                                 onRemoveFromBoard: onRemoveFromBoard,
                                 onReport: onReport,
@@ -554,7 +554,7 @@ struct HomeFeedTabPage: View {
     let onLoadMore: () -> Void
     let onRetryLoadMore: () -> Void
     let onDelete: (HomeCard) -> Void
-    let onToggleFavorite: (HomeCard, Style) -> Void
+    let onToggleHeart: (HomeCard, Style) -> Void
     let onSetPublic: (HomeCard, Bool) -> Void
     let onRemoveFromBoard: (HomeCard) -> Void
     let onReport: (HomeCard, ReportReason) -> Void
@@ -695,7 +695,7 @@ struct HomeFeedTabPage: View {
                         openingStyle: tab.matchingStyle,
                         menuRole: { card in card.isOwner ? .owner : .feed },
                         onDelete: onDelete,
-                        onToggleFavorite: onToggleFavorite,
+                        onToggleHeart: onToggleHeart,
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
                         onReport: onReport,

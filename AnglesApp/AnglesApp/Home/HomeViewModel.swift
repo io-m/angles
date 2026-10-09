@@ -7,8 +7,8 @@ struct HomeCardSlide: Identifiable, Equatable {
     let id: UUID
     let thought: String
     var result: ReframeResult
-    var isFavorite: Bool
-    var favoritedAt: Date?
+    var isHearted: Bool
+    var heartedAt: Date?
     /// Strangers who hearted this angle. Only your own public cards carry it.
     var heartCount: Int?
 }
@@ -77,8 +77,8 @@ struct HomeCard: Identifiable, Equatable {
                 id: UUID(),
                 thought: stored.thought,
                 result: result.result,
-                isFavorite: result.isFavorite,
-                favoritedAt: result.favoritedAt.flatMap { ISO8601Dates.date(from: $0) },
+                isHearted: result.isHearted,
+                heartedAt: result.heartedAt.flatMap { ISO8601Dates.date(from: $0) },
                 heartCount: result.heartCount
             )
         }
@@ -130,18 +130,18 @@ struct HomeCard: Identifiable, Equatable {
         return (meta.category, label)
     }
 
-    var hasFavoriteAngle: Bool {
-        slides.contains(where: \.isFavorite)
+    var hasHeartAngle: Bool {
+        slides.contains(where: \.isHearted)
     }
 
-    var latestFavoritedAt: Date? {
-        slides.compactMap(\.favoritedAt).max()
+    var latestHeartedAt: Date? {
+        slides.compactMap(\.heartedAt).max()
     }
 
-    var latestFavoriteStyle: Style? {
+    var latestHeartStyle: Style? {
         slides
-            .filter(\.isFavorite)
-            .max { ($0.favoritedAt ?? .distantPast) < ($1.favoritedAt ?? .distantPast) }?
+            .filter(\.isHearted)
+            .max { ($0.heartedAt ?? .distantPast) < ($1.heartedAt ?? .distantPast) }?
             .result
             .style
     }
@@ -150,8 +150,8 @@ struct HomeCard: Identifiable, Equatable {
         slides.contains { $0.result.style == style }
     }
 
-    func isStyleFavorited(_ style: Style) -> Bool {
-        slides.first(where: { $0.result.style == style })?.isFavorite ?? false
+    func isStyleHearted(_ style: Style) -> Bool {
+        slides.first(where: { $0.result.style == style })?.isHearted ?? false
     }
 
     /// Other people who hearted this angle. Only your own public cards carry a number,
@@ -176,8 +176,8 @@ struct HomeCard: Identifiable, Equatable {
                 continue
             }
             slides[index].result = match.result
-            slides[index].isFavorite = match.isFavorite
-            slides[index].favoritedAt = match.favoritedAt.flatMap { ISO8601Dates.date(from: $0) }
+            slides[index].isHearted = match.isHearted
+            slides[index].heartedAt = match.heartedAt.flatMap { ISO8601Dates.date(from: $0) }
             slides[index].heartCount = match.heartCount
         }
     }
@@ -188,12 +188,12 @@ extension Style {
         switch self {
         case .stoic:
             return "Stoic"
-        case .optimistic:
-            return "Optimistic"
-        case .humorous:
-            return "Humorous"
-        case .toughLove:
-            return "Tough Love"
+        case .hopeful:
+            return "Hopeful"
+        case .witty:
+            return "Witty"
+        case .tough:
+            return "Tough"
         case .tender:
             return "Tender"
         case .values:
@@ -261,28 +261,14 @@ enum FeedFooterState: Equatable {
 enum HomeFeedTab: Equatable, Hashable, CaseIterable {
     case all
     case stoic
-    case optimistic
-    case humorous
-    case toughLove
+    case hopeful
+    case witty
+    case tough
     case tender
     case values
 
     var title: String {
         matchingStyle?.displayName ?? "For you"
-    }
-
-    /// Pill and menu row. Short on purpose, and close to the same length, so the
-    /// fixed-width pill is not a wide capsule around "Stoic". Cards keep `displayName`.
-    var chipTitle: String {
-        switch self {
-        case .all: "For you"
-        case .stoic: "Stoic"
-        case .optimistic: "Hopeful"
-        case .humorous: "Witty"
-        case .toughLove: "Tough"
-        case .tender: "Tender"
-        case .values: "Values"
-        }
     }
 
     var matchingStyle: Style? {
@@ -291,12 +277,12 @@ enum HomeFeedTab: Equatable, Hashable, CaseIterable {
             return nil
         case .stoic:
             return .stoic
-        case .optimistic:
-            return .optimistic
-        case .humorous:
-            return .humorous
-        case .toughLove:
-            return .toughLove
+        case .hopeful:
+            return .hopeful
+        case .witty:
+            return .witty
+        case .tough:
+            return .tough
         case .tender:
             return .tender
         case .values:
@@ -390,46 +376,33 @@ struct HomeFeedEmptyState: Equatable {
 }
 
 enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
-    case favorites
+    case hearts
     case stoic
-    case optimistic
-    case humorous
-    case toughLove
+    case hopeful
+    case witty
+    case tough
     case tender
     case values
 
     var title: String {
-        matchingStyle?.displayName ?? "Favorite angles"
-    }
-
-    /// Same length band as the style names, so Favorites does not stretch the pill.
-    var chipTitle: String {
-        switch self {
-        case .favorites: "Hearts"
-        case .stoic: "Stoic"
-        case .optimistic: "Hopeful"
-        case .humorous: "Witty"
-        case .toughLove: "Tough"
-        case .tender: "Tender"
-        case .values: "Values"
-        }
+        matchingStyle?.displayName ?? "Hearts"
     }
 
     var matchingStyle: Style? {
         switch self {
         case .stoic:
             return .stoic
-        case .optimistic:
-            return .optimistic
-        case .humorous:
-            return .humorous
-        case .toughLove:
-            return .toughLove
+        case .hopeful:
+            return .hopeful
+        case .witty:
+            return .witty
+        case .tough:
+            return .tough
         case .tender:
             return .tender
         case .values:
             return .values
-        case .favorites:
+        case .hearts:
             return nil
         }
     }
@@ -451,14 +424,14 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
     }
 
     var presentation: ReframeCardPresentation {
-        self == .favorites ? .favoriteAngles : .library
+        self == .hearts ? .heartAngles : .library
     }
 
     var emptyCopy: String {
         switch self {
-        case .favorites:
-            return "No favorite angles"
-        case .stoic, .optimistic, .humorous, .toughLove, .tender, .values:
+        case .hearts:
+            return "No hearts yet"
+        case .stoic, .hopeful, .witty, .tough, .tender, .values:
             return "No cards with a \(title) angle yet"
         }
     }
@@ -475,12 +448,12 @@ enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
         switch style {
         case .stoic:
             self = .stoic
-        case .optimistic:
-            self = .optimistic
-        case .humorous:
-            self = .humorous
-        case .toughLove:
-            self = .toughLove
+        case .hopeful:
+            self = .hopeful
+        case .witty:
+            self = .witty
+        case .tough:
+            self = .tough
         case .tender:
             self = .tender
         case .values:
@@ -541,7 +514,7 @@ private struct BlockAuthorSnapshot {
 final class HomeViewModel {
     private(set) var cards: [HomeCard] {
         didSet {
-            FavoriteAngleWidgetPublisher.publish(cards: cards)
+            HeartAngleWidgetPublisher.publish(cards: cards)
         }
     }
 
@@ -567,7 +540,7 @@ final class HomeViewModel {
     /// The server refused a cook because this account's free taste is spent. AppRoot moves a
     /// taste destination to the paywall so the composer is never a dead end.
     private(set) var tasteEndedByServer = false
-    var profileGridFilter: ProfileGridFilter = .favorites {
+    var profileGridFilter: ProfileGridFilter = .hearts {
         didSet {
             if profileGridFilter != oldValue {
                 ensureProfileTabFilled()
@@ -642,8 +615,8 @@ final class HomeViewModel {
     private var libraryBefore: String?
     private var libraryHasMore = false
     private var isLibraryRefreshing = false
-    private var favoriteTasks: [String: Task<Void, Never>] = [:]
-    private var favoriteGeneration: [String: Int] = [:]
+    private var heartTasks: [String: Task<Void, Never>] = [:]
+    private var heartGeneration: [String: Int] = [:]
     private var followTasks: [UUID: Task<Void, Never>] = [:]
     private var followGeneration: [UUID: Int] = [:]
     private var publicTasks: [UUID: Task<Void, Never>] = [:]
@@ -757,10 +730,10 @@ final class HomeViewModel {
         }
     }
 
-    var favoriteAngleCards: [HomeCard] {
+    var heartAngleCards: [HomeCard] {
         cards
-            .filter(\.hasFavoriteAngle)
-            .sorted { ($0.latestFavoritedAt ?? .distantPast) > ($1.latestFavoritedAt ?? .distantPast) }
+            .filter(\.hasHeartAngle)
+            .sorted { ($0.latestHeartedAt ?? .distantPast) > ($1.latestHeartedAt ?? .distantPast) }
     }
 
     var filteredProfileCards: [HomeCard] {
@@ -769,9 +742,9 @@ final class HomeViewModel {
 
     func profileCards(for filter: ProfileGridFilter) -> [HomeCard] {
         switch filter {
-        case .favorites:
-            return favoriteAngleCards
-        case .stoic, .optimistic, .humorous, .toughLove, .tender, .values:
+        case .hearts:
+            return heartAngleCards
+        case .stoic, .hopeful, .witty, .tough, .tender, .values:
             guard let style = filter.matchingStyle else {
                 return []
             }
@@ -1329,7 +1302,7 @@ final class HomeViewModel {
         libraryTask = nil
         libraryPageTask?.cancel()
         libraryPageTask = nil
-        for task in favoriteTasks.values { task.cancel() }
+        for task in heartTasks.values { task.cancel() }
         for task in followTasks.values { task.cancel() }
         for task in publicTasks.values { task.cancel() }
         for task in deleteTasks.values { task.cancel() }
@@ -1338,8 +1311,8 @@ final class HomeViewModel {
         for task in blockTasks.values { task.cancel() }
         for task in feedTasks.values { task.cancel() }
         for feed in authorFeeds.values { feed.task?.cancel() }
-        favoriteTasks = [:]
-        favoriteGeneration = [:]
+        heartTasks = [:]
+        heartGeneration = [:]
         followTasks = [:]
         followGeneration = [:]
         publicTasks = [:]
@@ -1373,7 +1346,7 @@ final class HomeViewModel {
         libraryBefore = nil
         libraryHasMore = false
         hasLoadedLibrary = false
-        profileGridFilter = .favorites
+        profileGridFilter = .hearts
 
         followedPeople = []
         followingLoadState = .loading
@@ -1556,8 +1529,8 @@ final class HomeViewModel {
                 guard let previous = local.slides.first(where: { $0.result.style == style }) else {
                     continue
                 }
-                next.slides[index].isFavorite = previous.isFavorite
-                next.slides[index].favoritedAt = previous.favoritedAt
+                next.slides[index].isHearted = previous.isHearted
+                next.slides[index].heartedAt = previous.heartedAt
             }
             return next
         }
@@ -2098,13 +2071,13 @@ final class HomeViewModel {
                 // A shelf page must not snap a heart back while that write is still in flight.
                 for index in existing.slides.indices {
                     let style = existing.slides[index].result.style
-                    guard favoriteTasks[Self.favoriteTaskKey(id: id, style: style)] != nil,
+                    guard heartTasks[Self.heartTaskKey(id: id, style: style)] != nil,
                           let previous = previousSlides.first(where: { $0.result.style == style })
                     else {
                         continue
                     }
-                    existing.slides[index].isFavorite = previous.isFavorite
-                    existing.slides[index].favoritedAt = previous.favoritedAt
+                    existing.slides[index].isHearted = previous.isHearted
+                    existing.slides[index].heartedAt = previous.heartedAt
                 }
                 next.append(existing)
             } else if let created = HomeCard(stored: item) {
@@ -2309,8 +2282,8 @@ final class HomeViewModel {
 
         applyLocal(id: id) { card in
             for index in card.slides.indices {
-                card.slides[index].isFavorite = false
-                card.slides[index].favoritedAt = nil
+                card.slides[index].isHearted = false
+                card.slides[index].heartedAt = nil
             }
         }
         if let current = card(id: id) {
@@ -2337,8 +2310,8 @@ final class HomeViewModel {
                 }
                 applyLocal(id: id) { card in
                     for index in card.slides.indices {
-                        card.slides[index].isFavorite = false
-                        card.slides[index].favoritedAt = nil
+                        card.slides[index].isHearted = false
+                        card.slides[index].heartedAt = nil
                     }
                 }
                 if let current = card(id: id) {
@@ -2483,45 +2456,45 @@ final class HomeViewModel {
         }
     }
 
-    func toggleFavorite(_ id: UUID, style: Style) {
+    func toggleHeart(_ id: UUID, style: Style) {
         guard let snapshot = card(id: id),
               let slideIndex = snapshot.slides.firstIndex(where: { $0.result.style == style })
         else {
             return
         }
 
-        let previousFavorite = snapshot.slides[slideIndex].isFavorite
-        let previousFavoritedAt = snapshot.slides[slideIndex].favoritedAt
-        let nextFavorite = !previousFavorite
+        let previousHeart = snapshot.slides[slideIndex].isHearted
+        let previousHeartedAt = snapshot.slides[slideIndex].heartedAt
+        let nextHeart = !previousHeart
         applyLocal(id: id) { card in
             guard let currentSlide = card.slides.firstIndex(where: { $0.result.style == style }) else {
                 return
             }
-            card.slides[currentSlide].isFavorite = nextFavorite
-            card.slides[currentSlide].favoritedAt = nextFavorite ? Date() : nil
+            card.slides[currentSlide].isHearted = nextHeart
+            card.slides[currentSlide].heartedAt = nextHeart ? Date() : nil
         }
         if let current = card(id: id) {
             syncSavedOtherIntoLibrary(current)
         }
 
-        let key = Self.favoriteTaskKey(id: id, style: style)
-        let previousTask = favoriteTasks[key]
-        let generation = (favoriteGeneration[key] ?? 0) + 1
-        favoriteGeneration[key] = generation
+        let key = Self.heartTaskKey(id: id, style: style)
+        let previousTask = heartTasks[key]
+        let generation = (heartGeneration[key] ?? 0) + 1
+        heartGeneration[key] = generation
         let sessionGeneration = writeSessionGeneration
-        favoriteTasks[key] = Task { @MainActor in
+        heartTasks[key] = Task { @MainActor in
             // Preserve request order. Cancelling an in-flight URL request cannot prove the
             // server did not commit it, so a later tap waits for its response before writing.
             await previousTask?.value
             guard !Task.isCancelled,
-                  favoriteGeneration[key] == generation,
+                  heartGeneration[key] == generation,
                   writeSessionGeneration == sessionGeneration else {
                 return
             }
             defer {
-                if favoriteGeneration[key] == generation,
+                if heartGeneration[key] == generation,
                    writeSessionGeneration == sessionGeneration {
-                    favoriteTasks[key] = nil
+                    heartTasks[key] = nil
                 }
             }
             do {
@@ -2529,22 +2502,22 @@ final class HomeViewModel {
                 if snapshot.isOwner {
                     stored = try await cardsService.patch(
                         id: id.uuidString.lowercased(),
-                        PatchCardRequest(isFavorite: nextFavorite, style: style)
+                        PatchCardRequest(isHearted: nextHeart, style: style)
                     )
-                } else if nextFavorite {
+                } else if nextHeart {
                     stored = try await cardsService.saveFeedAngle(id: id.uuidString.lowercased(), style: style)
                 } else {
                     stored = try await cardsService.unsaveFeedAngle(id: id.uuidString.lowercased(), style: style)
                 }
                 guard !Task.isCancelled,
-                      favoriteGeneration[key] == generation,
+                      heartGeneration[key] == generation,
                       writeSessionGeneration == sessionGeneration else {
                     return
                 }
                 applyStored(stored)
             } catch {
                 guard !Task.isCancelled,
-                      favoriteGeneration[key] == generation,
+                      heartGeneration[key] == generation,
                       writeSessionGeneration == sessionGeneration else {
                     return
                 }
@@ -2557,8 +2530,8 @@ final class HomeViewModel {
                     guard let currentSlide = card.slides.firstIndex(where: { $0.result.style == style }) else {
                         return
                     }
-                    card.slides[currentSlide].isFavorite = previousFavorite
-                    card.slides[currentSlide].favoritedAt = previousFavoritedAt
+                    card.slides[currentSlide].isHearted = previousHeart
+                    card.slides[currentSlide].heartedAt = previousHeartedAt
                 }
                 if let current = card(id: id) {
                     syncSavedOtherIntoLibrary(current)
@@ -3233,7 +3206,7 @@ final class HomeViewModel {
         }
     }
 
-    private static func favoriteTaskKey(id: UUID, style: Style) -> String {
+    private static func heartTaskKey(id: UUID, style: Style) -> String {
         "\(id.uuidString)-\(style.rawValue)"
     }
 
@@ -3301,7 +3274,7 @@ final class HomeViewModel {
             return
         }
 
-        let keep = card.hasFavoriteAngle
+        let keep = card.hasHeartAngle
         if let index = cards.firstIndex(where: { $0.id == card.id }) {
             if keep {
                 cards[index] = card

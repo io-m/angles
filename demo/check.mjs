@@ -14,7 +14,7 @@ const video = join(outDir, "final_9x16.mp4");
 const framesDir = join(outDir, "frames");
 const edl = JSON.parse(readFileSync(join(outDir, "edl.json"), "utf8"));
 const answers = JSON.parse(readFileSync(join(take, "answers.json"), "utf8"));
-const NAMES = { stoic: "Stoic", optimistic: "Optimistic", humorous: "Humorous", tough_love: "Tough love" };
+const NAMES = { stoic: "Stoic", hopeful: "Hopeful", witty: "Witty", tough: "Tough" };
 
 function run(cmd, args) {
   const r = spawnSync(cmd, args, { encoding: "utf8" });
@@ -115,7 +115,7 @@ const lines = [
   "## Check by eye",
   "",
   "- Are the answers specific to this thought, or generic? Generic means do not post.",
-  "- Is the last chapter (Tough love) readable on a phone at arm's length?",
+  "- Is the last chapter (Tough) readable on a phone at arm's length?",
   "- No notification, real name, or personal data anywhere (the account is \"Angles Demo\").",
   "- The hook cards read in one glance, and the end card's App Store line and follow line are clear of TikTok's caption area.",
   "",

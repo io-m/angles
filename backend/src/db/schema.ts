@@ -471,8 +471,8 @@ export const cardReframes = pgTable(
     /** The answer in the card's input language. Shown to the author only. */
     reframeOriginal: text("reframe_original"),
     position: integer("position").notNull(),
-    isFavorite: boolean("is_favorite").notNull().default(false),
-    favoritedAt: timestamp("favorited_at", { withTimezone: true, mode: "date" }),
+    isHearted: boolean("is_hearted").notNull().default(false),
+    heartedAt: timestamp("hearted_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [uniqueIndex("card_reframes_card_style_idx").on(table.cardId, table.style)],
 );
@@ -510,13 +510,13 @@ export const savedAngles = pgTable(
       .notNull()
       .references(() => cards.id, { onDelete: "cascade" }),
     style: styleEnum("style").notNull(),
-    favoritedAt: timestamp("favorited_at", { withTimezone: true, mode: "date" })
+    heartedAt: timestamp("hearted_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
   },
   (table) => [
     primaryKey({ columns: [table.userId, table.cardId, table.style] }),
-    index("saved_angles_user_favorited_idx").on(table.userId, table.favoritedAt.desc()),
+    index("saved_angles_user_hearted_idx").on(table.userId, table.heartedAt.desc()),
     // The primary key leads with the user, so counting the hearts *on* a card needs
     // its own index: the feed ranks by them and an author sees them on their own posts.
     index("saved_angles_card_idx").on(table.cardId),

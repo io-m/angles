@@ -92,7 +92,7 @@ The Public / Private toggle on the card stays.
 
 ## Leave alone
 
-- Tall card layout, Favorites flip cards, Profile chrome, Home chrome, paging, filters sheet, recook, prompts, seed data, and schema. No new column. `isPublic` already exists.
+- Tall card layout, Hearts flip cards, Profile chrome, Home chrome, paging, filters sheet, recook, prompts, seed data, and schema. No new column. `isPublic` already exists.
 - Taste, paywall, StoreKit, and the frost handoff.
 - Owner vs feed menus. A public own card on Home keeps the owner menu (delete, public/private).
 - No `BUILD.md` feature row. Rewrite the sentences that say the author’s public posts are absent from their Home. Add one shipped-log line: a public post now appears on the author’s Home, and Save lands on that card. Do not describe the animation in that line.

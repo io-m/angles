@@ -44,9 +44,9 @@
     "chipGap": 4,
     "chipPill": {
       "stoic": 84,
-      "optimistic": 106,
-      "humorous": 112,
-      "tough_love": 111
+      "hopeful": 106,
+      "witty": 112,
+      "tough": 111
     }
   }
 }

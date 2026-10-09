@@ -83,8 +83,8 @@ export const STYLE_VOICES: Record<Style, StyleVoice> = {
     savor:
       "On good news, name what is actually in their hands and treat it as worth keeping. Do not warn that it will pass.",
   },
-  optimistic: {
-    label: "Optimistic",
+  hopeful: {
+    label: "Hopeful",
     voice:
       "Bright and warm, with real energy. Every hopeful claim rests on something already true in what they said. No toxic positivity, no \"at least\", no promise that it will work out.",
     techniques: {
@@ -107,8 +107,8 @@ export const STYLE_VOICES: Record<Style, StyleVoice> = {
     heavy: "on a loss, speak to love and memory, what the grief says about the bond. Never a silver lining.",
     savor: "On good news, say the good thing more precisely, from facts they gave.",
   },
-  humorous: {
-    label: "Humorous",
+  witty: {
+    label: "Witty",
     voice:
       "Must contain a real joke, the line a good friend says that makes them laugh despite themselves. The target is the situation or the brain's dramatics, never the person, their body, or their loss. Never a joke about harm to people, the dead, illness, violence, war, weapons, or sirens, and never about a people, its food, or its identity. Obvious comic exaggeration is fine; invented facts about their life are not. Land on something kind or true.",
     techniques: {
@@ -125,8 +125,8 @@ export const STYLE_VOICES: Record<Style, StyleVoice> = {
     savor:
       "On good news, the joke is on the brain waiting for the catch. Never on the good news itself, and never \"must be nice.\"",
   },
-  tough_love: {
-    label: "Tough Love",
+  tough: {
+    label: "Tough",
     voice:
       "A coach who is on their side. Short imperatives. No softeners (\"maybe\", \"perhaps\", \"try to\", \"it's okay\"). Blunt about the behaviour, never an insult to the person. No jokes.",
     techniques: {
@@ -266,20 +266,20 @@ export const GOLD_CARDS: readonly GoldCard[] = [
     context: "topic: friends_social · feeling: loneliness, shame · intensity: 3/5 · timeframe: ongoing · traps: mind_reading",
     plan: {
       stoic: "judgment_vs_event: silence is not a verdict",
-      optimistic: "already_working: reaching out is the connecting habit",
-      humorous: "dramatic_narrator: brain calls silence a unanimous vote",
-      tough_love: "next_24_hours: message one person directly",
+      hopeful: "already_working: reaching out is the connecting habit",
+      witty: "dramatic_narrator: brain calls silence a unanimous vote",
+      tough: "next_24_hours: message one person directly",
       tender: "name_it: hours of quiet feel personal",
       values: "what_it_protects: belonging with these people",
     },
     answers: {
       stoic:
         "A quiet chat is the event. \"They find me annoying\" is a story you added, and it has no witnesses. Let the silence be silence.",
-      optimistic:
+      hopeful:
         "You're the one who reached out, and that's the habit that keeps friendships alive. Group chats go quiet when people are driving, working, or asleep, and your message will be there when they surface.",
-      humorous:
+      witty:
         "Your brain heard three hours of silence and called it a unanimous vote against you. Far likelier: someone is muted, someone is in the shower, and someone typed \"haha\" and forgot to hit send.",
-      tough_love:
+      tough:
         "Stop waiting for the group to prove you matter. Pick the one person in there you like most and message them directly today. One real reply beats refreshing a quiet chat all evening.",
       tender:
         "Hours of silence after you reached out can feel like a door closing softly in your face. Of course it stings tonight; you put a little of yourself out there.",
@@ -292,20 +292,20 @@ export const GOLD_CARDS: readonly GoldCard[] = [
     context: "topic: work · feeling: fear, shame · intensity: 4/5 · timeframe: future · traps: fortune_telling, labeling",
     plan: {
       stoic: "dichotomy_of_control: the room is not yours, the preparation is",
-      optimistic: "what_it_proves: frauds don't worry about doing it well",
-      humorous: "mock_official: the brain's headline about slide four",
-      tough_love: "next_24_hours: rehearse out loud twice",
+      hopeful: "what_it_proves: frauds don't worry about doing it well",
+      witty: "mock_official: the brain's headline about slide four",
+      tough: "next_24_hours: rehearse out loud twice",
       tender: "permission: dread is allowed before Monday",
       values: "belief_underneath: what you show should be real",
     },
     answers: {
       stoic:
         "Monday's room is not yours to control. Your preparation is. Rehearse the first minute until it bores you, and let the rest be what it will be.",
-      optimistic:
+      hopeful:
         "You were asked to present because someone already trusts your work. Frauds don't lose sleep over doing it well; people who care do, and that care shows up on stage.",
-      humorous:
+      witty:
         "Your brain has pre-written Monday's headline: \"Local Fraud Exposed by Slide Four.\" Bold forecast from an organ that can't predict what you'll want for lunch.",
-      tough_love:
+      tough:
         "You won't beat this by feeling ready. Run the whole thing out loud twice before Sunday, once for a friend if you can. Freezing loses its grip on people who have rehearsed.",
       tender:
         "Carrying the dread of a room full of eyes all weekend is tiring. You are allowed to be scared of Monday and still let yourself rest tonight.",
@@ -318,20 +318,20 @@ export const GOLD_CARDS: readonly GoldCard[] = [
     context: "topic: friends_social · feeling: unclear · intensity: 1/5 · timeframe: past · traps: none",
     plan: {
       stoic: "judgment_vs_event: the drive is the fact",
-      optimistic: "what_it_proves: you are worth the road",
-      humorous: "deadpan_understatement: grand gesture, flat report",
-      tough_love: "next_24_hours: tell them what it meant",
+      hopeful: "what_it_proves: you are worth the road",
+      witty: "deadpan_understatement: grand gesture, flat report",
+      tough: "next_24_hours: tell them what it meant",
       tender: "name_it: being wanted that much",
       values: "what_it_protects: showing up in person",
     },
     answers: {
       stoic:
         "Two hours of road, chosen by someone who could have sent a text. That is the event, and it needs no interpretation. Keep it as it happened.",
-      optimistic:
+      hopeful:
         "Nobody drives that far on a whim. Your friend weighed the time against seeing your face and picked you without a second thought, and that says plenty about the friend you have been.",
-      humorous:
+      witty:
         "A grown adult sat in traffic for two hours to say happy birthday in person. Investigators have reviewed the evidence and confirmed you are, in fact, liked.",
-      tough_love:
+      tough:
         "Tell them plainly what that drive meant to you, today, while the smile is still on your face. Gestures like that grow when you name them out loud.",
       tender:
         "Someone wanted to see your face badly enough to sit in traffic for two hours. Let that land all the way in; there is no need to rush past how good it feels.",
@@ -409,7 +409,7 @@ Worked examples:
 - "My sister was just diagnosed with stage 4 cancer and I'm scared" → ready, category health, solemn true.
 - "A friend told me she was sexually assaulted at a party and I can't stop thinking about it" → ready, category friends_social, solemn true.
 - "Reading about the persecution of my grandparents' people keeps me up at night" → ready, category identity, solemn true.
-- "I totally bombed my job interview today" → ready, category work, solemn false; humorous fits. An idiom is not harm.
+- "I totally bombed my job interview today" → ready, category work, solemn false; witty fits. An idiom is not harm.
 - "I wish I could go to sleep and never wake up" → continue, safety self_harm. A wish not to be alive is a safety event even with no plan.
 - "This deadline is killing me, I have three reports due tomorrow" → ready, safety none, category work. An idiom is not a safety event.
 - "je veux mourir de honte, j'ai appelé ma prof maman devant toute la classe" → ready, safety none. "Mourir de honte" is dying of shame, the same kind of idiom as "dying of embarrassment". Cook it.
@@ -474,16 +474,16 @@ Seeing it on the news or fearing it counts the same as living it. When a thought
 
 The voices:
 - stoic: steadies them; what is theirs to carry and what is not.
-- optimistic: hope that rests on something already true in what they said.
-- humorous: a real joke on the situation or the brain's dramatics, never on the person.
-- tough_love: a coach on their side; names the avoidance and one doable move.
+- hopeful: hope that rests on something already true in what they said.
+- witty: a real joke on the situation or the brain's dramatics, never on the person.
+- tough: a coach on their side; names the avoidance and one doable move.
 - tender: stays with the feeling and lets it be as big as it is; no fix.
 - values: names what the feeling protects or the belief it comes from.
 
 "styles" ranks the voices for this exact thought, best first. The first four are written, so list at least four. Choose the four that would help this person most; no voice is guaranteed a place.
-- Embarrassment, nerves, and the brain's dramatics suit humorous. Avoidance and stuck loops suit tough_love. Hurt, loneliness, and fear for someone suit tender. A moral feeling, or caring about someone or something, suits values.
-- On an ordinary thought, a good card mixes kinds of help: something that steadies, something warm, and something that lightens or moves them. Everyday friction (work, nerves, a rough day, a small failure, an awkward moment, irritation) usually gets humorous or tough_love, often both. Tender and values lead only when the hurt itself needs company.
-- On a solemn thought, never list "humorous" or "tough_love". Nothing about real harm is ever a joke, and nobody distressed by it needs a push. List stoic, optimistic, tender, and values in the order that fits best.
+- Embarrassment, nerves, and the brain's dramatics suit witty. Avoidance and stuck loops suit tough. Hurt, loneliness, and fear for someone suit tender. A moral feeling, or caring about someone or something, suits values.
+- On an ordinary thought, a good card mixes kinds of help: something that steadies, something warm, and something that lightens or moves them. Everyday friction (work, nerves, a rough day, a small failure, an awkward moment, irritation) usually gets witty or tough, often both. Tender and values lead only when the hurt itself needs company.
+- On a solemn thought, never list "witty" or "tough". Nothing about real harm is ever a joke, and nobody distressed by it needs a push. List stoic, hopeful, tender, and values in the order that fits best.
 
 Leave a voice out of "styles" and add it to "skipped_styles" with a reason only when even its gentlest version would hurt this person right now. "styles" must contain 4–6 entries.
 
@@ -553,7 +553,7 @@ export const DECISION_REPAIR_PROMPT = `Your previous reply was not accepted. Ret
   "distortions": string[]
 }
 
-Rules you must respect: "solemn" is true whenever the thought is about real harm to people (a death, serious illness, violence, abuse, war, atrocity, persecution, self-hatred), and then "styles" never contains "humorous" or "tough_love"; when unsure, true. "styles" is 4–6 of ${list(STYLES)}, best first; "category" is one of ${list(CATEGORIES)}; "timeframe" is one of ${list(TIMEFRAMES)}; "emotions" are 0–3 of ${list(EMOTIONS)}; "distortions" are 0–2 of ${list(DISTORTIONS)}; "tags" are 3–8 lowercase slugs; "intensity" is 1–5; "thought_en" and "thought_original_cleaned" are ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words and at most ${THOUGHT_MAX_CHARS} characters and must fit the same card. Compress rambling to the sting or the gladness and the facts that carry it; drop side details before going over the cap. Use null for fields that do not apply. A plainly happy moment may use "emotions": [].
+Rules you must respect: "solemn" is true whenever the thought is about real harm to people (a death, serious illness, violence, abuse, war, atrocity, persecution, self-hatred), and then "styles" never contains "witty" or "tough"; when unsure, true. "styles" is 4–6 of ${list(STYLES)}, best first; "category" is one of ${list(CATEGORIES)}; "timeframe" is one of ${list(TIMEFRAMES)}; "emotions" are 0–3 of ${list(EMOTIONS)}; "distortions" are 0–2 of ${list(DISTORTIONS)}; "tags" are 3–8 lowercase slugs; "intensity" is 1–5; "thought_en" and "thought_original_cleaned" are ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words and at most ${THOUGHT_MAX_CHARS} characters and must fit the same card. Compress rambling to the sting or the gladness and the facts that carry it; drop side details before going over the cap. Use null for fields that do not apply. A plainly happy moment may use "emotions": [].
 
 Ready is the default. Do not return continue unless the input is true gibberish, the event is genuinely missing, or safety applies. A good moment that names what happened is ready; keep the gladness and do not ask what they are stuck on. Broken English and irritation at family are already thoughts — return ready and clean them. Never bounce with "I didn't catch a thought" or "try again".`;
 
@@ -562,8 +562,8 @@ export const DECISION_BOUNCE_REPAIR = `That continue was rejected. The input alr
 
 /** Shown when someone asks for a joke on a thought about real harm to people. */
 export const GRAVE_HUMOR_SKIP_REASON = `A joke would land wrong on something this grave.`;
-/** Shown when someone asks for tough love on a thought about real harm to people. */
-export const GRAVE_TOUGH_LOVE_SKIP_REASON = `A push would land wrong on something this grave.`;
+/** Shown when someone asks for Tough on a thought about real harm to people. */
+export const GRAVE_TOUGH_SKIP_REASON = `A push would land wrong on something this grave.`;
 
 /**
  * Our own crisis copy: used when the model tried to reframe a thought it flagged as
@@ -595,7 +595,7 @@ function buildStyleBatchPrompt(chosen: readonly Style[]): string {
 
 The user message has a cleaned thought, a context line, and which styles to write. Write only those: ${list(chosen)}.
 
-Each JSON field is that style only. Do not mix voices. Humorous is not tough love; tough love is not a joke; stoic is not optimistic; tender is not a fix; values is not a lecture.
+Each JSON field is that style only. Do not mix voices. Witty is not Tough; Tough is not a joke; Stoic is not Hopeful; tender is not a fix; values is not a lecture.
 
 ${chosen.map(styleBlock).join("\n\n")}
 

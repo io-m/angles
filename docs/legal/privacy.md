@@ -1,6 +1,6 @@
 # Angles Privacy Policy
 
-Last updated: October 8, 2026
+Last updated: October 9, 2026
 
 Published at `https://useangles.app/privacy` (`ANGLES_PRIVACY_POLICY_URL`).
 
@@ -12,7 +12,7 @@ You may also complain to [Datatilsynet](https://www.datatilsynet.dk/), the Danis
 
 - **Apple sign-in and account information.** We receive an Apple account identifier and, when Apple provides them, your name and relay or account email address. We store account and session identifiers, your chosen display name or initials, and authentication/session records.
 - **Thoughts and reframes.** We process the text you submit, follow-up answers, generated reframes (in English and, when you write in another language, in that language), the AI model used, language, tags, category, mood, intensity, timeframe, safety classification, and related card metadata. Do not submit information you do not want processed.
-- **Cards and community activity.** Saved cards are private unless you choose to post them publicly. Public cards can be seen by other users. We process favorites, follows, blocks, and reports needed to provide and moderate the community.
+- **Cards and community activity.** Saved cards are private unless you choose to post them publicly. Public cards can be seen by other users. We process hearts, follows, blocks, and reports needed to provide and moderate the community.
 - **Profile photos.** If you choose a photo, we upload and store a JPEG avatar. Avatars are displayed with your public cards and profile activity.
 - **Subscription and purchase information.** Apple processes payment. We receive and verify signed product, entitlement, renewal/expiration, transaction, refund/revocation, and purchase-status information needed to bind membership to your Angles account, restore access, and maintain monthly credit periods. When you buy, the app gives Apple your Angles account identifier (a random ID, not your name or email) with the purchase so Apple's records can be matched to your account. We do not receive your full payment-card details.
 - **Usage and metering information.** We maintain account-linked monthly credit balances, request identifiers and text-free request fingerprints, operation status, the AI model used, rate/tariff versions, and abuse-limit counters. For each actual AI-provider attempt, including failed attempts, we record available or estimated token counts, provider request identifiers, success/failure status, and calculated company cost. The metering and provider-cost records do not contain your thought or generated reframe text. So that a lost connection does not charge you twice, we keep the finished response to each request for one hour, encrypted under a key that only your device holds and that we do not store; we cannot read it, and it is deleted after that hour or with your account.
@@ -38,7 +38,7 @@ Before your first thought leaves your phone, the app shows a **Before you start*
 
 Angles sends the thought you write and your answers to follow-up questions to a large-language-model provider. We choose the provider for each step on our servers: **Mistral AI** (France) or **OpenAI** (United States). If the first provider is unavailable, the same request may be sent to the other. When you post a card publicly, its text is also sent to one of these providers for an automated moderation check before anyone else can see it. Your region, name, email address, and account identifiers are not sent to AI providers.
 
-Each result is four short reframes chosen from six styles: Stoic, Optimistic, Humorous, Tough love, Tender, and Values. When a thought is about real harm to people, Humorous and Tough love are not written.
+Each result is four short reframes chosen from six styles: Stoic, Hopeful, Witty, Tough, Tender, and Values. When a thought is about real harm to people, Witty and Tough are not written.
 
 Angles does not use what you write to train or improve any model. We send it only to generate your angles and, if you post a card, to check that post. We use each provider's paid API, and those terms do not allow Mistral AI or OpenAI to use what you send to train or improve their models. A provider may keep a request for a limited time for abuse monitoring and legal compliance, as its terms allow. Do not use Angles for emergencies.
 
@@ -50,7 +50,7 @@ Home shows public cards in an order chosen for you. The order uses how recent an
 
 Cards are stored privately unless you choose to post them. A public card, its generated English reframes, author initials/avatar, and date may be visible to other users. A reframe in your own language is shown only to you. Making a card private removes it from public surfaces. Other users may have previously seen or captured public content.
 
-Favorites of another person's card remain available only while that card remains public. Follows are visible through the app's social features as implemented. Blocking removes the affected public content and follow/save relationships between those accounts from their in-app experiences and records the block. Reports include the reported card, reporter, selected reason, and time so we can review and enforce community rules. Reporting removes that card from the reporter's experience; repeated reports can automatically make a card private.
+Hearts on another person's card remain available only while that card remains public. Follows are visible through the app's social features as implemented. Blocking removes the affected public content and follow/save relationships between those accounts from their in-app experiences and records the block. Reports include the reported card, reporter, selected reason, and time so we can review and enforce community rules. Reporting removes that card from the reporter's experience; repeated reports can automatically make a card private.
 
 ## Sharing and service providers
 

@@ -98,9 +98,9 @@ function publicCard(overrides: Partial<StoredCard> = {}): StoredCard {
     safety: "none",
     skippedStyles: [],
     matching: { category: "work", tags: ["waiting"], intensityBand: "high" },
-    results: STYLES.map((style) => ({ style, reframe: `A ${style} take.`, isFavorite: false })),
+    results: STYLES.map((style) => ({ style, reframe: `A ${style} take.`, isHearted: false })),
     model: "mistral-small-latest",
-    spotlightStyle: "optimistic",
+    spotlightStyle: "hopeful",
     isPublic: true,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: false,
@@ -180,8 +180,8 @@ describe("GET /users/:id/cards", () => {
       results: STYLES.map((style) => ({
         style,
         reframe: `A ${style} take.`,
-        isFavorite: style === "stoic",
-        ...(style === "stoic" ? { favoritedAt: "2026-09-10T12:00:00.000Z" } : {}),
+        isHearted: style === "stoic",
+        ...(style === "stoic" ? { heartedAt: "2026-09-10T12:00:00.000Z" } : {}),
       })),
     });
     const viewerCard = publicCard({
@@ -189,8 +189,8 @@ describe("GET /users/:id/cards", () => {
       results: STYLES.map((style) => ({
         style,
         reframe: `A ${style} take.`,
-        isFavorite: style === "optimistic",
-        ...(style === "optimistic" ? { favoritedAt: "2026-09-11T12:00:00.000Z" } : {}),
+        isHearted: style === "hopeful",
+        ...(style === "hopeful" ? { heartedAt: "2026-09-11T12:00:00.000Z" } : {}),
       })),
     });
     vi.mocked(getUserById).mockResolvedValue(userRow({ id: DEV_USER_ID, initials: "JM" }));

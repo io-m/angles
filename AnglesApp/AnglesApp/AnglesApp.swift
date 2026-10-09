@@ -935,11 +935,11 @@ struct AppRoot: View {
         pendingWidgetDeepLink = nil
 
         switch deepLink {
-        case .favorites:
+        case .hearts:
             withoutAnimations {
                 isComposePresented = false
                 browsePath.removeAll()
-                viewModel.profileGridFilter = .favorites
+                viewModel.profileGridFilter = .hearts
                 selectedTab = .profile
                 lastContentTab = .profile
             }

@@ -12,7 +12,7 @@ import { STYLES, type Style } from "../types/index.js";
 export const STYLE_SET_HEADER = "Angles-Style-Set";
 
 /** What an app that sends no style set header knows. Never shrink it. */
-export const LEGACY_STYLES: readonly Style[] = ["stoic", "optimistic", "humorous", "tough_love"];
+export const LEGACY_STYLES: readonly Style[] = ["stoic", "hopeful", "witty", "tough"];
 
 const EXTENDED_STYLE_SET = "2";
 
@@ -24,9 +24,9 @@ const EXTENDED_STYLE_SET = "2";
  */
 export const STYLE_SET_2: readonly Style[] = [
   "stoic",
-  "optimistic",
-  "humorous",
-  "tough_love",
+  "hopeful",
+  "witty",
+  "tough",
   "tender",
   "values",
 ];

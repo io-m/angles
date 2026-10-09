@@ -54,7 +54,7 @@ enum ForYouCovers {
     /// neighbour.
     private static func choices(for card: HomeCard) -> [Style] {
         let available = styles(of: card)
-        let kept = Set(card.slides.filter(\.isFavorite).map(\.result.style))
+        let kept = Set(card.slides.filter(\.isHearted).map(\.result.style))
         let unkept = available.filter { !kept.contains($0) }
         return unkept.isEmpty ? available : unkept
     }

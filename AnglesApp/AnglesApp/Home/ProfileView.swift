@@ -20,14 +20,14 @@ struct ProfileView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var themeStore: ThemeStore
 
-    @State private var pagerState = StyleTabPagerState<ProfileGridFilter>(initialTab: .favorites)
+    @State private var pagerState = StyleTabPagerState<ProfileGridFilter>(initialTab: .hearts)
     @State private var showSettings = false
     @State private var showFollowing = false
     /// A follow push opens People on Notifications. The icon opens Following.
     @State private var peopleStartsOnNotifications = false
-    @State private var committedTab: ProfileGridFilter = .favorites
+    @State private var committedTab: ProfileGridFilter = .hearts
     /// Lists that have been shown. The rest are empty placeholders until first chosen.
-    @State private var visitedTabs: Set<ProfileGridFilter> = [.favorites]
+    @State private var visitedTabs: Set<ProfileGridFilter> = [.hearts]
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var fixedChromeHeight: CGFloat {
@@ -205,7 +205,7 @@ struct ProfileView: View {
                                 onLoadMore: viewModel.loadMoreLibrary,
                                 onRetryLoadMore: viewModel.retryLoadMoreLibrary,
                                 onDelete: deleteCard,
-                                onToggleFavorite: toggleFavorite,
+                                onToggleHeart: toggleHeart,
                                 onSetPublic: setPublic,
                                 onRemoveFromBoard: removeFromBoard,
                                 onReport: reportCard,
@@ -299,15 +299,15 @@ struct ProfileView: View {
         }
     }
 
-    private var favoriteLayoutAnimation: Animation {
+    private var heartLayoutAnimation: Animation {
         reduceMotion
             ? .linear(duration: 0.01)
             : .spring(response: 0.42, dampingFraction: 0.86)
     }
 
-    private func toggleFavorite(_ card: HomeCard, _ style: Style) {
-        withAnimation(favoriteLayoutAnimation) {
-            viewModel.toggleFavorite(card.id, style: style)
+    private func toggleHeart(_ card: HomeCard, _ style: Style) {
+        withAnimation(heartLayoutAnimation) {
+            viewModel.toggleHeart(card.id, style: style)
         }
     }
 
@@ -323,7 +323,7 @@ struct ProfileView: View {
     }
 
     private func removeFromBoard(_ card: HomeCard) {
-        withAnimation(favoriteLayoutAnimation) {
+        withAnimation(heartLayoutAnimation) {
             viewModel.removeFromBoard(card.id)
         }
     }
@@ -488,7 +488,7 @@ private struct ProfileTabPage: View {
     var onLoadMore: () -> Void
     var onRetryLoadMore: () -> Void
     var onDelete: (HomeCard) -> Void
-    var onToggleFavorite: (HomeCard, Style) -> Void
+    var onToggleHeart: (HomeCard, Style) -> Void
     var onSetPublic: (HomeCard, Bool) -> Void
     var onRemoveFromBoard: (HomeCard) -> Void
     var onReport: (HomeCard, ReportReason) -> Void
@@ -505,14 +505,14 @@ private struct ProfileTabPage: View {
             return false
         }
 
-        return tab != .favorites && ownedIsEmpty
+        return tab != .hearts && ownedIsEmpty
     }
 
     var body: some View {
         let _ = RenderCounter.hit("ProfileTabPage")
         GeometryReader { proxy in
             // Same cap as Home: space under the chrome, minus the 16-point list gap,
-            // minus a peek of the next card. Favorites never receive it.
+            // minus a peek of the next card. Hearts never receive it.
             let viewportBelowChrome = max(0, proxy.size.height - chromeHeight)
             let tallCardMaxHeight = max(
                 0,
@@ -596,7 +596,7 @@ private struct ProfileTabPage: View {
                     footer
                         .padding(.top, 16)
                 }
-            } else if tab == .favorites {
+            } else if tab == .hearts {
                 VStack(spacing: 0) {
                     HomeCardGrid(
                         cards: cards,
@@ -604,7 +604,7 @@ private struct ProfileTabPage: View {
                         presentation: tab.presentation,
                         openingStyle: tab.matchingStyle,
                         onDelete: onDelete,
-                        onToggleFavorite: onToggleFavorite,
+                        onToggleHeart: onToggleHeart,
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
                         onReport: onReport,
@@ -630,7 +630,7 @@ private struct ProfileTabPage: View {
                         openingStyle: tab.matchingStyle,
                         menuRole: { _ in .owner },
                         onDelete: onDelete,
-                        onToggleFavorite: onToggleFavorite,
+                        onToggleHeart: onToggleHeart,
                         onSetPublic: onSetPublic,
                         onRemoveFromBoard: onRemoveFromBoard,
                         onReport: onReport,

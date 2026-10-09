@@ -86,7 +86,7 @@ struct HomeFeedSnapshotStoreTests {
           "skippedStyles": [],
           "matching": { "category": "work", "tags": [], "intensityBand": "mid" },
           "results": [
-            { "style": "stoic", "reframe": "Wait without shrinking.", "isFavorite": false }
+            { "style": "stoic", "reframe": "Wait without shrinking.", "isHearted": false }
           ],
           "model": "mistral-small-latest",
           "spotlightStyle": "stoic",

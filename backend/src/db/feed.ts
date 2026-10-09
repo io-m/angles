@@ -362,7 +362,7 @@ type HeartRow = {
   at: Date;
 };
 
-/** The angles this viewer kept: other people's cards they hearted, and their own favorites. */
+/** The angles this viewer kept: other people's cards they hearted, and their own hearts. */
 async function loadViewerHearts(
   viewerId: string,
   db: ReturnType<typeof getDb>,
@@ -377,12 +377,12 @@ async function loadViewerHearts(
         style: savedAngles.style,
         category: cards.category,
         emotions: cards.emotions,
-        at: savedAngles.favoritedAt,
+        at: savedAngles.heartedAt,
       })
       .from(savedAngles)
       .innerJoin(cards, eq(cards.id, savedAngles.cardId))
-      .where(and(eq(savedAngles.userId, viewerId), lte(savedAngles.favoritedAt, before)))
-      .orderBy(desc(savedAngles.favoritedAt), desc(cards.id))
+      .where(and(eq(savedAngles.userId, viewerId), lte(savedAngles.heartedAt, before)))
+      .orderBy(desc(savedAngles.heartedAt), desc(cards.id))
       .limit(limit),
     db
       .select({
@@ -390,7 +390,7 @@ async function loadViewerHearts(
         style: cardReframes.style,
         category: cards.category,
         emotions: cards.emotions,
-        at: cardReframes.favoritedAt,
+        at: cardReframes.heartedAt,
         createdAt: cards.createdAt,
       })
       .from(cardReframes)
@@ -398,12 +398,12 @@ async function loadViewerHearts(
       .where(
         and(
           eq(cards.userId, viewerId),
-          eq(cardReframes.isFavorite, true),
+          eq(cardReframes.isHearted, true),
           lte(cards.createdAt, before),
-          or(isNull(cardReframes.favoritedAt), lte(cardReframes.favoritedAt, before)),
+          or(isNull(cardReframes.heartedAt), lte(cardReframes.heartedAt, before)),
         ),
       )
-      .orderBy(desc(cardReframes.favoritedAt), desc(cards.id))
+      .orderBy(desc(cardReframes.heartedAt), desc(cards.id))
       .limit(limit),
   ]);
 
@@ -476,9 +476,9 @@ async function loadViewerStyleTabs(
   };
   return {
     stoic: tab("stoic"),
-    optimistic: tab("optimistic"),
-    humorous: tab("humorous"),
-    tough_love: tab("tough_love"),
+    hopeful: tab("hopeful"),
+    witty: tab("witty"),
+    tough: tab("tough"),
     tender: tab("tender"),
     values: tab("values"),
   };
@@ -486,7 +486,7 @@ async function loadViewerStyleTabs(
 
 /**
  * The angles of these cards the viewer hearted up to `before`: strangers' cards through
- * `saved_angles`, and their own cards through the favorite flag on the angle.
+ * `saved_angles`, and their own cards through the heart flag on the angle.
  */
 async function loadKeptAngles(
   viewerId: string,
@@ -506,7 +506,7 @@ async function loadKeptAngles(
         and(
           eq(savedAngles.userId, viewerId),
           inArray(savedAngles.cardId, cardIds),
-          lte(savedAngles.favoritedAt, before),
+          lte(savedAngles.heartedAt, before),
         ),
       ),
     db
@@ -517,8 +517,8 @@ async function loadKeptAngles(
         and(
           eq(cards.userId, viewerId),
           inArray(cardReframes.cardId, cardIds),
-          eq(cardReframes.isFavorite, true),
-          or(isNull(cardReframes.favoritedAt), lte(cardReframes.favoritedAt, before)),
+          eq(cardReframes.isHearted, true),
+          or(isNull(cardReframes.heartedAt), lte(cardReframes.heartedAt, before)),
         ),
       ),
   ]);
@@ -666,10 +666,10 @@ export async function saveFeedAngle(id: string, style: Style): Promise<FeedSaveR
     }
     await tx
       .insert(savedAngles)
-      .values({ userId: viewerId, cardId: id, style, favoritedAt: new Date() })
+      .values({ userId: viewerId, cardId: id, style, heartedAt: new Date() })
       .onConflictDoUpdate({
         target: [savedAngles.userId, savedAngles.cardId, savedAngles.style],
-        set: { favoritedAt: new Date() },
+        set: { heartedAt: new Date() },
       });
     return returnViewerCard(tx, id, viewerId);
   });

@@ -127,7 +127,7 @@ export function lintReframe(style: Style, reframe: string, thought: string): Lin
   if (hasForeignDigits(text, thought)) {
     issues.push("digits");
   }
-  if (/[*_#`]|^\s*[-•]\s|^\s*(stoic|optimistic|humorous|tough love|tough_love)\s*:/im.test(text)) {
+  if (/[*_#`]|^\s*[-•]\s|^\s*(stoic|hopeful|witty|tough|tender|values)\s*:/im.test(text)) {
     issues.push("markdown");
   }
   if (CLICHES.some((phrase) => lower.includes(phrase))) {

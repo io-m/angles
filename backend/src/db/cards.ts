@@ -200,11 +200,11 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
       .select({ id: savedAngles.cardId })
       .from(savedAngles)
       .where(eq(savedAngles.userId, viewerId));
-    const ownedFavoriteIds = db
+    const ownedHeartIds = db
       .select({ id: cardReframes.cardId })
       .from(cardReframes)
       .innerJoin(cards, eq(cards.id, cardReframes.cardId))
-      .where(and(eq(cardReframes.isFavorite, true), eq(cards.userId, viewerId)));
+      .where(and(eq(cardReframes.isHearted, true), eq(cards.userId, viewerId)));
 
     // The library is the viewer's own cards plus anything they hearted on Home that is still public.
     const filters = [
@@ -229,10 +229,10 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
         ),
       );
     }
-    if (query.favorite === true) {
-      filters.push(or(inArray(cards.id, ownedFavoriteIds), inArray(cards.id, savedAngleIds))!);
-    } else if (query.favorite === false) {
-      filters.push(not(or(inArray(cards.id, ownedFavoriteIds), inArray(cards.id, savedAngleIds))!));
+    if (query.hearted === true) {
+      filters.push(or(inArray(cards.id, ownedHeartIds), inArray(cards.id, savedAngleIds))!);
+    } else if (query.hearted === false) {
+      filters.push(not(or(inArray(cards.id, ownedHeartIds), inArray(cards.id, savedAngleIds))!));
     }
     if (query.before) {
       filters.push(olderThanCursor(query.before));
@@ -325,7 +325,7 @@ export async function patchCard(id: string, patch: PatchCardInput): Promise<Patc
         return { ok: false, reason: "publication_blocked" };
       }
 
-      if (patch.isFavorite !== undefined) {
+      if (patch.isHearted !== undefined) {
         const style = patch.style;
         if (!style || !existing.reframes.some((item) => item.style === style)) {
           return { ok: false, reason: "unknown_style" };
@@ -333,8 +333,8 @@ export async function patchCard(id: string, patch: PatchCardInput): Promise<Patc
         await tx
           .update(cardReframes)
           .set({
-            isFavorite: patch.isFavorite,
-            favoritedAt: patch.isFavorite ? new Date() : null,
+            isHearted: patch.isHearted,
+            heartedAt: patch.isHearted ? new Date() : null,
           })
           .where(and(eq(cardReframes.cardId, id), eq(cardReframes.style, style)));
       }

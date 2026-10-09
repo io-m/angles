@@ -1,5 +1,5 @@
 # Continues on Home. Scrolls until two life areas can be grabbed, opens the
-# Humorous shelf by its tab position, then hearts a public card for Favorites.
+# Witty shelf by its tab position, then hearts a public card for Hearts.
 # Env: SHOT_DIR
 appId: app.angles.ios
 ---
@@ -38,19 +38,19 @@ appId: app.angles.ios
     visible: "For you"
     timeout: 8000
 - extendedWaitUntil:
-    visible: "Add to favorite angles"
+    visible: "Add to Hearts"
     timeout: 8000
 - tapOn:
-    text: "Add to favorite angles"
+    text: "Add to Hearts"
     index: 0
 - extendedWaitUntil:
-    visible: "Remove from favorite angles"
+    visible: "Remove from Hearts"
     timeout: 8000
 - tapOn: "Profile"
 - extendedWaitUntil:
-    visible: "Favorite angles"
+    visible: "Hearts"
     timeout: 8000
-- tapOn: "Favorite angles"
+- tapOn: "Hearts"
 - runFlow:
     file: flows/hold.yaml
     env:

@@ -1,12 +1,12 @@
 # The recorded take. Starts on Home (warmup.yaml got it there), cooks DEMO_LINE
-# for real, walks the four style chips, and holds Tough love. The edit always
+# for real, walks the four style chips, and holds Tough. The edit always
 # cuts four chapters then the outro (see demo/README.md Cut contract).
 # Do not tap Post, Save, or jump back to a "best" style.
 #
 # Env (make_video.sh passes these):
 #   DEMO_LINE       the thought to type
 #   FOLLOWUP_REPLY  honest answer if Angles asks one follow-up
-#   BEST_STYLE      auto | stoic | optimistic | humorous | tough_love
+#   BEST_STYLE      auto | stoic | hopeful | witty | tough
 appId: app.angles.ios
 ---
 - evalScript: "${output.demo = { marks: [], followups: 0, answers: {}, options: [] }}"
@@ -114,11 +114,11 @@ appId: app.angles.ios
 - assertVisible:
     id: "chip.stoic"
 - assertVisible:
-    id: "chip.optimistic"
+    id: "chip.hopeful"
 - assertVisible:
-    id: "chip.humorous"
+    id: "chip.witty"
 - assertVisible:
-    id: "chip.tough_love"
+    id: "chip.tough"
 
 # 5. Hold on the first answer.
 - runFlow:
@@ -136,14 +136,14 @@ appId: app.angles.ios
 - runFlow:
     file: flows/chip.yaml
     env:
-      STYLE_KEY: optimistic
-      STYLE_NAME: Optimistic
+      STYLE_KEY: hopeful
+      STYLE_NAME: Hopeful
       HOLD_MS: 550
 - runFlow:
     file: flows/chip.yaml
     env:
-      STYLE_KEY: humorous
-      STYLE_NAME: Humorous
+      STYLE_KEY: witty
+      STYLE_NAME: Witty
       HOLD_MS: 550
 - runFlow:
     file: flows/chip.yaml
@@ -154,15 +154,15 @@ appId: app.angles.ios
 - runFlow:
     file: flows/chip.yaml
     env:
-      STYLE_KEY: tough_love
-      STYLE_NAME: Tough Love
+      STYLE_KEY: tough
+      STYLE_NAME: Tough
       HOLD_MS: 2800
 
-# 7. Score the answers for the report; the edit holds Tough love then the outro.
+# 7. Score the answers for the report; the edit holds Tough then the outro.
 - runScript:
     file: flows/pick_best.js
     env:
       BEST_STYLE: ${BEST_STYLE}
-- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', optimistic: 'Optimistic', humorous: 'Humorous', tough_love: 'Tough Love' })[output.demo.best]}"
+- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', hopeful: 'Hopeful', witty: 'Witty', tough: 'Tough' })[output.demo.best]}"
 - runScript:
     file: flows/report.js

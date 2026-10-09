@@ -15,7 +15,7 @@ The production feature work is implemented in the repository. The app is not rea
 - A server-owned allowance of 600 credits per monthly membership period for both products. A ready cook or recook costs 1 credit; continue, safety, and failed operations cost 0 user credits.
 - Server-side model routing per step with a fallback provider, 20% and 10% warnings, reset information, request idempotency, and daily/burst abuse limits. The app has no model picker.
 - Provider token usage and estimated/reported company cost recorded for every real provider attempt without storing thought text in the metering ledger.
-- Public/private cards, community Home, follows, per-angle favorites, reporting, blocking/unblocking, and pre-publication moderation.
+- Public/private cards, community Home, follows, per-angle hearts, reporting, blocking/unblocking, and pre-publication moderation.
 - Production hardening: runtime migrations before schema checks, production configuration fail-fast validation, a production seed guard, a non-root container with a health check, and Postgres-backed backend CI.
 - Source privacy/terms documents, privacy manifest, Release-safe plist split, and centralized API/legal/support configuration.
 - App Review readiness (`BUILD.md` row 19, October 2, 2026):

@@ -14,7 +14,7 @@ export type HeartWindow = { before?: Date; excludeUserId?: string };
 function heartWindowFilters(options: HeartWindow): SQL[] {
   const filters: SQL[] = [];
   if (options.before) {
-    filters.push(lte(savedAngles.favoritedAt, options.before));
+    filters.push(lte(savedAngles.heartedAt, options.before));
   }
   if (options.excludeUserId) {
     filters.push(ne(savedAngles.userId, options.excludeUserId));
@@ -76,7 +76,7 @@ export async function loadViewerStyleTaste(
       .select({ style: cardReframes.style, hearts: sql<number>`count(*)::int` })
       .from(cardReframes)
       .innerJoin(cards, eq(cards.id, cardReframes.cardId))
-      .where(and(eq(cards.userId, viewerId), eq(cardReframes.isFavorite, true)))
+      .where(and(eq(cards.userId, viewerId), eq(cardReframes.isHearted, true)))
       .groupBy(cardReframes.style),
   ]);
 

@@ -48,10 +48,10 @@ export default function TermsPage() {
       <h2>The service</h2>
       <p>
         Angles accepts a thought and uses AI providers to write four short
-        reframes, chosen from six styles: Stoic, Optimistic, Humorous, Tough
-        love, Tender, and Values. A thought about real harm to people is not
-        answered with Humorous or Tough love. You can save cards privately or
-        choose to post them publicly, view public cards, favorite angles,
+        reframes, chosen from six styles: Stoic, Hopeful, Witty, Tough,
+        Tender, and Values. A thought about real harm to people is not
+        answered with Witty or Tough. You can save cards privately or
+        choose to post them publicly, view public cards, heart angles,
         follow people, and use blocks and reports.
       </p>
       <p>

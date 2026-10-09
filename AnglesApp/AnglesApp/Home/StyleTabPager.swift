@@ -14,7 +14,6 @@ enum StyleTabMetrics {
 
 protocol StyleTabRepresentable: Hashable, CaseIterable {
     var title: String { get }
-    var chipTitle: String { get }
     var systemImage: String { get }
     var matchingStyle: Style? { get }
     func symbolColor(ink: Color) -> Color
@@ -198,8 +197,7 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
             Picker(selection: selection) {
                 ForEach(tabs, id: \.self) { tab in
                     Label {
-                        Text(tab.chipTitle)
-                            .accessibilityLabel(tab.title)
+                        Text(tab.title)
                     } icon: {
                         rowIcon(for: tab)
                     }
@@ -220,7 +218,7 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
                 }
                 labelContent(
                     symbol: current.systemImage,
-                    title: current.chipTitle
+                    title: current.title
                 )
                 .transaction { $0.animation = nil }
             }
@@ -251,7 +249,7 @@ private struct StyleTabMenu<T: StyleTabRepresentable>: View {
 
     /// Every label the pill can show. Only the widest one decides its width.
     private var sizingLabels: [SizingLabel] {
-        tabs.map { SizingLabel(symbol: $0.systemImage, title: $0.chipTitle) }
+        tabs.map { SizingLabel(symbol: $0.systemImage, title: $0.title) }
     }
 
     private func labelContent(symbol: String, title: String) -> some View {

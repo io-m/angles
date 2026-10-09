@@ -23,7 +23,7 @@ The one call that decides `continue` vs `ready`, cleans the thought into card co
 Load-bearing rules, do not weaken them casually:
 
 - `ready` is the default. Heavy is not the same as unclear: grief, loss, self-hatred and hopelessness get cooked.
-- `solemn` is required and fails closed: only an explicit `false` allows humorous or tough love. It is true for real harm to people, theirs or strangers' they are distressed about: a death (a pet's or a pregnancy loss too), a serious illness, sexual violence, a child hurt, abuse, torture, slavery, trafficking, war and attacks on civilians, genocide, terrorism, persecution, self-hatred. `grief_loss` is always solemn. `graveScreen.ts` forces it on the user's words and the English `thought`; every new phrase needs an idiom that must not match ("I bombed my interview", "this meeting is torture"). Never put a "joke anyway on a hard week" line back into any prompt. The decision ranks the six styles in `styles`, best first; `chooseStyles` keeps that order, writes four, and guarantees no style. A solemn cook is exactly stoic, optimistic, tender, and values. A request without `Angles-Style-Set: 2` chooses only among the original four (`styleSet.ts`).
+- `solemn` is required and fails closed: only an explicit `false` allows Witty or Tough. It is true for real harm to people, theirs or strangers' they are distressed about: a death (a pet's or a pregnancy loss too), a serious illness, sexual violence, a child hurt, abuse, torture, slavery, trafficking, war and attacks on civilians, genocide, terrorism, persecution, self-hatred. `grief_loss` is always solemn. `graveScreen.ts` forces it on the user's words and the English `thought`; every new phrase needs an idiom that must not match ("I bombed my interview", "this meeting is torture"). Never put a "joke anyway on a hard week" line back into any prompt. The decision ranks the six styles in `styles`, best first; `chooseStyles` keeps that order, writes four, and guarantees no style. A solemn cook is exactly stoic, hopeful, tender, and values. A request without `Angles-Style-Set: 2` chooses only among the original four (`styleSet.ts`).
 - If you can name the situation in one clause, cook it. Broken English, typos, rudeness, and irritation at family are thoughts. Never bounce with "I didn't catch a thought" / "try again".
 - Good news is a thought too. A happy moment with no complaint cooks on the first turn as a savor cook (`SAVOR_RULES` plus each voice's `savor` line): keep the gladness, never hunt for a hidden problem. A glad-and-worried thought cooks the worry and keeps the good fact. On a first turn that already looks like a thought, a "what are you stuck on" continue is rejected as a bounce and repaired.
 - The first turn is framed in English (`They typed: …`) so a short non-English input still gets an English decision.
@@ -44,7 +44,7 @@ The batch output cap is computed from these (`writerMaxOutputTokens`), doubled f
 
 `styleBatchPrompt(chosen)` writes every chosen style in one JSON call (temperature 0.8). Load-bearing parts:
 
-- **"Each JSON field is that style only."** Tests use this exact line to tell the batch from the decision call. Humorous must not sound like tough love.
+- **"Each JSON field is that style only."** Tests use this exact line to tell the batch from the decision call. Witty must not sound like Tough.
 - **Plan first.** A hidden `plan` field names one technique id per style from `STYLE_VOICES` plus a 3–8 word insight, all different. It is never returned to the phone; a rewrite uses it to steer away from the same technique.
 - **Context rules.** Timeframe (past → acceptance, ongoing → control or the next step, future → likelihood or preparation), intensity (4–5 gentler and shorter, humor lighter but still a joke), and traps (push against the named distortion in plain words, never the label).
 - **Their language.** When they did not write English, each style field is `{ "en", "local" }`. `local` is how a native speaker would say the same answer to a friend, not a translation. The public card is English; the author sees `local` as `reframeOriginal`.
@@ -74,9 +74,9 @@ Each voice has banned openers; `reframeLint.ts` reads `SHARED_BANNED_OPENERS` an
 | Key | Voice | Techniques |
 | --- | --- | --- |
 | `stoic` | Austere, calm, short declaratives; steadies, does not cheer | dichotomy of control, judgment vs event, view from above, impermanence, obstacle is the way, amor fati |
-| `optimistic` | Bright and warm; every hope rests on something already true; no "at least" | what it proves, already working, it won't last, door it opens, what you'll know |
-| `humorous` | A real joke on the situation or the brain, never the person | dramatic narrator, absurd escalation, deadpan understatement, mock official, comic specificity |
-| `tough_love` | A coach on their side; short imperatives, no softeners, no jokes | name the excuse, call the pattern, cost of waiting, next 24 hours |
+| `hopeful` | Bright and warm; every hope rests on something already true; no "at least" | what it proves, already working, it won't last, door it opens, what you'll know |
+| `witty` | A real joke on the situation or the brain, never the person | dramatic narrator, absurd escalation, deadpan understatement, mock official, comic specificity |
+| `tough` | A coach on their side; short imperatives, no softeners, no jokes | name the excuse, call the pattern, cost of waiting, next 24 hours |
 | `tender` | Soft and close; stays with the feeling, no fix, no joke, no bright side | name it, permission, company, small mercy |
 | `values` | Clear and grounded; names what the feeling protects, no lecture or task | what it protects, belief underneath, caring is not a flaw, quiet fidelity |
 

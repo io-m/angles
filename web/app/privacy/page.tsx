@@ -68,7 +68,7 @@ export default function PrivacyPage() {
         <li>
           <strong>Cards and community activity.</strong> Saved cards are
           private unless you choose to post them publicly. Public cards can be
-          seen by other users. We process favorites, follows, blocks, and
+          seen by other users. We process hearts, follows, blocks, and
           reports needed to provide and moderate the community.
         </li>
         <li>
@@ -157,8 +157,8 @@ export default function PrivacyPage() {
       </p>
       <p>
         Each result is four short reframes chosen from six styles: Stoic,
-        Optimistic, Humorous, Tough love, Tender, and Values. When a thought is
-        about real harm to people, Humorous and Tough love are not written.
+        Hopeful, Witty, Tough, Tender, and Values. When a thought is
+        about real harm to people, Witty and Tough are not written.
       </p>
       <p>
         Angles does not use what you write to train or improve any model. We
@@ -191,7 +191,7 @@ export default function PrivacyPage() {
         content.
       </p>
       <p>
-        Favorites of another person’s card remain available only while that
+        Hearts on another person’s card remain available only while that
         card remains public. Follows are visible through the app’s social
         features. Blocking removes the affected public content and follow or
         save relationships between those accounts from their in-app experiences

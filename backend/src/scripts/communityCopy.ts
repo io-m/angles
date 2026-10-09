@@ -488,7 +488,7 @@ const STOIC: Array<(core: string) => string> = [
   (core) => `Stay with ${core} long enough to tell the truth, then stop decorating it. Clarity is a kind of mercy. Say the plain part once, then let the garnish go.`,
 ];
 
-const OPTIMISTIC: Array<(core: string) => string> = [
+const HOPEFUL: Array<(core: string) => string> = [
   (core) => `${lead(core)} is a hard chapter, not the whole book. You still get a next page that is not this sting. The story has more rooms than this one.`,
   (core) => `Nothing about ${core} cancels the person who noticed it. That noticing is already a kind of strength. Keep that witness around; it is on your side.`,
   (core) => `You can want more than ${core} without being ungrateful. Wanting is information, not a character flaw. Let the want point you instead of shaming you.`,
@@ -499,7 +499,7 @@ const OPTIMISTIC: Array<(core: string) => string> = [
   (core) => `You do not have to believe in a grand arc yet. One honest next step after ${core} still counts as hope. Small and true beats big and performed.`,
 ];
 
-const HUMOROUS: Array<(core: string) => string> = [
+const WITTY: Array<(core: string) => string> = [
   (core) => `${lead(core)} is not a personality. Put the phone down before it starts charging overtime for the spiral. It has already billed enough hours this week.`,
   (core) => `If ${core} were a coworker it would be on a performance plan. You do not have to keep it in the group chat. Mute the thread; keep the snacks.`,
   (core) => `Congratulations, your brain made a documentary about ${core} that nobody asked to stream. Credits can roll. No sequel greenlit at this time.`,
@@ -549,15 +549,15 @@ const VALUES: Array<(core: string) => string> = [
  * or a push.
  */
 const STYLE_SETS: readonly (readonly Style[])[] = [
-  ["stoic", "optimistic", "humorous", "tough_love"],
-  ["stoic", "tender", "optimistic", "values"],
-  ["optimistic", "humorous", "tender", "values"],
-  ["stoic", "tough_love", "tender", "values"],
-  ["optimistic", "tender", "humorous", "tough_love"],
-  ["stoic", "humorous", "tough_love", "values"],
+  ["stoic", "hopeful", "witty", "tough"],
+  ["stoic", "tender", "hopeful", "values"],
+  ["hopeful", "witty", "tender", "values"],
+  ["stoic", "tough", "tender", "values"],
+  ["hopeful", "tender", "witty", "tough"],
+  ["stoic", "witty", "tough", "values"],
 ];
 
-const SOLEMN_SET: readonly Style[] = ["stoic", "optimistic", "tender", "values"];
+const SOLEMN_SET: readonly Style[] = ["stoic", "hopeful", "tender", "values"];
 
 /** Experiment tall cards: short seed thoughts get one rotated second sentence so the
  * feed shows new-budget copy (20-28 words). Each stays generic enough to follow any scene. */
@@ -588,9 +588,9 @@ function tagsFor(scene: Scene, category: Category, index: number): string[] {
 
 const WRITERS: Record<Style, Array<(core: string) => string>> = {
   stoic: STOIC,
-  optimistic: OPTIMISTIC,
-  humorous: HUMOROUS,
-  tough_love: TOUGH,
+  hopeful: HOPEFUL,
+  witty: WITTY,
+  tough: TOUGH,
   tender: TENDER,
   values: VALUES,
 };

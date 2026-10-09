@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DECISION_PROMPT, GRAVE_HUMOR_SKIP_REASON, GRAVE_TOUGH_LOVE_SKIP_REASON, styleBatchPrompt, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
+import { DECISION_PROMPT, GRAVE_HUMOR_SKIP_REASON, GRAVE_TOUGH_SKIP_REASON, styleBatchPrompt, SYSTEM_PROMPTS, THOUGHT_MAX_CHARS, THOUGHT_MAX_WORDS, THOUGHT_MIN_WORDS, REFRAME_HARD_MAX_CHARS } from "./lib/prompts.js";
 import { signCook, signResult, verifyCook, type SignableMeta } from "./lib/cookSignature.js";
 import { CATEGORIES, STYLES, type Style } from "./types/index.js";
 import { LEGACY_STYLES } from "./lib/styleSet.js";
@@ -139,9 +139,9 @@ function continueDecision(overrides: DecisionOverrides = {}): string {
 function styleBatch(overrides: Partial<Record<Style, string | undefined>> = {}): string {
   const body: Record<string, string> = {
     stoic: "stoic reframe",
-    optimistic: "optimistic reframe",
-    humorous: "humorous reframe",
-    tough_love: "tough love reframe",
+    hopeful: "hopeful reframe",
+    witty: "witty reframe",
+    tough: "tough reframe",
   };
   for (const [style, value] of Object.entries(overrides)) {
     if (value === undefined) {
@@ -189,14 +189,14 @@ function stubReframes(): void {
     if (systemPrompt.includes("Stoic")) {
       return "stoic reframe";
     }
-    if (systemPrompt.includes("Optimistic")) {
-      return "optimistic reframe";
+    if (systemPrompt.includes("Hopeful")) {
+      return "hopeful reframe";
     }
-    if (systemPrompt.includes("Humorous")) {
-      return "humorous reframe";
+    if (systemPrompt.includes("Witty")) {
+      return "witty reframe";
     }
-    if (systemPrompt.includes("Tough Love")) {
-      return "tough love reframe";
+    if (systemPrompt.includes("Tough")) {
+      return "tough reframe";
     }
     return "other reframe";
   });
@@ -612,26 +612,26 @@ describe("POST /reframe", () => {
         emotions: ["sadness", "loneliness"],
         timeframe: "ongoing",
         intensity: 5,
-        styles: ["stoic", "optimistic", "tough_love"],
+        styles: ["stoic", "hopeful", "tough"],
         skipped_styles: [
-          { style: "humorous", reason: "A joke would land wrong on a loss this fresh." },
+          { style: "witty", reason: "A joke would land wrong on a loss this fresh." },
         ],
       }),
     );
 
     const body = (await jsonOf(await post({ text: "my mum died last week" }))) as ReadyBody;
 
-    expect(body.results.map((item) => item.style)).toEqual(["stoic", "optimistic"]);
+    expect(body.results.map((item) => item.style)).toEqual(["stoic", "hopeful"]);
     expect(body.meta.skippedStyles).toEqual([
-      { style: "humorous", reason: GRAVE_HUMOR_SKIP_REASON },
-      { style: "tough_love", reason: GRAVE_TOUGH_LOVE_SKIP_REASON },
+      { style: "witty", reason: GRAVE_HUMOR_SKIP_REASON },
+      { style: "tough", reason: GRAVE_TOUGH_SKIP_REASON },
     ]);
     expect(generateJson).toHaveBeenCalledTimes(2);
     expect(generateReframe).not.toHaveBeenCalled();
   });
 
   describe("style set", () => {
-    const ranked = ["tender", "values", "humorous", "stoic", "optimistic", "tough_love"];
+    const ranked = ["tender", "values", "witty", "stoic", "hopeful", "tough"];
     const sixAnswers = () =>
       styleBatch({
         tender: "Watching your sister go through this is its own kind of weight, and you are allowed to feel all of it.",
@@ -644,7 +644,7 @@ describe("POST /reframe", () => {
 
       const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
 
-      expect(body.results.map((item) => item.style)).toEqual(["humorous", "stoic", "optimistic", "tough_love"]);
+      expect(body.results.map((item) => item.style)).toEqual(["witty", "stoic", "hopeful", "tough"]);
       expect(JSON.stringify(body)).not.toMatch(/"(tender|values)"/);
     });
 
@@ -654,10 +654,10 @@ describe("POST /reframe", () => {
 
       const body = (await jsonOf(await post({ text: LONG_TEXT }, EXTENDED))) as ReadyBody;
 
-      expect(body.results.map((item) => item.style)).toEqual(["tender", "values", "humorous", "stoic"]);
+      expect(body.results.map((item) => item.style)).toEqual(["tender", "values", "witty", "stoic"]);
       const batch = vi.mocked(generateJson).mock.calls.find(([call]) => call.callKind === "batch")?.[0];
       expect(batch?.systemPrompt).toContain("tender (Tender)");
-      expect(batch?.systemPrompt).not.toContain("tough_love (Tough Love)");
+      expect(batch?.systemPrompt).not.toContain("tough (Tough)");
     });
 
     it("gives a solemn thought tender and values instead of a joke and a push", async () => {
@@ -665,15 +665,15 @@ describe("POST /reframe", () => {
         readyDecision({
           thought_en: "I am deeply concerned about Russian bombing of civilians in Ukraine.",
           solemn: true,
-          styles: ["humorous", "stoic", "tender", "optimistic", "values"],
+          styles: ["witty", "stoic", "tender", "hopeful", "values"],
         }),
       );
       stubStyleBatch(sixAnswers());
 
       const body = (await jsonOf(await post({ text: LONG_TEXT }, EXTENDED))) as ReadyBody;
 
-      expect(body.results.map((item) => item.style)).toEqual(["stoic", "tender", "optimistic", "values"]);
-      expect(body.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+      expect(body.results.map((item) => item.style)).toEqual(["stoic", "tender", "hopeful", "values"]);
+      expect(body.meta.skippedStyles.map((item) => item.style)).toEqual(["witty", "tough"]);
     });
 
     it("refuses a recook of a style the app cannot show", async () => {
@@ -698,14 +698,14 @@ describe("POST /reframe", () => {
     stubDecision(readyDecision({ thought_en: "I keep worrying about the news and can't focus at work." }));
     stubStyleBatch(
       styleBatch({
-        humorous: "Your brain set the soundtrack: heavy drums and a chorus of air raid sirens, then a sudden urge to bake.",
+        witty: "Your brain set the soundtrack: heavy drums and a chorus of air raid sirens, then a sudden urge to bake.",
       }),
     );
 
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
 
-    expect(body.results.map((item) => item.style)).toEqual(["stoic", "optimistic"]);
-    expect(body.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    expect(body.results.map((item) => item.style)).toEqual(["stoic", "hopeful"]);
+    expect(body.meta.skippedStyles.map((item) => item.style)).toEqual(["witty", "tough"]);
     expect(
       verifyCook({
         ownerId: DEV_USER_ID,
@@ -834,7 +834,7 @@ describe("POST /reframe", () => {
       const cook = await signedCook();
       vi.mocked(generateReframe).mockResolvedValueOnce(NEW_HUMOR);
 
-      const response = await post(recookOf(cook, "humorous"));
+      const response = await post(recookOf(cook, "witty"));
       const body = (await jsonOf(response)) as ReadyBody;
 
       expect(response.status).toBe(200);
@@ -842,13 +842,13 @@ describe("POST /reframe", () => {
       expect(generateReframe).toHaveBeenCalledTimes(1);
       const call = vi.mocked(generateReframe).mock.calls[0]?.[0];
       expect(call?.temperature).toBe(0.95);
-      expect(call?.text).toContain("humorous reframe");
+      expect(call?.text).toContain("witty reframe");
       expect(call?.text).toContain("different technique");
       expect(body.results).toEqual([
         {
-          style: "humorous",
+          style: "witty",
           reframe: NEW_HUMOR,
-          signature: signResult(DEV_USER_ID, cook.thought, "humorous", NEW_HUMOR),
+          signature: signResult(DEV_USER_ID, cook.thought, "witty", NEW_HUMOR),
         },
       ]);
       expect(body.thought).toBe(cook.thought);
@@ -860,11 +860,11 @@ describe("POST /reframe", () => {
 
     it("answers a skipped style with its reason, without a model call or a charge", async () => {
       const cook = await signedCook({
-        styles: ["stoic", "optimistic"],
-        skipped_styles: [{ style: "humorous", reason: "A joke would land wrong on a loss this fresh." }],
+        styles: ["stoic", "hopeful"],
+        skipped_styles: [{ style: "witty", reason: "A joke would land wrong on a loss this fresh." }],
       });
 
-      const body = (await jsonOf(await post(recookOf(cook, "humorous")))) as ContinueBody;
+      const body = (await jsonOf(await post(recookOf(cook, "witty")))) as ContinueBody;
 
       expect(body).toMatchObject({
         kind: "continue",
@@ -888,7 +888,7 @@ describe("POST /reframe", () => {
       });
       const grave = { ...ordinary, thought, signature, results: [] };
 
-      for (const style of ["humorous", "tough_love"] as const) {
+      for (const style of ["witty", "tough"] as const) {
         const body = (await jsonOf(await post(recookOf(grave, style)))) as ContinueBody;
         expect(body).toMatchObject({ kind: "continue", options: [], safety: "none" });
         expect(body.message).toMatch(/grave/);
@@ -945,15 +945,15 @@ describe("POST /reframe", () => {
           en: "One rough interview is a single afternoon, not a verdict on your whole career. Keep the lesson and let the tape stop.",
           local: "Jedan loš intervju je jedno poslijepodne, a ne presuda cijeloj karijeri. Zadrži lekciju i pusti snimku da stane.",
         },
-        optimistic: {
+        hopeful: {
           en: "Every shaky answer showed you exactly which stories to tighten, so the next panel meets a sharper version of you.",
           local: "Svaki drhtavi odgovor pokazao ti je koje priče treba zategnuti, pa sljedeća komisija upoznaje oštriju verziju tebe.",
         },
-        humorous: {
+        witty: {
           en: "Your brain has now rewatched that interview more times than any streaming hit, and still nobody is renewing the show.",
           local: "Mozak je taj intervju pogledao više puta od bilo koje serije, a nitko i dalje ne produljuje sezonu.",
         },
-        tough_love: {
+        tough: {
           en: "Replaying it will not change the outcome. Write down the two answers you fumbled, fix them tonight, and send the thank-you note.",
           local: "Vrtjeti to neće promijeniti ishod. Zapiši dva odgovora koja si zeznuo, popravi ih večeras i pošalji zahvalu.",
         },
@@ -1008,10 +1008,10 @@ describe("POST /reframe", () => {
     it("rewrites a recook that only rewords the answer it replaces", async () => {
       const cook = await signedCook();
       vi.mocked(generateReframe)
-        .mockResolvedValueOnce("humorous reframe again")
+        .mockResolvedValueOnce("witty reframe again")
         .mockResolvedValueOnce(NEW_HUMOR);
 
-      const body = (await jsonOf(await post(recookOf(cook, "humorous")))) as ReadyBody;
+      const body = (await jsonOf(await post(recookOf(cook, "witty")))) as ReadyBody;
 
       expect(generateReframe).toHaveBeenCalledTimes(2);
       expect(vi.mocked(generateReframe).mock.calls[1]?.[0].callKind).toBe("rewrite");
@@ -1101,12 +1101,12 @@ describe("POST /reframe", () => {
     vi.mocked(generateReframe).mockResolvedValueOnce(
       "Your brain replayed the interview so often it now qualifies as a streaming series, and nobody renewed it.",
     );
-    const humorous = body.results.find((item) => item.style === "humorous");
+    const witty = body.results.find((item) => item.style === "witty");
     await post({
       recook: {
-        style: "humorous",
+        style: "witty",
         cook: { thought: body.thought, meta: body.meta, model: body.model, signature: body.signature },
-        previous: { reframe: humorous?.reframe, signature: humorous?.signature },
+        previous: { reframe: witty?.reframe, signature: witty?.signature },
       },
     });
 
@@ -1399,7 +1399,7 @@ describe("POST /reframe", () => {
 
   it("repairs an incomplete batch as one whole batch", async () => {
     stubDecision(readyDecision());
-    stubStyleBatch(styleBatch({ humorous: undefined }), styleBatch());
+    stubStyleBatch(styleBatch({ witty: undefined }), styleBatch());
 
     const body = (await jsonOf(await post({ text: LONG_TEXT }))) as ReadyBody;
 
@@ -1410,7 +1410,7 @@ describe("POST /reframe", () => {
 
   it("fails the whole request when the batch repair fails", async () => {
     stubDecision(readyDecision());
-    stubStyleBatch(styleBatch({ humorous: undefined }));
+    stubStyleBatch(styleBatch({ witty: undefined }));
 
     const response = await post({ text: LONG_TEXT });
 

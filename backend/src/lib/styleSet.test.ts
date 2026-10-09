@@ -21,9 +21,9 @@ describe("style sets", () => {
   it("header 2 is exactly the six styles that shipped with it", () => {
     expect([...STYLE_SET_2]).toEqual([
       "stoic",
-      "optimistic",
-      "humorous",
-      "tough_love",
+      "hopeful",
+      "witty",
+      "tough",
       "tender",
       "values",
     ]);

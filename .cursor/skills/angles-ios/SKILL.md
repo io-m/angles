@@ -26,7 +26,7 @@ Target: iOS 17+, bundle id `app.angles.ios` (placeholder). No SPM networking pac
 
 ## Models
 
-Keep `Style` raw values identical to the backend: `stoic`, `optimistic`, `humorous`, `tough_love`. `ThoughtCategory`, `Timeframe`, `SafetyFlag`, and `IntensityBand` decode unknown values to a safe case on purpose — a new backend value must not fail a whole cook.
+Keep `Style` raw values identical to the backend: `stoic`, `hopeful`, `witty`, `tough`. `ThoughtCategory`, `Timeframe`, `SafetyFlag`, and `IntensityBand` decode unknown values to a safe case on purpose — a new backend value must not fail a whole cook.
 
 A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`). Never hide it on anything but a finished cook.
 
@@ -38,9 +38,9 @@ Saves echo the `/reframe` signatures (`ReadyCook.signature`, `SignedReframeResul
 
 ## UI
 
-Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Home matches Profile pager chrome: **For you** (default, mixed covers) plus four style tabs on one row with the filter icon, style-tinted glass header, tab-bar footer fade, Apply-only Life areas + Moods sheet. Settings lives on Profile only. For you calls `GET /feed` with no style. Each style tab calls `GET /feed?style=` the first time it opens, keeps its own page and scroll, and opens on that angle. `HomeFeedShelf.swift` holds one card record and one shelf per tab, so a heart, follow, or removal stays in sync. A filter clears every shelf and reloads the one on screen. Pull-to-refresh and load-more touch only that shelf. Profile and author pages still filter one library list in memory. Profile is identity (avatar, session name) plus five expanding tabs: Favorites first, then the four styles. Those style tabs keep owned cards that have that angle and open on it; there is no For you tab on Profile. Home and Profile share `StyleTabPager.swift` for chips and wash scrubbing.
+Follow root `BUILD.md` (order + status). Update it when adding a screen. MVVM starts with the first real screen. No SwiftData. Home matches Profile pager chrome: **For you** (default, mixed covers) plus four style tabs on one row with the filter icon, style-tinted glass header, tab-bar footer fade, Apply-only Life areas + Moods sheet. Settings lives on Profile only. For you calls `GET /feed` with no style. Each style tab calls `GET /feed?style=` the first time it opens, keeps its own page and scroll, and opens on that angle. `HomeFeedShelf.swift` holds one card record and one shelf per tab, so a heart, follow, or removal stays in sync. A filter clears every shelf and reloads the one on screen. Pull-to-refresh and load-more touch only that shelf. Profile and author pages still filter one library list in memory. Profile is identity (avatar, session name) plus five expanding tabs: Hearts first, then the four styles. Those style tabs keep owned cards that have that angle and open on it; there is no For you tab on Profile. Home and Profile share `StyleTabPager.swift` for chips and wash scrubbing.
 
-Home, Profile library, and compose cards do not flip: avatar/date/actions, thought, divider, one selected answer, then style chips and the selected style's heart are visible together. Profile Favorite angles (the Favorites tab) use equal-height answer/thought flips. The top ⋯ and long press reuse the same applicable actions. Original/English swaps inline. Card identity is `card.id`; a heart must not reset style selection. Chip/wash animation belongs only to a user chip tap.
+Home, Profile library, and compose cards do not flip: avatar/date/actions, thought, divider, one selected answer, then style chips and the selected style's heart are visible together. Profile Hearts use equal-height answer/thought flips. The top ⋯ and long press reuse the same applicable actions. Original/English swaps inline. Card identity is `card.id`; a heart must not reset style selection. Chip/wash animation belongs only to a user chip tap.
 
 ## Device
 

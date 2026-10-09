@@ -15,43 +15,43 @@ private enum AnglesWidgetPalette {
 @main
 struct AnglesWidgetBundle: WidgetBundle {
     var body: some Widget {
-        FavoriteAngleWidget()
+        HeartAngleWidget()
         WriteThoughtWidget()
     }
 }
 
-private struct FavoriteAngleEntry: TimelineEntry {
+private struct HeartAngleEntry: TimelineEntry {
     let date: Date
-    let item: FavoriteAngleWidgetItem?
+    let item: HeartAngleWidgetItem?
 }
 
-private struct FavoriteAngleProvider: TimelineProvider {
+private struct HeartAngleProvider: TimelineProvider {
     /// WidgetKit may coalesce display updates, but prebuilding short timeline entries gives
-    /// favorites a frequent rotation without waking the app or spending background budget.
+    /// hearts a frequent rotation without waking the app or spending background budget.
     private static let refreshInterval: TimeInterval = 5 * 60
 
-    func placeholder(in context: Context) -> FavoriteAngleEntry {
-        FavoriteAngleEntry(date: Date(), item: .placeholder)
+    func placeholder(in context: Context) -> HeartAngleEntry {
+        HeartAngleEntry(date: Date(), item: .placeholder)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (FavoriteAngleEntry) -> Void) {
-        let item = WidgetSnapshotStore()?.loadFavoriteAngles().items.first
+    func getSnapshot(in context: Context, completion: @escaping (HeartAngleEntry) -> Void) {
+        let item = WidgetSnapshotStore()?.loadHeartAngles().items.first
             ?? (context.isPreview ? .placeholder : nil)
-        completion(FavoriteAngleEntry(date: Date(), item: item))
+        completion(HeartAngleEntry(date: Date(), item: item))
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<FavoriteAngleEntry>) -> Void) {
+    func getTimeline(in context: Context, completion: @escaping (Timeline<HeartAngleEntry>) -> Void) {
         let now = Date()
-        let items = WidgetSnapshotStore()?.loadFavoriteAngles().items ?? []
+        let items = WidgetSnapshotStore()?.loadHeartAngles().items ?? []
         guard !items.isEmpty else {
-            let entry = FavoriteAngleEntry(date: now, item: nil)
+            let entry = HeartAngleEntry(date: now, item: nil)
             completion(Timeline(entries: [entry], policy: .after(now.addingTimeInterval(Self.refreshInterval))))
             return
         }
 
         let startingIndex = Int(now.timeIntervalSince1970 / Self.refreshInterval) % items.count
         let entries = (0 ..< 24).map { offset in
-            FavoriteAngleEntry(
+            HeartAngleEntry(
                 date: now.addingTimeInterval(Double(offset) * Self.refreshInterval),
                 item: items[(startingIndex + offset) % items.count]
             )
@@ -65,9 +65,9 @@ private struct FavoriteAngleProvider: TimelineProvider {
     }
 }
 
-private struct FavoriteAngleView: View {
+private struct HeartAngleView: View {
     @Environment(\.widgetFamily) private var family
-    let entry: FavoriteAngleEntry
+    let entry: HeartAngleEntry
 
     var body: some View {
         Group {
@@ -86,11 +86,11 @@ private struct FavoriteAngleView: View {
                 background(for: entry.item?.style)
             }
         }
-        .widgetURL(AnglesWidgetConstants.favoritesURL)
+        .widgetURL(AnglesWidgetConstants.heartsURL)
     }
 
     @ViewBuilder
-    private func content(_ item: FavoriteAngleWidgetItem) -> some View {
+    private func content(_ item: HeartAngleWidgetItem) -> some View {
         if family == .accessoryRectangular {
             HStack(alignment: .top, spacing: 6) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -155,11 +155,11 @@ private struct FavoriteAngleView: View {
 
     private func styleColors(_ style: String?) -> [Color] {
         switch style {
-        case "optimistic":
+        case "hopeful":
             return [Color(red: 0.98, green: 0.91, blue: 0.65), Color(red: 0.97, green: 0.82, blue: 0.58)]
-        case "humorous":
+        case "witty":
             return [Color(red: 0.88, green: 0.91, blue: 0.72), Color(red: 0.73, green: 0.86, blue: 0.70)]
-        case "tough_love":
+        case "tough":
             return [Color(red: 0.96, green: 0.76, blue: 0.67), Color(red: 0.88, green: 0.64, blue: 0.60)]
         case "tender":
             return [Color(red: 0.97, green: 0.80, blue: 0.88), Color(red: 0.90, green: 0.68, blue: 0.80)]
@@ -172,9 +172,9 @@ private struct FavoriteAngleView: View {
 
     private func styleSymbol(_ style: String) -> String {
         switch style {
-        case "optimistic": return "sun.max.fill"
-        case "humorous": return "face.smiling.fill"
-        case "tough_love": return "flame.fill"
+        case "hopeful": return "sun.max.fill"
+        case "witty": return "face.smiling.fill"
+        case "tough": return "flame.fill"
         case "tender": return "hands.and.sparkles.fill"
         case "values": return "safari.fill"
         default: return "mountain.2.fill"
@@ -214,14 +214,14 @@ private struct FavoriteAngleView: View {
     }
 }
 
-struct FavoriteAngleWidget: Widget {
-    let kind = AnglesWidgetConstants.favoriteWidgetKind
+struct HeartAngleWidget: Widget {
+    let kind = AnglesWidgetConstants.heartWidgetKind
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: FavoriteAngleProvider()) { entry in
-            FavoriteAngleView(entry: entry)
+        StaticConfiguration(kind: kind, provider: HeartAngleProvider()) { entry in
+            HeartAngleView(entry: entry)
         }
-        .configurationDisplayName("Favorite Angle")
+        .configurationDisplayName("Hearts")
         .description("Keep an angle you hearted close by.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
     }
@@ -412,14 +412,14 @@ struct WriteThoughtWidget: Widget {
     }
 }
 
-private extension FavoriteAngleWidgetItem {
-    static let placeholder = FavoriteAngleWidgetItem(
+private extension HeartAngleWidgetItem {
+    static let placeholder = HeartAngleWidgetItem(
         id: "placeholder-stoic",
         cardID: "placeholder",
         answer: "Name what is yours to influence, and let the rest stop borrowing your attention.",
         style: "stoic",
         styleDisplayName: "Stoic",
         lifeAreaLabel: "Self-worth",
-        favoritedAt: Date()
+        heartedAt: Date()
     )
 }

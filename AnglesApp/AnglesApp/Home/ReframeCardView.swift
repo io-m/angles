@@ -3,7 +3,7 @@ import SwiftUI
 enum ReframeCardPresentation: String, Equatable {
     case library
     case tallLibrary
-    case favoriteAngles
+    case heartAngles
 }
 
 enum ReframeCardMenuRole: Equatable {
@@ -25,17 +25,17 @@ enum ReframeCardMetrics {
     static let tallLifeAreaBadgeFont: Font = .footnote.weight(.medium)
     static let tallAnswerLineSpacing: CGFloat = 3
     static let tallAnswerVerticalPadding: CGFloat = 18
-    /// Flip-only favorites: answer on front, thought on back — grows with copy.
-    static let favoriteStripMinHeight: CGFloat = 168
+    /// Flip-only hearts: answer on front, thought on back — grows with copy.
+    static let heartStripMinHeight: CGFloat = 168
     /// Horizontal strip caps height; copy scrolls inside instead of clipping.
-    static let favoriteStripMaxHeight: CGFloat = 288
-    static let favoriteChromeInset: CGFloat = 12
+    static let heartStripMaxHeight: CGFloat = 288
+    static let heartChromeInset: CGFloat = 12
     /// Header + footer chrome reserved when sizing the strip scroll region.
-    static let favoriteStripChromeHeight: CGFloat = 96
+    static let heartStripChromeHeight: CGFloat = 96
     static let overlayMinimumHeight: CGFloat = 300
     static let thoughtFont: Font = .callout.weight(.regular)
     /// Flip-back thought: solo on the card, so a step up from stacked secondary copy.
-    static let favoriteThoughtFont: Font = .body.weight(.medium)
+    static let heartThoughtFont: Font = .body.weight(.medium)
     static let answerFont: Font = .body.weight(.semibold)
     static let answerLineSpacing: CGFloat = 2
     static let chromeInset: CGFloat = 16
@@ -48,8 +48,8 @@ enum ReframeCardMetrics {
     static let chipHitSize: CGFloat = 40
     static let lifeAreaBadgeMaxWidth: CGFloat = 148
     static let lifeAreaBadgeStripMaxWidth: CGFloat = 120
-    /// Favorite footer: heart vs flip chevron (modest — not layout-breaking).
-    static let favoriteHeartChevronSpacing: CGFloat = 8
+    /// Heart footer: heart vs flip chevron (modest — not layout-breaking).
+    static let heartHeartChevronSpacing: CGFloat = 8
 }
 
 struct ReframeCardView: View, Equatable {
@@ -57,13 +57,13 @@ struct ReframeCardView: View, Equatable {
     var presentation: ReframeCardPresentation = .library
     var menuRole: ReframeCardMenuRole = .owner
     var openingStyle: Style? = nil
-    /// Profile favorite carousel: cap height and scroll long copy instead of clipping.
-    var limitsFavoriteCopyHeight: Bool = false
+    /// Profile heart carousel: cap height and scroll long copy instead of clipping.
+    var limitsHeartCopyHeight: Bool = false
     /// Experiment tall cards: viewport cap. The card hugs its text and only
     /// grows up to this height; the reply scrolls if a cook would pass it.
     var tallCardMaxHeight: CGFloat? = nil
     var onDelete: () -> Void = {}
-    var onToggleFavorite: (Style) -> Void = { _ in }
+    var onToggleHeart: (Style) -> Void = { _ in }
     var onSetPublic: (Bool) -> Void = { _ in }
     var onRemoveFromBoard: () -> Void = {}
     var onReport: (ReportReason) -> Void = { _ in }
@@ -75,20 +75,20 @@ struct ReframeCardView: View, Equatable {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @ScaledMetric(relativeTo: .body) private var favoriteCardMinHeight: CGFloat =
-        ReframeCardMetrics.favoriteStripMinHeight
-    @ScaledMetric(relativeTo: .body) private var favoriteCardMaxHeight: CGFloat =
-        ReframeCardMetrics.favoriteStripMaxHeight
-    @ScaledMetric(relativeTo: .body) private var favoriteStripChromeHeight: CGFloat =
-        ReframeCardMetrics.favoriteStripChromeHeight
+    @ScaledMetric(relativeTo: .body) private var heartCardMinHeight: CGFloat =
+        ReframeCardMetrics.heartStripMinHeight
+    @ScaledMetric(relativeTo: .body) private var heartCardMaxHeight: CGFloat =
+        ReframeCardMetrics.heartStripMaxHeight
+    @ScaledMetric(relativeTo: .body) private var heartStripChromeHeight: CGFloat =
+        ReframeCardMetrics.heartStripChromeHeight
     @State private var showingOriginal = false
     @State private var selectedStyle: Style?
-    @State private var favoriteHaptic = 0
-    @State private var favoriteFlipHaptic = 0
+    @State private var heartHaptic = 0
+    @State private var heartFlipHaptic = 0
     @State private var cardActionsHaptic = 0
     @State private var heartBurst = 0
     @State private var heartScale: CGFloat = 1
-    @State private var isFavoriteFlipped = false
+    @State private var isHeartedFlipped = false
     @State private var showCardActions = false
     @State private var showDeleteConfirm = false
     @State private var showReportReasons = false
@@ -101,7 +101,7 @@ struct ReframeCardView: View, Equatable {
             && lhs.presentation == rhs.presentation
             && lhs.menuRole == rhs.menuRole
             && lhs.openingStyle == rhs.openingStyle
-            && lhs.limitsFavoriteCopyHeight == rhs.limitsFavoriteCopyHeight
+            && lhs.limitsHeartCopyHeight == rhs.limitsHeartCopyHeight
             && lhs.tallCardMaxHeight == rhs.tallCardMaxHeight
             && lhs.offersOwnerPrivacyMenu == rhs.offersOwnerPrivacyMenu
     }
@@ -115,8 +115,8 @@ struct ReframeCardView: View, Equatable {
         switch presentation {
         case .library, .tallLibrary:
             return card.slides
-        case .favoriteAngles:
-            return card.slides.filter(\.isFavorite)
+        case .heartAngles:
+            return card.slides.filter(\.isHearted)
         }
     }
 
@@ -183,8 +183,8 @@ struct ReframeCardView: View, Equatable {
                     return
                 }
             }
-            .sensoryFeedback(.impact(weight: .light), trigger: favoriteHaptic)
-            .sensoryFeedback(.impact(weight: .light), trigger: favoriteFlipHaptic)
+            .sensoryFeedback(.impact(weight: .light), trigger: heartHaptic)
+            .sensoryFeedback(.impact(weight: .light), trigger: heartFlipHaptic)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(accessibilityLabel)
             .confirmationDialog(
@@ -247,8 +247,8 @@ struct ReframeCardView: View, Equatable {
             stackedCardBody
         case .tallLibrary:
             tallStackedCardBody
-        case .favoriteAngles:
-            favoriteFlipCard
+        case .heartAngles:
+            heartFlipCard
         }
     }
 
@@ -331,9 +331,9 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
-    private var favoriteFlipCard: some View {
-        FlipStack(progress: isFavoriteFlipped ? 1 : 0) {
-            favoriteFace(
+    private var heartFlipCard: some View {
+        FlipStack(progress: isHeartedFlipped ? 1 : 0) {
+            heartFace(
                 copy: displayedAnswer ?? "",
                 font: ReframeCardMetrics.answerFont,
                 foreground: activeAppearance.responseInk
@@ -342,9 +342,9 @@ struct ReframeCardView: View, Equatable {
                 activeAppearance.washFill(over: theme.surface)
             }
         } back: {
-            favoriteFace(
+            heartFace(
                 copy: displayedThought,
-                font: ReframeCardMetrics.favoriteThoughtFont,
+                font: ReframeCardMetrics.heartThoughtFont,
                 foreground: theme.sub
             )
             .background {
@@ -352,37 +352,37 @@ struct ReframeCardView: View, Equatable {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(minHeight: favoriteCardMinHeight)
-        .frame(maxHeight: limitsFavoriteCopyHeight ? favoriteCardMaxHeight : nil)
+        .frame(minHeight: heartCardMinHeight)
+        .frame(maxHeight: limitsHeartCopyHeight ? heartCardMaxHeight : nil)
         .clipShape(cardShape)
         .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
-        .accessibilityHint(isFavoriteFlipped ? "Shows the selected answer" : "Shows the thought")
-        .accessibilityAction(named: isFavoriteFlipped ? "Show answer" : "Show thought") {
-            flipFavorite()
+        .accessibilityHint(isHeartedFlipped ? "Shows the selected answer" : "Shows the thought")
+        .accessibilityAction(named: isHeartedFlipped ? "Show answer" : "Show thought") {
+            flipHeart()
         }
     }
 
-    private func favoriteFace(
+    private func heartFace(
         copy: String,
         font: Font,
         foreground: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            favoriteHeader
+            heartHeader
 
             moderationNotice
 
-            favoriteCopyBlock(copy: copy, font: font, foreground: foreground)
+            heartCopyBlock(copy: copy, font: font, foreground: foreground)
 
             Spacer(minLength: 0)
 
-            favoriteFooter
+            heartFooter
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
-    private func favoriteCopyBlock(copy: String, font: Font, foreground: Color) -> some View {
+    private func heartCopyBlock(copy: String, font: Font, foreground: Color) -> some View {
         let text = Text(copy)
             .font(font)
             .foregroundStyle(foreground)
@@ -390,12 +390,12 @@ struct ReframeCardView: View, Equatable {
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(ReframeCardMetrics.favoriteChromeInset)
+            .padding(ReframeCardMetrics.heartChromeInset)
             .contentShape(Rectangle())
-            .onTapGesture(perform: flipFavorite)
+            .onTapGesture(perform: flipHeart)
 
-        if limitsFavoriteCopyHeight {
-            let scrollCap = max(72, favoriteCardMaxHeight - favoriteStripChromeHeight)
+        if limitsHeartCopyHeight {
+            let scrollCap = max(72, heartCardMaxHeight - heartStripChromeHeight)
             ScrollView(.vertical, showsIndicators: false) {
                 text
             }
@@ -537,7 +537,7 @@ struct ReframeCardView: View, Equatable {
         .padding(.top, ReframeCardMetrics.tallRhythm)
     }
 
-    private var favoriteHeader: some View {
+    private var heartHeader: some View {
         HStack(spacing: 8) {
             authorControl(side: 32)
 
@@ -554,8 +554,8 @@ struct ReframeCardView: View, Equatable {
 
             headerTrailingCluster(menuGlyphSize: 16)
         }
-        .padding(.horizontal, ReframeCardMetrics.favoriteChromeInset)
-        .padding(.top, ReframeCardMetrics.favoriteChromeInset)
+        .padding(.horizontal, ReframeCardMetrics.heartChromeInset)
+        .padding(.top, ReframeCardMetrics.heartChromeInset)
     }
 
     @ViewBuilder
@@ -574,7 +574,7 @@ struct ReframeCardView: View, Equatable {
             LifeAreaBadge(
                 category: lifeArea.category,
                 label: lifeAreaLabel(lifeArea),
-                maxWidth: limitsFavoriteCopyHeight
+                maxWidth: limitsHeartCopyHeight
                     ? ReframeCardMetrics.lifeAreaBadgeStripMaxWidth
                     : ReframeCardMetrics.lifeAreaBadgeMaxWidth,
                 iconSize: badgeIconSize,
@@ -598,7 +598,7 @@ struct ReframeCardView: View, Equatable {
                     LifeAreaBadge(
                         category: lifeArea.category,
                         label: lifeAreaLabel(lifeArea),
-                        maxWidth: limitsFavoriteCopyHeight
+                        maxWidth: limitsHeartCopyHeight
                             ? ReframeCardMetrics.lifeAreaBadgeStripMaxWidth
                             : ReframeCardMetrics.lifeAreaBadgeMaxWidth,
                         iconSize: badgeIconSize,
@@ -619,7 +619,7 @@ struct ReframeCardView: View, Equatable {
     }
 
     private func lifeAreaLabel(_ presentation: (category: ThoughtCategory, label: String)) -> String {
-        guard limitsFavoriteCopyHeight, presentation.category != .other else {
+        guard limitsHeartCopyHeight, presentation.category != .other else {
             return presentation.label
         }
         return presentation.category.compactDisplayName
@@ -633,7 +633,7 @@ struct ReframeCardView: View, Equatable {
 
             if let style = activeStyle {
                 strangerHeartCount(for: style, tint: theme.muted)
-                favoriteButton(for: style)
+                heartButton(for: style)
             }
         }
         .padding(.horizontal, ReframeCardMetrics.chromeInset)
@@ -649,7 +649,7 @@ struct ReframeCardView: View, Equatable {
 
             if let style = activeStyle {
                 strangerHeartCount(for: style, tint: activeAppearance.ink)
-                tallFavoriteButton(for: style, tint: activeAppearance.ink)
+                tallHeartButton(for: style, tint: activeAppearance.ink)
             }
         }
         .padding(.horizontal, ReframeCardMetrics.tallRhythm)
@@ -657,30 +657,30 @@ struct ReframeCardView: View, Equatable {
         .padding(.bottom, ReframeCardMetrics.tallRhythm)
     }
 
-    private var favoriteFooter: some View {
+    private var heartFooter: some View {
         HStack(spacing: 6) {
             styleSelector(activeAppearance)
 
             Spacer(minLength: 4)
 
-            HStack(spacing: ReframeCardMetrics.favoriteHeartChevronSpacing) {
+            HStack(spacing: ReframeCardMetrics.heartHeartChevronSpacing) {
                 if let style = activeStyle {
-                    favoriteButton(for: style)
+                    heartButton(for: style)
                 }
 
-                Button(action: flipFavorite) {
+                Button(action: flipHeart) {
                     chromeIcon(
-                        isFavoriteFlipped ? "chevron.left" : "chevron.right",
+                        isHeartedFlipped ? "chevron.left" : "chevron.right",
                         size: 16,
                         color: theme.muted
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isFavoriteFlipped ? "Show selected answer" : "Show thought")
+                .accessibilityLabel(isHeartedFlipped ? "Show selected answer" : "Show thought")
             }
         }
-        .padding(.horizontal, ReframeCardMetrics.favoriteChromeInset)
-        .padding(.bottom, ReframeCardMetrics.favoriteChromeInset)
+        .padding(.horizontal, ReframeCardMetrics.heartChromeInset)
+        .padding(.bottom, ReframeCardMetrics.heartChromeInset)
     }
 
     @ViewBuilder
@@ -713,37 +713,37 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
-    private func favoriteButton(for style: Style) -> some View {
-        let isFavorite = card.isStyleFavorited(style)
+    private func heartButton(for style: Style) -> some View {
+        let isHearted = card.isStyleHearted(style)
         let slop = chromeIconSlop(glyphSize: 17)
         return Button {
-            favoriteHaptic += 1
+            heartHaptic += 1
             withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.58)) {
-                onToggleFavorite(style)
+                onToggleHeart(style)
             }
         } label: {
-            Image(systemName: isFavorite ? "heart.fill" : "heart")
+            Image(systemName: isHearted ? "heart.fill" : "heart")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(isFavorite ? theme.ink : theme.muted)
+                .foregroundStyle(isHearted ? theme.ink : theme.muted)
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, options: .speed(1.4), value: favoriteHaptic)
+                .symbolEffect(.bounce, options: .speed(1.4), value: heartHaptic)
                 .padding(slop)
                 .contentShape(Rectangle())
                 .padding(-slop)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            isFavorite ? "Remove from favorite angles" : "Add to favorite angles"
+            isHearted ? "Remove from Hearts" : "Add to Hearts"
         )
-        .accessibilityAddTraits(isFavorite ? .isSelected : [])
+        .accessibilityAddTraits(isHearted ? .isSelected : [])
     }
 
     /// Tall Home heart: style-tinted circle, a scale-up, and a burst of hearts that rise and fade.
-    private func tallFavoriteButton(for style: Style, tint: Color) -> some View {
-        let isFavorite = card.isStyleFavorited(style)
+    private func tallHeartButton(for style: Style, tint: Color) -> some View {
+        let isHearted = card.isStyleHearted(style)
         return Button {
-            let liking = !isFavorite
-            favoriteHaptic += 1
+            let liking = !isHearted
+            heartHaptic += 1
             if liking, !reduceMotion {
                 heartBurst += 1
                 heartScale = 1.28
@@ -752,12 +752,12 @@ struct ReframeCardView: View, Equatable {
                 }
             }
             withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.58)) {
-                onToggleFavorite(style)
+                onToggleHeart(style)
             }
         } label: {
-            Image(systemName: isFavorite ? "heart.fill" : "heart")
+            Image(systemName: isHearted ? "heart.fill" : "heart")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(isFavorite ? tint : theme.muted)
+                .foregroundStyle(isHearted ? tint : theme.muted)
                 .contentTransition(.symbolEffect(.replace))
                 .scaleEffect(heartScale)
                 .frame(width: ReframeCardMetrics.chipSize, height: ReframeCardMetrics.chipSize)
@@ -768,9 +768,9 @@ struct ReframeCardView: View, Equatable {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            isFavorite ? "Remove from favorite angles" : "Add to favorite angles"
+            isHearted ? "Remove from Hearts" : "Add to Hearts"
         )
-        .accessibilityAddTraits(isFavorite ? .isSelected : [])
+        .accessibilityAddTraits(isHearted ? .isSelected : [])
     }
 
     private func chromeIcon(
@@ -911,8 +911,8 @@ struct ReframeCardView: View, Equatable {
         }
         // The answer face changes language too when it has a second version; otherwise
         // only the thought does, so show that side.
-        if presentation == .favoriteAngles, activeSlide?.result.reframeOriginal == nil {
-            showFavoriteThought()
+        if presentation == .heartAngles, activeSlide?.result.reframeOriginal == nil {
+            showHeartThought()
         }
     }
 
@@ -921,8 +921,8 @@ struct ReframeCardView: View, Equatable {
         guard let slide = activeSlide, let answer = displayedAnswer else {
             return prefix + displayedThought
         }
-        if presentation == .favoriteAngles {
-            let body = isFavoriteFlipped
+        if presentation == .heartAngles {
+            let body = isHeartedFlipped
                 ? displayedThought
                 : "\(slide.result.style.displayName) answer. \(answer)"
             return prefix + body
@@ -933,8 +933,8 @@ struct ReframeCardView: View, Equatable {
 
     private func preferredStyle() -> Style? {
         switch presentation {
-        case .favoriteAngles:
-            if let preferred = card.latestFavoriteStyle, visibleStyles.contains(preferred) {
+        case .heartAngles:
+            if let preferred = card.latestHeartStyle, visibleStyles.contains(preferred) {
                 return preferred
             }
         case .library, .tallLibrary:
@@ -956,24 +956,24 @@ struct ReframeCardView: View, Equatable {
         }
     }
 
-    private func flipFavorite() {
-        favoriteFlipHaptic += 1
+    private func flipHeart() {
+        heartFlipHaptic += 1
         withAnimation(
             reduceMotion ? nil : .timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)
         ) {
-            isFavoriteFlipped.toggle()
+            isHeartedFlipped.toggle()
         }
     }
 
-    private func showFavoriteThought() {
-        guard !isFavoriteFlipped else {
+    private func showHeartThought() {
+        guard !isHeartedFlipped else {
             return
         }
-        favoriteFlipHaptic += 1
+        heartFlipHaptic += 1
         withAnimation(
             reduceMotion ? nil : .timingCurve(0.22, 0.86, 0.28, 1, duration: 0.5)
         ) {
-            isFavoriteFlipped = true
+            isHeartedFlipped = true
         }
     }
 }
@@ -1567,7 +1567,7 @@ fileprivate func stylePill(_ appearance: CardStyleAppearance) -> some View {
     StylePill(appearance: appearance)
 }
 
-/// Favorite angles keep equal-height faces so their horizontal strip stays level.
+/// Hearts keep equal-height faces so their horizontal strip stays level.
 private struct FlipStack<Front: View, Back: View>: View, Animatable {
     var progress: CGFloat
     var front: Front

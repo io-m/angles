@@ -189,7 +189,7 @@ private struct LoginAtmosphere: View {
                     spanOpacity: 0.14
                 )
                 bloom(
-                    style: .optimistic,
+                    style: .hopeful,
                     size: span * 0.86,
                     x: geo.size.width * 0.92,
                     y: geo.size.height * 0.16,
@@ -198,7 +198,7 @@ private struct LoginAtmosphere: View {
                     spanOpacity: 0.12
                 )
                 bloom(
-                    style: .humorous,
+                    style: .witty,
                     size: span * 0.78,
                     x: geo.size.width * 0.12,
                     y: geo.size.height * 0.78,
@@ -207,7 +207,7 @@ private struct LoginAtmosphere: View {
                     spanOpacity: 0.12
                 )
                 bloom(
-                    style: .toughLove,
+                    style: .tough,
                     size: span * 0.88,
                     x: geo.size.width * 0.90,
                     y: geo.size.height * 0.82,
@@ -263,21 +263,21 @@ private enum LoginSample {
                 freezeThought,
                 .stoic,
                 "Name freezing in that meeting as a fact, not a trial. Put the verdict down and tend to the next small thing.",
-                favorite: true
+                heart: true
             ),
             slide(
                 freezeThought,
-                .optimistic,
+                .hopeful,
                 "The freeze was a moment, not a verdict on you. You still get to walk through the impact — next time, on your terms."
             ),
             slide(
                 freezeThought,
-                .humorous,
+                .witty,
                 "Your brain hit pause like it was buffering a 4K TED talk. Credits can roll. You can still send the recap."
             ),
             slide(
                 freezeThought,
-                .toughLove,
+                .tough,
                 "You froze. Fine. Replay is not rehearsal. Write the three bullets they asked for and stop auditioning the moment."
             ),
         ],
@@ -293,9 +293,9 @@ private enum LoginSample {
         slides: [
             slide(
                 deckThought,
-                .optimistic,
+                .hopeful,
                 "Nothing about watching them take the deck cancels the person who noticed it. That noticing is already a kind of strength.",
-                favorite: true
+                heart: true
             ),
             slide(
                 deckThought,
@@ -304,16 +304,16 @@ private enum LoginSample {
             ),
             slide(
                 deckThought,
-                .humorous,
+                .witty,
                 "You sat there smiling like a stock photo. The plot twist is you still made the slides."
             ),
             slide(
                 deckThought,
-                .toughLove,
+                .tough,
                 "If it was yours, say so once, clearly. If you won’t, stop renting the scene a room in your head."
             ),
         ],
-        spotlightStyle: .optimistic,
+        spotlightStyle: .hopeful,
         isPublic: false,
         isOwner: false,
         authorInitials: "R",
@@ -325,9 +325,9 @@ private enum LoginSample {
         slides: [
             slide(
                 lateThought,
-                .toughLove,
+                .tough,
                 "If saying yes again is true, act like it. If it is a story, stop feeding it snacks at midnight. The next move is yours.",
-                favorite: true
+                heart: true
             ),
             slide(
                 lateThought,
@@ -336,16 +336,16 @@ private enum LoginSample {
             ),
             slide(
                 lateThought,
-                .optimistic,
+                .hopeful,
                 "Disappearing is a feeling, not a finished fact. You still get a morning that is not this shift."
             ),
             slide(
                 lateThought,
-                .humorous,
+                .witty,
                 "You RSVP’d to vanishing. Bold. Maybe decline the encore and go to bed like a person with bones."
             ),
         ],
-        spotlightStyle: .toughLove,
+        spotlightStyle: .tough,
         isPublic: false,
         isOwner: false,
         authorInitials: "M",
@@ -363,13 +363,13 @@ private enum LoginSample {
         _ thought: String,
         _ style: Style,
         _ reframe: String,
-        favorite: Bool = false
+        heart: Bool = false
     ) -> HomeCardSlide {
         HomeCardSlide(
             id: UUID(),
             thought: thought,
             result: ReframeResult(style: style, reframe: reframe),
-            isFavorite: favorite
+            isHearted: heart
         )
     }
 
@@ -417,7 +417,7 @@ private struct LoginCardStage: View {
                 if depth > 2 {
                     LoginFallingCard(
                         card: LoginSample.back,
-                        opening: .toughLove,
+                        opening: .tough,
                         rest: LoginCardRest(
                             x: 22,
                             y: -46,
@@ -441,7 +441,7 @@ private struct LoginCardStage: View {
                 if depth > 1 {
                     LoginFallingCard(
                         card: LoginSample.mid,
-                        opening: .optimistic,
+                        opening: .hopeful,
                         rest: LoginCardRest(
                             x: -16,
                             y: -22,

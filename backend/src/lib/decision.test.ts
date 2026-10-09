@@ -30,7 +30,7 @@ function raw(overrides: Record<string, unknown> = {}): string {
     options: [],
     thought_en: "I bombed my interview and I keep replaying every shaky answer.",
     thought_original_cleaned: null,
-    styles: ["stoic", "optimistic", "humorous", "tough_love"],
+    styles: ["stoic", "hopeful", "witty", "tough"],
     skipped_styles: [],
     solemn: false,
     category: "work",
@@ -170,14 +170,14 @@ describe("parseDecision", () => {
     expect(decision.meta.distortions).toEqual(["mind_reading", "catastrophizing"]);
   });
 
-  it("still writes stoic and optimistic when the model tries to skip them", () => {
+  it("still writes stoic and hopeful when the model tries to skip them", () => {
     const decision = parseDecision(
       raw({
         styles: ["stoic"],
         skipped_styles: [
-          { style: "optimistic", reason: "Too bright." },
-          { style: "humorous", reason: "A joke would land wrong." },
-          { style: "tough_love", reason: "Too hard on this." },
+          { style: "hopeful", reason: "Too bright." },
+          { style: "witty", reason: "A joke would land wrong." },
+          { style: "tough", reason: "Too hard on this." },
         ],
       }),
       LEGACY,
@@ -185,47 +185,47 @@ describe("parseDecision", () => {
     if (decision.kind !== "ready") {
       throw new Error("expected ready");
     }
-    expect(decision.styles).toEqual(["stoic", "optimistic"]);
+    expect(decision.styles).toEqual(["stoic", "hopeful"]);
     expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual([
-      "humorous",
-      "tough_love",
+      "witty",
+      "tough",
     ]);
   });
 
   it("treats a style that is both chosen and skipped as skipped", () => {
     const decision = parseDecision(
-      raw({ skipped_styles: [{ style: "humorous", reason: "A joke would land wrong." }] }),
+      raw({ skipped_styles: [{ style: "witty", reason: "A joke would land wrong." }] }),
       LEGACY,
     );
     if (decision.kind !== "ready") {
       throw new Error("expected ready");
     }
-    expect(decision.styles).toEqual(["stoic", "optimistic", "tough_love"]);
+    expect(decision.styles).toEqual(["stoic", "hopeful", "tough"]);
   });
 
-  it("holds tough love back from self-blame over a loss", () => {
+  it("holds Tough back from self-blame over a loss", () => {
     const decision = parseDecision(
       raw({
         category: "grief_loss",
         distortions: ["personalizing"],
-        styles: ["stoic", "optimistic", "tough_love"],
-        skipped_styles: [{ style: "humorous", reason: "Not on a loss." }],
+        styles: ["stoic", "hopeful", "tough"],
+        skipped_styles: [{ style: "witty", reason: "Not on a loss." }],
       }),
       LEGACY,
     );
     if (decision.kind !== "ready") {
       throw new Error("expected ready");
     }
-    expect(decision.styles).toEqual(["stoic", "optimistic"]);
-    expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    expect(decision.styles).toEqual(["stoic", "hopeful"]);
+    expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["witty", "tough"]);
   });
 
-  it("keeps tough love on self-blame outside a loss", () => {
+  it("keeps Tough on self-blame outside a loss", () => {
     const decision = parseDecision(raw({ distortions: ["personalizing"] }));
     if (decision.kind !== "ready") {
       throw new Error("expected ready");
     }
-    expect(decision.styles).toContain("tough_love");
+    expect(decision.styles).toContain("tough");
   });
 
   it("reads missing distortions as none", () => {
@@ -240,14 +240,14 @@ describe("parseDecision", () => {
     const decision = parseDecision(
       raw({
         styles: null,
-        skipped_styles: [{ style: "humorous", reason: "Not funny today." }],
+        skipped_styles: [{ style: "witty", reason: "Not funny today." }],
       }),
       LEGACY,
     );
     if (decision.kind !== "ready") {
       throw new Error("expected ready");
     }
-    expect(decision.styles).toEqual(["stoic", "optimistic", "tough_love"]);
+    expect(decision.styles).toEqual(["stoic", "hopeful", "tough"]);
   });
 
   it("drops thoughtOriginal when it matches the English thought", () => {
@@ -377,27 +377,27 @@ describe("solemn", () => {
     for (const solemn of [undefined, null, "false", 0, true]) {
       const decision = ready(parseDecision(raw({ solemn }), LEGACY));
       expect(decision.solemn).toBe(true);
-      expect(decision.styles).toEqual(["stoic", "optimistic"]);
-      expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+      expect(decision.styles).toEqual(["stoic", "hopeful"]);
+      expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["witty", "tough"]);
     }
   });
 
   it("writes every style only on an explicit false", () => {
     const decision = ready(parseDecision(raw({ solemn: false }), LEGACY));
     expect(decision.solemn).toBe(false);
-    expect(decision.styles).toEqual(["stoic", "optimistic", "humorous", "tough_love"]);
+    expect(decision.styles).toEqual(["stoic", "hopeful", "witty", "tough"]);
   });
 
   it("treats every loss as solemn whatever the model said", () => {
     const decision = ready(parseDecision(raw({ solemn: false, category: "grief_loss" }), LEGACY));
-    expect(decision.styles).toEqual(["stoic", "optimistic"]);
+    expect(decision.styles).toEqual(["stoic", "hopeful"]);
   });
 
   it("replaces the model's own skip reasons with ours", () => {
     const decision = ready(
-      parseDecision(raw({ solemn: true, skipped_styles: [{ style: "humorous", reason: "lol no" }] })),
+      parseDecision(raw({ solemn: true, skipped_styles: [{ style: "witty", reason: "lol no" }] })),
     );
-    expect(decision.meta.skippedStyles.find((item) => item.style === "humorous")?.reason).toMatch(/grave/);
+    expect(decision.meta.skippedStyles.find((item) => item.style === "witty")?.reason).toMatch(/grave/);
   });
 
   it("overrides a model that called civilian bombing fine to joke about", async () => {
@@ -412,8 +412,8 @@ describe("solemn", () => {
       }),
     );
     expect(decision.solemn).toBe(true);
-    expect(decision.styles).not.toContain("humorous");
-    expect(decision.styles).not.toContain("tough_love");
+    expect(decision.styles).not.toContain("witty");
+    expect(decision.styles).not.toContain("tough");
   });
 
   it("screens the cleaned English thought of a thought in another language", async () => {
@@ -428,7 +428,7 @@ describe("solemn", () => {
         catalog: LEGACY_STYLES,
       }),
     );
-    expect(decision.styles).toEqual(["stoic", "optimistic"]);
+    expect(decision.styles).toEqual(["stoic", "hopeful"]);
   });
 
   it("keeps the joke on an idiom", async () => {
@@ -436,7 +436,7 @@ describe("solemn", () => {
     const decision = ready(
       await runDecision({ text: "I totally bombed my job interview today", followUps: [], forceReady: false }),
     );
-    expect(decision.styles).toContain("humorous");
+    expect(decision.styles).toContain("witty");
   });
 });
 
@@ -450,30 +450,30 @@ describe("four of six", () => {
 
   it("writes the model's four best in its own order, with no voice guaranteed", () => {
     const decision = ready(
-      parseDecision(raw({ styles: ["tender", "humorous", "values", "tough_love", "stoic", "optimistic"] })),
+      parseDecision(raw({ styles: ["tender", "witty", "values", "tough", "stoic", "hopeful"] })),
     );
-    expect(decision.styles).toEqual(["tender", "humorous", "values", "tough_love"]);
+    expect(decision.styles).toEqual(["tender", "witty", "values", "tough"]);
     expect(decision.meta.skippedStyles).toEqual([]);
   });
 
-  it("gives a solemn thought exactly stoic, optimistic, tender, and values in the model's order", () => {
+  it("gives a solemn thought exactly stoic, hopeful, tender, and values in the model's order", () => {
     const decision = ready(
-      parseDecision(raw({ solemn: true, styles: ["values", "humorous", "tender", "stoic", "tough_love", "optimistic"] })),
+      parseDecision(raw({ solemn: true, styles: ["values", "witty", "tender", "stoic", "tough", "hopeful"] })),
     );
-    expect(decision.styles).toEqual(["values", "tender", "stoic", "optimistic"]);
-    expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    expect(decision.styles).toEqual(["values", "tender", "stoic", "hopeful"]);
+    expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["witty", "tough"]);
   });
 
   it("fills to four when the model names too few, and cuts when it names too many", () => {
-    expect(ready(parseDecision(raw({ styles: ["humorous"] }))).styles).toEqual([
-      "humorous",
+    expect(ready(parseDecision(raw({ styles: ["witty"] }))).styles).toEqual([
+      "witty",
       "stoic",
-      "optimistic",
-      "tough_love",
+      "hopeful",
+      "tough",
     ]);
     expect(ready(parseDecision(raw({ solemn: true, styles: [] }))).styles).toEqual([
       "stoic",
-      "optimistic",
+      "hopeful",
       "tender",
       "values",
     ]);
@@ -485,23 +485,23 @@ describe("four of six", () => {
         raw({
           solemn: true,
           styles: ["tender", "stoic", "values"],
-          skipped_styles: [{ style: "optimistic", reason: "Too bright." }],
+          skipped_styles: [{ style: "hopeful", reason: "Too bright." }],
         }),
       ),
     );
-    expect(decision.styles).toEqual(["tender", "stoic", "values", "optimistic"]);
-    expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["humorous", "tough_love"]);
+    expect(decision.styles).toEqual(["tender", "stoic", "values", "hopeful"]);
+    expect(decision.meta.skippedStyles.map((item) => item.style)).toEqual(["witty", "tough"]);
   });
 
   it("never offers a style the app cannot show", () => {
-    const decision = ready(parseDecision(raw({ styles: ["tender", "values", "stoic", "humorous"] }), LEGACY));
-    expect(decision.styles).toEqual(["stoic", "humorous", "optimistic", "tough_love"]);
+    const decision = ready(parseDecision(raw({ styles: ["tender", "values", "stoic", "witty"] }), LEGACY));
+    expect(decision.styles).toEqual(["stoic", "witty", "hopeful", "tough"]);
   });
 
   it("asSolemn keeps the order and reaches four with the voices a solemn card has", () => {
-    const decision = ready(parseDecision(raw({ styles: ["humorous", "stoic", "tough_love", "optimistic"] })));
-    expect(asSolemn(decision).styles).toEqual(["stoic", "optimistic", "tender", "values"]);
-    expect(asSolemn({ ...decision, catalog: LEGACY_STYLES }).styles).toEqual(["stoic", "optimistic"]);
+    const decision = ready(parseDecision(raw({ styles: ["witty", "stoic", "tough", "hopeful"] })));
+    expect(asSolemn(decision).styles).toEqual(["stoic", "hopeful", "tender", "values"]);
+    expect(asSolemn({ ...decision, catalog: LEGACY_STYLES }).styles).toEqual(["stoic", "hopeful"]);
   });
 });
 
@@ -510,14 +510,14 @@ describe("solemnSkipFor", () => {
 
   it("refuses a joke or a push on a signed grave thought", () => {
     const grave = cook("I am deeply concerned about Russian bombing of civilians in Ukraine.");
-    expect(solemnSkipFor("humorous", grave)?.reason).toMatch(/joke/);
-    expect(solemnSkipFor("tough_love", grave)?.reason).toMatch(/push/);
+    expect(solemnSkipFor("witty", grave)?.reason).toMatch(/joke/);
+    expect(solemnSkipFor("tough", grave)?.reason).toMatch(/push/);
     expect(solemnSkipFor("stoic", grave)).toBeUndefined();
-    expect(solemnSkipFor("humorous", cook("It has been a year.", "grief_loss"))).toBeDefined();
+    expect(solemnSkipFor("witty", cook("It has been a year.", "grief_loss"))).toBeDefined();
   });
 
   it("allows them on an ordinary thought", () => {
-    expect(solemnSkipFor("humorous", cook("I bombed my interview and keep replaying it."))).toBeUndefined();
+    expect(solemnSkipFor("witty", cook("I bombed my interview and keep replaying it."))).toBeUndefined();
   });
 });
 

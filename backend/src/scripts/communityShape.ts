@@ -192,7 +192,7 @@ export type HeartableCard = {
   styles: readonly Style[];
 };
 
-export type HeartPlan = { userId: string; cardId: string; style: Style; favoritedAt: Date };
+export type HeartPlan = { userId: string; cardId: string; style: Style; heartedAt: Date };
 
 export type ReaderPlan = {
   id: string;
@@ -224,9 +224,9 @@ const THEME_POPULARITY: Record<Category, number> = {
 
 const STYLE_POPULARITY: Record<Style, number> = {
   stoic: 30,
-  optimistic: 28,
-  humorous: 24,
-  tough_love: 18,
+  hopeful: 28,
+  witty: 24,
+  tough: 18,
   tender: 16,
   values: 14,
 };
@@ -278,14 +278,14 @@ export function planReaders(cards: readonly HeartableCard[], now: Date, rng: Rng
       }
       // A reader sees a post some hours after it lands, more often within the day.
       const delayMs = -Math.log(Math.max(rng(), 1e-6)) * 8 * HOUR_MS;
-      const favoritedAt = new Date(
+      const heartedAt = new Date(
         Math.min(now.getTime() - 60_000, card.createdAt.getTime() + 5 * 60_000 + delayMs),
       );
-      if (favoritedAt.getTime() <= card.createdAt.getTime()) {
+      if (heartedAt.getTime() <= card.createdAt.getTime()) {
         continue;
       }
       taken.add(key);
-      hearts.push({ userId: readerId(index), cardId: card.id, style: chosen, favoritedAt });
+      hearts.push({ userId: readerId(index), cardId: card.id, style: chosen, heartedAt });
     }
 
     return {
@@ -309,7 +309,7 @@ export function planViewerHearts(
   rng: Rng,
 ): HeartPlan[] {
   const themes: Category[] = ["work", "self_worth"];
-  const styles: Style[] = ["stoic", "tough_love"];
+  const styles: Style[] = ["stoic", "tough"];
   const candidates = shuffled(
     cards.filter((card) => {
       const age = now.getTime() - card.createdAt.getTime();
@@ -324,7 +324,7 @@ export function planViewerHearts(
       return [];
     }
     // Spread over the last three days, oldest first.
-    const favoritedAt = new Date(now.getTime() - (3 * DAY_MS * (candidates.length - index)) / candidates.length);
-    return [{ userId, cardId: card.id, style, favoritedAt }];
+    const heartedAt = new Date(now.getTime() - (3 * DAY_MS * (candidates.length - index)) / candidates.length);
+    return [{ userId, cardId: card.id, style, heartedAt }];
   });
 }

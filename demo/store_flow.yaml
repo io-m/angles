@@ -1,6 +1,6 @@
 # App Store capture. Same cook as the TikTok cut: type, send, short cook,
-# four style chips ending on Tough love. Screenshots are grabbed in-place.
-# Do not open Home, Save, Post, or Favorites — those were delays in the old take.
+# four style chips ending on Tough. Screenshots are grabbed in-place.
+# Do not open Home, Save, Post, or Hearts — those were delays in the old take.
 #
 # Env: DEMO_LINE, FOLLOWUP_REPLY, BEST_STYLE, SHOT_DIR
 appId: app.angles.ios
@@ -107,12 +107,20 @@ appId: app.angles.ios
 # one of them cannot make them: fail the take here and record another.
 - assertVisible:
     id: "chip.stoic"
+    childOf:
+      id: "compose.card"
 - assertVisible:
-    id: "chip.optimistic"
+    id: "chip.hopeful"
+    childOf:
+      id: "compose.card"
 - assertVisible:
-    id: "chip.humorous"
+    id: "chip.witty"
+    childOf:
+      id: "compose.card"
 - assertVisible:
-    id: "chip.tough_love"
+    id: "chip.tough"
+    childOf:
+      id: "compose.card"
 - hideKeyboard
 - runFlow:
     file: flows/hold.yaml
@@ -130,19 +138,19 @@ appId: app.angles.ios
 - runFlow:
     file: flows/chip.yaml
     env:
-      STYLE_KEY: optimistic
-      STYLE_NAME: Optimistic
+      STYLE_KEY: hopeful
+      STYLE_NAME: Hopeful
       HOLD_MS: 1800
 - takeScreenshot:
-    path: ${SHOT_DIR}/style-optimistic.png
+    path: ${SHOT_DIR}/style-hopeful.png
 - runFlow:
     file: flows/chip.yaml
     env:
-      STYLE_KEY: humorous
-      STYLE_NAME: Humorous
+      STYLE_KEY: witty
+      STYLE_NAME: Witty
       HOLD_MS: 1800
 - takeScreenshot:
-    path: ${SHOT_DIR}/style-humorous.png
+    path: ${SHOT_DIR}/style-witty.png
 - runFlow:
     file: flows/chip.yaml
     env:
@@ -154,16 +162,16 @@ appId: app.angles.ios
 - runFlow:
     file: flows/chip.yaml
     env:
-      STYLE_KEY: tough_love
-      STYLE_NAME: "Tough Love"
+      STYLE_KEY: tough
+      STYLE_NAME: "Tough"
       HOLD_MS: 5200
 - takeScreenshot:
-    path: ${SHOT_DIR}/style-tough-love.png
+    path: ${SHOT_DIR}/style-tough.png
 
 - runScript:
     file: flows/pick_best.js
     env:
       BEST_STYLE: ${BEST_STYLE}
-- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', optimistic: 'Optimistic', humorous: 'Humorous', tough_love: 'Tough Love' })[output.demo.best]}"
+- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', hopeful: 'Hopeful', witty: 'Witty', tough: 'Tough' })[output.demo.best]}"
 - runScript:
     file: flows/report.js

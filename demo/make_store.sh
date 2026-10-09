@@ -133,7 +133,7 @@ maestro --device "$udid" test --debug-output "$TAKE/maestro" \
   -e SHOT_DIR="$TAKE/shots" \
   "$DEMO/store_flow.yaml" >"$TAKE/maestro.txt" 2>&1 || flow_status=$?
 
-# Let the last style (Tough love hold) and shown_tough_love land before we stop.
+# Let the last style (Tough hold) and shown_tough land before we stop.
 sleep 6.0
 kill -INT "$rec_pid" 2>/dev/null || true
 wait "$rec_pid" 2>/dev/null || true

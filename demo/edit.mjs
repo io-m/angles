@@ -3,7 +3,7 @@
 //   node demo/edit.mjs demo/raw/take-YYYYMMDD-HHMMSS [demo/themes/<name>.json]
 //
 // Cut (every video): hook, type, send, short cook, four style chapters, outro.
-// The last chapter (Tough love) gets extra hold + a small zoom. No fifth "best"
+// The last chapter (Tough) gets extra hold + a small zoom. No fifth "best"
 // chapter, no Post, no Home. Theme words are the hook and the end card.
 //
 // Maestro marks plus scene scores pick in-points. The yellow chapter title
@@ -36,7 +36,7 @@ const music = join(DEMO, "assets", "music.mp3");
 const outDir = join(DEMO, "output");
 const output = join(outDir, "final_9x16.mp4");
 const FPS = 30;
-const NAMES = { stoic: "STOIC", optimistic: "OPTIMISTIC", humorous: "HUMOROUS", tough_love: "TOUGH LOVE" };
+const NAMES = { stoic: "STOIC", hopeful: "HOPEFUL", witty: "WITTY", tough: "TOUGH" };
 const NUMBERS = ["CHAPTER ONE", "CHAPTER TWO", "CHAPTER THREE", "CHAPTER FOUR"];
 
 const log = (...args) => console.error("[edit]", ...args);
@@ -183,7 +183,7 @@ const cardScene =
 const cardAt = cardScene ?? cardMark;
 
 // The order the flow tapped the chips in; the card opened on firstStyle.
-const tapOrder = ["optimistic", "humorous", "stoic", "tough_love"];
+const tapOrder = ["hopeful", "witty", "stoic", "tough"];
 const firstStyle = result.firstStyle && NAMES[result.firstStyle] ? result.firstStyle : "stoic";
 const chipAt = {};
 for (const style of tapOrder) {
@@ -193,7 +193,7 @@ for (const style of tapOrder) {
 }
 
 /** Center of a chip in points, given which chip was selected (and so wide) at the time. */
-const CHIP_ORDER = ["stoic", "optimistic", "humorous", "tough_love"];
+const CHIP_ORDER = ["stoic", "hopeful", "witty", "tough"];
 function chipCenter(style, selected) {
   let x = card.chipX0 + 2;
   for (const s of CHIP_ORDER) {

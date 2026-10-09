@@ -8,7 +8,7 @@ alwaysApply: false
 
 - iOS 17+, SwiftUI. MVVM when screens exist; no ViewModels without a view.
 - Networking: `URLSession` + async/await only. Surface failures as `APIError`.
-- `ReframeModels.swift` must match backend JSON (`tough_love`, not `toughLove` on the wire).
+- `ReframeModels.swift` must match backend JSON (`tough`, not `tough` on the wire).
 - Debug API base URL: `http://localhost:8787`. Do not enable `NSAllowsArbitraryLoads`.
 - No SwiftData/Core Data. Persistence is the backend library (`CardsService`).
 - Follow `BUILD.md` for screens. No third-party HTTP libraries.

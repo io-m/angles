@@ -82,7 +82,7 @@ struct SafetyContractTests {
         let meta = try JSONDecoder().decode(ReframeMeta.self, from: Data(metaJSON.utf8))
         let body = RecookRequestBody(
             recook: RecookRequest(
-                style: .toughLove,
+                style: .tough,
                 cook: RecookSource(thought: "I froze.", thoughtOriginal: nil, meta: meta, model: "gpt-4.1-mini", signature: "c"),
                 previous: RecookPrevious(reframe: "It passed.", signature: "r")
             ),
@@ -93,7 +93,7 @@ struct SafetyContractTests {
         let cook = recook?["cook"] as? [String: Any]
         #expect(object?["region"] as? String == "HR")
         #expect(object?["text"] == nil)
-        #expect(recook?["style"] as? String == "tough_love")
+        #expect(recook?["style"] as? String == "tough")
         #expect(cook?["thought"] as? String == "I froze.")
         #expect(cook?["thoughtOriginal"] == nil)
         #expect(cook?["model"] as? String == "gpt-4.1-mini")
@@ -137,18 +137,18 @@ struct SafetyContractTests {
     }
 
     @Test func storedAnswerCarriesTheAuthorsOwnLanguage() throws {
-        let json = #"{"style":"stoic","reframe":"It passed.","reframeOriginal":"Prošlo je.","isFavorite":false}"#
+        let json = #"{"style":"stoic","reframe":"It passed.","reframeOriginal":"Prošlo je.","isHearted":false}"#
         let stored = try JSONDecoder().decode(StoredReframeResult.self, from: Data(json.utf8))
         #expect(stored.result == ReframeResult(style: .stoic, reframe: "It passed.", reframeOriginal: "Prošlo je."))
     }
 
     @Test func moderationHiddenIsOptionalAndControlsTheOwnerPresentation() throws {
-        let visibleJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isFavorite":false}],"spotlightStyle":"stoic","isPublic":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
+        let visibleJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isHearted":false}],"spotlightStyle":"stoic","isPublic":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
         let visible = try JSONDecoder().decode(StoredCard.self, from: Data(visibleJSON.utf8))
         #expect(visible.moderationHidden == nil)
         #expect(HomeCard(stored: visible)?.moderationHidden == false)
 
-        let hiddenJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isFavorite":false}],"spotlightStyle":"stoic","isPublic":false,"moderationHidden":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
+        let hiddenJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isHearted":false}],"spotlightStyle":"stoic","isPublic":false,"moderationHidden":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
         let hidden = try JSONDecoder().decode(StoredCard.self, from: Data(hiddenJSON.utf8))
         let card = try #require(HomeCard(stored: hidden))
         #expect(hidden.moderationHidden == true)
@@ -167,18 +167,18 @@ struct SafetyContractTests {
 
 struct StyleCatalogContractTests {
     private func card(results: [String], spotlight: String) -> String {
-        let angles = results.map { #"{"style":"\#($0)","reframe":"An angle.","isFavorite":false}"# }.joined(separator: ",")
+        let angles = results.map { #"{"style":"\#($0)","reframe":"An angle.","isHearted":false}"# }.joined(separator: ",")
         return #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[\#(angles)],"spotlightStyle":"\#(spotlight)","isPublic":true,"createdAt":"2026-10-08T10:00:00.000Z","isOwner":false,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"AL","following":false}}"#
     }
 
     @Test func tenderAndValuesDecodeLikeEveryOtherStyle() throws {
         let stored = try JSONDecoder().decode(
             StoredCard.self,
-            from: Data(card(results: ["tender", "values", "stoic", "optimistic"], spotlight: "values").utf8)
+            from: Data(card(results: ["tender", "values", "stoic", "hopeful"], spotlight: "values").utf8)
         )
-        #expect(stored.results.map(\.style) == [.tender, .values, .stoic, .optimistic])
+        #expect(stored.results.map(\.style) == [.tender, .values, .stoic, .hopeful])
         #expect(stored.spotlightStyle == .values)
-        #expect(Style.allCases.map(\.rawValue) == ["stoic", "optimistic", "humorous", "tough_love", "tender", "values"])
+        #expect(Style.allCases.map(\.rawValue) == ["stoic", "hopeful", "witty", "tough", "tender", "values"])
     }
 
     @Test func aFutureStyleDropsOnlyThatAngleAndItsCover() throws {

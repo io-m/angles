@@ -169,6 +169,13 @@
       "when": 1791463783322,
       "tag": "0023_tender_values_styles",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791550183322,
+      "tag": "0024_one_style_label",
+      "breakpoints": true
     }
   ]
 }

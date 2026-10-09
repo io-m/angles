@@ -4,29 +4,29 @@ import Testing
 
 struct WidgetTests {
     @Test @MainActor
-    func favoriteSnapshotIsNewestFirstAndContainsOnlyFavoriteAnswers() {
+    func heartSnapshotIsNewestFirstAndContainsOnlyHeartAnswers() {
         let older = makeCard(
             id: UUID(uuidString: "00000000-0000-4000-8000-000000000001")!,
             thought: "A private older thought",
             answer: "Older answer",
-            favoritedAt: Date(timeIntervalSince1970: 100)
+            heartedAt: Date(timeIntervalSince1970: 100)
         )
         let newer = makeCard(
             id: UUID(uuidString: "00000000-0000-4000-8000-000000000002")!,
             thought: "A private newer thought",
             answer: "Newer answer",
-            favoritedAt: Date(timeIntervalSince1970: 200)
+            heartedAt: Date(timeIntervalSince1970: 200)
         )
-        let notFavorite = makeCard(
+        let notHeart = makeCard(
             id: UUID(uuidString: "00000000-0000-4000-8000-000000000003")!,
             thought: "This must not leave the app",
-            answer: "Not favorite",
-            favoritedAt: nil,
-            isFavorite: false
+            answer: "Not heart",
+            heartedAt: nil,
+            isHearted: false
         )
 
-        let snapshot = FavoriteAngleWidgetPublisher.makeSnapshot(
-            from: [older, notFavorite, newer],
+        let snapshot = HeartAngleWidgetPublisher.makeSnapshot(
+            from: [older, notHeart, newer],
             updatedAt: Date(timeIntervalSince1970: 300)
         )
 
@@ -36,18 +36,18 @@ struct WidgetTests {
     }
 
     @Test @MainActor
-    func favoriteSnapshotIsBounded() {
-        let cards = (0 ..< FavoriteAngleWidgetPublisher.maximumItemCount + 3).map { index in
+    func heartSnapshotIsBounded() {
+        let cards = (0 ..< HeartAngleWidgetPublisher.maximumItemCount + 3).map { index in
             makeCard(
                 id: UUID(),
                 thought: "Private \(index)",
                 answer: "Answer \(index)",
-                favoritedAt: Date(timeIntervalSince1970: Double(index))
+                heartedAt: Date(timeIntervalSince1970: Double(index))
             )
         }
 
-        let snapshot = FavoriteAngleWidgetPublisher.makeSnapshot(from: cards)
-        #expect(snapshot.items.count == FavoriteAngleWidgetPublisher.maximumItemCount)
+        let snapshot = HeartAngleWidgetPublisher.makeSnapshot(from: cards)
+        #expect(snapshot.items.count == HeartAngleWidgetPublisher.maximumItemCount)
         #expect(snapshot.items.first?.answer == "Answer 14")
     }
 
@@ -57,29 +57,29 @@ struct WidgetTests {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WidgetSnapshotStore(defaults: defaults)
-        let item = FavoriteAngleWidgetItem(
+        let item = HeartAngleWidgetItem(
             id: "card-stoic",
             cardID: "card",
             answer: "Kept answer",
             style: "stoic",
             styleDisplayName: "Stoic",
             lifeAreaLabel: "Work",
-            favoritedAt: Date(timeIntervalSince1970: 100)
+            heartedAt: Date(timeIntervalSince1970: 100)
         )
 
-        store.saveFavoriteAngles(FavoriteAngleWidgetSnapshot(items: [item], updatedAt: Date()))
-        #expect(store.loadFavoriteAngles().items == [item])
+        store.saveHeartAngles(HeartAngleWidgetSnapshot(items: [item], updatedAt: Date()))
+        #expect(store.loadHeartAngles().items == [item])
 
-        store.clearFavoriteAngles()
-        #expect(store.loadFavoriteAngles() == .empty)
+        store.clearHeartAngles()
+        #expect(store.loadHeartAngles() == .empty)
     }
 
     @Test
     func widgetURLsAcceptOnlyKnownAnglesRoutes() {
-        #expect(AnglesDeepLink(url: URL(string: "angles://favorites")!) == .favorites)
+        #expect(AnglesDeepLink(url: URL(string: "angles://hearts")!) == .hearts)
         #expect(AnglesDeepLink(url: URL(string: "angles://compose")!) == .compose)
         #expect(AnglesDeepLink(url: URL(string: "angles://unknown")!) == nil)
-        #expect(AnglesDeepLink(url: URL(string: "https://favorites")!) == nil)
+        #expect(AnglesDeepLink(url: URL(string: "https://hearts")!) == nil)
     }
 
     @MainActor
@@ -87,8 +87,8 @@ struct WidgetTests {
         id: UUID,
         thought: String,
         answer: String,
-        favoritedAt: Date?,
-        isFavorite: Bool = true
+        heartedAt: Date?,
+        isHearted: Bool = true
     ) -> HomeCard {
         HomeCard(
             id: id,
@@ -98,8 +98,8 @@ struct WidgetTests {
                     id: UUID(),
                     thought: thought,
                     result: ReframeResult(style: .stoic, reframe: answer),
-                    isFavorite: isFavorite,
-                    favoritedAt: favoritedAt,
+                    isHearted: isHearted,
+                    heartedAt: heartedAt,
                     heartCount: nil
                 ),
             ]

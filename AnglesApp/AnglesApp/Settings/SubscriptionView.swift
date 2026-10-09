@@ -22,12 +22,12 @@ struct SubscriptionView: View {
     private var planInk: Color {
         switch storeKitManager.activeProductID {
         case StoreKitManager.annualProductID:
-            return CardStyleAppearance(style: .optimistic).ink
+            return CardStyleAppearance(style: .hopeful).ink
         case StoreKitManager.monthlyProductID:
             return CardStyleAppearance(style: .stoic).ink
         default:
             return isSubscribed
-                ? CardStyleAppearance(style: .humorous).ink
+                ? CardStyleAppearance(style: .witty).ink
                 : theme.muted
         }
     }
@@ -53,7 +53,7 @@ struct SubscriptionView: View {
                         symbol: "xmark",
                         title: "Cancel",
                         subtitle: "Manage renewal in the App Store",
-                        ink: CardStyleAppearance(style: .toughLove).ink
+                        ink: CardStyleAppearance(style: .tough).ink
                     ) {
                         Task { await openManageSubscriptions() }
                     }
@@ -63,7 +63,7 @@ struct SubscriptionView: View {
                     symbol: "arrow.clockwise",
                     title: storeKitManager.isRestoring ? "Checking…" : "Restore purchases",
                     subtitle: "Find a subscription already on this Apple ID",
-                    ink: CardStyleAppearance(style: .humorous).ink
+                    ink: CardStyleAppearance(style: .witty).ink
                 ) {
                     Task { await storeKitManager.restorePurchases() }
                 }

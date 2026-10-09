@@ -81,7 +81,7 @@ Add Screen Recording to Control Center if it is not there: Settings → Control 
 5. If it keeps asking, or the question is off, stop this take. Close the composer without saving. Rewrite the typed line so it is more specific, and start the recording again. Do not fake a chip you would not pick.
 6. Let the cooking bubble finish at real speed. Do not tap around.
 7. When the card appears, pause two seconds on the first answer.
-8. Tap the other style chips one at a time. Pause two seconds on each so the text is readable later. The chips are Stoic, Optimistic, Humorous, and Tough love. The card shows one answer at a time.
+8. Tap the other style chips one at a time. Pause two seconds on each so the text is readable later. The chips are Stoic, Hopeful, Witty, and Tough. The card shows one answer at a time.
 9. Come back to the answer you will talk about and hold it for five seconds.
 10. Save, if this episode includes the button.
     - Heavy or private: tap the Public pill so it says Private, then tap Save privately.
@@ -93,8 +93,8 @@ Watch it once. Pick the line that actually did something, or the one that missed
 
 A verdict is one or two spoken sentences. It names the style and a phrase.
 
-- Hit: “Tough love said ‘you’re waiting for a no so you don’t have to hear a yes.’ That one sat me back.”
-- Miss, still honest: “Optimistic tried to cheer me up. Stoic is the one that actually named it.”
+- Hit: “Tough said ‘you’re waiting for a no so you don’t have to hear a yes.’ That one sat me back.”
+- Miss, still honest: “Hopeful tried to cheer me up. Stoic is the one that actually named it.”
 
 Generic praise (“these are amazing”) plays as an ad. One hit, or one hit and one miss, is the point.
 
@@ -170,9 +170,9 @@ Thought for the day: thirteen months out of work, still waiting for a rejection 
 
 **0:08–0:13.** Cooking bubble for about a second. Cut back to the same door, you looking down at the phone. Cut back as the card lands. The cleaned thought is on the card, then the first answer.
 
-**0:13–0:22.** Tap Optimistic, Humorous, Stoic, about a second each. Stop on Tough love and hold. Suppose that answer says you are waiting for a no so you never have to risk a yes. The zoom is tight enough to read that sentence.
+**0:13–0:22.** Tap Hopeful, Witty, Stoic, about a second each. Stop on Tough and hold. Suppose that answer says you are waiting for a no so you never have to risk a yes. The zoom is tight enough to read that sentence.
 
-**0:22–0:28.** Card stays. Your voice: “Tough love said I’m waiting for a no so I don’t have to hear a yes. That one sat me back. Optimistic just tried to pat me on the head.”
+**0:22–0:28.** Card stays. Your voice: “Tough said I’m waiting for a no so I don’t have to hear a yes. That one sat me back. Hopeful just tried to pat me on the head.”
 
 **0:28–0:30.** You tap Private, then Save privately. Or you cut at 0:28 and skip the button. This thought does not need to be a Post.
 

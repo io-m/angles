@@ -42,11 +42,11 @@ function ageLabel(hours: number): string {
 }
 
 function keptAngles(card: StoredCard): Style[] {
-  return card.results.filter((item) => item.isFavorite).map((item) => item.style);
+  return card.results.filter((item) => item.isHearted).map((item) => item.style);
 }
 
 function isFullyKept(card: StoredCard): boolean {
-  return card.results.length > 0 && card.results.every((item) => item.isFavorite);
+  return card.results.length > 0 && card.results.every((item) => item.isHearted);
 }
 
 function isPartlyKept(card: StoredCard): boolean {

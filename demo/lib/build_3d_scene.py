@@ -63,12 +63,12 @@ bsdf.inputs['Roughness'].default_value = 0.38
 bsdf.inputs['Specular IOR Level'].default_value = 0.45
 ground.data.materials.append(g_mat)
 
-# Four Style colors: Stoic blue, Optimistic amber, Humorous green, Tough Love coral
+# Four Style colors: Stoic blue, Hopeful amber, Witty green, Tough coral
 STYLE_COLORS = [
     ("Stoic", (0.20, 0.45, 1.0), (115/255, 166/255, 255/255)),
-    ("Optimistic", (1.0, 0.45, 0.06), (255/255, 158/255, 56/255)),
-    ("Humorous", (0.10, 0.80, 0.20), (89/255, 209/255, 115/255)),
-    ("ToughLove", (1.0, 0.18, 0.12), (255/255, 107/255, 97/255)),
+    ("Hopeful", (1.0, 0.45, 0.06), (255/255, 158/255, 56/255)),
+    ("Witty", (0.10, 0.80, 0.20), (89/255, 209/255, 115/255)),
+    ("Tough", (1.0, 0.18, 0.12), (255/255, 107/255, 97/255)),
 ]
 
 def make_sculptural_monolith(name, location, rotation, dimensions):
