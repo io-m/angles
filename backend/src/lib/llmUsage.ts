@@ -1,6 +1,6 @@
 import type { LlmModelId } from "./llmClient.js";
 
-export const LLM_RATE_VERSION = "2026-10-providers-v1";
+export const LLM_RATE_VERSION = "2026-10-providers-v2";
 
 export type LlmCallKind = "decision" | "batch" | "reframe" | "moderation" | "rewrite";
 export type LlmCallStatus = "succeeded" | "failed";
@@ -119,10 +119,11 @@ export function companyCostNanoUsd(
   );
   const tool = BigInt(usage.toolTokens);
 
+  // Nano-USD per token. Cached input is the provider's cache-read price, not the full input price.
   switch (model) {
     case "mistral-small-latest":
-      return (prompt + cached + tool) * 150n + output * 600n;
+      return (prompt + tool) * 150n + cached * 15n + output * 600n;
     case "gpt-4.1-mini":
-      return (prompt + cached + tool) * 400n + output * 1_600n;
+      return (prompt + tool) * 400n + cached * 100n + output * 1_600n;
   }
 }

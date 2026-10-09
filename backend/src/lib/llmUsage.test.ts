@@ -18,7 +18,7 @@ describe("LLM usage normalization and rates", () => {
       cachedTokens: 30,
       completionTokens: 20,
     });
-    expect(companyCostNanoUsd("mistral-small-latest", usage!)).toBe(27_000n);
+    expect(companyCostNanoUsd("mistral-small-latest", usage!)).toBe(22_950n);
   });
 
   it("separates OpenAI cached prompt tokens and records its cost", () => {
@@ -33,7 +33,7 @@ describe("LLM usage normalization and rates", () => {
       cachedTokens: 30,
       completionTokens: 20,
     });
-    expect(companyCostNanoUsd("gpt-4.1-mini", usage!)).toBe(72_000n);
+    expect(companyCostNanoUsd("gpt-4.1-mini", usage!)).toBe(63_000n);
   });
 
   it("returns null when a provider omits usable accounting", () => {

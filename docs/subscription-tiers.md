@@ -4,8 +4,8 @@ This is the shipped V1 contract. It is not a pricing proposal.
 
 ## Products
 
-- Monthly: **$4.99/month** (`app.angles.ios.monthly`)
-- Annual: **$39.99/year** (`app.angles.ios.annual`)
+- Monthly: **$3.99/month** (`app.angles.ios.monthly`)
+- Annual: **$24.99/year** (`app.angles.ios.annual`)
 - No free trial
 - One private onboarding taste before the paywall
 - Both paid products grant **600 credits per monthly membership period**
@@ -87,7 +87,7 @@ The company ledger records each real provider attempt, including failed attempts
 - success/failure status;
 - versioned company cost in nano-USD.
 
-`LLM_RATE_VERSION` is `2026-10-providers-v1`. Provider-reported usage is preferred. If a call fails before usable provider usage is available, the server records a conservative estimate so company spend is not hidden.
+`LLM_RATE_VERSION` is `2026-10-providers-v2`. Provider-reported usage is preferred. If a call fails before usable provider usage is available, the server records a conservative estimate so company spend is not hidden.
 
 The company ledger stores no thought or reframe text. It is operational COGS accounting, not the user-visible tariff. Public-card moderation provider calls are also recorded as company COGS but do not consume user credits.
 
@@ -95,14 +95,14 @@ The company ledger stores no thought or reframe text. It is operational COGS acc
 
 The versioned COGS calculation currently uses:
 
-- Mistral: `$0.15/1M` input and `$0.60/1M` output
-- OpenAI GPT-4.1 mini: `$0.40/1M` input and `$1.60/1M` output
+- Mistral: `$0.15/1M` input, `$0.015/1M` cached input, and `$0.60/1M` output
+- OpenAI GPT-4.1 mini: `$0.40/1M` input, `$0.10/1M` cached input, and `$1.60/1M` output
 
 These are accounting inputs, not promises to users. Verify them before production launch and create a new `LLM_RATE_VERSION` when provider pricing changes.
 
 ## Cost per cook
 
-The budget remains about $0.002 per ready cook, about $1.20 a month for a subscriber who uses all 600 credits. An earlier 80-thought run measured the current Mistral writer at about $0.00107 per ready cook, but there is no measured GPT-4.1 mini quality or per-cook claim yet. Re-run `pnpm llm:eval` before making the fallback primary or treating either figure as a current benchmark.
+A ready cook on the current Mistral prompts is about $0.0015 (the decision call plus four styles), about $0.90 a month for a subscriber who uses all 600 credits. The budget remains about $0.002 per ready cook, about $1.20 a month once a lint rewrite is included. Free continue turns are uncharged and dominate the abuse ceiling: 600 cooks plus the rest of the daily operation cap filled with continues is about $1.90. The $0.0015 figure is arithmetic on today's prompt sizes. An earlier 80-thought run measured about $0.00107 per ready cook, and there is no measured GPT-4.1 mini quality or per-cook claim yet. Re-run `pnpm llm:eval` before making the fallback primary or treating either figure as a current benchmark.
 
 ## Provider-side controls
 

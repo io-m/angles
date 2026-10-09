@@ -267,7 +267,7 @@ describe("generateReframe", () => {
         cachedTokens: 20,
         completionTokens: 10,
         usageSource: "reported",
-        companyCostNanoUsd: 13_500n,
+        companyCostNanoUsd: 10_800n,
       }),
     );
   });

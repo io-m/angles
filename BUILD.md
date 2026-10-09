@@ -533,6 +533,8 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-10 — Version 1.0 build 38 submitted for App Review (release manual), with both subscriptions and Joe's updated prices.
+- 2026-10-10 — Build 38 uploaded to TestFlight: compose refactor (`ComposeSession`, `Home/Compose/` views, deterministic thread follow, fewer AppRoot redraws). Not submitted for review until Joe tests.
 - 2026-10-09 — Compose restructured (25). The 1,460-line compose view is now small views under `Home/Compose/`, and the compose state lives in its own `ComposeSession` that `HomeViewModel` holds. It looks and moves as before with two exceptions: the header's Start again is gone (Start new under the card is the one way to start over), and a card that arrives in a thread taller than the screen now scrolls into view above Post instead of stopping under it. Compose no longer redraws with the app root (17 to 2 renders at launch), the root draws about half as often, and the thread, bottom bar, and mask logic are pure and tested.
 - 2026-10-09 — Compose keeps writing and keeps every card (25). Tap-to-edit and its edit bar are gone. The AI's questions and your answers stay as bubbles, the input stays after angles, and more writing starts an "Updated thought" round under a divider that the AI reads together with everything you wrote (never its own angles). Each card has its own Post. Build 35.
 - 2026-10-09 — Compose reads like a normal chat (25). The thread is bottom-anchored and animates to the end on every change including the keyboard and a growing input, bubbles hug their text, nothing is drawn over the header or input, and the input's hint moved inside the input so it is always legible. Build 36.

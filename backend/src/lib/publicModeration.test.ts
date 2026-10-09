@@ -72,7 +72,7 @@ describe("moderatePublicCard", () => {
         thinkingTokens: 0,
         toolTokens: 0,
         usageSource: "reported",
-        rateVersion: "2026-10-providers-v1",
+        rateVersion: "2026-10-providers-v2",
         companyCostNanoUsd: 2_700n,
       };
       vi.mocked(generateJson).mockImplementation(async (options) => {
