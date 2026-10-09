@@ -1,6 +1,6 @@
 // The compose card's accessibility label is "<thought>. <Style> answer. <answer>".
 // Stores the answer under STYLE_KEY ("auto" detects which style is showing).
-var NAMES = { stoic: 'Stoic', hopeful: 'Hopeful', witty: 'Witty', tough: 'Tough' };
+var NAMES = { stoic: 'Stoic', hopeful: 'Hopeful', witty: 'Witty', tough: 'Tough', tender: 'Tender', values: 'Values' };
 var label = String(maestro.copiedText || '');
 var key = STYLE_KEY;
 if (key === 'auto') {

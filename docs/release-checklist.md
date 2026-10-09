@@ -1,6 +1,6 @@
 # Release checklist
 
-Current as of **6 October 2026**. Version **1.0**. Latest iOS upload: build **30** (smooth float-in + aperture punch splash). App Store Connect app `6811873869` (Angles: Reframe Thoughts).
+Current as of **6 October 2026**. Version **1.0**. Latest iOS upload: build **33** (one style name everywhere), submitted for review on 9 October 2026. App Store Connect app `6811873869` (Angles: Reframe Thoughts).
 
 Everything under "Left to do" needs you: a dashboard the API cannot reach, your phone, or your judgement.
 

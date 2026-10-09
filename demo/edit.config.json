@@ -43,10 +43,12 @@
     "chipCircle": 40,
     "chipGap": 4,
     "chipPill": {
-      "stoic": 84,
-      "hopeful": 106,
-      "witty": 112,
-      "tough": 111
+      "stoic": 88,
+      "hopeful": 94,
+      "witty": 89,
+      "tough": 81,
+      "tender": 92,
+      "values": 86
     }
   }
 }

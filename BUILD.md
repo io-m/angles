@@ -532,6 +532,8 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-09 — Showcase TikToks show whichever four styles the cook wrote, Tender and Values included, each under its own label. The flow taps every other chip the card has, the edit measures chip positions from the card, and the four-style check is gone (`demo/README.md` Cut contract). Store screenshots still need the four classic styles.
+- 2026-10-09 — Version 1.0 build 33 submitted for App Review (release stays manual), with both subscriptions and the new screenshots, preview, and review images.
 - 2026-10-09 — Build 33 uploaded to TestFlight: the first build with the single style names and keys (Hopeful, Witty, Tough). It needs the backend with migration `0024`; builds 32 and earlier do not work against it.
 - 2026-10-09 — One name per style, everywhere. Stoic, Hopeful, Witty, Tough, Tender, Values, For you, and Hearts are the labels on the phone, in prompts, on the site, in the store listing, and in the code. The stored keys are now the same words: migration `0024_one_style_label.sql` renames the `style` enum values and `cards.skipped_styles`, and `is_favorite` / `favorited_at` become `is_hearted` / `hearted_at` (wire `isHearted`, `heartedAt`, `?hearted=`). `Style.displayName` is the only Swift label. The widget kind is `HeartAngleWidget`. Builds from before this change do not work against this backend.
 - 2026-10-08 — The site names all six voices and says a cook writes four of them. Privacy and Terms (8 October 2026) say Witty and Tough are not written for real harm to people.

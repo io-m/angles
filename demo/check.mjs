@@ -14,7 +14,9 @@ const video = join(outDir, "final_9x16.mp4");
 const framesDir = join(outDir, "frames");
 const edl = JSON.parse(readFileSync(join(outDir, "edl.json"), "utf8"));
 const answers = JSON.parse(readFileSync(join(take, "answers.json"), "utf8"));
-const NAMES = { stoic: "Stoic", hopeful: "Hopeful", witty: "Witty", tough: "Tough" };
+const NAMES = { stoic: "Stoic", hopeful: "Hopeful", witty: "Witty", tough: "Tough", tender: "Tender", values: "Values" };
+// The four styles this cook wrote: the chapters in the cut, in order.
+const chapterStyles = (edl.composition.chapters ?? []).map((c) => String(c.name).toLowerCase());
 
 function run(cmd, args) {
   const r = spawnSync(cmd, args, { encoding: "utf8" });
@@ -50,9 +52,12 @@ if ((answers.followups ?? 0) > 1) {
 if (answers.crisis) {
   notPostable.push("Angles answered with a crisis line.");
 }
-for (const style of Object.keys(NAMES)) {
+if (chapterStyles.length !== 4) {
+  problems.push(`the cut has ${chapterStyles.length} style chapters, expected exactly four`);
+}
+for (const style of chapterStyles) {
   if (!answers.answers?.[style]) {
-    notPostable.push(`No ${NAMES[style]} answer was read from the card.`);
+    notPostable.push(`No ${NAMES[style] ?? style} answer was read from the card.`);
   }
 }
 
@@ -105,7 +110,7 @@ const lines = [
   "",
   `Thought on the card: ${answers.thought ?? "(not read)"}`,
   "",
-  ...Object.keys(NAMES).map((s) => `- **${NAMES[s]}** (score ${answers.scores?.[s] ?? "n/a"}): ${answers.answers?.[s] ?? "(missing)"}`),
+  ...chapterStyles.map((s) => `- **${NAMES[s] ?? s}** (score ${answers.scores?.[s] ?? "n/a"}): ${answers.answers?.[s] ?? "(missing)"}`),
   "",
   "## Checks",
   "",
@@ -115,7 +120,7 @@ const lines = [
   "## Check by eye",
   "",
   "- Are the answers specific to this thought, or generic? Generic means do not post.",
-  "- Is the last chapter (Tough) readable on a phone at arm's length?",
+  "- Is the last chapter readable on a phone at arm's length?",
   "- No notification, real name, or personal data anywhere (the account is \"Angles Demo\").",
   "- The hook cards read in one glance, and the end card's App Store line and follow line are clear of TikTok's caption area.",
   "",

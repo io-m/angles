@@ -1,0 +1,37 @@
+{
+  "line": "I've had the same unfinished app idea for two years, and I'm scared that finishing it will prove it isn't good.",
+  "followupReply": "It's a habit tracker I've been building on weekends since 2024.",
+  "bestStyle": "auto",
+  "storeHook": [
+    [
+      { "text": "2 years.", "look": "big" },
+      { "text": "Unfinished.", "look": "big" },
+      { "text": "4 ways.", "look": "slam" }
+    ]
+  ],
+  "storeEnd": [
+    [
+      { "text": "One thought.", "look": "big" },
+      { "text": "Four ways.", "look": "slam" }
+    ]
+  ],
+  "hook": [
+    [
+      { "text": "2 years.", "look": "big" },
+      { "text": "Same idea.", "look": "big" },
+      { "text": "Still unfinished.", "look": "small" }
+    ],
+    [
+      { "text": "So I asked AI", "look": "small" },
+      { "text": "to see it", "look": "small" },
+      { "text": "4 ways.", "look": "slam" }
+    ]
+  ],
+  "bestNote": "The one that hit hardest.",
+  "end": {
+    "wordmark": "Angles",
+    "tagline": "One thought. Four ways to see it.",
+    "badge": "Coming soon to the App Store",
+    "follow": "Follow for more"
+  }
+}

@@ -1,12 +1,12 @@
 # The recorded take. Starts on Home (warmup.yaml got it there), cooks DEMO_LINE
-# for real, walks the four style chips, and holds Tough. The edit always
-# cuts four chapters then the outro (see demo/README.md Cut contract).
+# for real, walks the four style chips the card has (any four of the six), and holds the
+# last one. The edit always cuts four chapters then the outro (see demo/README.md Cut contract).
 # Do not tap Post, Save, or jump back to a "best" style.
 #
 # Env (make_video.sh passes these):
 #   DEMO_LINE       the thought to type
 #   FOLLOWUP_REPLY  honest answer if Angles asks one follow-up
-#   BEST_STYLE      auto | stoic | hopeful | witty | tough
+#   BEST_STYLE      auto | stoic | hopeful | witty | tough | tender | values
 appId: app.angles.ios
 ---
 - evalScript: "${output.demo = { marks: [], followups: 0, answers: {}, options: [] }}"
@@ -109,16 +109,8 @@ appId: app.angles.ios
     timeout: 2000
 - evalScript: ${output.demo.marks.push(['card', Date.now()])}
 
-# The cut is exactly these four chapters. A cook that ranked Tender or Values in place
-# of one of them cannot make this video: fail the take here and record another.
-- assertVisible:
-    id: "chip.stoic"
-- assertVisible:
-    id: "chip.hopeful"
-- assertVisible:
-    id: "chip.witty"
-- assertVisible:
-    id: "chip.tough"
+# The cut is exactly four chapters: the four styles this cook wrote, whichever they are.
+# The app always gives a card four of the six, so there is nothing to assert here.
 
 # 5. Hold on the first answer.
 - runFlow:
@@ -132,30 +124,83 @@ appId: app.angles.ios
     env:
       STYLE_KEY: auto
 
-# 6. Each chip — short holds; the edit trims tighter.
+# 6. Tap every other chip on the card, once, in this fixed order (Tough last when the card has
+# it). Short holds; the edit trims tighter. firstStyle is the chip the card opened on.
 - runFlow:
-    file: flows/chip.yaml
-    env:
-      STYLE_KEY: hopeful
-      STYLE_NAME: Hopeful
-      HOLD_MS: 550
-- runFlow:
-    file: flows/chip.yaml
-    env:
-      STYLE_KEY: witty
-      STYLE_NAME: Witty
-      HOLD_MS: 550
-- runFlow:
+    when:
+      visible:
+        id: "chip.stoic"
+        childOf:
+          id: "compose.card"
+      true: ${output.demo.firstStyle !== 'stoic'}
     file: flows/chip.yaml
     env:
       STYLE_KEY: stoic
       STYLE_NAME: Stoic
       HOLD_MS: 550
 - runFlow:
+    when:
+      visible:
+        id: "chip.hopeful"
+        childOf:
+          id: "compose.card"
+      true: ${output.demo.firstStyle !== 'hopeful'}
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: hopeful
+      STYLE_NAME: Hopeful
+      HOLD_MS: 550
+- runFlow:
+    when:
+      visible:
+        id: "chip.witty"
+        childOf:
+          id: "compose.card"
+      true: ${output.demo.firstStyle !== 'witty'}
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: witty
+      STYLE_NAME: Witty
+      HOLD_MS: 550
+- runFlow:
+    when:
+      visible:
+        id: "chip.tender"
+        childOf:
+          id: "compose.card"
+      true: ${output.demo.firstStyle !== 'tender'}
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: tender
+      STYLE_NAME: Tender
+      HOLD_MS: 550
+- runFlow:
+    when:
+      visible:
+        id: "chip.values"
+        childOf:
+          id: "compose.card"
+      true: ${output.demo.firstStyle !== 'values'}
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: values
+      STYLE_NAME: Values
+      HOLD_MS: 550
+- runFlow:
+    when:
+      visible:
+        id: "chip.tough"
+        childOf:
+          id: "compose.card"
+      true: ${output.demo.firstStyle !== 'tough'}
     file: flows/chip.yaml
     env:
       STYLE_KEY: tough
       STYLE_NAME: Tough
+      HOLD_MS: 550
+- runFlow:
+    file: flows/hold.yaml
+    env:
       HOLD_MS: 2800
 
 # 7. Score the answers for the report; the edit holds Tough then the outro.
@@ -163,6 +208,6 @@ appId: app.angles.ios
     file: flows/pick_best.js
     env:
       BEST_STYLE: ${BEST_STYLE}
-- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', hopeful: 'Hopeful', witty: 'Witty', tough: 'Tough' })[output.demo.best]}"
+- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', hopeful: 'Hopeful', witty: 'Witty', tough: 'Tough', tender: 'Tender', values: 'Values' })[output.demo.best]}"
 - runScript:
     file: flows/report.js

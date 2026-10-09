@@ -1,8 +1,8 @@
-// Picks the answer to hold on. BEST_STYLE forces a style; "auto" scores the four
+// Picks the answer to hold on. BEST_STYLE forces a style; "auto" scores the card's
 // answers for the strongest concrete line: everyday objects, times, numbers, and
 // a direct next step count up; stock comfort phrases, abstractions, questions,
 // and length count down. Repeating the thought's own words earns little.
-var STYLES = ['stoic', 'hopeful', 'witty', 'tough'];
+var STYLES = ['stoic', 'hopeful', 'witty', 'tough', 'tender', 'values'];
 var CONCRETE = [
   'inbox', 'email', 'résumé', 'resume', 'cover letter', 'application', 'role', 'interview',
   'phone', 'call', 'desk', 'chair', 'calendar', 'laptop', 'tab', 'screen', 'notification',

@@ -3,8 +3,9 @@
 //   node demo/edit.mjs demo/raw/take-YYYYMMDD-HHMMSS [demo/themes/<name>.json]
 //
 // Cut (every video): hook, type, send, short cook, four style chapters, outro.
-// The last chapter (Tough) gets extra hold + a small zoom. No fifth "best"
-// chapter, no Post, no Home. Theme words are the hook and the end card.
+// The four chapters are the four styles the cook wrote (any four of the six). The last
+// one gets extra hold + a small zoom. No fifth "best" chapter, no Post, no Home. Theme
+// words are the hook and the end card.
 //
 // Maestro marks plus scene scores pick in-points. The yellow chapter title
 // lands on the same timeline frame as the cut. Composition:
@@ -36,7 +37,7 @@ const music = join(DEMO, "assets", "music.mp3");
 const outDir = join(DEMO, "output");
 const output = join(outDir, "final_9x16.mp4");
 const FPS = 30;
-const NAMES = { stoic: "STOIC", hopeful: "HOPEFUL", witty: "WITTY", tough: "TOUGH" };
+const NAMES = { stoic: "STOIC", hopeful: "HOPEFUL", witty: "WITTY", tough: "TOUGH", tender: "TENDER", values: "VALUES" };
 const NUMBERS = ["CHAPTER ONE", "CHAPTER TWO", "CHAPTER THREE", "CHAPTER FOUR"];
 
 const log = (...args) => console.error("[edit]", ...args);
@@ -89,7 +90,7 @@ function cardFromHierarchy() {
     const id = a["resource-id"] || "";
     const text = a.accessibilityText || "";
     if (b && id.startsWith("chip.")) {
-      found.chips.push({ depth, ...b });
+      found.chips.push({ depth, style: id.slice(5), ...b });
     }
     if (b && (text === "Public" || text === "Private") && (!found.privacy || b.x1 - b.x0 > found.privacy.x1 - found.privacy.x0)) {
       found.privacy = b;
@@ -114,10 +115,12 @@ function cardFromHierarchy() {
     y0: found.privacy.y0 - 14,
     y1: found.recook.y1 + 14,
     chipX0: Math.min(...chips.map((c) => c.x0)),
+    // Left to right, as the card lays them out (the cook's own order).
+    chipOrder: [...chips].sort((a, b) => a.x0 - b.x0).map((c) => c.style),
   };
 }
 // iPhone 17 Pro fallback, measured from a take.
-const card = cardFromHierarchy() ?? { x0: 70, x1: 380, y0: 249, y1: 670, chipX0: 84 };
+const card = cardFromHierarchy() ?? { x0: 70, x1: 380, y0: 249, y1: 670, chipX0: 84, chipOrder: null };
 
 // ---------- real change times ----------
 function sceneScores(cropPx) {
@@ -182,18 +185,21 @@ const cardScene =
 // Cut as soon as the card is on screen so the first chapter overlay is not waiting on settle.
 const cardAt = cardScene ?? cardMark;
 
-// The order the flow tapped the chips in; the card opened on firstStyle.
-const tapOrder = ["hopeful", "witty", "stoic", "tough"];
-const firstStyle = result.firstStyle && NAMES[result.firstStyle] ? result.firstStyle : "stoic";
+// The order the flow tapped the chips in (by when each answer showed); the card opened on firstStyle.
+const tapOrder = Object.keys(NAMES)
+  .filter((style) => marks[`shown_${style}`] !== undefined)
+  .sort((a, b) => marks[`shown_${a}`] - marks[`shown_${b}`]);
+const firstStyle = result.firstStyle && NAMES[result.firstStyle] ? result.firstStyle : null;
+if (!firstStyle) {
+  throw new Error("result.json has no firstStyle; the flow could not read which style the card opened on");
+}
 const chipAt = {};
 for (const style of tapOrder) {
-  if (marks[`shown_${style}`] !== undefined) {
-    chipAt[style] = need(`shown_${style}`) - 0.12;
-  }
+  chipAt[style] = need(`shown_${style}`) - 0.12;
 }
 
 /** Center of a chip in points, given which chip was selected (and so wide) at the time. */
-const CHIP_ORDER = ["stoic", "hopeful", "witty", "tough"];
+const CHIP_ORDER = card.chipOrder ?? [firstStyle, ...tapOrder];
 function chipCenter(style, selected) {
   let x = card.chipX0 + 2;
   for (const s of CHIP_ORDER) {
@@ -325,6 +331,9 @@ for (let i = 0; i < rest.length; i++) {
   const before = i === 0 ? firstStyle : rest[i - 1];
   const dur = isLast ? angleSeconds + lastExtra : angleSeconds;
   angleShots.push(angleChapter(`chapter-${style}`, chipAt[style], style, chipCenter(style, before), dur));
+}
+if (angleShots.length !== 4) {
+  throw new Error(`the cut needs exactly four style chapters; this take has ${angleShots.length} (${angleShots.map((a) => a.style).join(", ")}). Record another take.`);
 }
 const lastShot = angleShots[angleShots.length - 1];
 
