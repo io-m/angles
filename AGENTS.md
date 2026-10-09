@@ -69,6 +69,13 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Home/AuthorProfileView.swift` — one author's public posts, same five tabs, follow badge; swipe back from anywhere on the page on iOS 26+, the edge strip before that (`wideBackSwipe`, `Theme/InteractivePop.swift`; scoped to this page and handed back when it goes away)
 - `AnglesApp/AnglesApp/Home/FollowingSheet.swift` — who the viewer follows; unfollow, open, its own write banner
 - `AnglesApp/AnglesApp/Home/AIConsentSheet.swift` — the one-time per-account "Before you start" sheet before the first Send: AI providers, what is sent, community rules, Terms and Privacy acceptance
+- `AnglesApp/AnglesApp/Home/Compose/` — the compose screen, one small view per file:
+  - `ComposeSession.swift` — the `@Observable` compose state (thought, turns, phase, input, cook, save) and its `/reframe` and `/cards` calls. `HomeViewModel.compose` holds it; it reaches the shared credit balance and library through `ComposeSessionHost`
+  - `ComposeThreadModel.swift` — pure logic with tests in `ComposeLogicTests.swift`: thread rows and their stable ids, the bottom bar mode (input, Post, held), the scroll follow, the leave prompt
+  - `ComposeSheetView.swift` — the thin composition plus leave, consent, and save routing. AppRoot hands it one `ComposeSheetContext` (handlers, shared references, flags, tasks), so an AppRoot redraw skips it. Keep its inputs free of closures and `@State`, and keep word-sized fields before one-byte flags: padding inside the value makes SwiftUI redraw it every time
+  - `ComposeThreadView.swift`, `ComposeRowViews.swift` — the top-down thread and its rows (bubbles, cooking, error, the card with Start new, the only restart)
+  - `ComposeBottomBar.swift`, `ComposeInputBar.swift`, `ComposePostBar.swift` — the bar and its focus, the input, Post with its note chip
+  - `ComposeHeader.swift`, `ComposeWelcome.swift`, `ComposeSessionEffects.swift`, `ComposeThreadMask.swift`, `ComposeLayout.swift`, `SaveCelebrationCover.swift` — close and credits, the empty-state hero, haptic and keyboard rules, the fade under header and bar, shared metrics, the save cover
 - `AnglesApp/AnglesApp/Home/HomeCardGrid.swift` — one card per row (`LazyVStack`)
 - `AnglesApp/AnglesApp/Home/ReframeCardView.swift` — stacked thought + selected answer everywhere except equal-height flipping Hearts; per-style chips/hearts and shared tap/long-press actions; globe on the author's public cards
 - `AnglesApp/AnglesApp/Home/BlockedPeopleSheet.swift` — Settings block list and unblock actions

@@ -28,7 +28,7 @@ Target: iOS 17+, bundle id `app.angles.ios` (placeholder). No SPM networking pac
 
 Keep `Style` raw values identical to the backend: `stoic`, `hopeful`, `witty`, `tough`. `ThoughtCategory`, `Timeframe`, `SafetyFlag`, and `IntensityBand` decode unknown values to a safe case on purpose — a new backend value must not fail a whole cook.
 
-A `continue` response keeps the composer up (`HomeViewModel.isComposerVisible`). Never hide it on anything but a finished cook.
+A `continue` response keeps the composer up (`ComposeSession.isComposerVisible`, held as `HomeViewModel.compose`). Never hide it on anything but a finished cook.
 
 ## Config
 

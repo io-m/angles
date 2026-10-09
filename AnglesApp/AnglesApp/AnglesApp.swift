@@ -60,6 +60,7 @@ struct AppRoot: View {
     @State private var saveCoverPresented = false
     @State private var pendingWidgetDeepLink: AnglesDeepLink?
     @State private var pushCenter = FollowPushCenter.shared
+    @State private var composeContext = ComposeSheetContext()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -149,18 +150,13 @@ struct AppRoot: View {
                 .ignoresSafeArea()
 
             ComposeSheetView(
-                viewModel: viewModel,
-                isActive: isComposeActive,
-                isOnboardingTaste: destination == .taste,
+                session: viewModel.compose,
                 storeKitManager: storeKitManager,
                 identityStore: identityStore,
-                onClose: handleComposeClose,
-                onShowMembership: presentMembershipPaywall,
-                onSave: handleSavedCard,
-                onPresentSaveCover: presentSaveCover,
-                onDismissSaveCover: dismissSaveCover,
-                needsTermsAcceptance: !sessionStore.hasAcceptedTerms,
-                onAcceptTerms: { await sessionStore.acceptTerms() }
+                context: composeContext,
+                isActive: isComposeActive,
+                isOnboardingTaste: destination == .taste,
+                needsTermsAcceptance: !sessionStore.hasAcceptedTerms
             )
             .opacity(isComposeActive ? 1 : 0)
             .animation(
@@ -189,19 +185,7 @@ struct AppRoot: View {
                 .zIndex(18)
             }
 
-            WriteErrorBanner(message: viewModel.writeError ?? viewModel.usageBanner ?? serverSyncMessage) {
-                if viewModel.writeError != nil {
-                    viewModel.dismissWriteError()
-                } else if viewModel.usageBanner != nil {
-                    viewModel.dismissUsageBanner()
-                } else {
-                    Task { await storeKitManager.retryServerSync() }
-                }
-            }
-            .animation(
-                reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86),
-                value: viewModel.writeError ?? viewModel.usageBanner ?? serverSyncMessage
-            )
+            RootMessageBanner(viewModel: viewModel, storeKitManager: storeKitManager)
 
             if destination == .paywall {
                 PaywallView(
@@ -266,6 +250,7 @@ struct AppRoot: View {
             }
         }
         .environment(\.profileIdentity, identityStore)
+        .onAppear(perform: configureComposeContext)
         .onReceive(
             NotificationCenter.default.publisher(for: .anglesSessionInvalidated)
                 .receive(on: DispatchQueue.main)
@@ -324,16 +309,6 @@ struct AppRoot: View {
         .onChange(of: destination) { old, new in
             handleDestinationChange(from: old, to: new)
         }
-        .onChange(of: viewModel.tasteEndedByServer) { _, ended in
-            guard ended, destination == .taste else {
-                return
-            }
-            withoutAnimations {
-                paywallShowsCelebration = false
-                paywallHeroCard = nil
-                membershipRequested = true
-            }
-        }
         .onOpenURL { url in
             handleWidgetURL(url)
         }
@@ -368,32 +343,21 @@ struct AppRoot: View {
                 syncAppBadge()
             }
         }
-        .onChange(of: pushCenter.tokenRevision) { _, _ in
-            guard let token = pushCenter.deviceToken, sessionStore.isSignedIn else {
-                return
-            }
-            Task { await registerPushToken(token) }
-        }
-        .onChange(of: pushCenter.pendingActorID) { _, actorId in
-            guard actorId != nil else {
-                return
-            }
-            consumeFollowPush()
-        }
-        .onChange(of: viewModel.followBadgeRevision) { _, _ in
-            syncAppBadge()
-        }
         .onChange(of: storeKitManager.isBusy) { _, _ in
             handleCheckoutStateChange()
         }
-        .onChange(of: storeKitManager.isCheckoutOperationInFlight) { _, _ in
-            handleCheckoutStateChange()
-        }
-        .onChange(of: viewModel.feedLoadState) { _, _ in
-            advanceHomeRevealIfPossible()
-        }
-        .onChange(of: viewModel.launchPrefetchFinished) { _, _ in
-            advanceHomeRevealIfPossible()
+        .background {
+            RootChangeObservers(
+                viewModel: viewModel,
+                storeKitManager: storeKitManager,
+                pushCenter: pushCenter,
+                onHomeLoadProgress: advanceHomeRevealIfPossible,
+                onTasteEnded: handleTasteEndedByServer,
+                onFollowBadgeChange: syncAppBadge,
+                onPushTokenChange: handlePushTokenChange,
+                onPushActor: consumeFollowPush,
+                onCheckoutOperationChange: handleCheckoutStateChange
+            )
         }
         .background {
             GeometryReader { geo in
@@ -473,8 +437,33 @@ struct AppRoot: View {
         isHomeRevealed && selectedTab == .profile
     }
 
-    private var serverSyncMessage: String? {
-        storeKitManager.serverSyncPending ? storeKitManager.errorMessage : nil
+    /// Set once: the handlers act on this view's live state, so they never go stale.
+    private func configureComposeContext() {
+        composeContext.close = handleComposeClose
+        composeContext.showMembership = presentMembershipPaywall
+        composeContext.saved = handleSavedCard
+        composeContext.landSavedCard = { viewModel.landSavedCard($0, animated: false) }
+        composeContext.presentSaveCover = presentSaveCover
+        composeContext.dismissSaveCover = dismissSaveCover
+        composeContext.acceptTerms = { await sessionStore.acceptTerms() }
+    }
+
+    private func handleTasteEndedByServer() {
+        guard destination == .taste else {
+            return
+        }
+        withoutAnimations {
+            paywallShowsCelebration = false
+            paywallHeroCard = nil
+            membershipRequested = true
+        }
+    }
+
+    private func handlePushTokenChange() {
+        guard let token = pushCenter.deviceToken, sessionStore.isSignedIn else {
+            return
+        }
+        Task { await registerPushToken(token) }
     }
 
     private func withoutAnimations(_ updates: () -> Void) {
@@ -528,8 +517,8 @@ struct AppRoot: View {
             releaseCheckoutLockForTerms()
         }
         if new == .taste, old != .taste {
-            viewModel.resetCompose()
-            viewModel.composeIsPublic = false
+            viewModel.compose.resetCompose()
+            viewModel.compose.composeIsPublic = false
             storeKitManager.clearError()
         }
         if new != .paywall {
@@ -836,7 +825,7 @@ struct AppRoot: View {
             homeArrivalTimedOut = false
             saveCoverLabel = nil
             saveCoverPresented = false
-            viewModel.resetCompose()
+            viewModel.compose.resetCompose()
             viewModel.resetForSignOut()
             identityStore.reset()
         }
@@ -954,7 +943,7 @@ struct AppRoot: View {
         }
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        viewModel.resetCompose()
+        viewModel.compose.resetCompose()
         isComposePresented = true
     }
 
@@ -1029,7 +1018,7 @@ struct AppRoot: View {
         guard destination == .taste else {
             reviewCoordinator.noteSuccessfulEntitledSave(
                 isEntitled: storeKitManager.isEntitledForGate,
-                safetyClear: !viewModel.composeSessionNeedsCare
+                safetyClear: !viewModel.compose.composeSessionNeedsCare
             )
             if card.isPublic {
                 lastContentTab = .home
@@ -1056,6 +1045,79 @@ struct AppRoot: View {
             next.bottom = homeSafeAreaInsets.bottom
         }
         homeSafeAreaInsets = next
+    }
+}
+
+/// AppRoot's reactions to values it never draws. They live here so a feed page landing, a badge
+/// count, or a push token redraws this empty view, not the root and every tab under it.
+private struct RootChangeObservers: View {
+    let viewModel: HomeViewModel
+    let storeKitManager: StoreKitManager
+    let pushCenter: FollowPushCenter
+    var onHomeLoadProgress: () -> Void
+    var onTasteEnded: () -> Void
+    var onFollowBadgeChange: () -> Void
+    var onPushTokenChange: () -> Void
+    var onPushActor: () -> Void
+    var onCheckoutOperationChange: () -> Void
+
+    var body: some View {
+        Color.clear
+            .onChange(of: viewModel.tasteEndedByServer) { _, ended in
+                if ended {
+                    onTasteEnded()
+                }
+            }
+            .onChange(of: pushCenter.tokenRevision) { _, _ in
+                onPushTokenChange()
+            }
+            .onChange(of: pushCenter.pendingActorID) { _, actorId in
+                if actorId != nil {
+                    onPushActor()
+                }
+            }
+            .onChange(of: viewModel.followBadgeRevision) { _, _ in
+                onFollowBadgeChange()
+            }
+            .onChange(of: storeKitManager.isCheckoutOperationInFlight) { _, _ in
+                onCheckoutOperationChange()
+            }
+            .onChange(of: viewModel.feedLoadState) { _, _ in
+                onHomeLoadProgress()
+            }
+            .onChange(of: viewModel.launchPrefetchFinished) { _, _ in
+                onHomeLoadProgress()
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The root banner. It reads its messages itself, so a failed heart or a credit warning redraws
+/// only the banner.
+private struct RootMessageBanner: View {
+    let viewModel: HomeViewModel
+    let storeKitManager: StoreKitManager
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let message = viewModel.writeError
+            ?? viewModel.usageBanner
+            ?? (storeKitManager.serverSyncPending ? storeKitManager.errorMessage : nil)
+        WriteErrorBanner(message: message) {
+            if viewModel.writeError != nil {
+                viewModel.dismissWriteError()
+            } else if viewModel.usageBanner != nil {
+                viewModel.dismissUsageBanner()
+            } else {
+                Task { await storeKitManager.retryServerSync() }
+            }
+        }
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86),
+            value: message
+        )
     }
 }
 

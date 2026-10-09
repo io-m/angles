@@ -122,8 +122,8 @@ private func waitFor(_ condition: @MainActor () -> Bool) async -> Bool {
 
 @MainActor
 private func send(_ viewModel: HomeViewModel, _ text: String) {
-    viewModel.composeText = text
-    viewModel.sendComposer()
+    viewModel.compose.composeText = text
+    viewModel.compose.sendComposer()
 }
 
 private func followUps(_ request: ComposeStubURLProtocol.Recorded) -> [[String: String]] {
@@ -140,11 +140,11 @@ struct ComposeThreadTests {
         )
 
         send(viewModel, "I’m scared AI will take my job")
-        #expect(await waitFor { viewModel.openTurn != nil })
+        #expect(await waitFor { viewModel.compose.openTurn != nil })
         send(viewModel, "Money")
-        #expect(await waitFor { viewModel.turns.count == 2 && viewModel.openTurn != nil })
+        #expect(await waitFor { viewModel.compose.turns.count == 2 && viewModel.compose.openTurn != nil })
         send(viewModel, "Since spring")
-        #expect(await waitFor { viewModel.isCookReady })
+        #expect(await waitFor { viewModel.compose.isCookReady })
 
         let last = ComposeStubURLProtocol.requests(to: "/reframe").last
         let sent = last.map(followUps) ?? []
@@ -166,12 +166,12 @@ struct ComposeThreadTests {
         ])
 
         send(viewModel, "Work is bad")
-        #expect(await waitFor { viewModel.openTurn != nil })
-        viewModel.chooseOption("Money")
-        #expect(await waitFor { viewModel.isCookReady })
+        #expect(await waitFor { viewModel.compose.openTurn != nil })
+        viewModel.compose.chooseOption("Money")
+        #expect(await waitFor { viewModel.compose.isCookReady })
 
-        #expect(viewModel.turns.first?.reply == "Money")
-        #expect(viewModel.turns.first?.replyWasChip == true)
+        #expect(viewModel.compose.turns.first?.reply == "Money")
+        #expect(viewModel.compose.turns.first?.replyWasChip == true)
     }
 
     @Test("once angles are showing there is one card and no more writing")
@@ -179,12 +179,12 @@ struct ComposeThreadTests {
         let viewModel = makeViewModel(replies: [ready("one")])
 
         send(viewModel, "A thought")
-        #expect(await waitFor { viewModel.isCookReady })
+        #expect(await waitFor { viewModel.compose.isCookReady })
 
-        #expect(!viewModel.isComposerVisible)
-        viewModel.composeText = "More"
-        #expect(!viewModel.canSubmit)
-        viewModel.sendComposer()
+        #expect(!viewModel.compose.isComposerVisible)
+        viewModel.compose.composeText = "More"
+        #expect(!viewModel.compose.canSubmit)
+        viewModel.compose.sendComposer()
         #expect(ComposeStubURLProtocol.requests(to: "/reframe").count == 1)
     }
 
@@ -192,45 +192,58 @@ struct ComposeThreadTests {
     func startNewClears() async {
         let viewModel = makeViewModel(replies: [ready("one")])
         send(viewModel, "A thought")
-        #expect(await waitFor { viewModel.isCookReady })
+        #expect(await waitFor { viewModel.compose.isCookReady })
 
-        viewModel.resetCompose()
+        viewModel.compose.resetCompose()
 
-        #expect(viewModel.phase == .composing)
-        #expect(viewModel.statement.isEmpty)
-        #expect(viewModel.turns.isEmpty)
-        #expect(viewModel.isComposerVisible)
+        #expect(viewModel.compose.phase == .composing)
+        #expect(viewModel.compose.statement.isEmpty)
+        #expect(viewModel.compose.turns.isEmpty)
+        #expect(viewModel.compose.isComposerVisible)
     }
 
     @Test("the card saves with its own signature")
     func savesTheCook() async {
         let viewModel = makeViewModel(replies: [ready("one")])
         send(viewModel, "A thought")
-        #expect(await waitFor { viewModel.isCookReady })
+        #expect(await waitFor { viewModel.compose.isCookReady })
 
-        viewModel.composeIsPublic = false
-        let saved = await viewModel.saveCook()
+        viewModel.compose.composeIsPublic = false
+        let saved = await viewModel.compose.saveCook()
 
         #expect(saved != nil)
         let create = ComposeStubURLProtocol.requests(to: "/cards").last
         #expect(create?.body["signature"] as? String == "cook-one")
         #expect(create?.body["isPublic"] as? Bool == false)
+        #expect(viewModel.cards.first?.id == saved?.id)
+        #expect(!viewModel.compose.isSaving)
+    }
+
+    @Test("a cook's usage lands in the shared balance")
+    func usageReachesTheHost() async {
+        let viewModel = makeViewModel(replies: [ready("one")])
+        send(viewModel, "A thought")
+        #expect(await waitFor { viewModel.compose.isCookReady })
+
+        #expect(viewModel.usageSummary?.creditsRemaining == 599)
+        #expect(viewModel.compose.hasCreditsForCook)
+        #expect(viewModel.compose.usageFeedback == nil)
     }
 
     @Test("a thought past the server's limit is refused here and the words stay in the field")
     func overLongWritingIsRefusedLocally() async {
         let viewModel = makeViewModel(replies: [ready("one")])
-        let long = String(repeating: "a", count: HomeViewModel.maxThoughtLength + 1)
+        let long = String(repeating: "a", count: ComposeSession.maxThoughtLength + 1)
 
         send(viewModel, long)
 
-        #expect(viewModel.composeNote != nil)
-        #expect(viewModel.composeText == long)
-        #expect(viewModel.phase == .composing)
+        #expect(viewModel.compose.composeNote != nil)
+        #expect(viewModel.compose.composeText == long)
+        #expect(viewModel.compose.phase == .composing)
         #expect(ComposeStubURLProtocol.requests(to: "/reframe").isEmpty)
 
         // Typing clears the note.
-        viewModel.composeText = "short"
-        #expect(viewModel.composeNote == nil)
+        viewModel.compose.composeText = "short"
+        #expect(viewModel.compose.composeNote == nil)
     }
 }

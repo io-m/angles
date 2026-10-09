@@ -998,9 +998,9 @@ struct OverlayProposalCard: View {
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     /// The AI's side of compose: the same bubble corner with a small tail at the lower left
-    /// as its question and error bubbles (`ComposeSheetView.aiCardShape`).
+    /// as its question and error bubbles (`ComposeLayout.aiCardShape`).
     private var cardShape: UnevenRoundedRectangle {
-        ComposeSheetView.aiCardShape
+        ComposeLayout.aiCardShape
     }
 
     private var activeResult: ReframeResult? {
