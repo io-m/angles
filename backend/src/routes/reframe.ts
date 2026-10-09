@@ -292,9 +292,12 @@ reframeRoute.post(
       };
 
       let answeredBy: LlmModelId = writerModels.primary;
+      // The writer is deliberately not tied to the phone's connection. A phone that locks or
+      // loses signal mid-cook hangs up, but the cook is bounded by `deadlineAt`, finishes,
+      // and seals its replay, so the retry gets the same angles and is charged once. Only the
+      // decision call, which costs nothing to the user, stops when the phone leaves.
       const options: CookCallOptions = {
         deadlineAt,
-        abortSignal,
         model: writerModels.primary,
         fallbackModel: writerModels.fallback,
         onAnsweredBy: (model) => {

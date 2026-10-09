@@ -286,6 +286,20 @@ async function runWithTimeout(input: ProviderCallInput, model: LlmModelId): Prom
       }
       return result.content;
     } catch (error) {
+      if (providerAttempted && !clientSignal?.aborted) {
+        // One searchable line per failed provider call (status, never the text), so two keys
+        // rejected in the same second shows up as an alert rather than a post-mortem.
+        console.error("llm_provider_failed", {
+          model,
+          provider,
+          step: input.callKind ?? "unknown",
+          reason: error instanceof LlmError
+            ? error.message
+            : timeoutController.signal.aborted
+              ? "LLM request timed out"
+              : "LLM request failed",
+        });
+      }
       if (providerAttempted && !(error instanceof LlmError && error.message === "LLM model unavailable")) {
         const usage = estimateUsage(
           input.text.length + input.systemPrompt.length,

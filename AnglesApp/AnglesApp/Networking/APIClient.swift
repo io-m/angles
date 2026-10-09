@@ -50,7 +50,8 @@ final class APIClient: @unchecked Sendable {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
-            // Server cook budget is 10s; this is slack for the network, not a hang.
+            // Ordinary calls answer in well under a second. `/reframe` sets its own, longer
+            // per-request timeout past the server's 13 s cook budget (`ReframeService`).
             configuration.timeoutIntervalForRequest = 15
             configuration.timeoutIntervalForResource = 30
             configuration.httpShouldSetCookies = false

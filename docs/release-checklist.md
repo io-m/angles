@@ -1,6 +1,6 @@
 # Release checklist
 
-Current as of **6 October 2026**. Version **1.0**. Latest iOS upload: build **33** (one style name everywhere), submitted for review on 9 October 2026. App Store Connect app `6811873869` (Angles: Reframe Thoughts).
+Current as of **6 October 2026**. Version **1.0**. Latest iOS upload: build **37** (compose as a calm top-down thread: Post anchored at the bottom, only the arriving bubble animates; build 36 was the chat layout; build 35 added keep writing, keep every card; build 34 added the cook that is not lost), in TestFlight for Joe to test. Build 33's submission for review (9 October 2026) is cancelled in App Store Connect; nothing is submitted until Joe says so. App Store Connect app `6811873869` (Angles: Reframe Thoughts).
 
 Everything under "Left to do" needs you: a dashboard the API cannot reach, your phone, or your judgement.
 
@@ -70,7 +70,7 @@ Uploaded to version 1.0, English, iPhone 6.9". Not submitted yet.
 
 App Store Connect → Angles → version 1.0:
 
-1. Select TestFlight build **30**.
+1. Select TestFlight build **37**.
 2. Under subscriptions, attach **both** Angles Yearly and Angles Monthly.
 3. Paste review notes from [app-review-notes.md](app-review-notes.md) (as soon as possible report wording).
 4. **Add for Review** → **Submit for Review**. Release stays **manual**.

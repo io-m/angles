@@ -523,9 +523,22 @@ final class HomeViewModel {
     private(set) var libraryRefreshOutcome: FeedRefreshOutcome?
     private(set) var libraryRefreshToken = 0
 
-    var composeText = ""
-    /// Compose Save defaults public; Start again and a new overlay reset this.
+    var composeText = "" {
+        didSet {
+            guard composeText != oldValue else {
+                return
+            }
+            if composeNote != nil {
+                composeNote = nil
+            }
+        }
+    }
+    /// A short reason the last Send did nothing (the thought is too long). Typing clears it.
+    private(set) var composeNote: String?
+    /// Compose Save defaults public; Start new and a new overlay reset this.
     var composeIsPublic = true
+    /// What the user wrote about this thought, which is what the server reads (the first
+    /// thought, plus extra context after an error). Never anything the AI wrote.
     private(set) var statement = ""
     private(set) var turns: [RefineTurn] = []
     private(set) var phase: RefinePhase = .composing
@@ -769,20 +782,25 @@ final class HomeViewModel {
         tab.emptyState(appliedFilter: appliedFilter, audience: .community)
     }
 
-    /// The composer stays alive for every turn that is not a finished cook.
+    /// The composer is there until angles are on screen. A finished cook is one card; the only
+    /// way on is Start new.
     var isComposerVisible: Bool {
         switch phase {
         case .composing, .awaitingReply, .error:
             return true
-        case .cooking, .ready:
+        case .ready, .cooking:
             return false
         }
     }
+
+    /// The most the server reads as one thought (`MAX_TEXT_LENGTH` in `routes/reframe.ts`).
+    static let maxThoughtLength = 2000
 
     var canSubmit: Bool {
         isComposerVisible
             && !composeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && hasCreditsForCook
+            && !isSessionBusy
     }
 
     var canPublish: Bool {
@@ -791,6 +809,12 @@ final class HomeViewModel {
         }
 
         return false
+    }
+
+    /// The card's Post waits while anything is writing or saving, so posting never closes the
+    /// sheet on a running cook.
+    var canPostCook: Bool {
+        canPublish && !isSessionBusy
     }
 
     var isCookReady: Bool {
@@ -831,26 +855,35 @@ final class HomeViewModel {
         turns.last(where: { !$0.isAnswered })
     }
 
+    /// The user's own answers to the AI's questions. The server counts them toward its
+    /// two-question limit, so a thought that has already been asked twice goes straight to
+    /// a cook.
     private var answeredFollowUps: [FollowUpAnswer] {
-        turns.compactMap { turn in
+        let answers = turns.compactMap { turn -> FollowUpAnswer? in
             guard let reply = turn.reply else {
                 return nil
             }
 
             return FollowUpAnswer(question: turn.message, answer: reply)
         }
+        return Array(answers.suffix(Self.maxFollowUps))
     }
 
-    /// One entry point for the composer: first thought, reply to a question, or
-    /// extra context after an error.
+    /// The server accepts at most this many follow-ups (`MAX_FOLLOW_UPS`).
+    private static let maxFollowUps = 6
+
+    /// One entry point for the composer: the thought, a reply to a question, or extra context
+    /// after an error. The field keeps its text when the send is refused.
     func sendComposer() {
         let text = composeText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSubmit else {
             return
         }
 
+        guard send(text, isChip: false) else {
+            return
+        }
         composeText = ""
-        send(text, isChip: false)
     }
 
     func chooseOption(_ option: String) {
@@ -862,20 +895,42 @@ final class HomeViewModel {
         send(trimmed, isChip: true)
     }
 
-    private func send(_ text: String, isChip: Bool) {
+    /// Returns false when nothing was sent.
+    @discardableResult
+    private func send(_ text: String, isChip: Bool) -> Bool {
         if statement.isEmpty {
+            guard fits(text, startsFresh: true) else {
+                return false
+            }
             statement = text
             turns = []
         } else if let index = turns.lastIndex(where: { !$0.isAnswered }) {
             turns[index].reply = text
             turns[index].replyWasChip = isChip
         } else {
-            statement = "\(statement)\n\n\(text)"
+            let combined = "\(statement)\n\n\(text)"
+            guard fits(combined, startsFresh: false) else {
+                return false
+            }
+            statement = combined
         }
 
+        composeNote = nil
         let attempt = ReframeAttempt()
         pendingRefineAttempt = attempt
         startRefine(attempt: attempt)
+        return true
+    }
+
+    /// The server rejects a thought past `maxThoughtLength`; say so here instead of a 400.
+    private func fits(_ writing: String, startsFresh: Bool) -> Bool {
+        guard writing.utf16.count > Self.maxThoughtLength else {
+            return true
+        }
+        composeNote = startsFresh
+            ? "That’s too long for one thought. Shorten it and send again."
+            : "That’s a lot for one thought. Start again to write a new one."
+        return false
     }
 
     func retryRefine() {
@@ -890,7 +945,11 @@ final class HomeViewModel {
 
     /// `forcePrivate` is the onboarding taste: that save is private whatever the toggle says.
     func saveCook(forcePrivate: Bool = false) async -> HomeCard? {
-        guard case .ready(let cook) = phase, !cook.results.isEmpty, !isSaving else {
+        guard case .ready(let cook) = phase else {
+            return nil
+        }
+        let wantsPublic = composeIsPublic
+        guard !cook.results.isEmpty, !isSaving else {
             return nil
         }
 
@@ -898,7 +957,7 @@ final class HomeViewModel {
         saveError = nil
         let styles = cook.results.map(\.style)
         let spotlight = styles[cards.count % styles.count]
-        let isPublic = forcePrivate ? false : composeIsPublic
+        let isPublic = forcePrivate ? false : wantsPublic
         let task = Task<HomeCard?, Never> { @MainActor in
             do {
                 let stored = try await cardsService.create(
@@ -3166,7 +3225,14 @@ final class HomeViewModel {
 
     private func composeFailure(for error: Error) -> (message: String, allowsRetry: Bool) {
         guard case APIError.httpStatus(_, let payload?, _) = error else {
-            return ("Couldn't generate a reframe. Try again.", true)
+            // No answer came back (a lost connection, a timeout, a restarting server). The
+            // thought is still on screen and Retry replays the same attempt.
+            switch ReframeFailureKind.of(error) {
+            case .network:
+                return ("That didn't go through. Your thought is still here. Try again.", true)
+            default:
+                return ("Couldn't write your angles. Your thought is still here. Try again.", true)
+            }
         }
         applyUsage(from: payload)
         let reset = payload.resetsAt
@@ -3196,13 +3262,16 @@ final class HomeViewModel {
         case "IDEMPOTENCY_CONFLICT":
             return ("This request changed before it completed. Send it again.", true)
         case "OPERATION_RUNNING":
-            return ("This request is still running. Wait a moment before trying again.", true)
+            return ("Still writing your angles. Give it a moment, then try again.", true)
         case "REQUEST_ALREADY_COMPLETED":
-            return ("That request already finished, but its result can't be recovered. Start a new thought.", false)
+            // Retry starts a fresh attempt: the earlier one's result is gone.
+            return ("Those angles didn't make it back. Try again.", true)
         case "OPERATION_EXPIRED":
-            return ("That request expired before it finished. Try again.", true)
+            return ("That took too long. Your thought is still here. Try again.", true)
+        case "LLM_ERROR":
+            return ("Angles couldn't be written just now. Try again in a moment.", true)
         default:
-            return ("Couldn't generate a reframe. Try again.", true)
+            return ("Couldn't write your angles. Your thought is still here. Try again.", true)
         }
     }
 
@@ -3334,7 +3403,14 @@ final class HomeViewModel {
             }
 
             do {
-                let response = try await reframeService.recook(request, attempt: attempt)
+                let response = try await CookBackgroundTask.run {
+                    try await ReframeRetry().run(
+                        attempt: attempt,
+                        onNewAttempt: { self.pendingRecookAttempt = $0 }
+                    ) { current in
+                        try await self.reframeService.recook(request, attempt: current)
+                    }
+                }
                 guard !Task.isCancelled, refineGeneration == generation else {
                     return
                 }
@@ -3393,6 +3469,7 @@ final class HomeViewModel {
         saveTask?.cancel()
         saveTask = nil
         composeText = ""
+        composeNote = nil
         statement = ""
         turns = []
         recookingStyle = nil
@@ -3424,11 +3501,18 @@ final class HomeViewModel {
 
         refineTask = Task { @MainActor in
             do {
-                let response = try await reframeService.refine(
-                    text: text,
-                    followUps: followUps,
-                    attempt: attempt
-                )
+                let response = try await CookBackgroundTask.run {
+                    try await ReframeRetry().run(
+                        attempt: attempt,
+                        onNewAttempt: { self.pendingRefineAttempt = $0 }
+                    ) { current in
+                        try await self.reframeService.refine(
+                            text: text,
+                            followUps: followUps,
+                            attempt: current
+                        )
+                    }
+                }
                 guard !Task.isCancelled, refineGeneration == generation else {
                     return
                 }
@@ -3843,16 +3927,14 @@ final class HomeViewModel {
         return false
     }
 
-    /// A request may have reached the server when transport failed or a successful body could
-    /// not be decoded. Replaying the same key is the only retry that cannot spend twice.
+    /// A request may have reached the server when transport failed, a successful body could
+    /// not be decoded, or the cook is still being written. Replaying the same key is the only
+    /// retry that cannot spend twice, so these keep their attempt for the Retry button.
     private static func isAmbiguousReframeFailure(_ error: Error) -> Bool {
-        guard let apiError = error as? APIError else {
-            return false
-        }
-        switch apiError {
-        case .network, .decoding:
+        switch ReframeFailureKind.of(error) {
+        case .network, .running:
             return true
-        case .invalidURL, .httpStatus:
+        case .provider, .finishedWithoutResult, .other:
             return false
         }
     }

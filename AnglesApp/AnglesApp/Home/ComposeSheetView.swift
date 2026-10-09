@@ -58,12 +58,21 @@ struct ComposeSheetView: View {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var composerGlowColor: Color { InspireMark.brandColor }
     @FocusState private var composerFocused: Bool
-    @State private var headerStrip: CGFloat = 119
+    /// Where the header ends and the bottom bar starts. Held in a reference so a keyboard sliding\n    /// (a new value every frame) redraws only the thread's mask, never the thread.
+    @State private var edges = ComposeEdges()
     @State private var showRestartAlert = false
     @State private var showLeaveAlert = false
     @State private var leaveKind: LeaveKind = .discard
     @State private var isCelebratingSave = false
     @State private var showsAIConsent = false
+    /// Where the bottom bar (input, Start new, or the taste Save bar) starts, in screen
+    /// coordinates. It moves with the keyboard and with the bar's own height, so it decides
+    /// where the thread fades out above it.
+    /// The bar's own height (input, Post, or the held place), so the thread's last row stops above it.
+    @State private var bottomBarExtent: CGFloat = 72
+    /// A short window after a row arrives in which the thread keeps its end in view while the
+    /// new row settles to its final height (the card's caption, the keyboard going down).
+    @State private var followsEndUntil = Date.distantPast
 
     private var isComposing: Bool {
         viewModel.phase == .composing
@@ -74,17 +83,12 @@ struct ComposeSheetView: View {
     }
 
     private let edgePad: CGFloat = 20
-    private let insertAnimation = Animation.easeInOut(duration: 0.38)
+    /// One short, soft ease for a row arriving. Rows already on screen never take part in it.
+    private let insertAnimation = Animation.smooth(duration: 0.35)
 
-    private var threadCue: ThreadCue {
-        ThreadCue(
-            phase: viewModel.phase,
-            turnCount: viewModel.turns.count,
-            hasStatement: hasStatement
-        )
-    }
 
     var body: some View {
+        let _ = RenderCounter.hit("ComposeSheet")
         sessionLayout
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -107,6 +111,10 @@ struct ComposeSheetView: View {
             .onChange(of: viewModel.phase) { _, newPhase in
                 if isActive, newPhase == .composing || newPhase == .awaitingReply {
                     composerFocused = true
+                }
+                // New angles arrive with the keyboard down, so it never sits over a new card.
+                if case .ready = newPhase {
+                    composerFocused = false
                 }
             }
             .alert("Start again?", isPresented: $showRestartAlert) {
@@ -147,9 +155,9 @@ struct ComposeSheetView: View {
 
     private var restartMessage: String {
         if viewModel.isSessionBusy {
-            return "A cook is still running and will be cancelled. This wipes the current thought and answers. You can’t undo it."
+            return "A cook is still running and will be cancelled. This wipes these thoughts and their answers. You can’t undo it."
         }
-        return "This wipes the current thought and answers. You can’t undo it."
+        return "This wipes these thoughts and their answers. You can’t undo it."
     }
 
     private var leaveTitle: String {
@@ -170,7 +178,7 @@ struct ComposeSheetView: View {
         case .busySaving:
             return "This takes a few seconds. You can close once the card is saved."
         case .discard:
-            return "This thought and its answers will be gone."
+            return "These thoughts and their answers will be gone."
         }
     }
 
@@ -214,7 +222,7 @@ struct ComposeSheetView: View {
         }
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.frame(in: .global).maxY
-        } action: { headerStrip = $0 }
+        } action: { edges.header = $0 }
     }
 
     private var onboardingRestoreAnimation: Animation? {
@@ -424,159 +432,263 @@ struct ComposeSheetView: View {
     private var canvas: some View {
         thread
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .mask {
-                VStack(spacing: 0) {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.18), location: 0),
-                            .init(color: .black.opacity(0.45), location: 0.5),
-                            .init(color: .black, location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: headerStrip)
-
-                    Color.black
-                }
-                .ignoresSafeArea()
+            .mask { ThreadMask(edges: edges).ignoresSafeArea() }
+            .background(alignment: .bottom) {
+                // Behind the thread, so it can never tint or cover a line of text.
+                composerGlow
+                    .offset(y: 132)
             }
     }
 
-    private var thread: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if hasStatement {
-                    userRow(viewModel.statement)
-                        .transition(rowTransition)
+    /// The input and the bottom buttons are 56 pt tall with 8 pt above and below.
+    private static let bottomBarHeight: CGFloat = 72
+    fileprivate static let bottomFade: CGFloat = 36
+    fileprivate static let belowBarShade = Color.black.opacity(0.14)
+    fileprivate static let topFade: CGFloat = 20
 
-                    ForEach(viewModel.turns) { turn in
-                        turnBlock(turn)
-                            .transition(rowTransition)
+    /// Every row of the thread, top to bottom. A row keeps its id for as long as it exists (the
+    /// open question keeps it when it is answered), so only a row that is really new animates.
+    private enum ThreadRowKind {
+        case statement
+        case question(RefineTurn)
+        case reply(RefineTurn)
+        case cooking
+        case angles(ReadyCook)
+        case error(String)
+    }
 
-                        if let reply = turn.reply {
-                            userRow(reply)
-                                .transition(rowTransition)
-                        }
-                    }
+    private struct ThreadRow: Identifiable {
+        let id: String
+        let kind: ThreadRowKind
+    }
 
-                    refineTail
-                }
-            }
-            .padding(.horizontal, edgePad)
-            .padding(.top, 4)
-            .padding(.bottom, 12)
-            .animation(reduceMotion ? nil : insertAnimation, value: threadCue)
+    private var threadRows: [ThreadRow] {
+        guard hasStatement else {
+            return []
         }
-        .scrollIndicators(.hidden)
-        .scrollDismissesKeyboard(.never)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: handleCanvasTap)
+        var rows = [ThreadRow(id: "statement", kind: .statement)]
+        for turn in viewModel.turns where turn.isAnswered {
+            rows.append(ThreadRow(id: "q-\(turn.id)", kind: .question(turn)))
+            if turn.reply != nil {
+                rows.append(ThreadRow(id: "a-\(turn.id)", kind: .reply(turn)))
+            }
+        }
+        switch viewModel.phase {
+        case .composing:
+            break
+        case .awaitingReply:
+            if let turn = viewModel.openTurn {
+                rows.append(ThreadRow(id: "q-\(turn.id)", kind: .question(turn)))
+            }
+        case .cooking:
+            rows.append(ThreadRow(id: "cooking", kind: .cooking))
+        case .ready(let cook):
+            rows.append(ThreadRow(id: "angles", kind: .angles(cook)))
+        case .error(let message):
+            rows.append(ThreadRow(id: "error", kind: .error(message)))
+        }
+        return rows
     }
+
+    /// Top-down: the thought sits at the top and each new row goes below it. While the thread
+    /// fits, nothing scrolls and the rows already there do not move. Once it is taller, one short
+    /// scroll keeps the end in view. It runs under the header and the bottom bar and dissolves
+    /// there (`threadMask`).
+    private var thread: some View {
+        let rows = threadRows
+        let ids = rows.map(\.id)
+
+        return GeometryReader { window in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Self.rowSpacing) {
+                        ForEach(rows) { row in
+                            threadRow(row)
+                        }
+
+                        Color.clear.frame(height: 0).id("thread-end")
+                    }
+                    .padding(.horizontal, edgePad)
+                    .padding(.top, 4)
+                    // The thread runs under the bar; its last row stops above the bar and its fade.
+                    .padding(.bottom, bottomBarExtent + Self.bottomFade + 8)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                        guard Date.now < followsEndUntil else {
+                            return
+                        }
+                        proxy.scrollTo("thread-end", anchor: .bottom)
+                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: window.size.height,
+                        alignment: .topLeading
+                    )
+                    .animation(reduceMotion ? nil : insertAnimation, value: ids)
+                }
+                .defaultScrollAnchor(.top)
+                .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: handleCanvasTap)
+                .onChange(of: ids) { old, new in
+                    // Only when a row was added; a row going away never scrolls.
+                    guard new.count > old.count else {
+                        return
+                    }
+                    followsEndUntil = Date.now.addingTimeInterval(1.0)
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                        proxy.scrollTo("thread-end", anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+
+    private static let rowSpacing: CGFloat = 14
 
     @ViewBuilder
-    private var refineTail: some View {
-        switch viewModel.phase {
-        case .composing, .awaitingReply:
-            EmptyView()
+    private func threadRow(_ row: ThreadRow) -> some View {
+        let _ = RenderCounter.hit("ThreadRow \(row.id.prefix(2))")
+        switch row.kind {
+        case .statement:
+            userBubble(viewModel.statement, isFirst: true)
+                .transition(arrival(from: .trailing))
+        case .question(let turn):
+            turnBlock(turn)
+                .transition(arrival(from: .leading))
+        case .reply(let turn):
+            userBubble(turn.reply ?? "", isFirst: false)
+                .transition(arrival(from: .trailing))
         case .cooking:
             cookingRow
-                .transition(rowTransition)
-        case .ready(let cook):
+                .transition(arrival(from: .leading))
+        case .angles(let cook):
+            anglesRow(cook: cook)
+                .transition(arrival(from: .leading))
+                .task {
+                    guard !isOnboardingTaste else {
+                        return
+                    }
+                    await SaveRide.preload(dark: colorScheme == .dark)
+                }
+        case .error(let message):
+            errorRow(message)
+                .transition(arrival(from: .leading))
+        }
+    }
+
+    /// The one card, on the AI's side with its avatar at the tail, then a caption and a quiet
+    /// Start new under it. Post is not here: it stays anchored at the bottom of the screen.
+    private func anglesRow(cook: ReadyCook) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .bottom, spacing: 10) {
                 aiAvatar
 
-                VStack(alignment: .leading, spacing: 8) {
-                    OverlayProposalCard(
-                        thought: cook.thought,
-                        thoughtOriginal: cook.thoughtOriginal,
-                        results: cook.results.map(\.result),
-                        recookingStyle: viewModel.recookingStyle,
-                        identityStore: identityStore,
-                        isPublic: $viewModel.composeIsPublic,
-                        showsPrivacyToggle: !isOnboardingTaste,
-                        allowsRecook: !isOnboardingTaste && viewModel.hasCreditsForCook,
-                        onRecook: { style in
-                            viewModel.recookStyle(style)
-                        }
-                    )
-                    .id("overlay-proposal")
-                    .accessibilityIdentifier("compose.card")
-
-                    if let notice = viewModel.recookNotice {
-                        Text(notice)
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(theme.muted)
-                            .fixedSize(horizontal: false, vertical: true)
+                OverlayProposalCard(
+                    thought: cook.thought,
+                    thoughtOriginal: cook.thoughtOriginal,
+                    results: cook.results.map(\.result),
+                    recookingStyle: viewModel.recookingStyle,
+                    identityStore: identityStore,
+                    isPublic: $viewModel.composeIsPublic,
+                    showsPrivacyToggle: !isOnboardingTaste,
+                    allowsRecook: !isOnboardingTaste && viewModel.hasCreditsForCook,
+                    onRecook: { style in
+                        viewModel.recookStyle(style)
                     }
+                )
+                .id("overlay-proposal")
+                .accessibilityIdentifier("compose.card")
+            }
 
-                    if let feedback = viewModel.usageFeedback {
-                        Text(feedback)
-                            .font(.footnote.weight(.medium))
+            VStack(alignment: .leading, spacing: 6) {
+                if let notice = viewModel.recookNotice {
+                    Text(notice)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let feedback = viewModel.usageFeedback {
+                    Text(feedback)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(theme.muted)
+                        .accessibilityLabel(feedback)
+                }
+
+                if !isOnboardingTaste {
+                    Button {
+                        showRestartAlert = true
+                    } label: {
+                        Text("Start new")
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(theme.muted)
-                            .accessibilityLabel(feedback)
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isSaving || isCelebratingSave)
+                    .accessibilityIdentifier("compose.startNew")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .transition(rowTransition)
-            .task {
-                guard !isOnboardingTaste else {
-                    return
-                }
-                await SaveRide.preload(dark: colorScheme == .dark)
-            }
-        case .error(let message):
-            errorRow(message)
-                .transition(rowTransition)
+            .padding(.leading, Self.aiAvatarColumn)
         }
     }
 
     /// A `continue` turn: what the AI said, plus optional chips while it is unanswered.
     private func turnBlock(_ turn: RefineTurn) -> some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            aiAvatar
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 10) {
+                aiAvatar
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text(turn.message)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(theme.ink)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if turn.safety.needsCare {
-                    Text(turn.crisisResource ?? SafetyFlag.unknownRegionCrisisLine)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(theme.muted)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(turn.message)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(theme.ink)
+                        .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("compose.crisis")
-                } else if !turn.isAnswered, !turn.options.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(Array(turn.options.enumerated()), id: \.element) { index, option in
-                            optionRow(option) {
-                                viewModel.chooseOption(option)
-                            }
-                            .accessibilityIdentifier("compose.option.\(index)")
-                        }
+
+                    if turn.safety.needsCare {
+                        Text(turn.crisisResource ?? SafetyFlag.unknownRegionCrisisLine)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("compose.crisis")
                     }
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(theme.surface, in: bubbleShape(isAI: true))
+                .shadow(color: theme.shadowSoft, radius: 6, y: 2)
+
+                Spacer(minLength: Self.aiSideGap)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                theme.surface,
-                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-            )
-            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
-            .overlay {
-                CardArrivalGlow(tint: theme.ink, prominence: .subtle)
+
+            // Quick replies sit under the question, in line with the bubble, like in a chat.
+            if !turn.safety.needsCare, !turn.isAnswered, !turn.options.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(Array(turn.options.enumerated()), id: \.element) { index, option in
+                        optionRow(option) {
+                            viewModel.chooseOption(option)
+                        }
+                        .accessibilityIdentifier("compose.option.\(index)")
+                    }
+                }
+                .padding(.leading, Self.aiAvatarColumn)
+                .transition(.opacity)
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(turn.message)
         .accessibilityIdentifier(turn.isAnswered ? "compose.answeredFollowup" : "compose.followup")
     }
+
+    /// The AI avatar and the gap after it; replies line up with the bubble beside it.
+    private static let aiAvatarColumn: CGFloat = 50
+    /// Room kept free beside an AI bubble so it never spans the whole row.
+    private static let aiSideGap: CGFloat = 36
+    /// Room kept free beside the user's bubble.
+    private static let userSideGap: CGFloat = 36
 
     private func optionRow(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -591,27 +703,68 @@ struct ComposeSheetView: View {
         .buttonStyle(.plain)
     }
 
-    private var rowTransition: AnyTransition {
-        .opacity.combined(with: .offset(y: 8))
+    /// A new row fades in while sliding a little from its own side: yours from the right, the
+    /// AI's from the left. It never animates out, and no other row takes part.
+    private func arrival(from edge: HorizontalEdge) -> AnyTransition {
+        let slide = reduceMotion ? 0 : (edge == .leading ? -16.0 : 16.0)
+        return .asymmetric(
+            insertion: .opacity.combined(with: .offset(x: slide)),
+            removal: .identity
+        )
     }
 
-    private func userRow(_ text: String) -> some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            Spacer(minLength: 28)
+    /// The AI's side of the screen is always this shape: the bubble corner with a small tail at
+    /// the lower left, scaled up for the longer question, error, and angles cards.
+    static let aiCardShape = UnevenRoundedRectangle(
+        topLeadingRadius: 24,
+        bottomLeadingRadius: 6,
+        bottomTrailingRadius: 24,
+        topTrailingRadius: 24,
+        style: .continuous
+    )
+
+    /// Something the user wrote: one fill, on the right, as wide as its text. Tapping does
+    /// nothing; long-press copies.
+    private func userBubble(_ text: String, isFirst: Bool) -> some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            Spacer(minLength: Self.userSideGap)
 
             Text(text)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(theme.paper)
                 .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
                 .background(theme.ink, in: bubbleShape(isAI: false))
-                .frame(maxWidth: 280, alignment: .trailing)
+                .contentShape(bubbleShape(isAI: false))
+                .contextMenu {
+                    Button {
+                        UIPasteboard.general.string = text
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(text)
+                .accessibilityIdentifier(isFirst ? "compose.thought" : "compose.answer")
 
             userAvatar
+                .padding(.leading, 10)
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .accessibilityLabel(text)
+    }
+
+    private var userAvatar: some View {
+        AuthorMark(
+            initials: identityStore?.avatarLetters ?? identityStore?.serverInitials ?? UserInitials.letters,
+            avatarPath: identityStore?.avatarPath,
+            prefersLocalPhoto: true,
+            side: 40,
+            fill: theme.ink,
+            symbol: theme.paper
+        )
+        .accessibilityHidden(true)
     }
 
     private var cookingRow: some View {
@@ -626,9 +779,9 @@ struct ComposeSheetView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             .background(theme.surface, in: bubbleShape(isAI: true))
-            .frame(maxWidth: 280, alignment: .leading)
+            .shadow(color: theme.shadowSoft, radius: 6, y: 2)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: Self.aiSideGap)
         }
     }
 
@@ -636,13 +789,12 @@ struct ComposeSheetView: View {
         HStack(alignment: .bottom, spacing: 10) {
             aiAvatar
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(message)
-                    .font(.callout.weight(.medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(theme.ink)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if viewModel.composeErrorAllowsRetry {
                     Button("Retry", action: retryRefine)
@@ -650,28 +802,16 @@ struct ComposeSheetView: View {
                         .foregroundStyle(theme.ink)
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                theme.surface,
-                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-            )
-            .shadow(color: theme.shadowSoft, radius: 10, y: 3)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(theme.surface, in: bubbleShape(isAI: true))
+            .shadow(color: theme.shadowSoft, radius: 6, y: 2)
             .accessibilityElement(children: .contain)
             .accessibilityLabel(message)
             .accessibilityIdentifier("compose.error")
-        }
-    }
 
-    private var userAvatar: some View {
-        AuthorMark(
-            initials: identityStore?.avatarLetters ?? identityStore?.serverInitials ?? UserInitials.letters,
-            avatarPath: identityStore?.avatarPath,
-            prefersLocalPhoto: true,
-            side: 40,
-            fill: theme.ink,
-            symbol: theme.paper
-        )
+            Spacer(minLength: Self.aiSideGap)
+        }
     }
 
     private var aiAvatar: some View {
@@ -700,27 +840,81 @@ struct ComposeSheetView: View {
         isOnboardingTaste && isComposing && !hasStatement
     }
 
-    @ViewBuilder
+    /// The input until angles are on screen, then Post anchored here (the taste's Save bar is the
+    /// same bar). While the angles are written the bar's place is held empty.
     private var bottomChrome: some View {
-        if viewModel.isComposerVisible {
-            composer
-        } else if viewModel.canPublish {
-            VStack(spacing: 8) {
-                if let saveError = viewModel.saveError {
-                    Text(saveError)
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(theme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 18)
-                        .accessibilityLabel(saveError)
+        VStack(spacing: 0) {
+            if viewModel.isComposerVisible {
+                // Its own observation scope: typing re-renders the input alone, never the thread.
+                ObservationBoundary { composer }
+                    .transition(.opacity)
+            } else if viewModel.canPublish {
+                if let note = bottomNote {
+                    noteChip(note)
                 }
                 saveBar
+                    .transition(.opacity)
+            } else {
+                // Holds the bar's place, so the thread's window never changes size.
+                Color.clear
+                    .frame(height: Self.bottomBarHeight)
+                    .accessibilityHidden(true)
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { minY in
+            // The thread's fade line: moves with the keyboard and with the input growing.
+            edges.bottom = minY
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            if height > 0 {
+                bottomBarExtent = height
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: bottomMode)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: bottomNote)
+    }
+
+    private var bottomMode: Int {
+        if viewModel.isComposerVisible {
+            return 0
+        }
+        return viewModel.canPublish ? 1 : 2
+    }
+
+    /// A taste has no field, so its note sits on an opaque chip above the Save bar.
+    private func noteChip(_ note: String) -> some View {
+        Text(note)
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(theme.ink)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(theme.cardHairline, lineWidth: 0.5)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 6)
+            .accessibilityLabel(note)
+            .accessibilityIdentifier("compose.note")
+            .transition(.opacity)
+    }
+
+    /// One short line inside the input (or on a chip above the bottom button): a failed save
+    /// or a send that was refused.
+    private var bottomNote: String? {
+        if let saveError = viewModel.saveError {
+            return saveError
+        }
+        return viewModel.composeNote
     }
 
     private var saveBar: some View {
-        Button(action: publishAndLeave) {
+        Button {
+            publishAndLeave()
+        } label: {
             HStack(spacing: 8) {
                 if viewModel.isSaving {
                     ProgressView()
@@ -755,14 +949,13 @@ struct ComposeSheetView: View {
         .padding(.horizontal, 18)
         .padding(.top, 8)
         .padding(.bottom, 8)
-        .background { composerGlow }
         .accessibilityLabel(saveButtonTitle)
         .accessibilityIdentifier("compose.post")
         .modifier(AccessibilityHintIfPresent(hint: saveButtonHint))
     }
 
     private var saveButtonIsBusy: Bool {
-        viewModel.isSaving || isCelebratingSave
+        viewModel.isSaving || isCelebratingSave || (!isOnboardingTaste && !viewModel.canPostCook)
     }
 
     private var saveButtonTitle: String {
@@ -786,9 +979,6 @@ struct ComposeSheetView: View {
             .padding(.horizontal, 18)
             .padding(.top, 8)
             .padding(.bottom, 8)
-            .background {
-                composerGlow
-            }
     }
 
     private var composerGlow: some View {
@@ -829,29 +1019,47 @@ struct ComposeSheetView: View {
     }
 
     private var composerPlaceholder: String {
-        viewModel.openTurn == nil ? "Tell me what's on your mind..." : "Say more..."
+        viewModel.openTurn == nil ? "Tell me what's on your mind..." : "Your answer..."
     }
 
     private var composerBar: some View {
-        HStack(alignment: .center, spacing: 0) {
-            TextField(
-                composerPlaceholder,
-                text: $viewModel.composeText,
-                axis: .vertical
-            )
-            .font(.body.weight(.medium))
-            .foregroundStyle(theme.ink)
-            .textInputAutocapitalization(.sentences)
-            .focused($composerFocused)
-            .accessibilityIdentifier("compose.input")
-            .lineLimit(1...4)
-            .frame(minHeight: 28, alignment: .leading)
-            .padding(.leading, 18)
-            .padding(.vertical, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            // The note lives inside the pill, on its opaque fill, so it can never be read
+            // through the thread scrolling behind it.
+            if let note = bottomNote {
+                Text(note)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(theme.muted)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 12)
+                    .accessibilityLabel(note)
+                    .accessibilityIdentifier("compose.note")
+                    .transition(.opacity)
+            }
 
-            trailingControls
+            HStack(alignment: .center, spacing: 0) {
+                TextField(
+                    composerPlaceholder,
+                    text: $viewModel.composeText,
+                    axis: .vertical
+                )
+                .font(.body.weight(.medium))
+                .foregroundStyle(theme.ink)
+                .textInputAutocapitalization(.sentences)
+                .focused($composerFocused)
+                .accessibilityIdentifier("compose.input")
+                .lineLimit(1...4)
+                .frame(minHeight: 28, alignment: .leading)
+                .padding(.leading, 18)
+                .padding(.vertical, bottomNote == nil ? 16 : 10)
+
+                trailingControls
+            }
+            .frame(minHeight: 56)
         }
-        .frame(minHeight: 56)
         .background(
             composerFill,
             in: RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -918,6 +1126,9 @@ struct ComposeSheetView: View {
     }
 
     private func requestLeave() {
+        #if DEBUG
+        print("COMPOSE requestLeave phase=\(viewModel.phase) saving=\(viewModel.isSaving)")
+        #endif
         if isOnboardingTaste {
             return
         }
@@ -944,12 +1155,14 @@ struct ComposeSheetView: View {
     }
 
     private func publishAndLeave() {
-        guard viewModel.canPublish, !viewModel.isSaving, !isCelebratingSave else {
+        guard !viewModel.isSaving, !isCelebratingSave, viewModel.canPublish else {
             return
         }
 
         Task {
-            guard let savedCard = await viewModel.saveCook(forcePrivate: isOnboardingTaste) else {
+            guard let savedCard = await viewModel.saveCook(
+                forcePrivate: isOnboardingTaste
+            ) else {
                 return
             }
             if isOnboardingTaste {
@@ -987,6 +1200,9 @@ struct ComposeSheetView: View {
     /// `termsJustAccepted` because this view's copy of `needsTermsAcceptance` is the one from
     /// before the agreement landed.
     private func submit(termsJustAccepted: Bool = false) {
+        #if DEBUG
+        print("COMPOSE submit canSubmit=\(viewModel.canSubmit) phase=\(viewModel.phase) busy=\(viewModel.isSessionBusy) credits=\(viewModel.hasCreditsForCook)")
+        #endif
         guard viewModel.canSubmit else {
             return
         }
@@ -1010,16 +1226,21 @@ private struct CookingLine: View {
     var reduceMotion: Bool
 
     @State private var lineIndex = 0
+    @State private var stillWorking = false
 
     private static let lines = [
         "Reading it",
         "Finding the sting",
         "Writing four angles",
         "Almost there",
+        "Still working on it",
     ]
+    /// The lines that cycle by themselves. The last one only appears when a cook runs long.
+    private static let cyclingLines = 4
+    private static let stillWorkingAfter: Duration = .seconds(8)
 
     private var stem: String {
-        reduceMotion ? "Writing four angles" : Self.lines[min(lineIndex, Self.lines.count - 1)]
+        Self.lines[visibleLineIndex]
     }
 
     var body: some View {
@@ -1041,8 +1262,16 @@ private struct CookingLine: View {
             .foregroundStyle(ink)
         }
         .task {
-            guard !reduceMotion else { return }
-            await cycleLines()
+            let started = ContinuousClock.now
+            if !reduceMotion {
+                await cycleLines()
+            }
+            // A cook can take 9 s or more. Say so, so a long wait never reads as frozen.
+            try? await Task.sleep(until: started + Self.stillWorkingAfter, clock: .continuous)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.45)) {
+                stillWorking = true
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(stem)
@@ -1050,11 +1279,14 @@ private struct CookingLine: View {
     }
 
     private var visibleLineIndex: Int {
-        reduceMotion ? Self.lines.firstIndex(of: "Writing four angles") ?? 0 : lineIndex
+        if stillWorking {
+            return Self.lines.count - 1
+        }
+        return reduceMotion ? Self.lines.firstIndex(of: "Writing four angles") ?? 0 : lineIndex
     }
 
     private func cycleLines() async {
-        while !Task.isCancelled, lineIndex < Self.lines.count - 1 {
+        while !Task.isCancelled, lineIndex < Self.cyclingLines - 1 {
             do {
                 try await Task.sleep(for: .milliseconds(1400))
             } catch {
@@ -1162,10 +1394,60 @@ struct SaveCelebrationCover: View {
     }
 }
 
-private struct ThreadCue: Equatable {
-    var phase: RefinePhase
-    var turnCount: Int
-    var hasStatement: Bool
+/// Runs `content` in its own `body`, so the `@Observable` properties it reads (the text being
+/// typed) invalidate this view only, not the screen that built it.
+private struct ObservationBoundary<Content: View>: View {
+    let content: () -> Content
+
+    init(@ViewBuilder _ content: @escaping () -> Content) {
+        self.content = content
+    }
+
+    var body: some View {
+        content()
+    }
+}
+
+/// Screen positions of the header's bottom edge and the bottom bar's top edge.
+@Observable
+private final class ComposeEdges {
+    var header: CGFloat = 119
+    var bottom: CGFloat = 0
+}
+
+/// The thread dissolves under the header and, mirrored, just above the bottom bar, so a bubble
+/// never reaches the input: it is gone before it gets there. It reads the edges itself, so only
+/// this view redraws when they move.
+private struct ThreadMask: View {
+    let edges: ComposeEdges
+
+    var body: some View {
+        GeometryReader { geo in
+            let height = max(geo.size.height, 1)
+            let topEnd = min(max(edges.header / height, 0.02), 0.5)
+            let topStart = max(topEnd - ComposeSheetView.topFade / height, 0.005)
+            let bottomEnd = edges.bottom > 0
+                ? min(max((edges.bottom - geo.frame(in: .global).minY) / height, topEnd + 0.01), 1)
+                : 1
+            let bottomStart = max(bottomEnd - ComposeSheetView.bottomFade / height, topEnd + 0.005)
+            let below = bottomEnd < 1 ? ComposeSheetView.belowBarShade : Color.black
+
+            LinearGradient(
+                stops: [
+                    // Nothing is drawn under the header buttons: no text over text.
+                    .init(color: .clear, location: 0),
+                    .init(color: .clear, location: topStart),
+                    .init(color: .black, location: topEnd),
+                    .init(color: .black, location: bottomStart),
+                    // Not solid: what is scrolled under the bar stays faintly visible.
+                    .init(color: below, location: bottomEnd),
+                    .init(color: below, location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
 }
 
 #Preview {

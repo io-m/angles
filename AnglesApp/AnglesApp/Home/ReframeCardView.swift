@@ -997,8 +997,10 @@ struct OverlayProposalCard: View {
     @State private var privacyHaptic = 0
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-    private var cardShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
+    /// The AI's side of compose: the same bubble corner with a small tail at the lower left
+    /// as its question and error bubbles (`ComposeSheetView.aiCardShape`).
+    private var cardShape: UnevenRoundedRectangle {
+        ComposeSheetView.aiCardShape
     }
 
     private var activeResult: ReframeResult? {
@@ -1032,6 +1034,7 @@ struct OverlayProposalCard: View {
     }
 
     var body: some View {
+        let _ = RenderCounter.hit("OverlayProposalCard")
         VStack(alignment: .leading, spacing: 0) {
             overlayHeader
 
@@ -1049,9 +1052,6 @@ struct OverlayProposalCard: View {
         }
         .clipShape(cardShape)
         .modifier(ReframeCardElevationModifier(theme: theme, shape: cardShape))
-        .overlay {
-            CardArrivalGlow(tint: activeAppearance.ink, prominence: .subtle)
-        }
         .onAppear {
             if selectedStyle == nil {
                 setSelectedStyleWithoutAnimation(results.first?.style)

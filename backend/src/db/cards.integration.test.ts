@@ -667,6 +667,18 @@ describe.skipIf(!testUrl)("cards integration", () => {
       (await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T12:00:02.500Z")))
         .creditsRemaining,
     ).toBe(600);
+    // A failed attempt was never charged, so the same key cooks again on the same row.
+    const restarted = await startMeterOperation({
+      ownerId: DEV_USER_ID,
+      clientRequestId: "00000000-0000-4000-8000-000000000211",
+      requestFingerprint: "same",
+      model: "mistral-small-latest",
+      kind: "full",
+      now: new Date("2026-09-25T12:00:03.000Z"),
+    });
+    expect(restarted.operationId).toBe(first.operationId);
+    expect(restarted.usage.creditsRemaining).toBe(599);
+    // The restarted attempt is the one running operation again.
     await expect(
       startMeterOperation({
         ownerId: DEV_USER_ID,
@@ -674,9 +686,56 @@ describe.skipIf(!testUrl)("cards integration", () => {
         requestFingerprint: "same",
         model: "mistral-small-latest",
         kind: "full",
-        now: new Date("2026-09-25T12:00:03.000Z"),
+        now: new Date("2026-09-25T12:00:04.000Z"),
+      }),
+    ).rejects.toMatchObject({ code: "OPERATION_RUNNING" });
+
+    // A key whose attempt ended on a lease that ran out also restarts, without a double reserve.
+    const afterRestart = await finishMeterOperation({
+      operation: restarted,
+      state: "ready",
+      resultKind: "ready",
+      usageEvents: [],
+      now: new Date("2026-09-25T12:00:05.000Z"),
+    });
+    expect(afterRestart.creditsRemaining).toBe(599);
+    // A finished attempt without a stored replay stays a hard stop: it may have been charged.
+    await expect(
+      startMeterOperation({
+        ownerId: DEV_USER_ID,
+        clientRequestId: "00000000-0000-4000-8000-000000000211",
+        requestFingerprint: "same",
+        model: "mistral-small-latest",
+        kind: "full",
+        now: new Date("2026-09-25T12:00:06.000Z"),
       }),
     ).rejects.toMatchObject({ code: "REQUEST_ALREADY_COMPLETED" });
+  });
+
+  it("restarts an expired attempt on the same key without reserving twice", async () => {
+    const key = "00000000-0000-4000-8000-000000000231";
+    const started = await startMeterOperation({
+      ownerId: DEV_USER_ID,
+      clientRequestId: key,
+      requestFingerprint: "lease",
+      model: "mistral-small-latest",
+      kind: "full",
+      now: new Date("2026-09-25T12:00:00.000Z"),
+    });
+    const restarted = await startMeterOperation({
+      ownerId: DEV_USER_ID,
+      clientRequestId: key,
+      requestFingerprint: "lease",
+      model: "mistral-small-latest",
+      kind: "full",
+      now: new Date("2026-09-25T12:00:31.000Z"),
+    });
+    expect(restarted.operationId).toBe(started.operationId);
+    expect(restarted.usage.creditsRemaining).toBe(599);
+    const rows = await getSql()<{ count: number }[]>`
+      select count(*)::int as count from meter_operations where client_request_id = ${key}
+    `;
+    expect(rows[0]?.count).toBe(1);
   });
 
   it("keeps a finished operation's sealed body for its own request until it expires", async () => {

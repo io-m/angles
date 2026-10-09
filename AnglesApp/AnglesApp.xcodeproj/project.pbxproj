@@ -43,6 +43,7 @@
 		6F472A68899B089E43ED8A99 /* HomeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3BCFBFF2318D9F3BE56CB22 /* HomeFilterSheet.swift */; };
 		7123457C27F52289BD646C61 /* InteractivePop.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC33C2052848083EB87BD473 /* InteractivePop.swift */; };
 		729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */; };
+		72F41D3FA56036BD2FD1973E /* ComposeThreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2614C0FDEDA65DF5AFC0E9B4 /* ComposeThreadTests.swift */; };
 		77767A426BAC877733A44558 /* AppGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01BEA95023B9310D87B3474C /* AppGate.swift */; };
 		782C4F5E524AEDC24CF82EDF /* SessionSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 344BB52CC2E7BFFC4E838D5B /* SessionSnapshotStore.swift */; };
 		7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */; };
@@ -53,6 +54,7 @@
 		8717B2AC854FC7A03D4101DF /* AuthNonce.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245774EE58FAD79304953B8A /* AuthNonce.swift */; };
 		8B9A63FAD4208CB50D2A2E23 /* HeartAngleWidgetPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2749274C7E25687BF163F214 /* HeartAngleWidgetPublisher.swift */; };
 		9044CA3F66755024E8C77009 /* Go to school dark.lottie in Resources */ = {isa = PBXBuildFile; fileRef = FAC9C1EE4D289EADA4D3A110 /* Go to school dark.lottie */; };
+		9216FAA66258518AEEA96C87 /* ReframeRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B003432357863314076DF25D /* ReframeRetryTests.swift */; };
 		9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D41A915BA4E64DDB56C6E4 /* AppConfig.swift */; };
 		96FA7CB4A1A68A97BBCDCF49 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC7B9755403A895A57D2CB8D /* WidgetSnapshot.swift */; };
 		978F70E4AF9710D51182498C /* UserAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657231FF50708210A4AA9FDD /* UserAppearance.swift */; };
@@ -90,6 +92,7 @@
 		EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */; };
 		F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 551EA9251B494B0E82C36D47 /* ColorTokens.swift */; };
 		FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0F4006AE6DACF0D19171814 /* ProfileService.swift */; };
+		FC5BC4454EAA37265B5A86A9 /* CookBackgroundTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F86912141E81814F7C67A19 /* CookBackgroundTask.swift */; };
 		FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -139,6 +142,7 @@
 		1FFD1F9D62B1D72EFFFBFEAE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallCardMarquee.swift; sourceTree = "<group>"; };
 		245774EE58FAD79304953B8A /* AuthNonce.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthNonce.swift; sourceTree = "<group>"; };
+		2614C0FDEDA65DF5AFC0E9B4 /* ComposeThreadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeThreadTests.swift; sourceTree = "<group>"; };
 		265E75893DCF1EF830A8EC3E /* FeedLatestPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedLatestPill.swift; sourceTree = "<group>"; };
 		2749274C7E25687BF163F214 /* HeartAngleWidgetPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartAngleWidgetPublisher.swift; sourceTree = "<group>"; };
 		277F500C2565CC7DF5621C5A /* Angles.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Angles.icon; sourceTree = "<group>"; };
@@ -178,9 +182,11 @@
 		95069BD81A4DA98625DFD6FE /* AvatarImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarImage.swift; sourceTree = "<group>"; };
 		9996A3D179CCC43E3C75DFCB /* RenderCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderCounter.swift; sourceTree = "<group>"; };
 		9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGateTests.swift; sourceTree = "<group>"; };
+		9F86912141E81814F7C67A19 /* CookBackgroundTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CookBackgroundTask.swift; sourceTree = "<group>"; };
 		A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleIcon.swift; sourceTree = "<group>"; };
 		AB5A65FF031FA9FA96B9D636 /* HomeFeedSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedSnapshotStore.swift; sourceTree = "<group>"; };
+		B003432357863314076DF25D /* ReframeRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeRetryTests.swift; sourceTree = "<group>"; };
 		B05847EC66A8A1B53179B539 /* ReframeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReframeCardView.swift; sourceTree = "<group>"; };
 		B0D5F569663CAAFC626FF889 /* WidgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTests.swift; sourceTree = "<group>"; };
 		B13ED3B345E39F024359E6C0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -388,6 +394,7 @@
 				95069BD81A4DA98625DFD6FE /* AvatarImage.swift */,
 				4C7366F06DED44B5C9EFBFDF /* BlockedPeopleSheet.swift */,
 				338BBAF549C7C6A460D8E916 /* ComposeSheetView.swift */,
+				9F86912141E81814F7C67A19 /* CookBackgroundTask.swift */,
 				6A473004998C2F650FCA971D /* DrawerStubView.swift */,
 				265E75893DCF1EF830A8EC3E /* FeedLatestPill.swift */,
 				01909B8D03EA2382488A610D /* FeedRefreshBanner.swift */,
@@ -441,12 +448,14 @@
 			children = (
 				9E155F3348E9B22C6CBC37BA /* AppGateTests.swift */,
 				EE196A945D914407B9D5E204 /* AppStoreReviewTests.swift */,
+				2614C0FDEDA65DF5AFC0E9B4 /* ComposeThreadTests.swift */,
 				38BE443A42DD2C33B2474F7C /* FeedRefreshPlanTests.swift */,
 				1C07632E47BCD7EC8BB5F033 /* ForYouCoversTests.swift */,
 				BE643E490867EFD03B2B11AC /* HomeFeedShelfTests.swift */,
 				00CF35C326325A9D9BF41E63 /* HomeOwnerVisibilityTests.swift */,
 				41166FA3D9D53F3AC9DC6EBE /* LaunchResumeTests.swift */,
 				9147DA97E362AE10C8A58A59 /* ReframeContractTests.swift */,
+				B003432357863314076DF25D /* ReframeRetryTests.swift */,
 				4755AAE2AED28A33A18A3A29 /* StyleTabPagerStateTests.swift */,
 				B0D5F569663CAAFC626FF889 /* WidgetTests.swift */,
 			);
@@ -593,12 +602,14 @@
 			files = (
 				FFF31C3CA97B02141683B979 /* AppGateTests.swift in Sources */,
 				5F9DE55921916F8DB11069B1 /* AppStoreReviewTests.swift in Sources */,
+				72F41D3FA56036BD2FD1973E /* ComposeThreadTests.swift in Sources */,
 				BBDCFC5DAA64296BE09CD43A /* FeedRefreshPlanTests.swift in Sources */,
 				2040896C35F90189E3FBB9BD /* ForYouCoversTests.swift in Sources */,
 				E85F482E086576383A6F83CB /* HomeFeedShelfTests.swift in Sources */,
 				82D2D975563E2B65E2BC4633 /* HomeOwnerVisibilityTests.swift in Sources */,
 				323C852404B7B64CD719B869 /* LaunchResumeTests.swift in Sources */,
 				07C7B3E2F8C3F83F1A83C0B0 /* ReframeContractTests.swift in Sources */,
+				9216FAA66258518AEEA96C87 /* ReframeRetryTests.swift in Sources */,
 				A49070A0679CF9B2A3757FA4 /* StyleTabPagerStateTests.swift in Sources */,
 				E92BDD00E9E6E12F499CEE70 /* WidgetTests.swift in Sources */,
 			);
@@ -627,6 +638,7 @@
 				475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */,
 				F5DE75546333F483E1916DD4 /* ColorTokens.swift in Sources */,
 				729FFDBB623CD8F34166D309 /* ComposeSheetView.swift in Sources */,
+				FC5BC4454EAA37265B5A86A9 /* CookBackgroundTask.swift in Sources */,
 				A0DC6882BC1FBF3E1AEF243F /* DrawerStubView.swift in Sources */,
 				379C2850E7C0BCFA12492CDB /* FeedLatestPill.swift in Sources */,
 				EF8628896CFCF26250C6E442 /* FeedRefreshBanner.swift in Sources */,
@@ -799,7 +811,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -823,7 +835,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -918,7 +930,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "AnglesApp/Info-Debug.plist";
@@ -947,7 +959,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 37;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesApp/Info.plist;

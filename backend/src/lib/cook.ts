@@ -26,8 +26,11 @@ import {
 } from "./prompts.js";
 import { lintLocal, lintResults, OVERLAP_LIMIT, overlap, type LintIssue } from "./reframeLint.js";
 
-/** From here on the decision call is told to land it, safety aside. */
-export const FORCE_READY_AFTER = 3;
+/**
+ * Two answered questions is the most the screen ever asks. From the second answer the
+ * decision call is told to land it, safety aside.
+ */
+export const FORCE_READY_AFTER = 2;
 /** Voice needs room to move; the decision call stays near-deterministic instead. */
 export const WRITER_TEMPERATURE = 0.8;
 /** A recook exists to say something the first answer did not. */

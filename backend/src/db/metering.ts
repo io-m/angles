@@ -234,13 +234,16 @@ export async function startMeterOperation(input: {
       await expireStaleForOwner(tx, input.ownerId, now);
 
       const duplicates = await tx<
-        { request_fingerprint: string; state: string }[]
+        { id: string; request_fingerprint: string; state: string }[]
       >`
-        select request_fingerprint, state
+        select id, request_fingerprint, state
         from meter_operations
         where owner_id = ${input.ownerId} and client_request_id = ${input.clientRequestId}
       `;
       const duplicate = duplicates[0];
+      // A `failed` or `expired` attempt never charged anything, so the same key may cook again
+      // on the same row. Only a finished (`ready`/`continue`) attempt stays a hard stop.
+      let restartId: string | null = null;
       if (duplicate) {
         if (duplicate.request_fingerprint !== input.requestFingerprint) {
           throw new MeteringError(
@@ -252,11 +255,15 @@ export async function startMeterOperation(input: {
         if (duplicate.state === "running") {
           throw new MeteringError("This operation is still running", "OPERATION_RUNNING", 409);
         }
-        throw new MeteringError(
-          "This request was already completed",
-          "REQUEST_ALREADY_COMPLETED",
-          409,
-        );
+        if (duplicate.state === "failed" || duplicate.state === "expired") {
+          restartId = duplicate.id;
+        } else {
+          throw new MeteringError(
+            "This request was already completed",
+            "REQUEST_ALREADY_COMPLETED",
+            409,
+          );
+        }
       }
 
       const running = await tx<{ id: string }[]>`
@@ -392,19 +399,30 @@ export async function startMeterOperation(input: {
         };
       }
 
-      const operationId = randomUUID();
-      await tx`
-        insert into meter_operations (
-          id, owner_id, client_request_id, request_fingerprint, period_id, model,
-          kind, reserved_credits, state, lease_expires_at, created_at, updated_at
-        ) values (
-          ${operationId}, ${input.ownerId}, ${input.clientRequestId},
-          ${input.requestFingerprint}, ${period?.id ?? null}, ${input.model},
-          ${input.kind}, ${reservedCredits}, 'running',
-          ${sqlTimestamp(new Date(now.getTime() + OPERATION_LEASE_MS))},
-          ${sqlTimestamp(now)}, ${sqlTimestamp(now)}
-        )
-      `;
+      const operationId = restartId ?? randomUUID();
+      const leaseExpiresAt = sqlTimestamp(new Date(now.getTime() + OPERATION_LEASE_MS));
+      if (restartId) {
+        await tx`
+          update meter_operations
+          set period_id = ${period?.id ?? null}, model = ${input.model}, kind = ${input.kind},
+              reserved_credits = ${reservedCredits}, charged_credits = 0, state = 'running',
+              lease_expires_at = ${leaseExpiresAt}, result_kind = null,
+              updated_at = ${sqlTimestamp(now)}
+          where id = ${restartId} and owner_id = ${input.ownerId}
+        `;
+      } else {
+        await tx`
+          insert into meter_operations (
+            id, owner_id, client_request_id, request_fingerprint, period_id, model,
+            kind, reserved_credits, state, lease_expires_at, created_at, updated_at
+          ) values (
+            ${operationId}, ${input.ownerId}, ${input.clientRequestId},
+            ${input.requestFingerprint}, ${period?.id ?? null}, ${input.model},
+            ${input.kind}, ${reservedCredits}, 'running',
+            ${leaseExpiresAt}, ${sqlTimestamp(now)}, ${sqlTimestamp(now)}
+          )
+        `;
+      }
       await tx`
         update daily_usage
         set operation_count = operation_count + 1, updated_at = ${sqlTimestamp(now)}

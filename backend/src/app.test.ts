@@ -1341,6 +1341,21 @@ describe("POST /reframe", () => {
     });
   });
 
+  it("stops the free decision call when the phone leaves but never the paid writer", async () => {
+    stubDecision(readyDecision());
+    const response = await post({ text: SHORT_TEXT });
+    expect(response.status).toBe(200);
+
+    const calls = vi.mocked(generateJson).mock.calls.map(([input]) => input);
+    const decision = calls.find((input) => !isStyleBatchPrompt(input.systemPrompt));
+    const writers = calls.filter((input) => isStyleBatchPrompt(input.systemPrompt));
+    expect(decision?.abortSignal).toBeDefined();
+    expect(writers.length).toBeGreaterThan(0);
+    for (const writer of writers) {
+      expect(writer.abortSignal).toBeUndefined();
+    }
+  });
+
   it("does not let failed metering cleanup mask the provider error response", async () => {
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.mocked(generateJson).mockRejectedValueOnce(new Error("provider failed"));
