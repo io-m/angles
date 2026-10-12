@@ -48,7 +48,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `backend/src/lib/reframeReplay.ts` — seals a finished `/reframe` response under the client's `Replay-Key`
 - `backend/src/lib/decision.ts` — the structured decision call: continue vs ready, cleaned thought, styles, metadata
 - `backend/src/lib/llmClient.ts` — **only** file to change when picking an LLM provider (`generateReframe`, `generateJson`). `modelsForStep` routes each step (`decision`, `writer`, `moderation`) from env (`LLM_<STEP>_MODEL`, `LLM_<STEP>_FALLBACK_MODEL`); the phone never picks a model
-- `backend/src/lib/llmUsage.ts`, `backend/src/lib/meteringPolicy.ts` — provider-token COGS and fixed 600-credit user tariff; every cook and recook costs 1 credit
+- `backend/src/lib/llmUsage.ts`, `backend/src/lib/meteringPolicy.ts` — provider-token COGS and fixed 240-credit user tariff; every cook and recook costs 1 credit
 - `backend/src/scripts/llmEval.ts`, `backend/eval/thoughts.json` — `pnpm llm:eval`: the golden thoughts through the real pipeline, lint and judge scores, cost; reports in `backend/eval/out/`
 - `backend/src/lib/appStoreVerifier.ts`, `backend/src/lib/subscriptionGate.ts` — Apple JWS verification and paid/taste gate
 - `backend/src/lib/publicModeration.ts`, `backend/src/lib/communitySafetyTypes.ts` — fail-closed publishing classifier and report contract

@@ -1,6 +1,6 @@
 # Angles Terms of Service
 
-Last updated: October 9, 2026
+Last updated: October 12, 2026
 
 Published at `https://useangles.app/terms` (`ANGLES_TERMS_OF_SERVICE_URL`). Support is at `https://useangles.app/support`.
 
@@ -64,7 +64,7 @@ Angles may allocate monthly AI-use credits or other usage limits to a subscripti
 - expire at the end of the applicable monthly billing or allowance period and do not roll over; and
 - may be consumed at different rates by different models or operations, as disclosed in the app.
 
-We do not sell separate credit packs. Each monthly membership period currently includes 600 credits; each ready result uses one credit, while continue, safety, and failed operations use no user credits. We may also enforce reasonable technical or fair-use limits to protect the service. A provider outage or safety refusal may prevent a request without guaranteeing a replacement output.
+We do not sell separate credit packs. Each monthly membership period currently includes 240 credits; each ready result uses one credit, while continue, safety, and failed operations use no user credits. We may also enforce reasonable technical or fair-use limits to protect the service. A provider outage or safety refusal may prevent a request without guaranteeing a replacement output.
 
 ## Intellectual property
 

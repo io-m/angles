@@ -258,7 +258,7 @@ struct PaywallView: View {
                         )
                         infoIncludedRow(
                             icon: "sparkles",
-                            title: "600 credits a month",
+                            title: "240 credits a month",
                             detail: "Each new thought or new answer uses one credit. Follow-up questions are free. Credits reset every month."
                         )
                     }
@@ -713,7 +713,7 @@ struct PaywallView: View {
     }
 
     private var renewalDisclosure: String {
-        let allowance = "Includes 600 credits a month."
+        let allowance = "Includes 240 credits a month."
         let cancel = "Renews automatically unless canceled in Settings at least 24 hours before the period ends."
         switch selectedPlan {
         case .annual:

@@ -1,8 +1,8 @@
 import { createHmac } from "node:crypto";
 
-export const USAGE_PLAN_VERSION = "monthly-600-v1";
+export const USAGE_PLAN_VERSION = "monthly-240-v1";
 export const CREDIT_TARIFF_VERSION = "flat-v1";
-export const MONTHLY_CREDITS = 600;
+export const MONTHLY_CREDITS = 240;
 export const DAILY_OPERATION_LIMIT = 60;
 export const DAILY_PROVIDER_CALL_LIMIT = 200;
 export const TASTE_LIFETIME_TURN_LIMIT = 10;

@@ -25,8 +25,8 @@ vi.mock("./db/metering.js", () => {
     }
   }
   const summary = {
-    creditsGranted: 600,
-    creditsRemaining: 599,
+    creditsGranted: 240,
+    creditsRemaining: 239,
     periodStart: "2026-09-01T00:00:00.000Z",
     periodEnd: "2026-10-01T00:00:00.000Z",
     resetsAt: "2026-10-01T00:00:00.000Z",
@@ -329,8 +329,8 @@ describe("POST /reframe", () => {
     expect(generateReframe).not.toHaveBeenCalled();
     expect(body.usage).toMatchObject({
       creditsUsed: 0,
-      remaining: 599,
-      granted: 600,
+      remaining: 239,
+      granted: 240,
       creditCost: 1,
     });
   });
@@ -568,8 +568,8 @@ describe("POST /reframe", () => {
     expect(body.thoughtOriginal).toBeUndefined();
     expect(body.usage).toMatchObject({
       creditsUsed: 1,
-      remaining: 599,
-      granted: 600,
+      remaining: 239,
+      granted: 240,
       creditCost: 1,
     });
     expect(body.results.map((item) => item.style)).toEqual([...LEGACY_STYLES]);

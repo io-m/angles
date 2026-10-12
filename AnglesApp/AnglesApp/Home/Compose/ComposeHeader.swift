@@ -141,7 +141,7 @@ struct ComposeHeader: View {
     }
 }
 
-/// "540 credits remaining". It reads the shared balance itself, so a cook redraws only this line.
+/// "216 credits remaining". It reads the shared balance itself, so a cook redraws only this line.
 private struct ComposeUsageLine: View {
     let session: ComposeSession
 

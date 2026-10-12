@@ -4,11 +4,11 @@ This is the shipped V1 contract. It is not a pricing proposal.
 
 ## Products
 
-- Monthly: **$3.99/month** (`app.angles.ios.monthly`)
-- Annual: **$24.99/year** (`app.angles.ios.annual`)
+- Monthly: **$2.99/month** (`app.angles.ios.monthly`)
+- Annual: **$29.99/year** (`app.angles.ios.annual`)
 - No free trial
 - One private onboarding taste before the paywall
-- Both paid products grant **600 credits per monthly membership period**
+- Both paid products grant **240 credits per monthly membership period**
 
 The annual product does not grant 7,200 credits at once. Its allowance is divided into monthly periods anchored to the original subscription purchase date.
 
@@ -32,12 +32,12 @@ The onboarding taste uses the same server-routed models and does not debit a pai
 - Credits reset at the end of the current monthly membership period.
 - Unused credits do not roll over.
 - There are no credit packs, overages, pay-as-you-go user charges, transfers, or cash value.
-- The app warns at **120 credits remaining (20%)** and **60 credits remaining (10%)**. Empty is a persistent state, not a surprise Apple charge.
+- The app warns at **48 credits remaining (20%)** and **24 credits remaining (10%)**. Empty is a persistent state, not a surprise Apple charge.
 - Settings → Subscription shows remaining/granted credits and the reset date.
-- `USAGE_PLAN_VERSION` is `monthly-600-v1`.
+- `USAGE_PLAN_VERSION` is `monthly-240-v1`. Opening Settings or cooking applies that grant to the current period; spent credits are kept, leftover 600 is not.
 - `CREDIT_TARIFF_VERSION` is `flat-v1`; the earlier model-weighted tariff is retired.
 
-Versioned periods preserve the rules under which they were created. Changing allowance or tariffs requires a new version and an explicit migration/product decision; do not silently reinterpret historical periods.
+Versioned periods preserve the rules under which closed historical periods ran (they are never retroactively recalculated). Live open periods adopt the current plan grant (`monthly-240-v1`), keeping spent credits while setting granted credits to 240 (floored at spent credits if spend exceeded 240).
 
 ## Model routing and fallback
 
@@ -73,7 +73,7 @@ Decision follow-ups can use multiple provider calls without charging user credit
 
 ### Fixed user tariff
 
-The user ledger is intentionally simple and predictable: 1 credit per ready cook or recook. It controls the 600-credit allowance and is independent of the model and the exact token count of one request.
+The user ledger is intentionally simple and predictable: 1 credit per ready cook or recook. It controls the 240-credit allowance and is independent of the model and the exact token count of one request.
 
 It does not represent tokens, provider currency, or a resale of provider credits.
 
@@ -102,7 +102,7 @@ These are accounting inputs, not promises to users. Verify them before productio
 
 ## Cost per cook
 
-A ready cook on the current Mistral prompts is about $0.0015 (the decision call plus four styles), about $0.90 a month for a subscriber who uses all 600 credits. The budget remains about $0.002 per ready cook, about $1.20 a month once a lint rewrite is included. Free continue turns are uncharged and dominate the abuse ceiling: 600 cooks plus the rest of the daily operation cap filled with continues is about $1.90. The $0.0015 figure is arithmetic on today's prompt sizes. An earlier 80-thought run measured about $0.00107 per ready cook, and there is no measured GPT-4.1 mini quality or per-cook claim yet. Re-run `pnpm llm:eval` before making the fallback primary or treating either figure as a current benchmark.
+A ready cook on the current Mistral prompts is about $0.0015 (the decision call plus four styles), about $0.36 a month for a subscriber who uses all 240 credits. The budget remains about $0.002 per ready cook, about $0.48 a month once a lint rewrite is included. Free continue turns are uncharged and dominate the abuse ceiling: 240 cooks plus the rest of the daily operation cap filled with continues is about $1.40. The $0.0015 figure is arithmetic on today's prompt sizes. An earlier 80-thought run measured about $0.00107 per ready cook, and there is no measured GPT-4.1 mini quality or per-cook claim yet. Re-run `pnpm llm:eval` before making the fallback primary or treating either figure as a current benchmark.
 
 ## Provider-side controls
 
@@ -114,7 +114,7 @@ User credits protect per-subscriber margin. Provider controls protect the compan
 - Alerts for cap/balance thresholds
 - Separate production and local/CI credentials
 
-If a provider-wide cap trips, affected requests fail with no user-credit charge. The cap does not fairly allocate usage between subscribers and is not a replacement for the 600-credit ledger.
+If a provider-wide cap trips, affected requests fail with no user-credit charge. The cap does not fairly allocate usage between subscribers and is not a replacement for the 240-credit ledger.
 
 ## StoreKit and server entitlement
 

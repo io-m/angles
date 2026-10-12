@@ -4,7 +4,7 @@ import Testing
 @testable import Angles
 
 struct SafetyContractTests {
-    private let usage = #"{"creditsUsed":0,"remaining":599,"granted":600,"resetsAt":null,"warning":"normal","creditCost":1,"plan":"membership"}"#
+    private let usage = #"{"creditsUsed":0,"remaining":239,"granted":240,"resetsAt":null,"warning":"normal","creditCost":1,"plan":"membership"}"#
 
     private func decode(_ json: String) throws -> ReframeResponse {
         try JSONDecoder().decode(ReframeResponse.self, from: Data(json.utf8))

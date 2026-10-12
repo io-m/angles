@@ -182,7 +182,7 @@ export default function TermsPage() {
       </ul>
       <p>
         We do not sell separate credit packs. Each monthly membership period
-        currently includes 600 credits. Each ready result uses one credit, while
+        currently includes 240 credits. Each ready result uses one credit, while
         continue, safety, and failed operations use no user credits. We may
         also enforce reasonable technical or fair-use limits to protect the
         service. A provider outage or safety refusal may prevent a request

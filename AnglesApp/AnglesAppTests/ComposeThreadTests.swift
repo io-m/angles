@@ -81,7 +81,7 @@ private final class ComposeStubURLProtocol: URLProtocol {
     }
 }
 
-private let usageJSON = #"{"creditsUsed":0,"remaining":599,"granted":600,"resetsAt":null,"warning":"normal","creditCost":1,"plan":"membership"}"#
+private let usageJSON = #"{"creditsUsed":0,"remaining":239,"granted":240,"resetsAt":null,"warning":"normal","creditCost":1,"plan":"membership"}"#
 private let metaJSON = #"{"category":"work","tags":[],"intensity":3,"timeframe":"present","emotions":[],"safety":"none","inputLanguage":"en","skippedStyles":[],"matching":{"category":"work","tags":[],"intensityBand":"mid"}}"#
 private let storedCardJSON = #"{"id":"00000000-0000-4000-8000-0000000000c1","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isHearted":false}],"spotlightStyle":"stoic","isPublic":true,"createdAt":"2026-10-09T10:00:00.000Z","isOwner":true,"author":{"id":"00000000-0000-4000-8000-0000000000aa","initials":"JM","following":false}}"#
 
@@ -225,7 +225,7 @@ struct ComposeThreadTests {
         send(viewModel, "A thought")
         #expect(await waitFor { viewModel.compose.isCookReady })
 
-        #expect(viewModel.usageSummary?.creditsRemaining == 599)
+        #expect(viewModel.usageSummary?.creditsRemaining == 239)
         #expect(viewModel.compose.hasCreditsForCook)
         #expect(viewModel.compose.usageFeedback == nil)
     }

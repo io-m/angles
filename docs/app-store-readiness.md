@@ -12,7 +12,7 @@ The production feature work is implemented in the repository. The app is not rea
 - Account-scoped onboarding: Apple sign-in first, one server-tracked taste while both taste timestamps are empty, a private taste save, then the hard paywall.
 - StoreKit 2 annual and monthly purchase, restore, renewal/expiry handling, Settings subscription status, plan management, and cancellation handoff to Apple.
 - Server-side verification of signed App Store transactions and Server Notifications V2, account-bound entitlements, idempotent notification processing, and subscription enforcement after the taste.
-- A server-owned allowance of 600 credits per monthly membership period for both products. A ready cook or recook costs 1 credit; continue, safety, and failed operations cost 0 user credits.
+- A server-owned allowance of 240 credits per monthly membership period for both products. A ready cook or recook costs 1 credit; continue, safety, and failed operations cost 0 user credits.
 - Server-side model routing per step with a fallback provider, 20% and 10% warnings, reset information, request idempotency, and daily/burst abuse limits. The app has no model picker.
 - Provider token usage and estimated/reported company cost recorded for every real provider attempt without storing thought text in the metering ledger.
 - Public/private cards, community Home, follows, per-angle hearts, reporting, blocking/unblocking, and pre-publication moderation.

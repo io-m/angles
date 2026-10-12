@@ -129,8 +129,8 @@ describe("profile avatar", () => {
     vi.mocked(getAvatar).mockReset();
     vi.mocked(getUserById).mockResolvedValue(user());
     vi.mocked(getUsageSummary).mockResolvedValue({
-      creditsGranted: 600,
-      creditsRemaining: 594,
+      creditsGranted: 240,
+      creditsRemaining: 234,
       periodStart: "2026-09-01T00:00:00.000Z",
       periodEnd: "2026-10-01T00:00:00.000Z",
       resetsAt: "2026-10-01T00:00:00.000Z",
@@ -299,8 +299,8 @@ describe("profile avatar", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as Record<string, unknown>;
     expect(body).toMatchObject({
-      creditsGranted: 600,
-      creditsRemaining: 594,
+      creditsGranted: 240,
+      creditsRemaining: 234,
       creditCost: 1,
     });
     expect(body.tokens).toBeUndefined();

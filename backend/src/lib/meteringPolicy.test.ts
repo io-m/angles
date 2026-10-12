@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   developmentUsagePeriod,
+  MONTHLY_CREDITS,
   paidUsagePeriod,
   requestFingerprint,
   usageWarning,
@@ -12,12 +13,12 @@ describe("metering policy", () => {
     vi.unstubAllEnvs();
   });
 
-  it("warns at the fixed low-balance thresholds", () => {
+  it("warns at 20% and 10% of the monthly grant", () => {
     expect(usageWarning(0)).toBe("empty");
-    expect(usageWarning(60)).toBe("critical");
-    expect(usageWarning(61)).toBe("low");
-    expect(usageWarning(120)).toBe("low");
-    expect(usageWarning(121)).toBe("normal");
+    expect(usageWarning(Math.floor(MONTHLY_CREDITS * 0.1))).toBe("critical");
+    expect(usageWarning(Math.floor(MONTHLY_CREDITS * 0.1) + 1)).toBe("low");
+    expect(usageWarning(Math.floor(MONTHLY_CREDITS * 0.2))).toBe("low");
+    expect(usageWarning(Math.floor(MONTHLY_CREDITS * 0.2) + 1)).toBe("normal");
   });
 
   it("clamps month-end directly from a Jan 31 anchor without drift", () => {

@@ -2898,7 +2898,7 @@ final class HomeViewModel {
                 periodStart: previous?.periodStart,
                 periodEnd: previous?.periodEnd,
                 resetsAt: payload.resetsAt,
-                warning: Self.usageWarning(remaining: creditsRemaining),
+                warning: Self.usageWarning(remaining: creditsRemaining, granted: creditsGranted),
                 creditCost: previous?.creditCost ?? 1,
                 plan: previous?.plan ?? .membership
             )
@@ -2922,14 +2922,15 @@ final class HomeViewModel {
         "\(lowWarningPeriodKeyPrefix).\(userID.lowercased())"
     }
 
-    private static func usageWarning(remaining: Int) -> UsageWarning {
+    private static func usageWarning(remaining: Int, granted: Int) -> UsageWarning {
         if remaining <= 0 {
             return .empty
         }
-        if remaining <= 60 {
+        let base = max(granted, 1)
+        if remaining <= base / 10 {
             return .critical
         }
-        if remaining <= 120 {
+        if remaining <= base / 5 {
             return .low
         }
         return .normal

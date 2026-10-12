@@ -16,6 +16,7 @@ import {
   type Style,
 } from "../types/index.js";
 import { DEV_USER_ID, runAsOwner } from "../lib/authStub.js";
+import { MONTHLY_CREDITS, USAGE_PLAN_VERSION } from "../lib/meteringPolicy.js";
 import type {
   VerifiedAppStoreNotification,
   VerifiedAppStoreRenewal,
@@ -497,7 +498,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(
       (await getUsageSummary(DEV_USER_ID, new Date("2026-10-27T10:00:00.000Z")))
         .creditsRemaining,
-    ).toBe(599);
+    ).toBe(MONTHLY_CREDITS - 1);
     expect(await getDb().select().from(usagePeriods)).toHaveLength(1);
 
     // The phone re-syncs its lapsed receipt during grace; that must not end grace early.
@@ -588,7 +589,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       kind: "full",
       now: new Date("2026-09-25T12:00:00.000Z"),
     });
-    expect(ready.usage.creditsRemaining).toBe(599);
+    expect(ready.usage.creditsRemaining).toBe(MONTHLY_CREDITS - 1);
     const afterReady = await finishMeterOperation({
       operation: ready,
       state: "ready",
@@ -596,7 +597,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       usageEvents: [],
       now: new Date("2026-09-25T12:00:01.000Z"),
     });
-    expect(afterReady.creditsRemaining).toBe(599);
+    expect(afterReady.creditsRemaining).toBe(MONTHLY_CREDITS - 1);
 
     // The routed model is recorded, not priced: an OpenAI-routed cook costs the same one credit.
     const continued = await startMeterOperation({
@@ -607,7 +608,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       kind: "full",
       now: new Date("2026-09-25T12:01:01.000Z"),
     });
-    expect(continued.usage.creditsRemaining).toBe(598);
+    expect(continued.usage.creditsRemaining).toBe(MONTHLY_CREDITS - 2);
     const afterContinue = await finishMeterOperation({
       operation: continued,
       state: "continue",
@@ -615,7 +616,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       usageEvents: [],
       now: new Date("2026-09-25T12:01:02.000Z"),
     });
-    expect(afterContinue.creditsRemaining).toBe(599);
+    expect(afterContinue.creditsRemaining).toBe(MONTHLY_CREDITS - 1);
   });
 
   it("enforces one running operation and all idempotency outcomes", async () => {
@@ -666,7 +667,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(
       (await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T12:00:02.500Z")))
         .creditsRemaining,
-    ).toBe(600);
+    ).toBe(MONTHLY_CREDITS);
     // A failed attempt was never charged, so the same key cooks again on the same row.
     const restarted = await startMeterOperation({
       ownerId: DEV_USER_ID,
@@ -677,7 +678,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       now: new Date("2026-09-25T12:00:03.000Z"),
     });
     expect(restarted.operationId).toBe(first.operationId);
-    expect(restarted.usage.creditsRemaining).toBe(599);
+    expect(restarted.usage.creditsRemaining).toBe(MONTHLY_CREDITS - 1);
     // The restarted attempt is the one running operation again.
     await expect(
       startMeterOperation({
@@ -698,7 +699,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       usageEvents: [],
       now: new Date("2026-09-25T12:00:05.000Z"),
     });
-    expect(afterRestart.creditsRemaining).toBe(599);
+    expect(afterRestart.creditsRemaining).toBe(MONTHLY_CREDITS - 1);
     // A finished attempt without a stored replay stays a hard stop: it may have been charged.
     await expect(
       startMeterOperation({
@@ -731,7 +732,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       now: new Date("2026-09-25T12:00:31.000Z"),
     });
     expect(restarted.operationId).toBe(started.operationId);
-    expect(restarted.usage.creditsRemaining).toBe(599);
+    expect(restarted.usage.creditsRemaining).toBe(MONTHLY_CREDITS - 1);
     const rows = await getSql()<{ count: number }[]>`
       select count(*)::int as count from meter_operations where client_request_id = ${key}
     `;
@@ -800,6 +801,46 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(remaining[0]?.count).toBe(0);
   });
 
+  it("applies the live 240 grant to an open period created under 600", async () => {
+    const now = new Date("2026-09-25T12:00:00.000Z");
+    await getUsageSummary(DEV_USER_ID, now);
+    const [period] = await getDb().select().from(usagePeriods);
+    expect(period).toBeDefined();
+    await getSql()`
+      update usage_periods
+      set granted_credits = 600,
+          charged_credits = 14,
+          plan_version = 'monthly-600-v1'
+      where id = ${period!.id}
+    `;
+    const summary = await getUsageSummary(DEV_USER_ID, now);
+    expect(summary.creditsGranted).toBe(MONTHLY_CREDITS);
+    expect(summary.creditsRemaining).toBe(MONTHLY_CREDITS - 14);
+    const [updated] = await getDb().select().from(usagePeriods);
+    expect(updated?.planVersion).toBe(USAGE_PLAN_VERSION);
+    expect(updated?.grantedCredits).toBe(MONTHLY_CREDITS);
+  });
+
+  it("floors the grant at spent credits when spent exceeds 240 under 600", async () => {
+    const now = new Date("2026-09-25T12:00:00.000Z");
+    await getUsageSummary(DEV_USER_ID, now);
+    const [period] = await getDb().select().from(usagePeriods);
+    expect(period).toBeDefined();
+    await getSql()`
+      update usage_periods
+      set granted_credits = 600,
+          charged_credits = 250,
+          plan_version = 'monthly-600-v1'
+      where id = ${period!.id}
+    `;
+    const summary = await getUsageSummary(DEV_USER_ID, now);
+    expect(summary.creditsGranted).toBe(250);
+    expect(summary.creditsRemaining).toBe(0);
+    const [updated] = await getDb().select().from(usagePeriods);
+    expect(updated?.planVersion).toBe(USAGE_PLAN_VERSION);
+    expect(updated?.grantedCredits).toBe(250);
+  });
+
   it("expires a stale lease and releases its reservation", async () => {
     const started = await startMeterOperation({
       ownerId: DEV_USER_ID,
@@ -810,7 +851,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       now: new Date("2026-09-25T12:00:00.000Z"),
     });
     await expireStaleOperations(DEV_USER_ID, new Date("2026-09-25T12:00:31.000Z"));
-    expect((await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T12:00:31.000Z"))).creditsRemaining).toBe(600);
+    expect((await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T12:00:31.000Z"))).creditsRemaining).toBe(MONTHLY_CREDITS);
     const row = await getDb().query.meterOperations.findFirst({
       where: eq(meterOperations.id, started.operationId),
     });
@@ -822,13 +863,13 @@ describe.skipIf(!testUrl)("cards integration", () => {
       DEV_USER_ID,
       new Date("2026-09-25T12:00:00.000Z"),
     );
-    expect(bootstrap.creditsGranted).toBe(600);
+    expect(bootstrap.creditsGranted).toBe(MONTHLY_CREDITS);
     const [period] = await getDb().select().from(usagePeriods);
     expect(period).toBeDefined();
     await applyCreditAdjustment({
       ownerId: DEV_USER_ID,
       periodId: period!.id,
-      deltaCredits: -599,
+      deltaCredits: -(MONTHLY_CREDITS - 1),
       reasonCode: "test",
       now: new Date("2026-09-25T12:00:01.000Z"),
     });
@@ -1112,7 +1153,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       .update(subscriptionEntitlements)
       .set({ currentTransactionId: "restored-transaction" })
       .where(eq(subscriptionEntitlements.userId, DEV_USER_ID));
-    expect((await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T12:00:02.000Z"))).creditsRemaining).toBe(599);
+    expect((await getUsageSummary(DEV_USER_ID, new Date("2026-09-25T12:00:02.000Z"))).creditsRemaining).toBe(MONTHLY_CREDITS - 1);
     expect(await getDb().select().from(usagePeriods)).toHaveLength(1);
   });
 

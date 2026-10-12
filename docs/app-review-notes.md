@@ -15,7 +15,7 @@ Angles requires Sign in with Apple before the core experience because the free t
 5. The first Send opens **Before you start**, which names the AI providers (Mistral AI and OpenAI), says what is sent, says Angles is not therapy or a crisis service, states the community rules, and links the Terms of Use and Privacy Policy. Tap **Agree and continue**. The acceptance is stored on the server, so it appears once per account on any device.
 6. If a follow-up question appears, tap any chip or type in "Your answer..." and send. The server asks at most two questions, then returns a result. Press and hold your thought to copy it.
 7. Four angles appear, chosen from six voices (Stoic, Hopeful, Witty, Tough, Tender, and Values). A thought about real harm is not given Witty or Tough. Tap **Save to private library**. The taste is always saved privately.
-8. "Saved privately" plays, then the paywall opens. Choose **Yearly** or **Monthly** (prices come from the App Store; Yearly shows the yearly price it bills), tap **Continue**, and approve the sandbox purchase. Each plan includes 600 credits a month.
+8. "Saved privately" plays, then the paywall opens. Choose **Yearly** or **Monthly** (prices come from the App Store; Yearly shows the yearly price it bills), tap **Continue**, and approve the sandbox purchase. Each plan includes 240 credits a month.
 9. After Apple verifies the transaction and the server syncs the entitlement, **Home** opens. The tab bar is **Home**, **Inspire me** (compose), and **Profile**. Inspire me opens the full composer, where the angles card has a **Post** button anchored at the bottom of the screen (default) with a **Save privately** option, and a quiet **Start new** link under the card. Profile holds the private library and Settings (gear).
 
 An existing entitled account skips the taste and paywall after Apple sign-in; if it has not accepted the Terms yet (for example, it subscribed without sending), **Before you start** opens before Home, with **Log out** as the only other choice. An account that already used its taste but is not entitled goes directly to the paywall. The taste is used as soon as its first result appears, so quitting before Save also lands on the paywall.
@@ -79,7 +79,7 @@ First run:
 3. The first Send shows "Before you start", which names our AI providers and links the Terms and Privacy Policy. Tap "Agree and continue".
 4. If a follow-up question appears, tap any answer chip.
 5. Four angles appear, chosen from six voices (Stoic, Hopeful, Witty, Tough, Tender, Values). A thought about real harm is not given Witty or Tough. Tap "Save to private library".
-6. The paywall opens. Choose Yearly or Monthly, tap Continue, and approve the sandbox purchase. Each membership includes 600 credits per month; one result uses one credit.
+6. The paywall opens. Choose Yearly or Monthly, tap Continue, and approve the sandbox purchase. Each membership includes 240 credits per month; one result uses one credit.
 7. Home opens. "Inspire me" in the tab bar writes a new thought; "Profile" holds your private library and Settings (gear).
 
 If the app ever opens directly on the paywall, this Apple ID already used its taste. Purchase or restore to continue.

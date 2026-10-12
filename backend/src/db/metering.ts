@@ -33,6 +33,7 @@ type PeriodRow = {
   granted_credits: number;
   reserved_credits: number;
   charged_credits: number;
+  plan_version: string;
 };
 
 type EntitlementContext = {
@@ -211,12 +212,44 @@ async function ensurePeriod(
     on conflict (owner_id, starts_at) do nothing
   `;
   const rows = await tx<PeriodRow[]>`
-    select id, starts_at, ends_at, granted_credits, reserved_credits, charged_credits
+    select id, starts_at, ends_at, granted_credits, reserved_credits, charged_credits, plan_version
     from usage_periods
     where owner_id = ${ownerId} and starts_at = ${sqlTimestamp(range.startsAt)}
     for update
   `;
-  return rows[0] ?? null;
+  const period = rows[0];
+  return period ? applyCurrentPlanGrant(tx, period, now) : null;
+}
+
+/** Open periods adopt the live 240 grant. Spent credits stay; leftover 600 does not. */
+async function applyCurrentPlanGrant(
+  tx: postgres.TransactionSql,
+  period: PeriodRow,
+  now: Date,
+): Promise<PeriodRow> {
+  if (
+    period.plan_version === USAGE_PLAN_VERSION &&
+    period.granted_credits <= MONTHLY_CREDITS
+  ) {
+    return period;
+  }
+  const spent = period.reserved_credits + period.charged_credits;
+  const granted = Math.max(MONTHLY_CREDITS, spent);
+  if (
+    period.plan_version === USAGE_PLAN_VERSION &&
+    period.granted_credits === granted
+  ) {
+    return period;
+  }
+  const updated = await tx<PeriodRow[]>`
+    update usage_periods
+    set granted_credits = ${granted},
+        plan_version = ${USAGE_PLAN_VERSION},
+        updated_at = ${sqlTimestamp(now)}
+    where id = ${period.id}
+    returning id, starts_at, ends_at, granted_credits, reserved_credits, charged_credits, plan_version
+  `;
+  return updated[0] ?? period;
 }
 
 export async function startMeterOperation(input: {

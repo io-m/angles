@@ -8,7 +8,7 @@ Current shipped flow for authentication, the onboarding taste, subscription gati
 - **One taste per Angles account.** The backend stamps `users.tasteConsumedAt` when the first taste reaches a ready result; reinstalling the app or changing devices does not create another taste for the same account.
 - **The taste is real and private.** It runs the normal server reframe flow. Saving the active result succeeds as a private card and separately stamps `tasteCompletedAt` in the same server transaction.
 - **The paywall follows the saved taste.** The taste cannot be dismissed or recooked. A successful private save transitions to the annual/monthly paywall.
-- **Entitlement and credits are server-owned.** StoreKit supplies signed purchase data; the backend verifies and binds the subscription to the signed-in Angles account. Paid accounts receive 600 credits per monthly membership period.
+- **Entitlement and credits are server-owned.** StoreKit supplies signed purchase data; the backend verifies and binds the subscription to the signed-in Angles account. Paid accounts receive 240 credits per monthly membership period.
 
 ## Gate order
 
@@ -60,7 +60,7 @@ If the app is killed after the server returned a ready taste but before the card
 
 ## Paid usage
 
-Both monthly and annual subscriptions grant **600 credits for each monthly membership period**:
+Both monthly and annual subscriptions grant **240 credits for each monthly membership period**:
 
 - Ready cook or recook: 1 credit
 - Continue, safety response, or failed operation: 0 user credits

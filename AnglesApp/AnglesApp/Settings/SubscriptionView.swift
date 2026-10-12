@@ -203,7 +203,7 @@ struct SubscriptionView: View {
             }
 
             if let usage, usage.plan == .taste {
-                Text("Credits start with your membership: 600 every month.")
+                Text("Credits start with your membership: 240 every month.")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
