@@ -1,4 +1,5 @@
 import Combine
+import StoreKit
 import SwiftUI
 import UserNotifications
 
@@ -64,6 +65,7 @@ struct AppRoot: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
 
     private static let homeArrivalCap: Duration = LaunchSplashMotion.maximumHold
 
@@ -251,6 +253,19 @@ struct AppRoot: View {
         }
         .environment(\.profileIdentity, identityStore)
         .onAppear(perform: configureComposeContext)
+        .task(id: reviewCoordinator.promptGeneration) {
+            guard reviewCoordinator.promptGeneration > 0 else {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(300))
+            reviewCoordinator.considerPrompt(
+                context: settledSaveReviewContext,
+                storeEnvironment: storeKitManager.storeEnvironment
+            ) {
+                requestReview()
+                return true
+            }
+        }
         .onReceive(
             NotificationCenter.default.publisher(for: .anglesSessionInvalidated)
                 .receive(on: DispatchQueue.main)
@@ -995,7 +1010,7 @@ struct AppRoot: View {
             }
             saveCoverLabel = nil
             completion()
-            reviewCoordinator.considerPrompt(context: settledSaveReviewContext)
+            reviewCoordinator.schedulePrompt()
         }
     }
 

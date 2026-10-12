@@ -398,15 +398,39 @@ extension CardArrivalGlow where S == RoundedRectangle {
     }
 }
 
-/// Focus effect: the settled card is full size; neighbors scale down as they travel in.
+/// W Social's feed reveal: a card still below the fold starts a little large,
+/// 64pt lower, and invisible, then settles. Crossing out the top shrinks
+/// slightly and fades, once, as it drops under 15% visible.
 private struct TallCardFocusTransition: ViewModifier {
     let enabled: Bool
 
     func body(content: Content) -> some View {
         if enabled {
-            content.scrollTransition(.interactive, axis: .vertical) { effect, phase in
-                let distance = CGFloat(min(1, abs(phase.value)))
-                return effect.scaleEffect(1 - (0.04 * distance))
+            content.scrollTransition(
+                .animated(.timingCurve(0.22, 1, 0.36, 1, duration: 0.8))
+                    .threshold(.visible(0.15)),
+                axis: .vertical
+            ) { effect, phase in
+                let scale: CGFloat
+                let y: CGFloat
+                let opacity: Double
+                if phase.value > 0 {
+                    scale = 1.08
+                    y = 64
+                    opacity = 0
+                } else if phase.value < 0 {
+                    scale = 0.96
+                    y = 0
+                    opacity = 0.7
+                } else {
+                    scale = 1
+                    y = 0
+                    opacity = 1
+                }
+                return effect
+                    .scaleEffect(scale)
+                    .offset(y: y)
+                    .opacity(opacity)
             }
         } else {
             content

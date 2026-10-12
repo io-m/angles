@@ -14,18 +14,17 @@ struct AppRatingPolicyTests {
         )
     }
 
-    @Test func fewerThanThreeSavesDoesNotQualify() {
+    @Test func fewerThanTwoSavesDoesNotQualify() {
         #expect(!AppRatingPolicy.shouldRequestReview(record: record(saves: 0), now: now))
         #expect(!AppRatingPolicy.shouldRequestReview(record: record(saves: 1), now: now))
-        #expect(!AppRatingPolicy.shouldRequestReview(record: record(saves: 2), now: now))
     }
 
-    @Test func thirdSaveQualifies() {
-        #expect(AppRatingPolicy.shouldRequestReview(record: record(saves: 3), now: now))
+    @Test func secondSaveQualifies() {
+        #expect(AppRatingPolicy.shouldRequestReview(record: record(saves: 2), now: now))
     }
 
     @Test func cooldownBlocksUntilNinetyDays() {
-        let asked = record(saves: 3, attempts: 1, lastReview: now)
+        let asked = record(saves: 2, attempts: 1, lastReview: now)
         let early = now.addingTimeInterval(AppRatingPolicy.cooldown - 1)
         #expect(!AppRatingPolicy.shouldRequestReview(record: asked, now: early))
         let due = now.addingTimeInterval(AppRatingPolicy.cooldown)
@@ -53,6 +52,19 @@ struct AppStoreReviewCoordinatorTests {
         sceneIsActive: true
     )
 
+    @Test func productionStoreAllowsAPromptAndSandboxDoesNot() {
+        #if DEBUG
+        #expect(AppRatingDistribution.allowsSystemReviewPrompt(storeEnvironment: nil))
+        #expect(AppRatingDistribution.allowsSystemReviewPrompt(storeEnvironment: "Sandbox"))
+        #expect(AppRatingDistribution.allowsSystemReviewPrompt(storeEnvironment: "Production"))
+        #else
+        #expect(!AppRatingDistribution.allowsSystemReviewPrompt(storeEnvironment: nil))
+        #expect(!AppRatingDistribution.allowsSystemReviewPrompt(storeEnvironment: "Sandbox"))
+        #expect(!AppRatingDistribution.allowsSystemReviewPrompt(storeEnvironment: "Xcode"))
+        #expect(AppRatingDistribution.allowsSystemReviewPrompt(storeEnvironment: "Production"))
+        #endif
+    }
+
     @Test func everyGuardCanBlockThePrompt() {
         #expect(settled.allowsAutomaticPrompt)
         #expect(!blocked { $0.destinationIsHome = false })
@@ -63,22 +75,36 @@ struct AppStoreReviewCoordinatorTests {
         #expect(!blocked { $0.sceneIsActive = false })
     }
 
-    @Test func firstTwoSavesDoNotRequestAndTheThirdDoes() throws {
+    @Test func debugLaunchClearsALeftoverSaveCount() throws {
+        let name = "angles.rating.tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defaults.removePersistentDomain(forName: name)
+        defaults.set(9, forKey: "angles.rating.successfulEntitledSaveCount")
+        defaults.set(Date(), forKey: "angles.rating.lastReviewRequestAt")
+        defaults.set(1, forKey: "angles.rating.reviewRequestCount")
+        let coordinator = AppStoreReviewCoordinator(defaults: defaults)
+        defer { defaults.removePersistentDomain(forName: name) }
+        #if DEBUG
+        #expect(coordinator.record.successfulEntitledSaveCount == 0)
+        #expect(coordinator.record.lastReviewRequestAt == nil)
+        #expect(coordinator.record.reviewRequestCount == 0)
+        #else
+        #expect(coordinator.record.successfulEntitledSaveCount == 9)
+        #endif
+    }
+
+    @Test func firstSaveDoesNotRequestAndTheSecondDoes() throws {
         let harness = try ReviewHarness()
         defer { harness.cleanup() }
         var requests = 0
         let now = harness.now
         harness.save(at: now, context: settled, requests: &requests)
-        harness.save(at: now, context: settled, requests: &requests)
         #expect(requests == 0)
-        #expect(harness.coordinator.record.successfulEntitledSaveCount == 2)
+        #expect(harness.coordinator.record.successfulEntitledSaveCount == 1)
 
         harness.save(at: now, context: settled, requests: &requests)
-        harness.coordinator.considerPrompt(context: settled, now: now) {
-            requests += 1
-            return true
-        }
         #expect(requests == 1)
+        #expect(harness.coordinator.record.successfulEntitledSaveCount == 2)
         #expect(harness.coordinator.record.reviewRequestCount == 1)
         #expect(harness.coordinator.record.lastReviewRequestAt == now)
     }
@@ -88,7 +114,7 @@ struct AppStoreReviewCoordinatorTests {
         defer { harness.cleanup() }
         var requests = 0
         let first = harness.now
-        for _ in 0..<3 {
+        for _ in 0..<2 {
             harness.save(at: first, context: settled, requests: &requests)
         }
         #expect(requests == 1)
@@ -106,7 +132,7 @@ struct AppStoreReviewCoordinatorTests {
         harness.save(at: later, context: settled, requests: &requests)
         #expect(requests == 2)
         #expect(harness.coordinator.record.reviewRequestCount == 2)
-        #expect(harness.coordinator.record.successfulEntitledSaveCount == 6)
+        #expect(harness.coordinator.record.successfulEntitledSaveCount == 5)
     }
 
     @Test func lockedAndCrisisSavesDoNotCount() throws {
@@ -130,7 +156,7 @@ struct AppStoreReviewCoordinatorTests {
         var requests = 0
         var covered = settled
         covered.composeVisible = true
-        for _ in 0..<3 {
+        for _ in 0..<2 {
             harness.save(at: harness.now, context: covered, requests: &requests)
         }
         #expect(requests == 0)
@@ -146,7 +172,7 @@ struct AppStoreReviewCoordinatorTests {
         let harness = try ReviewHarness()
         defer { harness.cleanup() }
         var attempts = 0
-        for _ in 0..<3 {
+        for _ in 0..<2 {
             harness.coordinator.noteSuccessfulEntitledSave(isEntitled: true, safetyClear: true)
             harness.coordinator.considerPrompt(context: settled, now: harness.now) {
                 attempts += 1
@@ -171,6 +197,39 @@ struct AppStoreReviewCoordinatorTests {
         #expect(harness.coordinator.record.reviewRequestCount == 1)
     }
 
+    @Test func testFlightDoesNotStampACooldown() throws {
+        let harness = try ReviewHarness()
+        defer { harness.cleanup() }
+        var requests = 0
+        for _ in 0..<2 {
+            harness.coordinator.noteSuccessfulEntitledSave(isEntitled: true, safetyClear: true)
+            harness.coordinator.considerPrompt(
+                context: settled,
+                now: harness.now,
+                canPresentSystemReview: false
+            ) {
+                requests += 1
+                return true
+            }
+        }
+        #expect(requests == 0)
+        #expect(harness.coordinator.record.successfulEntitledSaveCount == 2)
+        #expect(harness.coordinator.record.reviewRequestCount == 0)
+        #expect(harness.coordinator.record.lastReviewRequestAt == nil)
+
+        harness.coordinator.noteSuccessfulEntitledSave(isEntitled: true, safetyClear: true)
+        harness.coordinator.considerPrompt(
+            context: settled,
+            now: harness.now,
+            canPresentSystemReview: true
+        ) {
+            requests += 1
+            return true
+        }
+        #expect(requests == 1)
+        #expect(harness.coordinator.record.reviewRequestCount == 1)
+    }
+
     @Test func settingsWriteReviewDelaysTheAutomaticPrompt() throws {
         let harness = try ReviewHarness()
         defer { harness.cleanup() }
@@ -180,7 +239,7 @@ struct AppStoreReviewCoordinatorTests {
         #expect(harness.coordinator.record.settingsWriteReviewAt == opened)
         #expect(harness.coordinator.record.reviewRequestCount == 0)
 
-        for _ in 0..<3 {
+        for _ in 0..<2 {
             harness.save(at: opened.addingTimeInterval(86_400), context: settled, requests: &requests)
         }
         #expect(requests == 0)

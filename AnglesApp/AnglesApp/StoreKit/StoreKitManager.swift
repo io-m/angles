@@ -218,6 +218,9 @@ final class StoreKitManager {
         entitlementsReady && !isSignedOut && hasUnlockedFullApp
     }
 
+    /// StoreKit environment for the live entitlement (`Production`, `Sandbox`, `Xcode`).
+    var storeEnvironment: String? { activeEnvironment }
+
     var debugSnapshot: String {
         let expires = activeExpiresAt.map { ISO8601DateFormatter().string(from: $0) } ?? "nil"
         return "ready=\(entitlementsReady) unlocked=\(hasUnlockedFullApp) signedOut=\(isSignedOut) "

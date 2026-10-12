@@ -1,12 +1,11 @@
+import Foundation
 import Observation
-import StoreKit
-import UIKit
 
 /// Count, cooldown, and attempt cap for an automatic App Store review. The system still
 /// decides whether a dialog appears.
 enum AppRatingPolicy {
     /// Entitled Save/Post count before the first automatic prompt. Tune here.
-    static let minimumEntitledSaves = 3
+    static let minimumEntitledSaves = 2
     static let cooldown: TimeInterval = 90 * 24 * 60 * 60
     static let maximumAutomaticAttempts = 2
 
@@ -22,6 +21,22 @@ enum AppRatingPolicy {
             return false
         }
         return true
+    }
+}
+
+/// Whether this install is one where Apple will even consider presenting.
+enum AppRatingDistribution {
+    /// Debug always can. TestFlight and Xcode are Sandbox — calling still no-ops, so we must
+    /// not stamp a cooldown. An unknown environment also skips without stamping; the next Post retries.
+    static func allowsSystemReviewPrompt(storeEnvironment: String?) -> Bool {
+        #if DEBUG
+        true
+        #else
+        guard let storeEnvironment else {
+            return false
+        }
+        return storeEnvironment.caseInsensitiveCompare("production") == .orderedSame
+        #endif
     }
 }
 
@@ -74,9 +89,13 @@ final class AppStoreReviewCoordinator {
     /// Set when a non-taste entitled, safety-clear save succeeds. Cleared once the celebration
     /// settles, including when the screen is not a safe moment to ask. No launch catch-up.
     private var pendingEligibleSave = false
+    /// AppRoot observes this and asks from the live view. Closures captured at launch must
+    /// not call `requestReview` themselves — that copy has a dead environment and stale screen flags.
+    private(set) var promptGeneration = 0
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        resetDebugRatingStateIfNeeded()
     }
 
     var record: AppRatingRecord {
@@ -92,38 +111,75 @@ final class AppStoreReviewCoordinator {
     func noteSuccessfulEntitledSave(isEntitled: Bool, safetyClear: Bool) {
         pendingEligibleSave = false
         guard isEntitled, safetyClear else {
+            log(
+                "skip count entitled=\(isEntitled) safetyClear=\(safetyClear) "
+                    + snapshot(record)
+            )
             return
         }
         defaults.set(record.successfulEntitledSaveCount + 1, forKey: Key.successfulEntitledSaveCount)
         pendingEligibleSave = true
+        log("counted save \(snapshot(record))")
+    }
+
+    /// Bump so AppRoot's `.task(id:)` runs `considerPrompt` with live scene state.
+    func schedulePrompt() {
+        promptGeneration += 1
+        log("schedule generation=\(promptGeneration) pending=\(pendingEligibleSave) \(snapshot(record))")
     }
 
     /// Call only after compose is closed and the save cover is gone.
-    func considerPrompt(context: AppRatingPromptContext) {
-        considerPrompt(context: context, now: .now, requestReview: Self.requestSystemReview)
+    func considerPrompt(
+        context: AppRatingPromptContext,
+        storeEnvironment: String?,
+        requestReview: () -> Bool
+    ) {
+        considerPrompt(
+            context: context,
+            now: .now,
+            canPresentSystemReview: AppRatingDistribution.allowsSystemReviewPrompt(
+                storeEnvironment: storeEnvironment
+            ),
+            requestReview: requestReview
+        )
     }
 
     func considerPrompt(
         context: AppRatingPromptContext,
         now: Date,
+        canPresentSystemReview: Bool = true,
         requestReview: () -> Bool
     ) {
         guard pendingEligibleSave else {
+            log("skip no pending \(snapshot(record))")
             return
         }
         pendingEligibleSave = false
         guard context.allowsAutomaticPrompt else {
+            log(
+                "skip context destHome=\(context.destinationIsHome) revealed=\(context.homeIsRevealed) "
+                    + "compose=\(context.composeVisible) cover=\(context.saveCoverVisible) "
+                    + "list=\(context.onHomeOrProfile) active=\(context.sceneIsActive) "
+                    + snapshot(record)
+            )
             return
         }
         let current = record
         guard AppRatingPolicy.shouldRequestReview(record: current, now: now) else {
+            log("skip policy \(snapshot(current))")
+            return
+        }
+        guard canPresentSystemReview else {
+            log("skip distribution (TestFlight does not present) \(snapshot(current))")
             return
         }
         guard requestReview() else {
+            log("skip request returned false \(snapshot(current))")
             return
         }
         defaults.set(now, forKey: Key.lastReviewRequestAt)
         defaults.set(current.reviewRequestCount + 1, forKey: Key.reviewRequestCount)
+        log("asked \(snapshot(record))")
     }
 
     func noteSettingsWriteReview(now: Date = .now) {
@@ -136,15 +192,29 @@ final class AppStoreReviewCoordinator {
         defaults.set(now, forKey: Key.settingsWriteReviewAt)
     }
 
-    /// iOS 17: `AppStore.requestReview(in:)` is iOS 18+.
-    private static func requestSystemReview() -> Bool {
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive })
-        else {
-            return false
-        }
-        SKStoreReviewController.requestReview(in: scene)
-        return true
+    /// Debug starts from zero every launch so the two-Post rule can be verified. Release
+    /// keeps the lifetime count. Earlier Debug builds left a count of 3+ and only cleared
+    /// the cooldown, so the next Post looked like the first and still asked.
+    private func resetDebugRatingStateIfNeeded() {
+        #if DEBUG
+        defaults.removeObject(forKey: Key.successfulEntitledSaveCount)
+        defaults.removeObject(forKey: Key.lastReviewRequestAt)
+        defaults.removeObject(forKey: Key.reviewRequestCount)
+        defaults.removeObject(forKey: Key.settingsWriteReviewAt)
+        defaults.removeObject(forKey: "angles.rating.debugHeartCount")
+        log("debug reset rating state \(snapshot(record))")
+        #endif
+    }
+
+    private func snapshot(_ current: AppRatingRecord) -> String {
+        let last = current.lastReviewRequestAt.map { ISO8601Dates.string(from: $0) } ?? "nil"
+        return "saves=\(current.successfulEntitledSaveCount) "
+            + "attempts=\(current.reviewRequestCount) last=\(last)"
+    }
+
+    private func log(_ message: String) {
+        #if DEBUG
+        print("REVIEW \(message)")
+        #endif
     }
 }

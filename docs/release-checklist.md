@@ -1,6 +1,6 @@
 # Release checklist
 
-Current as of **10 October 2026**. Version **1.0**. Latest iOS upload: build **38** (compose refactor), **submitted for App Review** 10 October 2026 with both subscriptions (updated prices). Release stays manual. App Store Connect app `6811873869` (Angles: Reframe Thoughts).
+Current as of **12 October 2026**. Version **1.0**. Latest iOS upload: build **39** (in-app review after the second Post). Release stays manual. App Store Connect app `6811873869` (Angles: Reframe Thoughts).
 
 Everything under "Left to do" needs you: a dashboard the API cannot reach, your phone, or your judgement.
 
@@ -70,7 +70,7 @@ Uploaded to version 1.0, English, iPhone 6.9". Not submitted yet.
 
 App Store Connect → Angles → version 1.0:
 
-1. Select TestFlight build **38** (after Joe tests it).
+1. Select TestFlight build **39** (after Joe tests it).
 2. Under subscriptions, attach **both** Angles Yearly and Angles Monthly.
 3. Paste review notes from [app-review-notes.md](app-review-notes.md) (as soon as possible report wording).
 4. **Add for Review** → **Submit for Review**. Release stays **manual**.
