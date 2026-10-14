@@ -246,4 +246,186 @@ struct ComposeThreadTests {
         viewModel.compose.composeText = "short"
         #expect(viewModel.compose.composeNote == nil)
     }
+
+    @Test("editing a ready thought archives it and starts a new cook")
+    func editAfterReadyArchivesAndRecooks() async {
+        let viewModel = makeViewModel(replies: [ready("one"), ready("two")])
+
+        send(viewModel, "A thought")
+        #expect(await waitFor { viewModel.compose.isCookReady })
+
+        viewModel.compose.beginEdit(.statement)
+        #expect(viewModel.compose.isComposerVisible)
+        #expect(viewModel.compose.editingTarget == .statement)
+        #expect(viewModel.compose.composeText == "A thought")
+
+        viewModel.compose.composeText = "Edited thought"
+        viewModel.compose.sendComposer()
+        #expect(await waitFor { viewModel.compose.isCookReady && viewModel.compose.archives.count == 1 })
+
+        #expect(viewModel.compose.archives.count == 1)
+        #expect(viewModel.compose.archives[0].statement == "A thought")
+        #expect(viewModel.compose.archives[0].cook?.signature == "cook-one")
+        #expect(!viewModel.compose.archives[0].isExpanded)
+        #expect(viewModel.compose.statement == "Edited thought")
+        #expect(viewModel.compose.turns.isEmpty)
+        #expect(viewModel.compose.editingTarget == nil)
+        let requests = ComposeStubURLProtocol.requests(to: "/reframe")
+        #expect(requests.count == 2)
+        #expect(requests.last?.body["text"] as? String == "Edited thought")
+        #expect(followUps(requests.last!).isEmpty)
+    }
+
+    @Test("editing an answer keeps earlier follow-ups and drops later ones")
+    func editAnswerKeepsEarlierFollowUps() async {
+        let viewModel = makeViewModel(replies: [
+            question("What worries you most?"),
+            question("Since when?"),
+            ready("one"),
+            ready("two"),
+        ])
+
+        send(viewModel, "I’m scared")
+        #expect(await waitFor { viewModel.compose.openTurn != nil })
+        send(viewModel, "Money")
+        #expect(await waitFor { viewModel.compose.turns.count == 2 && viewModel.compose.openTurn != nil })
+        send(viewModel, "Since spring")
+        #expect(await waitFor { viewModel.compose.isCookReady })
+
+        let firstID = viewModel.compose.turns[0].id
+        viewModel.compose.beginEdit(.reply(firstID))
+        viewModel.compose.composeText = "Time"
+        viewModel.compose.sendComposer()
+        #expect(await waitFor { viewModel.compose.isCookReady && viewModel.compose.archives.count == 1 })
+
+        #expect(viewModel.compose.archives[0].turns.count == 2)
+        #expect(viewModel.compose.archives[0].turns[0].reply == "Money")
+        #expect(viewModel.compose.turns.count == 1)
+        #expect(viewModel.compose.turns[0].id == firstID)
+        #expect(viewModel.compose.turns[0].reply == "Time")
+        let last = ComposeStubURLProtocol.requests(to: "/reframe").last
+        let sent = last.map(followUps) ?? []
+        #expect(last?.body["text"] as? String == "I’m scared")
+        #expect(sent.count == 1)
+        #expect(sent.first?["answer"] == "Time")
+    }
+
+    @Test("unchanged edit text does not cook again")
+    func unchangedEditCancels() async {
+        let viewModel = makeViewModel(replies: [ready("one")])
+
+        send(viewModel, "A thought")
+        #expect(await waitFor { viewModel.compose.isCookReady })
+
+        viewModel.compose.beginEdit(.statement)
+        viewModel.compose.sendComposer()
+
+        #expect(viewModel.compose.archives.isEmpty)
+        #expect(viewModel.compose.editingTarget == nil)
+        #expect(!viewModel.compose.isComposerVisible)
+        #expect(ComposeStubURLProtocol.requests(to: "/reframe").count == 1)
+    }
+
+    @Test("editing during questions archives the exchange without a card")
+    func editDuringQuestionsArchivesWithoutCook() async {
+        let viewModel = makeViewModel(replies: [
+            question("What is it about?"),
+            question("Still?"),
+            ready("one"),
+        ])
+
+        send(viewModel, "Work is bad")
+        #expect(await waitFor { viewModel.compose.openTurn != nil })
+        let questionID = viewModel.compose.turns[0].id
+        let oldGeneration = viewModel.compose.liveGenerationID
+
+        viewModel.compose.beginEdit(.statement)
+        viewModel.compose.composeText = "Work is worse"
+        viewModel.compose.sendComposer()
+        #expect(await waitFor { viewModel.compose.openTurn != nil || viewModel.compose.isCookReady })
+
+        #expect(viewModel.compose.archives.count == 1)
+        let archive = viewModel.compose.archives[0]
+        #expect(archive.cook == nil)
+        #expect(archive.statement == "Work is bad")
+        #expect(archive.turns.map(\.id) == [questionID])
+        #expect(archive.id == oldGeneration)
+        #expect(viewModel.compose.liveGenerationID != oldGeneration)
+        #expect(viewModel.compose.statement == "Work is worse")
+        #expect(viewModel.compose.turns.allSatisfy { $0.id != questionID })
+        let last = ComposeStubURLProtocol.requests(to: "/reframe").last
+        #expect(last?.body["text"] as? String == "Work is worse")
+        #expect(followUps(last!).isEmpty)
+
+        await viewModel.compose.saveArchive(archive.id)
+        #expect(ComposeStubURLProtocol.requests(to: "/cards").isEmpty)
+        #expect(!viewModel.compose.archives[0].posted)
+    }
+
+    @Test("editing an answer starts a new generation whose prefix fades back in")
+    func editAnswerNewGeneration() async {
+        let viewModel = makeViewModel(replies: [
+            question("What worries you most?"),
+            ready("one"),
+            ready("two"),
+        ])
+
+        send(viewModel, "I’m scared")
+        #expect(await waitFor { viewModel.compose.openTurn != nil })
+        send(viewModel, "Money")
+        #expect(await waitFor { viewModel.compose.isCookReady })
+
+        let turnID = viewModel.compose.turns[0].id
+        let oldGeneration = viewModel.compose.liveGenerationID
+        viewModel.compose.beginEdit(.reply(turnID))
+        viewModel.compose.composeText = "Time"
+        viewModel.compose.sendComposer()
+
+        let next = viewModel.compose.liveGenerationID
+        #expect(next != oldGeneration)
+        #expect(viewModel.compose.archives.first?.cook?.signature == "cook-one")
+        #expect(viewModel.compose.fadeOnlyRowIDs == [
+            ComposeThreadRow.id("statement", in: next),
+            ComposeThreadRow.questionID(turnID, in: next),
+        ])
+        #expect(await waitFor { viewModel.compose.isCookReady })
+    }
+
+    @Test("posting an archive does not reset the live cook")
+    func archiveSaveLeavesSession() async {
+        let viewModel = makeViewModel(replies: [ready("one"), ready("two")])
+
+        send(viewModel, "A thought")
+        #expect(await waitFor { viewModel.compose.isCookReady })
+        viewModel.compose.beginEdit(.statement)
+        viewModel.compose.composeText = "Edited thought"
+        viewModel.compose.sendComposer()
+        #expect(await waitFor { viewModel.compose.isCookReady && viewModel.compose.archives.count == 1 })
+
+        let archiveID = viewModel.compose.archives[0].id
+        await viewModel.compose.saveArchive(archiveID)
+
+        #expect(viewModel.compose.archives[0].posted)
+        #expect(viewModel.compose.isCookReady)
+        #expect(viewModel.compose.statement == "Edited thought")
+        let create = ComposeStubURLProtocol.requests(to: "/cards").last
+        #expect(create?.body["signature"] as? String == "cook-one")
+        #expect(!viewModel.compose.isSaving)
+    }
+
+    @Test("Start new clears archives")
+    func startNewClearsArchives() async {
+        let viewModel = makeViewModel(replies: [ready("one"), ready("two")])
+
+        send(viewModel, "A thought")
+        #expect(await waitFor { viewModel.compose.isCookReady })
+        viewModel.compose.beginEdit(.statement)
+        viewModel.compose.composeText = "Edited thought"
+        viewModel.compose.sendComposer()
+        #expect(await waitFor { viewModel.compose.archives.count == 1 })
+
+        viewModel.compose.resetCompose()
+        #expect(viewModel.compose.archives.isEmpty)
+        #expect(viewModel.compose.statement.isEmpty)
+    }
 }

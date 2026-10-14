@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  asksForQuestions,
   asSolemn,
   composeConversation,
   DecisionParseError,
+  isDeadEndContinue,
   isGenericBounceContinue,
   looksLikeThought,
+  withoutInlineOptions,
+  withoutMetaRequests,
   normalizeSafety,
   parseDecision,
   runDecision,
@@ -585,5 +589,73 @@ describe("isGenericBounceContinue", () => {
       ),
     ).toBe(true);
     expect(isGenericBounceContinue("What are you stuck on?")).toBe(true);
+  });
+
+  it("keeps the stuck-on script out of the dead ends", () => {
+    expect(isDeadEndContinue("What are you stuck on?")).toBe(false);
+    expect(isDeadEndContinue("I didn't catch a clear thought there. Try again?")).toBe(true);
+  });
+});
+
+describe("asksForQuestions", () => {
+  it("hears a request to be asked first", () => {
+    expect(asksForQuestions("My day started meh. Ask me some options")).toBe(true);
+    expect(asksForQuestions("can you ask me a few questions? work is weird")).toBe(true);
+    expect(asksForQuestions("I feel off, help me figure out why")).toBe(true);
+    expect(asksForQuestions("Give me some options, I can't name it")).toBe(true);
+    expect(asksForQuestions("questions first please, I'm not sure what it is")).toBe(true);
+  });
+
+  it("ignores the same words inside their story", () => {
+    expect(asksForQuestions("People always ask me why I'm still single")).toBe(false);
+    expect(asksForQuestions("My boss never gives me options at work")).toBe(false);
+    expect(asksForQuestions("She used to help me with homework and now she's gone")).toBe(false);
+    expect(asksForQuestions("I bombed my job interview today.")).toBe(false);
+  });
+});
+
+describe("withoutInlineOptions", () => {
+  it("drops a bracketed copy of the chips from the question", () => {
+    expect(
+      withoutInlineOptions(
+        "What part of work feels off? Pick the closest: [my boss’ tone], [a project’s chaos], [my own energy], [something else].",
+      ),
+    ).toBe("What part of work feels off?");
+  });
+
+  it("keeps the message when the list is all there is", () => {
+    expect(withoutInlineOptions("Which is closer: [work] or [home]?")).toBe(
+      "Which is closer: [work] or [home]?",
+    );
+  });
+
+  it("leaves a plain question alone", () => {
+    const message = "A meh start usually has something under it. Which of these is closest?";
+    expect(withoutInlineOptions(message)).toBe(message);
+  });
+});
+
+describe("withoutMetaRequests", () => {
+  it("drops a request sentence from the card thought", () => {
+    expect(withoutMetaRequests("My day started meh. Ask me some options.")).toBe("My day started meh.");
+    expect(
+      withoutMetaRequests("I'm dreading a meeting with my manager. Can you give me some angles?"),
+    ).toBe("I'm dreading a meeting with my manager.");
+  });
+
+  it("drops a trailing request clause", () => {
+    expect(withoutMetaRequests("My day started meh, ask me some options.")).toBe("My day started meh.");
+  });
+
+  it("keeps a thought that is about their life", () => {
+    const thought = "My boss keeps asking me questions in front of everyone.";
+    expect(withoutMetaRequests(thought)).toBe(thought);
+    expect(withoutMetaRequests("Give me a break, I worked all weekend.")).toBe(
+      "Give me a break, I worked all weekend.",
+    );
+  });
+
+  it("never leaves the card empty", () => {
+    expect(withoutMetaRequests("Ask me some questions.")).toBe("Ask me some questions.");
   });
 });

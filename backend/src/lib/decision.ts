@@ -31,6 +31,7 @@ import {
   type LlmModelId,
 } from "./llmClient.js";
 import {
+  DECISION_ASK_REPAIR,
   DECISION_BOUNCE_REPAIR,
   DECISION_FORCE_READY,
   DECISION_PROMPT,
@@ -224,8 +225,67 @@ export function looksLikeThought(text: string): boolean {
   return !EMPTY_GESTURE.test(trimmed);
 }
 
+/** A request only counts in command position, so "people always ask me why" is not one. */
+const REQUEST_POSITION = String.raw`(?:^|[.!?,;:]\s*|\b(?:please|pls|just|so|now|can you|could you|would you|will you)\s+)`;
+
+const ASKS_FOR_QUESTIONS: readonly RegExp[] = [
+  new RegExp(`${REQUEST_POSITION}(?:ask me|interview me|quiz me)\\b`),
+  /\bask me\s+(?:some\s+|a few\s+|a couple(?:\s+of)?\s+|more\s+|any\s+)?(?:questions?|options|things)\b/,
+  new RegExp(
+    `${REQUEST_POSITION}help me\\s+(?:figure|sort|narrow|unpack|work out|think|understand|name|pin)\\b`,
+  ),
+  /\b(?:give|show|offer)\s+me\s+(?:some\s+|a few\s+|a couple(?:\s+of)?\s+|more\s+)?(?:options|questions|choices)\b/,
+  /\bquestions?\s+first\b/,
+];
+
+/**
+ * English only: they asked to be asked before the card ("ask me some options", "help me
+ * figure out what it is"). The prompt covers other languages.
+ */
+export function asksForQuestions(text: string): boolean {
+  const lower = text.trim().toLowerCase();
+  return ASKS_FOR_QUESTIONS.some((pattern) => pattern.test(lower));
+}
+
+const REQUEST_LEAD = String.raw`(?:please\s+|pls\s+|so\s+|just\s+|now\s+)?(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?(?:ask me|interview me|quiz me|give me|show me|offer me|help me)\b`;
+const REQUEST_SENTENCE = new RegExp(`^${REQUEST_LEAD}`, "i");
+const TRAILING_REQUEST = new RegExp(`\\s*[,;:—–]\\s*(?:and\\s+)?${REQUEST_LEAD}[^.!?]*([.!?]?)\\s*$`, "i");
+/** What makes "give me ..." a request to us rather than part of their life. */
+const REQUEST_OBJECT =
+  /\b(?:questions?|options|choices|angles|reframes?|ideas|something|anything|figure|sort|narrow|unpack|understand)\b/i;
+
+/**
+ * The card prints only the thought: a sentence or trailing clause that asks us for
+ * questions or options is dropped. If nothing else is left, the thought stays as it was.
+ */
+export function withoutMetaRequests(thought: string): string {
+  const trimmed = thought.trim();
+  const kept = trimmed
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !(REQUEST_SENTENCE.test(sentence) && REQUEST_OBJECT.test(sentence)))
+    .map((sentence) => {
+      const match = TRAILING_REQUEST.exec(sentence);
+      if (!match || !REQUEST_OBJECT.test(match[0])) {
+        return sentence;
+      }
+      const head = sentence.slice(0, match.index).trimEnd();
+      return head.length === 0 ? sentence : `${head}${match[1] || "."}`;
+    });
+  const result = kept.join(" ").trim();
+  return result.length > 0 ? result : trimmed;
+}
+
+/** "Pick the closest: [a], [b], [c]." inside a message whose options are already buttons. */
+const INLINE_OPTION_LIST = /\s*(?:[^.?![\]]*?:\s*)?\[[^\]]+\](?:\s*,?\s*(?:or\s+)?\[[^\]]+\])+\s*[.?!]?/g;
+
+/** The chips show under the message; a copy of them in brackets is dropped from the text. */
+export function withoutInlineOptions(message: string): string {
+  const stripped = message.replace(INLINE_OPTION_LIST, "").trim();
+  return stripped.length > 0 ? stripped : message.trim();
+}
+
 /** Dead-end continue copy: "didn't catch a thought" / "try again" / "rephrase". */
-export function isGenericBounceContinue(message: string): boolean {
+export function isDeadEndContinue(message: string): boolean {
   const lower = message.trim().toLowerCase();
   if (lower.length === 0) {
     return false;
@@ -238,8 +298,7 @@ export function isGenericBounceContinue(message: string): boolean {
     /not\s+(a\s+)?(clear|real|actual)\s+thought/.test(lower) ||
     /no\s+(clear|real|actual)\s+thought/.test(lower) ||
     /\brephrase\b/.test(lower) ||
-    /\btry again\b/.test(lower) ||
-    /\bwhat (?:situation )?are you stuck on\b/.test(lower)
+    /\btry again\b/.test(lower)
   ) {
     return true;
   }
@@ -250,13 +309,41 @@ export function isGenericBounceContinue(message: string): boolean {
   );
 }
 
+/** The gibberish script, wrong for a thought that already names a situation. */
+function isStuckOnScript(message: string): boolean {
+  return /\bwhat (?:situation )?are you stuck on\b/.test(message.trim().toLowerCase());
+}
+
+/** A dead end, or the stuck-on script. */
+export function isGenericBounceContinue(message: string): boolean {
+  return isDeadEndContinue(message) || isStuckOnScript(message);
+}
+
+/**
+ * A first-turn continue that bounced a thought that was already clear. When they asked to be
+ * asked, a question is what they wanted: only a dead end is refused.
+ */
 function isRejectedBounceContinue(decision: Decision, input: RunDecisionInput): boolean {
+  if (
+    decision.kind !== "continue" ||
+    decision.safety !== "none" ||
+    input.followUps.length > 0 ||
+    !looksLikeThought(input.text)
+  ) {
+    return false;
+  }
+  return asksForQuestions(input.text)
+    ? isDeadEndContinue(decision.message)
+    : isGenericBounceContinue(decision.message);
+}
+
+/** They asked to be asked first, and the first pass wrote the card anyway. */
+function isRejectedAskedReady(decision: Decision, input: RunDecisionInput): boolean {
   return (
-    decision.kind === "continue" &&
-    decision.safety === "none" &&
+    decision.kind === "ready" &&
+    !input.forceReady &&
     input.followUps.length === 0 &&
-    looksLikeThought(input.text) &&
-    isGenericBounceContinue(decision.message)
+    asksForQuestions(input.text)
   );
 }
 
@@ -508,16 +595,18 @@ export function parseDecision(raw: string, options: ParseOptions = {}): Decision
       .filter((option) => option.length > 0)
       .slice(0, MAX_OPTIONS);
 
+    const shownChips = safety === "none" ? chips : [];
     return {
       kind: "continue",
-      message,
-      options: safety === "none" ? chips : [],
+      message: shownChips.length > 0 ? withoutInlineOptions(message) : message,
+      options: shownChips,
       safety,
       inputLanguage: normalizeLanguage(value.input_language),
     };
   }
 
-  const thought = cleanString(value.thought_en);
+  const cleanedThought = cleanString(value.thought_en);
+  const thought = cleanedThought ? withoutMetaRequests(cleanedThought) : undefined;
   if (!thought) {
     throw new DecisionParseError("ready decision had no cleaned thought");
   }
@@ -677,15 +766,22 @@ async function decide(input: RunDecisionInput): Promise<Decision> {
     ...callOptions,
   });
 
-  let bounceRejected = false;
+  let repairNote: string | undefined;
   let repairHint: string | undefined;
+  /** A valid card written although they asked to be asked; it ships if the repair cannot ask. */
+  let askedReady: Decision | undefined;
   try {
     const decision = refuseUnsafeReframe(
       parseDecision(first, { requireReady: input.forceReady, catalog: input.catalog }),
     );
     if (isRejectedBounceContinue(decision, input)) {
-      bounceRejected = true;
+      repairNote = DECISION_BOUNCE_REPAIR;
       throw new DecisionParseError("continue bounced a thought that was already clear");
+    }
+    if (isRejectedAskedReady(decision, input)) {
+      repairNote = DECISION_ASK_REPAIR;
+      askedReady = decision;
+      throw new DecisionParseError("ready although they asked to be asked first");
     }
     return decision;
   } catch (error) {
@@ -698,7 +794,7 @@ async function decide(input: RunDecisionInput): Promise<Decision> {
   const repairPrompt = [
     systemPrompt,
     DECISION_REPAIR_PROMPT,
-    ...(bounceRejected ? [DECISION_BOUNCE_REPAIR] : []),
+    ...(repairNote ? [repairNote] : []),
     ...(repairHint ? [repairHint] : []),
   ].join("\n\n");
   const repaired = await generateJson({
@@ -715,6 +811,9 @@ async function decide(input: RunDecisionInput): Promise<Decision> {
     return refuseUnsafeReframe(parseDecision(repaired, { repairPass: true, catalog: input.catalog }));
   } catch (error) {
     if (error instanceof DecisionParseError || error instanceof SyntaxError) {
+      if (askedReady) {
+        return askedReady;
+      }
       throw new LlmError("Decision reply could not be parsed");
     }
     throw error;

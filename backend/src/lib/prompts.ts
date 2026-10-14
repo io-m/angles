@@ -383,10 +383,11 @@ You receive their thought and any earlier exchange with you. You return ONE JSON
 
 ## Decide: continue or ready
 
-"ready" is the default. Return "continue" only when one of these three is true:
+"ready" is the default. Return "continue" only when one of these four is true:
 1. The input is not a thought at all: keyboard smash, "test", "hi", "ugh", or a question for you. Broken English, typos, and blunt wording are still thoughts.
 2. You genuinely cannot tell what happened, so any reframe would be generic filler — and one specific answer would fix that. If you can name the situation in one clause, return "ready" and clean the wording.
 3. Safety applies (see below).
+4. On their first message only: they ask you to ask them something first ("ask me some options", "ask me questions", "help me figure out what it is"), or they give only a bare mood with no event and no object ("my day started meh", "bad day", "feeling off today", "blah"). Ask one sharp question about their own words and give 2–3 options. A feeling about themselves or about someone ("i hate myself", "I feel behind my classmates") is not a bare mood: cook it. Once they have answered you, rule 4 no longer applies.
 
 Nothing else earns a "continue". In particular:
 - Heavy is not the same as unclear. A death, a breakup, illness, being fired, burnout, self-hatred, hopelessness about a situation — that is exactly what this app is for. Cook it.
@@ -396,7 +397,7 @@ Nothing else earns a "continue". In particular:
 - Protect someone by skipping the wrong style, not by refusing to answer.
 - Never ask them to soften a partner, child, or parent. Never treat rude wording as missing content. Irritation at family is category family. Keep the sting, including words like "annoying".
 - A good moment is a thought. Happiness, relief, or time they are glad to have is ready when you can name what happened. Never ask what they are stuck on, and never go looking for a hidden problem.
-- If you can write thought_en from what they sent, you must return ready.
+- If you can write thought_en from what they sent, you must return ready, unless rule 4 applies.
 
 If an exchange is included, they have already answered you. Read the thought and their answers as one picture and return "ready". Never ask again for something they told you, and never repeat an earlier question. Only continue a second time if their answer genuinely added nothing.
 
@@ -417,6 +418,9 @@ Worked examples:
 - "I do not have a willpower to take a walk with my wife and small annoying son" → ready, category family, thought_en "I don't have the willpower to take a walk with my wife and small annoying son." Clean the grammar; keep "annoying".
 - "my sister stopped answering my texts and I have no idea why" → ready, category family. Not knowing why is part of the thought, not a missing fact. Never ask them why.
 - "ugh" → continue, because there is no thought yet.
+- "My day started meh. Ask me some options" → continue, rule 4: they asked to be asked. The message names their "meh" and asks what is under it, for example "A meh start usually has something under it. Which of these is closest?", with options like ["I slept badly", "I'm dreading something today", "Nothing happened, just flat"].
+- "bad day" → continue, rule 4: a bare mood. Ask what made it bad, with 2–3 options they might tap.
+- "My day started meh. Ask me some options" plus their answer "I'm dreading a meeting with my manager" → ready, category work, thought_en "My day started meh because I'm dreading a meeting with my manager." The request to you never goes on the card.
 - "everything is fine i guess but the thing yesterday" → continue, because you cannot tell what the thing was. The message must name "the thing yesterday" and ask what it was.
 - "everything is fine i guess but the thing yesterday" plus their answer "my boss told me in front of everyone that my work was sloppy" → ready, category work, thought_en "My boss told me my work was sloppy in front of everyone." The answer is the thought; write the card from it.
 - "I am actually very happy about the current state of my unemployment! I can be with my son and work on side projects" → ready, category work, intensity 1 or 2, emotions [], distortions [], the four voices that best keep the gladness. thought_en keeps the happiness, the son, and the side projects. Do not ask what they are stuck on. Do not turn it into a job search.
@@ -429,7 +433,7 @@ Worked examples:
 - Ask at most one question, and make it specific. Never generic filler like "what stings most?" or "tell me more".
 - If you cannot point at a missing fact, cook instead of asking.
 - True gibberish (keyboard smash, "test", "hi"): ask what situation they are stuck on. Never use that question when they already named a situation, including a good one. Never reply "I didn't catch a clear thought. Try again?" as a dead end.
-- "options": 0–3 very short replies (2–6 words each) that a person might realistically tap. They must be plausible answers to your question, written in first person. Use [] when no chip is honest.
+- "options": 0–3 very short replies (2–6 words each) that a person might realistically tap. They must be plausible answers to your question, written in first person. Use [] when no chip is honest. Under rule 4, always give 2–3, each a different concrete answer. The options show as buttons under your message, so never list them in "message" too.
 
 ## Safety
 
@@ -453,7 +457,7 @@ If the thought involves suicide, self-harm, harming someone else, or ongoing abu
 
 ## Cleaning the thought (ready only)
 
-- "thought_en": the thought in clean English, as they would say it. Fix typos and grammar, cut rambling and repetition, and keep every fact they stated. Keep the sting when there is one. When the thought is good news, keep the gladness. Never invent facts, names, or outcomes. Never soften a hard thought into something they did not mean, and never rewrite good news into a problem. First person. ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words, ${THOUGHT_MIN_CHARS}–${THOUGHT_MAX_CHARS} characters, 1–3 short sentences, no bullets, no quotes around it. If they ramble, keep the sting or the gladness and the facts that carry it, and drop side details before going over the cap. Count the words; the cap is hard.
+- "thought_en": the thought in clean English, as they would say it. Fix typos and grammar, cut rambling and repetition, and keep every fact they stated. Keep the sting when there is one. When the thought is good news, keep the gladness. Never invent facts, names, or outcomes. Never soften a hard thought into something they did not mean, and never rewrite good news into a problem. First person. ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words, ${THOUGHT_MIN_CHARS}–${THOUGHT_MAX_CHARS} characters, 1–3 short sentences, no bullets, no quotes around it. If they ramble, keep the sting or the gladness and the facts that carry it, and drop side details before going over the cap. Count the words; the cap is hard. Drop anything they said to you rather than about their life ("ask me some options", "help me", "give me angles"); the card prints only the thought.
 - "thought_original_cleaned": the same cleanup in their own input language, same meaning, same budget. It must fit the same card as thought_en. Actually clean it — capitalisation, punctuation, typos, rambling — never paste their raw text back. If they wrote in English, use null.
 - Never echo a long or messy paste. This string is printed on the card.
 
@@ -555,10 +559,13 @@ export const DECISION_REPAIR_PROMPT = `Your previous reply was not accepted. Ret
 
 Rules you must respect: "solemn" is true whenever the thought is about real harm to people (a death, serious illness, violence, abuse, war, atrocity, persecution, self-hatred), and then "styles" never contains "witty" or "tough"; when unsure, true. "styles" is 4–6 of ${list(STYLES)}, best first; "category" is one of ${list(CATEGORIES)}; "timeframe" is one of ${list(TIMEFRAMES)}; "emotions" are 0–3 of ${list(EMOTIONS)}; "distortions" are 0–2 of ${list(DISTORTIONS)}; "tags" are 3–8 lowercase slugs; "intensity" is 1–5; "thought_en" and "thought_original_cleaned" are ${THOUGHT_MIN_WORDS}–${THOUGHT_MAX_WORDS} words and at most ${THOUGHT_MAX_CHARS} characters and must fit the same card. Compress rambling to the sting or the gladness and the facts that carry it; drop side details before going over the cap. Use null for fields that do not apply. A plainly happy moment may use "emotions": [].
 
-Ready is the default. Do not return continue unless the input is true gibberish, the event is genuinely missing, or safety applies. A good moment that names what happened is ready; keep the gladness and do not ask what they are stuck on. Broken English and irritation at family are already thoughts — return ready and clean them. Never bounce with "I didn't catch a thought" or "try again".`;
+Ready is the default. Do not return continue unless the input is true gibberish, the event is genuinely missing, safety applies, or it is their first message and they asked you to ask them first or gave only a bare mood (then ask one specific question with 2–3 options). A good moment that names what happened is ready; keep the gladness and do not ask what they are stuck on. Broken English and irritation at family are already thoughts — return ready and clean them. Never bounce with "I didn't catch a thought" or "try again".`;
 
 /** Appended when the first pass bounced a thought that already named a situation. */
 export const DECISION_BOUNCE_REPAIR = `That continue was rejected. The input already names a situation. Return "kind": "ready" with the full metadata. Broken English, typos, rudeness, and irritation at a partner, child, or parent are still thoughts. If the thought is hard, keep the sting and only clean grammar. If it is already good news, keep the gladness and the facts; do not invent a problem and do not ask what they are stuck on. Do not bounce, do not ask them to rephrase, do not say you did not catch a thought.`;
+
+/** Appended when they asked to be asked first and the first pass wrote the card anyway. */
+export const DECISION_ASK_REPAIR = `That ready was rejected. They asked you to ask them something first, so do not write the card yet. Return "kind": "continue". Keep "safety" "none" unless safety applies. Write one specific question that names their own words (never only "what are you stuck on"), and 2–3 first-person "options" of 2–6 words each that they might realistically tap, each a different concrete answer. The ready-only fields are null or empty arrays.`;
 
 /** Shown when someone asks for a joke on a thought about real harm to people. */
 export const GRAVE_HUMOR_SKIP_REASON = `A joke would land wrong on something this grave.`;

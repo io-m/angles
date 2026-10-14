@@ -40,7 +40,7 @@ struct ComposeInputBar: View {
 
             HStack(alignment: .center, spacing: 0) {
                 TextField(
-                    session.openTurn == nil ? "Tell me what's on your mind..." : "Your answer...",
+                    inputPlaceholder,
                     text: $session.composeText,
                     axis: .vertical
                 )
@@ -77,6 +77,17 @@ struct ComposeInputBar: View {
         .padding(.bottom, 8)
     }
 
+    private var inputPlaceholder: String {
+        switch session.editingTarget {
+        case .statement:
+            return "Edit your thought..."
+        case .reply:
+            return "Edit your answer..."
+        case nil:
+            return session.openTurn == nil ? "Tell me what's on your mind..." : "Your answer..."
+        }
+    }
+
     /// Dark keyboard chrome is near #2B2B2A; keep the field in that family so they read as one slab.
     private var fill: Color {
         if colorScheme == .dark {
@@ -85,20 +96,37 @@ struct ComposeInputBar: View {
         return theme.surface
     }
 
+    private var showsClearOrCancel: Bool {
+        session.editingTarget != nil || !session.composeText.isEmpty
+    }
+
     private var trailingControls: some View {
-        HStack(spacing: 0) {
-            if fieldFocused.wrappedValue {
+        HStack(spacing: 4) {
+            if showsClearOrCancel {
                 Button {
-                    fieldFocused.wrappedValue = false
+                    if session.editingTarget != nil {
+                        fieldFocused.wrappedValue = false
+                        session.cancelEdit()
+                    } else {
+                        session.composeText = ""
+                    }
                 } label: {
-                    Image(systemName: "keyboard.chevron.compact.down")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(theme.muted)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(theme.sub)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            colorScheme == .dark ? Color.white.opacity(0.12) : theme.grey,
+                            in: Circle()
+                        )
                         .frame(width: 40, height: 40)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss keyboard")
+                .accessibilityLabel(session.editingTarget != nil ? "Cancel edit" : "Clear text")
+                .accessibilityIdentifier(
+                    session.editingTarget != nil ? "compose.edit.cancel" : "compose.input.clear"
+                )
             }
 
             Button {

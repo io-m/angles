@@ -404,6 +404,68 @@ describe("POST /reframe", () => {
     expect(repairPrompt).toContain("keep the gladness");
   });
 
+  it("keeps a question when they asked to be asked, even in the stuck-on wording", async () => {
+    stubDecision(
+      continueDecision({
+        message: "A meh start usually has something under it. What are you stuck on this morning?",
+        options: ["I slept badly", "I'm dreading something today", "Nothing happened, just flat"],
+      }),
+    );
+
+    const body = (await jsonOf(
+      await post({ text: "My day started meh. Ask me some options, please" }),
+    )) as ContinueBody;
+    expect(body.kind).toBe("continue");
+    expect(body.options).toHaveLength(3);
+    expect(generateJson).toHaveBeenCalledTimes(1);
+    expect(generateReframe).not.toHaveBeenCalled();
+  });
+
+  it("asks instead of cooking when they asked for options first", async () => {
+    stubDecision(
+      readyDecision({ thought_en: "My day started meh and I want some options from you." }),
+      continueDecision({
+        message: "A meh start usually has something under it. Which of these is closest?",
+        options: ["I slept badly", "I'm dreading something today", "Nothing happened, just flat"],
+      }),
+    );
+
+    const body = (await jsonOf(
+      await post({ text: "My day started meh. Ask me some options" }),
+    )) as ContinueBody;
+    expect(body.kind).toBe("continue");
+    expect(body.options).toEqual(["I slept badly", "I'm dreading something today", "Nothing happened, just flat"]);
+    expect(generateJson).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(generateJson).mock.calls[1]?.[0].systemPrompt).toContain(
+      "They asked you to ask them something first",
+    );
+    expect(generateReframe).not.toHaveBeenCalled();
+  });
+
+  it("cooks after their answer and keeps the request off the card", async () => {
+    stubDecision(
+      readyDecision({
+        thought_en: "My day started meh because I'm dreading a meeting with my manager. Ask me some options.",
+      }),
+    );
+
+    const response = await post({
+      text: "My day started meh. Ask me some options",
+      followUps: [
+        {
+          question: "A meh start usually has something under it. Which of these is closest?",
+          answer: "I'm dreading a meeting with my manager",
+        },
+      ],
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await jsonOf(response)) as ReadyBody;
+    expect(body.kind).toBe("ready");
+    expect(body.thought).toBe("My day started meh because I'm dreading a meeting with my manager.");
+    expect(body.thought).not.toMatch(/ask me/i);
+  });
+
   it("still asks what they are stuck on when the input is only ugh", async () => {
     stubDecision(
       continueDecision({

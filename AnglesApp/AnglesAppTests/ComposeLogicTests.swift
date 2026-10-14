@@ -27,8 +27,16 @@ private func near(_ value: CGFloat, _ expected: CGFloat) -> Bool {
     abs(value - expected) < 0.000_001
 }
 
+private let gen = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+
+/// The id inside its generation, so the expectations read as row names.
+private func local(_ id: String) -> String {
+    String(id.split(separator: "/", maxSplits: 1).last ?? "")
+}
+
 private func ids(_ statement: String, _ turns: [RefineTurn], _ phase: RefinePhase) -> [String] {
-    ComposeThreadRow.rows(statement: statement, turns: turns, phase: phase).map(\.id)
+    ComposeThreadRow.rows(statement: statement, turns: turns, phase: phase, generation: gen)
+        .map { local($0.id) }
 }
 
 @Suite("Compose thread rows")
@@ -37,6 +45,50 @@ struct ComposeThreadRowTests {
     func emptyThread() {
         #expect(ids("", [], .composing).isEmpty)
         #expect(ids("", [], .cooking).isEmpty)
+    }
+
+    @Test("a restored prefix after an archive fades instead of sliding")
+    func fadeOnlyRestoredPrefix() {
+        let answered = turn("What happened?", reply: "Work")
+        let question = ComposeThreadRow.questionID(answered.id, in: gen)
+        let rows = ComposeThreadRow.rows(
+            statement: "Bad day",
+            turns: [answered],
+            phase: .cooking,
+            generation: gen,
+            fadeOnlyIDs: [ComposeThreadRow.id("statement", in: gen), question]
+        )
+        #expect(rows.first?.arrives == false)
+        #expect(rows.first { $0.id == question }?.arrives == false)
+        #expect(rows.first { $0.id == ComposeThreadRow.answerID(answered.id, in: gen) }?.arrives == true)
+        #expect(rows.last.map { local($0.id) } == "cooking")
+        #expect(rows.last?.arrives == true)
+    }
+
+    @Test("the same thread in a new generation shares no row ids")
+    func generationsNeverShareIDs() {
+        let answered = turn("What happened?", reply: "Work")
+        let next = UUID()
+        let first = ComposeThreadRow.rows(statement: "Bad day", turns: [answered], phase: .ready(cook()), generation: gen)
+        let second = ComposeThreadRow.rows(statement: "Bad day", turns: [answered], phase: .cooking, generation: next)
+        #expect(Set(first.map(\.id)).isDisjoint(with: second.map(\.id)))
+        #expect(first.map { local($0.id) }.prefix(3) == second.map { local($0.id) }.prefix(3))
+    }
+
+    @Test("an archive id is not a live row id")
+    func archiveThreadID() {
+        let generation = ComposeGeneration(
+            id: UUID(uuidString: "00000000-0000-4000-8000-0000000000aa")!,
+            statement: "Old",
+            turns: [],
+            cook: cook(),
+            isPublic: true,
+            isExpanded: false,
+            posted: false,
+            saveError: nil
+        )
+        #expect(generation.threadID.hasPrefix("archive-"))
+        #expect(!ids("Old", [], .cooking).contains(generation.threadID))
     }
 
     @Test("the open question keeps its id when it is answered, and only the answer is added")
@@ -63,9 +115,9 @@ struct ComposeThreadRowTests {
 
     @Test("rows carry what they show")
     func rowKinds() {
-        let rows = ComposeThreadRow.rows(statement: "x", turns: [], phase: .error("Nope"))
+        let rows = ComposeThreadRow.rows(statement: "x", turns: [], phase: .error("Nope"), generation: gen)
         #expect(rows.last?.kind == .error("Nope"))
-        #expect(rows.first?.kind == .statement)
+        #expect(rows.first?.kind == .statement("x"))
     }
 }
 
@@ -79,6 +131,13 @@ struct ComposeBottomModeTests {
         #expect(ComposeBottomMode(phase: .cooking) == .held)
         #expect(ComposeBottomMode(phase: .ready(cook())) == .post)
         #expect(ComposeBottomMode(phase: .ready(cook(results: 0))) == .held)
+    }
+
+    @Test("an edit of a ready cook puts the input back")
+    func editingReadyCook() {
+        #expect(ComposeBottomMode(phase: .ready(cook()), isEditing: true) == .composer)
+        #expect(ComposeBottomMode(phase: .cooking, isEditing: true) == .composer)
+        #expect(ComposeBottomMode(phase: .ready(cook()), isEditing: false) == .post)
     }
 }
 
@@ -155,6 +214,24 @@ struct ThreadFollowTests {
         #expect(scrolled)
     }
 
+    @Test("an archive id alone does not arm scroll follow")
+    func archiveIgnoredByFollow() {
+        var follow = ThreadFollow()
+        let archiveOnly = follow.rowsChanged(
+            from: ["statement"],
+            to: ["archive-1", "statement"]
+        )
+        #expect(!archiveOnly)
+        #expect(!follow.isArmed)
+
+        let archivePlusCooking = follow.rowsChanged(
+            from: ["statement", "angles"],
+            to: ["archive-1", "statement", "cooking"]
+        )
+        #expect(archivePlusCooking)
+        #expect(follow.isArmed)
+    }
+
     @Test("a removal or the same rows never scroll and disarm")
     func removal() {
         var follow = ThreadFollow()
@@ -185,6 +262,14 @@ struct ComposeLeavePromptTests {
         #expect(ComposeLeavePrompt.resolve(isSaving: false, isBusy: true, hasWork: true) == .busyWriting)
         #expect(ComposeLeavePrompt.resolve(isSaving: false, isBusy: false, hasWork: true) == .discard)
         #expect(ComposeLeavePrompt.resolve(isSaving: false, isBusy: false, hasWork: false) == nil)
+        #expect(
+            ComposeLeavePrompt.resolve(
+                isSaving: false,
+                isBusy: false,
+                hasWork: true,
+                hasArchives: true
+            ) == .discardIncludingVersions
+        )
     }
 
     @Test("a running save offers no way to leave")
@@ -193,5 +278,10 @@ struct ComposeLeavePromptTests {
         #expect(ComposeLeavePrompt.discard.allowsLeaving)
         #expect(ComposeLeavePrompt.discard.confirmTitle == "Discard")
         #expect(ComposeLeavePrompt.busyWriting.cancelTitle == "Keep going")
+        #expect(ComposeLeavePrompt.discardIncludingVersions.confirmTitle == "Discard")
+        #expect(
+            ComposeLeavePrompt.restartMessage(isBusy: false, hasArchives: true)
+                .contains("previous versions")
+        )
     }
 }

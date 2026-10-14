@@ -549,6 +549,22 @@
     }
   },
   {
+    "id": "asks_for_options_meh",
+    "text": "My day started meh. Ask me some options",
+    "expect": {
+      "kind": "continue",
+      "safety": "none"
+    }
+  },
+  {
+    "id": "asks_for_questions_work",
+    "text": "something at work is bugging me but I can't name it, can you ask me a few questions first",
+    "expect": {
+      "kind": "continue",
+      "safety": "none"
+    }
+  },
+  {
     "id": "unclear_again",
     "text": "it happened again",
     "expect": {

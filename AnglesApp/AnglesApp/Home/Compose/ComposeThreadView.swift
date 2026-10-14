@@ -21,27 +21,54 @@ struct ComposeThreadView: View {
         let rows = ComposeThreadRow.rows(
             statement: session.statement,
             turns: session.turns,
-            phase: session.phase
+            phase: session.phase,
+            generation: session.liveGenerationID,
+            fadeOnlyIDs: session.fadeOnlyRowIDs
         )
-        let ids = rows.map(\.id)
+        let archiveIDs = session.archives.map(\.threadID)
+        let ids = archiveIDs + rows.map(\.id)
 
         GeometryReader { window in
+            let viewportHeight = window.size.height
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        VStack(alignment: .leading, spacing: ComposeLayout.rowSpacing) {
-                            ForEach(rows) { row in
-                                ComposeThreadRowView(
-                                    row: row,
+                        // No stack spacing: a collapsing archive or generation takes its gap
+                        // with it, so nothing snaps when the animation ends.
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(session.archives) { generation in
+                                ComposeArchiveSection(
+                                    generation: generation,
                                     session: session,
-                                    focus: focus,
-                                    identityStore: identityStore,
-                                    isOnboardingTaste: isOnboardingTaste,
-                                    isCelebratingSave: isCelebratingSave
+                                    identityStore: identityStore
                                 )
+                                .padding(.bottom, ComposeLayout.rowSpacing)
+                                .id(generation.threadID)
+                                .transition(ComposeLayout.archiveTransition(reduceMotion: reduceMotion))
                             }
 
+                            VStack(alignment: .leading, spacing: ComposeLayout.rowSpacing) {
+                                ForEach(rows) { row in
+                                    ComposeThreadRowView(
+                                        row: row,
+                                        session: session,
+                                        focus: focus,
+                                        identityStore: identityStore,
+                                        isOnboardingTaste: isOnboardingTaste,
+                                        isCelebratingSave: isCelebratingSave
+                                    )
+                                }
+                            }
+                            .id(session.liveGenerationID)
+                            .transition(ComposeLayout.generationTransition(reduceMotion: reduceMotion))
+
                             Color.clear.frame(height: 0).id(Self.endID)
+                        }
+                        .transaction(value: ids) { transaction in
+                            transaction.animation = reduceMotion ? nil : ComposeLayout.insertAnimation
+                            transaction.addAnimationCompletion {
+                                follow.state.arrivalSettled()
+                            }
                         }
 
                         // The thread runs under the bar; its last row stops above the bar and its fade.
@@ -49,55 +76,56 @@ struct ComposeThreadView: View {
                     }
                     .padding(.horizontal, ComposeLayout.edgePad)
                     .padding(.top, 4)
-                    .modifier(ContentHeightBeforeiOS18 {
-                        contentHeightChanged(proxy)
-                    })
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { naturalHeight in
+                        follow.naturalHeight = naturalHeight
+                        contentHeightChanged(proxy, viewportHeight: viewportHeight)
+                    }
                     .frame(
                         maxWidth: .infinity,
-                        minHeight: window.size.height,
+                        minHeight: viewportHeight,
                         alignment: .topLeading
                     )
-                    .transaction(value: ids) { transaction in
-                        transaction.animation = reduceMotion ? nil : ComposeLayout.insertAnimation
-                        transaction.addAnimationCompletion {
-                            follow.state.arrivalSettled()
-                        }
-                    }
                 }
                 .defaultScrollAnchor(.top)
                 .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)
                 .modifier(ScrollSignalsFromiOS18(
-                    onContentHeight: { contentHeightChanged(proxy) },
                     onUserScroll: { follow.state.userScrolled() }
                 ))
                 .onChange(of: ids) { old, new in
-                    scroll(follow.state.rowsChanged(from: old, to: new), proxy)
+                    if follow.state.rowsChanged(from: old, to: new) {
+                        scrollIfOverflowing(proxy, viewportHeight: viewportHeight)
+                    }
                 }
             }
         }
     }
 
-    private func contentHeightChanged(_ proxy: ScrollViewProxy) {
+    private func contentHeightChanged(_ proxy: ScrollViewProxy, viewportHeight: CGFloat) {
         guard follow.state.contentHeightChanged() else {
             return
         }
-        scroll(true, proxy)
+        scrollIfOverflowing(proxy, viewportHeight: viewportHeight)
         // Without animation there is no arrival to wait for: the first layout is the final one.
         if reduceMotion {
             follow.state.arrivalSettled()
         }
     }
 
-    /// Every follow scroll uses the same ease, and starts on the next turn of the main queue, after
-    /// the new row's layout has been committed. Started in the same update, its first frames would
-    /// be lost to that layout (the card's is heavy) and the scroll would read as a jump.
-    private func scroll(_ toEnd: Bool, _ proxy: ScrollViewProxy) {
-        guard toEnd else {
+    /// Only scrolls when the thread is actually taller than the window. While the thread fits,
+    /// calling `scrollTo(..., anchor: .bottom)` fights `.defaultScrollAnchor(.top)` and the
+    /// keyboard animation, causing visible vertical jitter.
+    private func scrollIfOverflowing(_ proxy: ScrollViewProxy, viewportHeight: CGFloat) {
+        guard follow.naturalHeight > viewportHeight + 2, !follow.scrollScheduled else {
             return
         }
-        let animation: Animation? = reduceMotion ? nil : .easeOut(duration: 0.3)
+        follow.scrollScheduled = true
+        let animation: Animation? = reduceMotion ? nil : .easeOut(duration: 0.28)
         DispatchQueue.main.async {
+            follow.scrollScheduled = false
+            guard follow.naturalHeight > viewportHeight + 2 else {
+                return
+            }
             withAnimation(animation) {
                 proxy.scrollTo(Self.endID, anchor: .bottom)
             }
@@ -109,6 +137,8 @@ struct ComposeThreadView: View {
 @MainActor
 final class ThreadFollowBox {
     var state = ThreadFollow()
+    var naturalHeight: CGFloat = 0
+    var scrollScheduled = false
 }
 
 /// Room under the last row for the bar and its fade. It reads the bar height itself, so the
@@ -122,32 +152,13 @@ private struct ComposeThreadTail: View {
     }
 }
 
-/// iOS 17 has no scroll geometry: the content reports its own height.
-private struct ContentHeightBeforeiOS18: ViewModifier {
-    let onChange: () -> Void
-
-    func body(content: Content) -> some View {
-        if #available(iOS 18, *) {
-            content
-        } else {
-            content.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
-                onChange()
-            }
-        }
-    }
-}
-
-/// From iOS 18 the scroll view reports its content height and when the user takes it.
+/// From iOS 18 the scroll view reports when the user takes it.
 private struct ScrollSignalsFromiOS18: ViewModifier {
-    let onContentHeight: () -> Void
     let onUserScroll: () -> Void
 
     func body(content: Content) -> some View {
         if #available(iOS 18, *) {
             content
-                .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
-                    onContentHeight()
-                }
                 .onScrollPhaseChange { _, phase in
                     if phase == .interacting {
                         onUserScroll()

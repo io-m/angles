@@ -15,7 +15,7 @@ struct ComposeBottomBar: View {
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
-        let mode = ComposeBottomMode(phase: session.phase)
+        let mode = ComposeBottomMode(phase: session.phase, isEditing: session.editingTarget != nil)
         let note = session.bottomNote
         VStack(spacing: 0) {
             if mode == .composer {

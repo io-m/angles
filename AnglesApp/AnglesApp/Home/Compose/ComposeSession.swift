@@ -81,6 +81,16 @@ final class ComposeSession {
     private(set) var composeErrorAllowsRetry = true
     private(set) var isSaving = false
     private(set) var saveError: String?
+    /// Answered exchanges kept after an edit, oldest first.
+    private(set) var archives: [ComposeGeneration] = []
+    /// The live user bubble whose text is in the input, if any.
+    private(set) var editingTarget: ComposeEditTarget?
+    /// Live row ids that should fade rather than slide after an archive.
+    private(set) var fadeOnlyRowIDs: Set<String> = []
+    /// Which archived cook is writing, when `isSaving` is an archive Post.
+    private(set) var savingArchiveID: UUID?
+    /// Scopes the live row ids; a new one after each archive.
+    private(set) var liveGenerationID = UUID()
 
     @ObservationIgnored weak var host: ComposeSessionHost?
     @ObservationIgnored private let reframeService: ReframeService
@@ -115,10 +125,17 @@ final class ComposeSession {
         host?.usageIsCritical ?? false
     }
 
-    /// The composer is there until angles are on screen. A finished cook is one card; the only
-    /// way on is Start new.
+    /// The composer is there until angles are on screen, and again while a bubble is being edited.
     var isComposerVisible: Bool {
-        phase.showsComposer
+        editingTarget != nil || phase.showsComposer
+    }
+
+    /// Pencil on live user bubbles: enabled when idle and there is a credit.
+    var canEditLiveBubbles: Bool {
+        !isSessionBusy
+            && editingTarget == nil
+            && hasCreditsForCook
+            && !statement.isEmpty
     }
 
     var canSubmit: Bool {
@@ -157,7 +174,9 @@ final class ComposeSession {
     }
 
     var hasSessionWork: Bool {
-        if isSessionBusy || !statement.isEmpty || !turns.isEmpty {
+        if isSessionBusy || !statement.isEmpty || !turns.isEmpty || !archives.isEmpty
+            || editingTarget != nil
+        {
             return true
         }
         switch phase {
@@ -198,11 +217,19 @@ final class ComposeSession {
         return Array(answers.suffix(Self.maxFollowUps))
     }
 
-    /// One entry point for the composer: the thought, a reply to a question, or extra context
-    /// after an error. The field keeps its text when the send is refused.
+    /// One entry point for the composer: the thought, a reply to a question, extra context
+    /// after an error, or a committed edit. The field keeps its text when the send is refused.
     func sendComposer() {
         let text = composeText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSubmit else {
+            return
+        }
+
+        if editingTarget != nil {
+            guard commitEdit(text) else {
+                return
+            }
+            composeText = ""
             return
         }
 
@@ -214,11 +241,245 @@ final class ComposeSession {
 
     func chooseOption(_ option: String) {
         let trimmed = option.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard case .awaitingReply = phase, !trimmed.isEmpty else {
+        guard editingTarget == nil, case .awaitingReply = phase, !trimmed.isEmpty else {
             return
         }
 
         send(trimmed, isChip: true)
+    }
+
+    func beginEdit(_ target: ComposeEditTarget) {
+        guard !isSessionBusy, hasCreditsForCook, !statement.isEmpty else {
+            return
+        }
+
+        switch target {
+        case .statement:
+            composeText = statement
+        case .reply(let id):
+            guard let reply = turns.first(where: { $0.id == id })?.reply else {
+                return
+            }
+            composeText = reply
+        }
+        composeNote = nil
+        editingTarget = target
+    }
+
+    func cancelEdit() {
+        editingTarget = nil
+        composeText = ""
+        composeNote = nil
+    }
+
+    func toggleArchiveExpanded(_ id: UUID) {
+        guard let index = archives.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        let opening = !archives[index].isExpanded
+        for i in archives.indices {
+            archives[i].isExpanded = opening && archives[i].id == id
+        }
+    }
+
+    func setArchivePublic(_ id: UUID, _ isPublic: Bool) {
+        guard let index = archives.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        archives[index].isPublic = isPublic
+    }
+
+    func saveArchive(_ id: UUID) async {
+        guard !isSaving,
+              let index = archives.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+        let generation = archives[index]
+        guard !generation.posted, let cook = generation.cook, !cook.results.isEmpty else {
+            return
+        }
+
+        isSaving = true
+        savingArchiveID = id
+        archives[index].saveError = nil
+        let isPublic = generation.isPublic
+        let task = Task<HomeCard?, Never> { @MainActor in
+            do {
+                let stored = try await cardsService.create(
+                    CreateCardRequest(
+                        thought: cook.thought,
+                        thoughtOriginal: cook.thoughtOriginal,
+                        results: cook.results,
+                        meta: cook.meta,
+                        signature: cook.signature,
+                        model: cook.model,
+                        spotlightStyle: Self.spotlight(for: cook, libraryCount: host?.libraryCardCount ?? 0),
+                        isPublic: isPublic
+                    )
+                )
+                guard !Task.isCancelled else {
+                    finishArchiveSave()
+                    return nil
+                }
+                guard let card = HomeCard(stored: stored) else {
+                    markArchiveSave(id, error: "Saved, but couldn't display this card.")
+                    return nil
+                }
+                host?.insertSavedCard(card)
+                if let postedIndex = archives.firstIndex(where: { $0.id == id }) {
+                    archives[postedIndex].posted = true
+                    archives[postedIndex].saveError = nil
+                }
+                finishArchiveSave()
+                return card
+            } catch {
+                guard !Task.isCancelled, !HomeViewModel.isCancellation(error) else {
+                    finishArchiveSave()
+                    return nil
+                }
+                markArchiveSave(
+                    id,
+                    error: HomeViewModel.publicModerationMessage(for: error)
+                        ?? "Couldn't save this card. Try again."
+                )
+                return nil
+            }
+        }
+        saveTask = task
+        _ = await task.value
+        saveTask = nil
+    }
+
+    /// Returns false when the edit was refused (too long). Unchanged text cancels.
+    @discardableResult
+    private func commitEdit(_ text: String) -> Bool {
+        guard let target = editingTarget else {
+            return false
+        }
+
+        let previous: String
+        switch target {
+        case .statement:
+            previous = statement
+        case .reply(let id):
+            previous = turns.first(where: { $0.id == id })?.reply ?? ""
+        }
+        if text == previous {
+            cancelEdit()
+            return true
+        }
+
+        guard fits(text, startsFresh: true) else {
+            return false
+        }
+
+        if hasAIReply {
+            archiveLiveGeneration(editing: target)
+        } else {
+            fadeOnlyRowIDs = []
+        }
+
+        switch target {
+        case .statement:
+            statement = text
+            turns = []
+        case .reply(let id):
+            guard let index = turns.firstIndex(where: { $0.id == id }) else {
+                cancelEdit()
+                return false
+            }
+            turns[index].reply = text
+            turns[index].replyWasChip = false
+            turns = Array(turns.prefix(through: index))
+        }
+
+        editingTarget = nil
+        composeNote = nil
+        let attempt = ReframeAttempt()
+        pendingRefineAttempt = attempt
+        startRefine(attempt: attempt)
+        return true
+    }
+
+    /// The AI has answered this thought at least once: a question, or angles.
+    private var hasAIReply: Bool {
+        switch phase {
+        case .ready:
+            return true
+        case .awaitingReply, .error:
+            return !turns.isEmpty
+        case .composing, .cooking:
+            return false
+        }
+    }
+
+    /// The whole exchange folds into a collapsed archive. The live thread starts a new
+    /// generation, so none of its rows reuse the old views.
+    private func archiveLiveGeneration(editing target: ComposeEditTarget) {
+        var cook: ReadyCook?
+        if case .ready(let ready) = phase, !ready.results.isEmpty {
+            cook = ready
+        }
+
+        for i in archives.indices {
+            archives[i].isExpanded = false
+        }
+
+        archives.append(
+            ComposeGeneration(
+                id: liveGenerationID,
+                statement: statement,
+                turns: turns,
+                cook: cook,
+                isPublic: composeIsPublic,
+                recookNotice: cook == nil ? nil : recookNotice,
+                usageFeedback: cook == nil ? nil : usageFeedback,
+                isExpanded: false,
+                posted: false,
+                saveError: nil
+            )
+        )
+        let next = UUID()
+        liveGenerationID = next
+
+        // Editing an answer keeps what led up to it; those rows fade back in under the archive.
+        var fade = Set<String>()
+        if case .reply(let id) = target {
+            fade.insert(ComposeThreadRow.id("statement", in: next))
+            for turn in turns {
+                fade.insert(ComposeThreadRow.questionID(turn.id, in: next))
+                if turn.id == id {
+                    break
+                }
+                fade.insert(ComposeThreadRow.answerID(turn.id, in: next))
+            }
+        }
+        fadeOnlyRowIDs = fade
+
+        recookNotice = nil
+        usageFeedback = nil
+        saveError = nil
+    }
+
+    private func finishArchiveSave() {
+        isSaving = false
+        savingArchiveID = nil
+    }
+
+    private func markArchiveSave(_ id: UUID, error: String) {
+        if let index = archives.firstIndex(where: { $0.id == id }) {
+            archives[index].saveError = error
+        }
+        finishArchiveSave()
+    }
+
+    private static func spotlight(for cook: ReadyCook, libraryCount: Int) -> Style {
+        let styles = cook.results.map(\.style)
+        guard !styles.isEmpty else {
+            return .stoic
+        }
+        return styles[libraryCount % styles.count]
     }
 
     /// Returns false when nothing was sent.
@@ -280,9 +541,9 @@ final class ComposeSession {
         }
 
         isSaving = true
+        savingArchiveID = nil
         saveError = nil
-        let styles = cook.results.map(\.style)
-        let spotlight = styles[(host?.libraryCardCount ?? 0) % styles.count]
+        let spotlight = Self.spotlight(for: cook, libraryCount: host?.libraryCardCount ?? 0)
         let isPublic = forcePrivate ? false : wantsPublic
         let task = Task<HomeCard?, Never> { @MainActor in
             do {
@@ -440,7 +701,11 @@ final class ComposeSession {
         composeErrorAllowsRetry = true
         saveError = nil
         isSaving = false
+        savingArchiveID = nil
         composeIsPublic = true
+        archives = []
+        editingTarget = nil
+        fadeOnlyRowIDs = []
         phase = .composing
     }
 

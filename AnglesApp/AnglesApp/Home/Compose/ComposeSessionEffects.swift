@@ -19,7 +19,17 @@ struct ComposeSessionEffects: View {
                     focus.isFocused = true
                 }
                 // New angles arrive with the keyboard down, so it never sits over a new card.
-                if case .ready = newPhase {
+                if case .ready = newPhase, session.editingTarget == nil {
+                    focus.isFocused = false
+                }
+            }
+            .onChange(of: session.editingTarget) { _, target in
+                guard isActive else {
+                    return
+                }
+                if target != nil {
+                    focus.isFocused = true
+                } else if case .ready = session.phase {
                     focus.isFocused = false
                 }
             }

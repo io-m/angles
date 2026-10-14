@@ -172,7 +172,8 @@ struct ComposeSheetView: View {
         guard let prompt = ComposeLeavePrompt.resolve(
             isSaving: session.isSaving,
             isBusy: session.isSessionBusy,
-            hasWork: session.hasSessionWork
+            hasWork: session.hasSessionWork,
+            hasArchives: !session.archives.isEmpty
         ) else {
             context.close()
             return

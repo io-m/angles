@@ -15,6 +15,8 @@ enum ComposeLayout {
 
     /// One short, soft ease for a row arriving. Rows already on screen never take part in it.
     static let insertAnimation = Animation.smooth(duration: 0.35)
+    /// Accordion expand and collapse.
+    static let collapseAnimation = Animation.smooth(duration: 0.32)
 
     /// The AI's side of the screen is always this shape: the bubble corner with a small tail at
     /// the lower left, scaled up for the longer question, error, and angles cards.
@@ -44,6 +46,49 @@ enum ComposeLayout {
             insertion: .opacity.combined(with: .offset(x: slide)),
             removal: .identity
         )
+    }
+
+    /// Restored prefix after an archive: already on the page in spirit, so no side slide.
+    static func fadeArrival(reduceMotion: Bool) -> AnyTransition {
+        .asymmetric(
+            insertion: reduceMotion ? .identity : .opacity,
+            removal: .identity
+        )
+    }
+
+    static func collapse(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : collapseAnimation
+    }
+
+    /// The archive grows in from nothing at the top of the thread, and shrinks away on Start new.
+    static func archiveTransition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .identity : AnyTransition(ComposeCollapseTransition(anchor: .top))
+    }
+
+    /// After an edit the old exchange folds up into the archive above it while the new one
+    /// fades in below. Inside one generation, rows never animate out.
+    static func generationTransition(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else {
+            return .identity
+        }
+        return .asymmetric(
+            insertion: .opacity,
+            removal: AnyTransition(ComposeCollapseTransition(anchor: .bottom))
+        )
+    }
+}
+
+/// Height and opacity together, clipped, so the views around it move with it on every frame
+/// and no two surfaces overlap. `anchor` is the edge the content stays pinned to while it shrinks.
+struct ComposeCollapseTransition: Transition {
+    var anchor: VerticalEdge
+
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        CollapsibleHeightLayout(progress: phase.isIdentity ? 1 : 0, anchor: anchor) {
+            content
+        }
+        .clipped()
+        .opacity(phase.isIdentity ? 1 : 0)
     }
 }
 
