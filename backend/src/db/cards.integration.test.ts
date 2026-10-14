@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { OFF_TAB_FADE_HOURS } from "../lib/feedRanking.js";
 import { LEGACY_STYLES, runWithStyleSet } from "../lib/styleSet.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -1766,9 +1767,9 @@ describe.skipIf(!testUrl)("cards integration", () => {
   });
 
   describe("resonance ranking", () => {
-    const session = (overrides: { offset?: number; seed?: string } = {}) => ({
+    const session = (overrides: { offset?: number; seed?: string; startedAt?: Date } = {}) => ({
       seed: overrides.seed ?? "seed-integration",
-      startedAt: new Date(),
+      startedAt: overrides.startedAt ?? new Date(),
       offset: overrides.offset ?? 0,
     });
 
@@ -1889,15 +1890,16 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
 
     it("keeps one seed stable and gives another a different order", async () => {
+      const createdAt = new Date("2026-06-01T12:00:00.000Z");
       for (let index = 0; index < 12; index += 1) {
         await insertOtherCard({
           thought: `Another public thought ${index} to shuffle between visits.`,
           isPublic: true,
-          createdAt: new Date(Date.now() - index * 3_600_000),
+          createdAt,
         });
       }
 
-      const startedAt = new Date();
+      const startedAt = new Date("2026-06-15T18:00:00.000Z");
       const one = await rankedCards({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
       const again = await rankedCards({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
       const other = await rankedCards({ limit: 12, session: { seed: "seed-two", startedAt, offset: 0 } });
@@ -1941,17 +1943,19 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
 
     it("gives a new viewer style tabs that mostly show different cards", async () => {
+      const startedAt = new Date("2026-06-15T18:00:00.000Z");
+      const minAgeMs = (OFF_TAB_FADE_HOURS.full + 1) * 3_600_000;
       for (let index = 0; index < 60; index += 1) {
         await insertOtherCard({
           thought: `Public thought ${index} for a viewer who has not hearted anything yet.`,
           isPublic: true,
           category: CATEGORIES[index % (CATEGORIES.length - 1)] ?? "work",
           emotions: [],
-          createdAt: new Date(Date.now() - index * 6 * 3_600_000),
+          createdAt: new Date(startedAt.getTime() - minAgeMs - index * 6 * 3_600_000),
         });
       }
 
-      const seeded = session();
+      const seeded = session({ seed: "style-tab-diversity", startedAt });
       const pages = new Map<Style, string[]>();
       for (const style of LEGACY_STYLES) {
         const page = await rankedCards({ limit: 12, style, session: seeded });
