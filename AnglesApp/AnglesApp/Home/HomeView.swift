@@ -242,6 +242,8 @@ struct HomeFeedPager<Chrome: View>: View {
     @State private var visitedTabs: Set<HomeFeedTab> = [.all]
     @State private var sameTabScrollToken = 0
     @State private var contentWidth: CGFloat = 0
+    /// Points between the page's trailing edge and the window. Duo's tab column is this gap.
+    @State private var trailingColumn: CGFloat = 0
 
     init(
         safeAreaInsets: EdgeInsets,
@@ -325,9 +327,10 @@ struct HomeFeedPager<Chrome: View>: View {
         HomeMasonryMetrics.usesMasonry(contentWidth: contentWidth)
     }
 
-    /// Style, filter, and settings move into the trailing column. The top row goes away.
+    /// Style, filter, and settings move into the trailing column, on the stretched canvas
+    /// and on the collapsed face. The top row goes away. A phone has no column, so the gap stays under this.
     private var usesSideColumn: Bool {
-        hostsSideColumn && usesMasonry
+        hostsSideColumn && trailingColumn >= 48
     }
 
     private var chromeHeight: CGFloat {
@@ -376,7 +379,10 @@ struct HomeFeedPager<Chrome: View>: View {
         .allowsHitTesting(!isScrollDisabled)
         .environment(\.homeSideColumn, usesSideColumn)
         .background {
-            FeedCanvasProbe()
+            ZStack {
+                FeedCanvasProbe()
+                WindowTrailingGapReader { trailingColumn = $0 }
+            }
         }
         .onPreferenceChange(FeedContentWidthKey.self) { width in
             guard width > 0, contentWidth != width else { return }
@@ -668,7 +674,7 @@ struct HomeSideColumnRail: View {
                     filterButton
                     settingsButton
                 }
-                .padding(.top, 128)
+                .padding(.top, 176)
                 .padding(.trailing, 22)
             }
         }
@@ -727,6 +733,49 @@ struct HomeSideColumnRail: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Settings")
+    }
+}
+
+private struct WindowTrailingGapReader: UIViewRepresentable {
+    var onChange: (CGFloat) -> Void
+
+    func makeUIView(context: Context) -> Probe {
+        let view = Probe()
+        view.isUserInteractionEnabled = false
+        view.onChange = onChange
+        return view
+    }
+
+    func updateUIView(_ view: Probe, context: Context) {
+        view.onChange = onChange
+        view.report()
+    }
+
+    final class Probe: UIView {
+        var onChange: ((CGFloat) -> Void)?
+        private var last: CGFloat = -1
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            report()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()
+        }
+
+        func report() {
+            guard let window else { return }
+            let edge = convert(bounds, to: window).maxX
+            let gap = max(0, window.bounds.maxX - edge)
+            guard abs(gap - last) > 0.5 else { return }
+            last = gap
+            let send = onChange
+            DispatchQueue.main.async {
+                send?(gap)
+            }
+        }
     }
 }
 

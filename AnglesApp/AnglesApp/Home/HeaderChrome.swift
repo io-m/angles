@@ -28,9 +28,10 @@ enum HeaderCollapse {
 }
 
 /// Wide canvas: two columns once each would be at least `minColumnWidth`.
-/// Phone portrait and the narrow Duo face stay under that width, so they stay one column.
+/// Phone portrait and the collapsed Duo face stay under that width, so they stay one column.
 /// Duo draws the tab bar in a side column but still reports `tabBarPlacement` as `bottomBar`,
-/// so the page width is the switch.
+/// so the page width is the masonry switch. The side column itself is the gap between the
+/// page and the window's trailing edge.
 enum HomeMasonryMetrics {
     static let minColumnWidth: CGFloat = 280
     static let columnGap: CGFloat = HeaderCollapse.horizontalPadding
@@ -50,7 +51,7 @@ private struct HomeSideColumnKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Wide Duo: Home's style, filter, and settings live in the trailing side column.
+    /// Duo, stretched or collapsed: Home's style, filter, and settings live in the trailing side column.
     var homeSideColumn: Bool {
         get { self[HomeSideColumnKey.self] }
         set { self[HomeSideColumnKey.self] = newValue }
