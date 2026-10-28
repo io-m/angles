@@ -1,0 +1,178 @@
+# App Store capture on iPhone Duo — simctl screenshots at exact display size.
+# Env: DEMO_LINE, FOLLOWUP_REPLY, BEST_STYLE, SHOT_DIR, DUO_UDID, DUO_DISPLAY_ID
+appId: app.angles.ios
+---
+- evalScript: "${output.demo = { marks: [], followups: 0, answers: {}, options: [] }}"
+- evalScript: ${output.demo.marks.push(['flow_start', Date.now()])}
+
+- tapOn: "Inspire me"
+- evalScript: ${output.demo.marks.push(['compose_tap', Date.now()])}
+- extendedWaitUntil:
+    visible:
+      id: "compose.input"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 3000
+- evalScript: ${output.demo.marks.push(['keyboard_up', Date.now()])}
+
+- runScript:
+    file: flows/split_line.js
+    env:
+      DEMO_LINE: ${DEMO_LINE}
+- evalScript: ${output.demo.marks.push(['type_start', Date.now()])}
+- repeat:
+    while:
+      true: ${output.demo.chunkIndex < output.demo.chunks.length}
+    commands:
+      - inputText: ${output.demo.chunks[output.demo.chunkIndex]}
+      - evalScript: ${output.demo.chunkIndex = output.demo.chunkIndex + 1}
+- evalScript: ${output.demo.marks.push(['type_end', Date.now()])}
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 400
+- evalScript: ${output.shotName = 'composer.png'}
+- runScript:
+    file: flows/duo_screenshot.js
+- evalScript: ${output.demo.marks.push(['send', Date.now()])}
+- tapOn:
+    id: "compose.send"
+    waitToSettleTimeoutMs: 200
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "compose.cooking"
+    timeout: 3000
+    optional: true
+- evalScript: ${output.demo.marks.push(['cooking', Date.now()])}
+
+- repeat:
+    times: 150
+    while:
+      notVisible:
+        id: "compose.card"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "compose.crisis"
+          commands:
+            - evalScript: ${output.demo.crisis = true}
+            - runScript:
+                file: flows/report.js
+            - assertTrue:
+                condition: ${false}
+                label: "Angles answered with a crisis line."
+      - runFlow:
+          when:
+            visible:
+              id: "compose.error"
+          commands:
+            - copyTextFrom:
+                id: "compose.error"
+            - evalScript: ${output.demo.error = maestro.copiedText}
+            - runScript:
+                file: flows/report.js
+            - assertTrue:
+                condition: ${false}
+                label: "The cook failed with an error bubble."
+      - runFlow:
+          when:
+            visible:
+              id: "compose.followup"
+          file: flows/answer_followup.yaml
+      - runFlow:
+          when:
+            true: ${output.demo.followups > 0 && !output.demo.cookingAgain}
+            visible:
+              id: "compose.cooking"
+          commands:
+            - evalScript: ${output.demo.cookingAgain = true}
+            - evalScript: ${output.demo.marks.push(['cooking_after_followup', Date.now()])}
+      - extendedWaitUntil:
+          visible:
+            id: "compose.card"
+          timeout: 1000
+          optional: true
+- extendedWaitUntil:
+    visible:
+      id: "compose.card"
+    timeout: 1000
+- waitForAnimationToEnd:
+    timeout: 2000
+- evalScript: ${output.demo.marks.push(['card', Date.now()])}
+- assertVisible:
+    id: "chip.stoic"
+    childOf:
+      id: "compose.card"
+- assertVisible:
+    id: "chip.hopeful"
+    childOf:
+      id: "compose.card"
+- assertVisible:
+    id: "chip.witty"
+    childOf:
+      id: "compose.card"
+- assertVisible:
+    id: "chip.tough"
+    childOf:
+      id: "compose.card"
+- hideKeyboard
+- runFlow:
+    file: flows/hold.yaml
+    env:
+      HOLD_MS: 1800
+- copyTextFrom:
+    id: "compose.card"
+- runScript:
+    file: flows/read_answer.js
+    env:
+      STYLE_KEY: auto
+- evalScript: ${output.shotName = 'style-initial.png'}
+- runScript:
+    file: flows/duo_screenshot.js
+
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: hopeful
+      STYLE_NAME: Hopeful
+      HOLD_MS: 1800
+- evalScript: ${output.shotName = 'style-hopeful.png'}
+- runScript:
+    file: flows/duo_screenshot.js
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: witty
+      STYLE_NAME: Witty
+      HOLD_MS: 1800
+- evalScript: ${output.shotName = 'style-witty.png'}
+- runScript:
+    file: flows/duo_screenshot.js
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: stoic
+      STYLE_NAME: Stoic
+      HOLD_MS: 1800
+- evalScript: ${output.shotName = 'style-stoic.png'}
+- runScript:
+    file: flows/duo_screenshot.js
+- runFlow:
+    file: flows/chip.yaml
+    env:
+      STYLE_KEY: tough
+      STYLE_NAME: "Tough"
+      HOLD_MS: 5200
+- evalScript: ${output.shotName = 'style-tough.png'}
+- runScript:
+    file: flows/duo_screenshot.js
+
+- runScript:
+    file: flows/pick_best.js
+    env:
+      BEST_STYLE: ${BEST_STYLE}
+- evalScript: "${output.demo.bestName = ({ stoic: 'Stoic', hopeful: 'Hopeful', witty: 'Witty', tough: 'Tough' })[output.demo.best]}"
+- runScript:
+    file: flows/report.js

@@ -1,6 +1,6 @@
 # App Store readiness
 
-Current as of **October 2, 2026**.
+Current as of **28 October 2026** (Railway secret rotation and Apple keys updated this week).
 
 ## Release status
 
@@ -58,13 +58,16 @@ The production feature work is implemented in the repository. The app is not rea
 
 - Production `APPLE_ROOT_CERTIFICATES_BASE64` is set. The local `backend/.env` has the same certificates, so sandbox receipt sync works on this machine. That file is not in git.
 - Production `APPLE_APP_ID` is `6811873869` (Angles: Reframe Thoughts).
-- Production `APPLE_CLIENT_SECRET` is a Sign in with Apple JWT for key `W4R8326VMT`, team `36U79UTZM9`, client `app.angles.ios`. It expires on 3 April 2027. Renew it from `~/Downloads/AuthKey_W4R8326VMT.p8` before then. Still open: product and subscription-group availability, agreements, tax, banking, and any App Store Server API issuer/key/private-key setup used by release operations.
+- **Sign in with Apple:** production `APPLE_CLIENT_SECRET` is a JWT for key **`3942P5TGN7`**, team **`36U79UTZM9`**, client **`app.angles.ios`**. Set on Railway **28 October 2026**; expires **26 April 2027** (180-day JWT). Back up `AuthKey_3942P5TGN7.p8` privately; regenerate the JWT from that file before expiry. Old key **`W4R8326VMT`** is revoked.
+- **APNs (follow push):** Railway `api` has **`APNS_KEY_ID`** **`34376Z8T8L`** (Sandbox & Production, team scoped). Verified on TestFlight **28 October 2026**. Back up `AuthKey_34376Z8T8L.p8`. Old key **`54XP579X5K`** is revoked.
+- Still open: product and subscription-group availability, agreements, tax, banking, and any App Store Server API issuer/key/private-key setup used by release operations.
 - Configure App Store Server Notifications V2 for the production API endpoint `POST /app-store/notifications` and send/verify Apple's test notification.
 - Confirm the production bundle ID and product IDs are exactly `app.angles.ios`, `app.angles.ios.monthly`, and `app.angles.ios.annual`.
 
 ### Railway and infrastructure
 
 - The Railway `angles` project, `api` service, production Postgres, and private `angles-avatars` bucket exist. The API is deployed at `https://api-production-61c9.up.railway.app` and `/health` returns `{"status":"ok","db":"ok"}`.
+- **22–28 October 2026 security rotation (Railway env disclosure):** Production `api` secrets were rolled and redeployed: app signing/auth/admin secrets, **OpenAI** and **Mistral** keys, **Resend** key **`angles-production-report-alerts-2026-10-22`** (old Resend key deleted **28 October 2026**), avatar bucket **`${{angles-avatars.*}}`** references, and **`ADMIN_PROXY_SECRET`** on Cloudflare Workers. **`api`** deploys from **`io-m/angles`** with root **`backend/`** and **`Dockerfile`**. Sign in with Apple and APNs Apple keys rotated **28 October 2026** (see Apple section). **Optional:** Postgres **Regenerate** in Railway when you want a full database-password rotation (not required for launch if `/health` stays `db: ok`).
 - Production has the database URL, Better Auth secret and URL, cook signing key, metering HMAC, both model provider keys, Apple verification material, bucket credentials, and both `SUBSCRIPTION_ENFORCEMENT=required` and `USAGE_ENFORCEMENT=required`.
 - Still to confirm on a real device: authentication, purchase sync, notification delivery, avatar storage, and a full cook/save cycle.
 - Never run the destructive community seed against production; the production guard must remain enabled.

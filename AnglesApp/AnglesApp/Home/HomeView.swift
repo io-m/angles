@@ -15,6 +15,9 @@ struct HomeView: View {
     var glimpseCard: HomeCard? = nil
     var isGlimpseActive = false
     var isActiveTab: Bool = true
+    /// Author pushes keep the top header. The side column is Home's only while Home is showing.
+    var allowsSideColumn = true
+    var sideColumnModel: HomeSideColumnModel? = nil
     var identityStore: ProfileIdentityStore? = nil
     var onLogOut: (() -> Void)? = nil
     var onDeleteAccount: (() async -> AccountDeletion)? = nil
@@ -67,16 +70,20 @@ struct HomeView: View {
             onOpenAuthor: onOpenAuthor,
             onToggleFollow: toggleFollow,
             onInspire: onInspire,
-            onCardAppear: { tab, card in viewModel.noteFeedCardDisplayed(card.id, on: tab) }
+            onCardAppear: { tab, card in viewModel.noteFeedCardDisplayed(card.id, on: tab) },
+            hostsSideColumn: allowsSideColumn && isActiveTab
         ) { pagerState, settledSelection, onSelectTab in
             HomeChrome(
                 safeTop: safeAreaInsets.top,
+                safeLeading: safeAreaInsets.leading,
+                safeTrailing: safeAreaInsets.trailing,
                 pagerState: pagerState,
                 settledSelection: settledSelection,
                 appliedCount: viewModel.appliedFilter.appliedCount,
                 showFilter: $showHomeFilter,
                 showSettings: $showSettings,
-                onSelectTab: onSelectTab
+                onSelectTab: onSelectTab,
+                sideColumnModel: sideColumnModel
             )
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -220,6 +227,8 @@ struct HomeFeedPager<Chrome: View>: View {
     let onToggleFollow: (HomeCard) -> Void
     let onInspire: () -> Void
     let onCardAppear: (HomeFeedTab, HomeCard) -> Void
+    /// Home only. Author pages keep their top header on the same wide canvas.
+    var hostsSideColumn = false
     let chrome: (
         StyleTabPagerState<HomeFeedTab>,
         HomeFeedTab,
@@ -232,6 +241,7 @@ struct HomeFeedPager<Chrome: View>: View {
     /// Shelves that have been shown. The rest are empty placeholders until first chosen.
     @State private var visitedTabs: Set<HomeFeedTab> = [.all]
     @State private var sameTabScrollToken = 0
+    @State private var contentWidth: CGFloat = 0
 
     init(
         safeAreaInsets: EdgeInsets,
@@ -267,6 +277,7 @@ struct HomeFeedPager<Chrome: View>: View {
         onToggleFollow: @escaping (HomeCard) -> Void,
         onInspire: @escaping () -> Void = {},
         onCardAppear: @escaping (HomeFeedTab, HomeCard) -> Void = { _, _ in },
+        hostsSideColumn: Bool = false,
         @ViewBuilder chrome: @escaping (
             StyleTabPagerState<HomeFeedTab>,
             HomeFeedTab,
@@ -306,11 +317,24 @@ struct HomeFeedPager<Chrome: View>: View {
         self.onToggleFollow = onToggleFollow
         self.onInspire = onInspire
         self.onCardAppear = onCardAppear
+        self.hostsSideColumn = hostsSideColumn
         self.chrome = chrome
     }
 
+    private var usesMasonry: Bool {
+        HomeMasonryMetrics.usesMasonry(contentWidth: contentWidth)
+    }
+
+    /// Style, filter, and settings move into the trailing column. The top row goes away.
+    private var usesSideColumn: Bool {
+        hostsSideColumn && usesMasonry
+    }
+
     private var chromeHeight: CGFloat {
-        HomeFeedPagerMetrics.chromeHeight(safeTop: safeAreaInsets.top)
+        if usesSideColumn {
+            return safeAreaInsets.top + 8
+        }
+        return HomeFeedPagerMetrics.chromeHeight(safeTop: safeAreaInsets.top)
     }
 
     var body: some View {
@@ -350,6 +374,14 @@ struct HomeFeedPager<Chrome: View>: View {
             .allowsHitTesting(false)
         }
         .allowsHitTesting(!isScrollDisabled)
+        .environment(\.homeSideColumn, usesSideColumn)
+        .background {
+            FeedCanvasProbe()
+        }
+        .onPreferenceChange(FeedContentWidthKey.self) { width in
+            guard width > 0, contentWidth != width else { return }
+            contentWidth = width
+        }
     }
 
     private var pager: some View {
@@ -393,7 +425,8 @@ struct HomeFeedPager<Chrome: View>: View {
                                 onToggleFollow: onToggleFollow,
                                 onInspire: onInspire,
                                 offersOwnerPrivacyMenu: offersOwnerPrivacyMenu,
-                                onCardAppear: { card in onCardAppear(tab, card) }
+                                onCardAppear: { card in onCardAppear(tab, card) },
+                                usesMasonry: usesMasonry
                             )
                             } else {
                                 Color.clear
@@ -469,18 +502,48 @@ struct HomeFeedPager<Chrome: View>: View {
 
 private struct HomeChrome: View {
     let safeTop: CGFloat
+    let safeLeading: CGFloat
+    let safeTrailing: CGFloat
     let pagerState: StyleTabPagerState<HomeFeedTab>
     let settledSelection: HomeFeedTab
     let appliedCount: Int
     @Binding var showFilter: Bool
     @Binding var showSettings: Bool
     let onSelectTab: (HomeFeedTab) -> Void
+    var sideColumnModel: HomeSideColumnModel? = nil
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.homeSideColumn) private var sideColumn
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
+        Group {
+            if sideColumn {
+                Color.clear
+                    .frame(height: safeTop + 8)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            } else {
+                headerBar
+            }
+        }
+        .background {
+            if let sideColumnModel {
+                HomeSideColumnBridge(
+                    isShown: sideColumn,
+                    tab: pagerState.requestedTab,
+                    appliedCount: appliedCount,
+                    model: sideColumnModel,
+                    onSelect: onSelectTab,
+                    onFilter: { showFilter = true },
+                    onSettings: { showSettings = true }
+                )
+            }
+        }
+    }
+
+    private var headerBar: some View {
         VStack(spacing: 0) {
             Color.clear
                 .frame(height: safeTop + HeaderCollapse.headerTopPad)
@@ -495,29 +558,11 @@ private struct HomeChrome: View {
                     onSelect: onSelectTab
                 )
 
-                Button {
-                    showFilter = true
-                } label: {
-                    HomeFilterIcon(appliedCount: appliedCount)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Filter Home")
-                .accessibilityValue(filterAccessibilityValue(appliedCount))
-
-                Button {
-                    showSettings = true
-                } label: {
-                    CircleIcon(
-                        systemName: "gearshape",
-                        fill: theme.surface,
-                        symbol: theme.ink,
-                        hairline: theme.cardHairline
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Settings")
+                filterButton
+                settingsButton
             }
-            .padding(.horizontal, HeaderCollapse.horizontalPadding)
+            .padding(.leading, HeaderCollapse.contentLeadingPadding(safeLeading: safeLeading))
+            .padding(.trailing, HeaderCollapse.contentTrailingPadding(safeTrailing: safeTrailing))
             .frame(height: HeaderCollapse.headerHeight)
 
             Color.clear
@@ -532,6 +577,177 @@ private struct HomeChrome: View {
             StyleTabChromeBackground(pagerState: pagerState)
                 .ignoresSafeArea(edges: .top)
         }
+    }
+
+    private var filterButton: some View {
+        Button {
+            showFilter = true
+        } label: {
+            HomeFilterIcon(appliedCount: appliedCount)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Filter Home")
+        .accessibilityValue(filterAccessibilityValue(appliedCount))
+    }
+
+    private var settingsButton: some View {
+        Button {
+            showSettings = true
+        } label: {
+            CircleIcon(
+                systemName: "gearshape",
+                fill: theme.surface,
+                symbol: theme.ink,
+                hairline: theme.cardHairline
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+    }
+}
+
+/// Home's style, filter, and settings, drawn in the Duo side column from the window
+/// so the tab bar's own column does not clip them.
+@MainActor
+@Observable
+final class HomeSideColumnModel {
+    var isShown = false
+    var appliedCount = 0
+    var tab: HomeFeedTab = .all
+    var onSelect: (HomeFeedTab) -> Void = { _ in }
+    var onFilter: () -> Void = {}
+    var onSettings: () -> Void = {}
+}
+
+private struct HomeSideColumnBridge: View {
+    let isShown: Bool
+    let tab: HomeFeedTab
+    let appliedCount: Int
+    let model: HomeSideColumnModel
+    let onSelect: (HomeFeedTab) -> Void
+    let onFilter: () -> Void
+    let onSettings: () -> Void
+
+    var body: some View {
+        Color.clear
+            .onAppear(perform: push)
+            .onChange(of: isShown) { _, _ in push() }
+            .onChange(of: tab) { _, _ in push() }
+            .onChange(of: appliedCount) { _, _ in push() }
+    }
+
+    private func push() {
+        model.isShown = isShown
+        model.tab = tab
+        model.appliedCount = appliedCount
+        model.onSelect = onSelect
+        model.onFilter = onFilter
+        model.onSettings = onSettings
+    }
+}
+
+struct HomeSideColumnRail: View {
+    let model: HomeSideColumnModel
+    var isVisible = true
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+    private var tab: HomeFeedTab { model.tab }
+    private var appearance: CardStyleAppearance? {
+        tab.matchingStyle.map(CardStyleAppearance.init)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .allowsHitTesting(false)
+            if model.isShown && isVisible {
+                VStack(spacing: 14) {
+                    styleMenu
+                    filterButton
+                    settingsButton
+                }
+                .padding(.top, 128)
+                .padding(.trailing, 22)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private var styleMenu: some View {
+        Menu {
+            Picker("Style", selection: styleSelection) {
+                ForEach(HomeFeedTab.allCases, id: \.self) { item in
+                    Label(item.title, systemImage: item.systemImage)
+                        .tag(item)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            CircleIcon(
+                systemName: tab.systemImage,
+                fill: appearance?.ink.opacity(
+                    appearance?.chipFillOpacity(for: colorScheme) ?? 1
+                ) ?? theme.surface,
+                symbol: tab.symbolColor(ink: theme.ink),
+                hairline: appearance == nil ? theme.cardHairline : .clear
+            )
+        }
+        .menuOrder(.fixed)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Style: \(tab.title)")
+        .accessibilityHint("Opens the list of styles")
+    }
+
+    private var styleSelection: Binding<HomeFeedTab> {
+        Binding(
+            get: { tab },
+            set: { model.onSelect($0) }
+        )
+    }
+
+    private var filterButton: some View {
+        Button(action: model.onFilter) {
+            HomeFilterIcon(appliedCount: model.appliedCount)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Filter Home")
+        .accessibilityValue(filterAccessibilityValue(model.appliedCount))
+    }
+
+    private var settingsButton: some View {
+        Button(action: model.onSettings) {
+            CircleIcon(
+                systemName: "gearshape",
+                fill: theme.surface,
+                symbol: theme.ink,
+                hairline: theme.cardHairline
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+    }
+}
+
+private struct FeedContentWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 {
+            value = next
+        }
+    }
+}
+
+private struct FeedCanvasProbe: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .preference(key: FeedContentWidthKey.self, value: proxy.size.width)
+                .allowsHitTesting(false)
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -564,6 +780,7 @@ struct HomeFeedTabPage: View {
     let onInspire: () -> Void
     let offersOwnerPrivacyMenu: Bool
     var onCardAppear: (HomeCard) -> Void = { _ in }
+    var usesMasonry = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -688,33 +905,61 @@ struct HomeFeedTabPage: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    TallHomeCardGrid(
-                        cards: cards,
-                        cardMaxHeight: cardMaxHeight,
-                        rowSpacing: HeaderCollapse.horizontalPadding,
-                        openingStyle: tab.matchingStyle,
-                        menuRole: { card in card.isOwner ? .owner : .feed },
-                        onDelete: onDelete,
-                        onToggleHeart: onToggleHeart,
-                        onSetPublic: onSetPublic,
-                        onRemoveFromBoard: onRemoveFromBoard,
-                        onReport: onReport,
-                        onBlock: onBlock,
-                        shiningCardID: shiningCardID,
-                        onOpenAuthor: onOpenAuthor,
-                        onToggleFollow: onToggleFollow,
-                        onReachEnd: onLoadMore,
-                        loadMorePrefetchDistance: 6,
-                        offersOwnerPrivacyMenu: offersOwnerPrivacyMenu,
-                        onCardAppear: onCardAppear
-                    )
-                    .equatable()
-                    .padding(.horizontal, HeaderCollapse.horizontalPadding)
-                    .padding(.top, HeaderCollapse.horizontalPadding)
+                    feedCards(cardMaxHeight: cardMaxHeight)
+                        .padding(.horizontal, HeaderCollapse.horizontalPadding)
+                        .padding(.top, HeaderCollapse.horizontalPadding)
 
                     feedFooter
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func feedCards(cardMaxHeight: CGFloat) -> some View {
+        if usesMasonry {
+            MasonryHomeCardGrid(
+                cards: cards,
+                rowSpacing: HeaderCollapse.horizontalPadding,
+                openingStyle: tab.matchingStyle,
+                menuRole: { card in card.isOwner ? .owner : .feed },
+                onDelete: onDelete,
+                onToggleHeart: onToggleHeart,
+                onSetPublic: onSetPublic,
+                onRemoveFromBoard: onRemoveFromBoard,
+                onReport: onReport,
+                onBlock: onBlock,
+                shiningCardID: shiningCardID,
+                onOpenAuthor: onOpenAuthor,
+                onToggleFollow: onToggleFollow,
+                onReachEnd: onLoadMore,
+                loadMorePrefetchDistance: 6,
+                offersOwnerPrivacyMenu: offersOwnerPrivacyMenu,
+                onCardAppear: onCardAppear
+            )
+            .equatable()
+        } else {
+            TallHomeCardGrid(
+                cards: cards,
+                cardMaxHeight: cardMaxHeight,
+                rowSpacing: HeaderCollapse.horizontalPadding,
+                openingStyle: tab.matchingStyle,
+                menuRole: { card in card.isOwner ? .owner : .feed },
+                onDelete: onDelete,
+                onToggleHeart: onToggleHeart,
+                onSetPublic: onSetPublic,
+                onRemoveFromBoard: onRemoveFromBoard,
+                onReport: onReport,
+                onBlock: onBlock,
+                shiningCardID: shiningCardID,
+                onOpenAuthor: onOpenAuthor,
+                onToggleFollow: onToggleFollow,
+                onReachEnd: onLoadMore,
+                loadMorePrefetchDistance: 6,
+                offersOwnerPrivacyMenu: offersOwnerPrivacyMenu,
+                onCardAppear: onCardAppear
+            )
+            .equatable()
         }
     }
 

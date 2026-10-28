@@ -182,13 +182,10 @@ struct TallHomeCardGrid: View, Equatable {
     }
 
     private var loadMoreTriggerID: UUID? {
-        guard !cards.isEmpty else {
-            return nil
-        }
-        let configuredDistance = max(0, loadMorePrefetchDistance)
-        let adaptiveDistance = min(configuredDistance, max(1, cards.count / 4))
-        let distance = min(adaptiveDistance, cards.count - 1)
-        return cards[cards.count - 1 - distance].id
+        FeedGridPaging.loadMoreTriggerID(
+            cards: cards,
+            prefetchDistance: loadMorePrefetchDistance
+        )
     }
 
     private func openAuthorAction(for card: HomeCard) -> (() -> Void)? {
@@ -203,6 +200,183 @@ struct TallHomeCardGrid: View, Equatable {
             return nil
         }
         return { onToggleFollow(card) }
+    }
+}
+
+/// Wide canvas: two columns, cards dealt into the shorter one so the heights stagger.
+struct MasonryHomeCardGrid: View, Equatable {
+    let cards: [HomeCard]
+    var rowSpacing: CGFloat = HeaderCollapse.horizontalPadding
+    var openingStyle: Style? = nil
+    var menuRole: (HomeCard) -> ReframeCardMenuRole = { card in
+        card.isOwner ? .owner : .feed
+    }
+    var onDelete: (HomeCard) -> Void = { _ in }
+    var onToggleHeart: (HomeCard, Style) -> Void = { _, _ in }
+    var onSetPublic: (HomeCard, Bool) -> Void = { _, _ in }
+    var onRemoveFromBoard: (HomeCard) -> Void = { _ in }
+    var onReport: (HomeCard, ReportReason) -> Void = { _, _ in }
+    var onBlock: (HomeCard) -> Void = { _ in }
+    var shiningCardID: UUID? = nil
+    var onOpenAuthor: ((HomeCard) -> Void)? = nil
+    var onToggleFollow: (HomeCard) -> Void = { _ in }
+    var onReachEnd: (() -> Void)? = nil
+    var loadMorePrefetchDistance = 0
+    var offersOwnerPrivacyMenu = false
+    var onCardAppear: ((HomeCard) -> Void)? = nil
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+
+    static func == (lhs: MasonryHomeCardGrid, rhs: MasonryHomeCardGrid) -> Bool {
+        lhs.cards == rhs.cards
+            && lhs.rowSpacing == rhs.rowSpacing
+            && lhs.openingStyle == rhs.openingStyle
+            && lhs.shiningCardID == rhs.shiningCardID
+            && lhs.loadMorePrefetchDistance == rhs.loadMorePrefetchDistance
+            && lhs.offersOwnerPrivacyMenu == rhs.offersOwnerPrivacyMenu
+    }
+
+    var body: some View {
+        let split = MasonryColumnSplit.columns(cards: cards, openingStyle: openingStyle)
+        HStack(alignment: .top, spacing: HomeMasonryMetrics.columnGap) {
+            column(split.leading)
+            column(split.trailing)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
+    }
+
+    private func column(_ columnCards: [HomeCard]) -> some View {
+        LazyVStack(spacing: rowSpacing) {
+            ForEach(columnCards) { card in
+                feedCard(card)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    private func feedCard(_ card: HomeCard) -> some View {
+        ReframeCardView(
+            card: card,
+            presentation: .tallLibrary,
+            menuRole: menuRole(card),
+            openingStyle: openingStyle,
+            onDelete: { onDelete(card) },
+            onToggleHeart: { style in onToggleHeart(card, style) },
+            onSetPublic: { isPublic in onSetPublic(card, isPublic) },
+            onRemoveFromBoard: { onRemoveFromBoard(card) },
+            onReport: { reason in onReport(card, reason) },
+            onBlock: { onBlock(card) },
+            onOpenAuthor: openAuthorAction(for: card),
+            onToggleFollow: followAction(for: card),
+            offersOwnerPrivacyMenu: offersOwnerPrivacyMenu
+        )
+        .equatable()
+        .overlay {
+            if card.id == shiningCardID, !reduceMotion {
+                CardArrivalGlow(
+                    tint: CardStyleAppearance(
+                        style: openingStyle ?? card.spotlightStyle
+                    ).ink
+                )
+            }
+        }
+        .modifier(
+            TallCardFocusTransition(
+                enabled: !reduceMotion && !lowPower,
+                compactEntrance: true
+            )
+        )
+        .onAppear {
+            onCardAppear?(card)
+            guard let onReachEnd, card.id == loadMoreTriggerID else {
+                return
+            }
+            onReachEnd()
+        }
+    }
+
+    private var loadMoreTriggerID: UUID? {
+        FeedGridPaging.loadMoreTriggerID(
+            cards: cards,
+            prefetchDistance: loadMorePrefetchDistance
+        )
+    }
+
+    private func openAuthorAction(for card: HomeCard) -> (() -> Void)? {
+        guard card.authorId != nil, let onOpenAuthor else {
+            return nil
+        }
+        return { onOpenAuthor(card) }
+    }
+
+    private func followAction(for card: HomeCard) -> (() -> Void)? {
+        guard !card.isOwner, card.authorId != nil else {
+            return nil
+        }
+        return { onToggleFollow(card) }
+    }
+}
+
+/// Deals cards into two columns by a text-length estimate of the angle on screen.
+enum MasonryColumnSplit {
+    static func columns(
+        cards: [HomeCard],
+        openingStyle: Style?
+    ) -> (leading: [HomeCard], trailing: [HomeCard]) {
+        var leading: [HomeCard] = []
+        var trailing: [HomeCard] = []
+        var leadingHeight = 0
+        var trailingHeight = 0
+        for card in cards {
+            let weight = estimatedHeight(card, openingStyle: openingStyle)
+            if leadingHeight <= trailingHeight {
+                leading.append(card)
+                leadingHeight += weight
+            } else {
+                trailing.append(card)
+                trailingHeight += weight
+            }
+        }
+        return (leading, trailing)
+    }
+
+    /// Chrome plus the thought and the angle that is open. Used only to balance columns.
+    static func estimatedHeight(_ card: HomeCard, openingStyle: Style?) -> Int {
+        let style = openingStyle ?? card.spotlightStyle
+        let slide = card.slides.first { $0.result.style == style } ?? card.slides.first
+        let thought = slide?.thought.count ?? 0
+        let answer = slide?.result.reframe.count ?? 0
+        return 160 + thought + answer
+    }
+}
+
+enum FeedGridPaging {
+    static func loadMoreTriggerID(cards: [HomeCard], prefetchDistance: Int) -> UUID? {
+        guard !cards.isEmpty else {
+            return nil
+        }
+        let configuredDistance = max(0, prefetchDistance)
+        let adaptiveDistance = min(configuredDistance, max(1, cards.count / 4))
+        let distance = min(adaptiveDistance, cards.count - 1)
+        return cards[cards.count - 1 - distance].id
+    }
+}
+
+/// Picks masonry when the page is wide enough for two columns.
+struct MasonryChoice<MasonryContent: View, ListContent: View>: View {
+    let contentWidth: CGFloat
+    @ViewBuilder var masonry: () -> MasonryContent
+    @ViewBuilder var list: () -> ListContent
+
+    var body: some View {
+        if HomeMasonryMetrics.usesMasonry(contentWidth: contentWidth) {
+            masonry()
+        } else {
+            list()
+        }
     }
 }
 
@@ -403,6 +577,8 @@ extension CardArrivalGlow where S == RoundedRectangle {
 /// slightly and fades, once, as it drops under 15% visible.
 private struct TallCardFocusTransition: ViewModifier {
     let enabled: Bool
+    /// Two columns sit close together, so the entrance scale and rise stay small.
+    var compactEntrance = false
 
     func body(content: Content) -> some View {
         if enabled {
@@ -415,8 +591,8 @@ private struct TallCardFocusTransition: ViewModifier {
                 let y: CGFloat
                 let opacity: Double
                 if phase.value > 0 {
-                    scale = 1.08
-                    y = 64
+                    scale = compactEntrance ? 1.02 : 1.08
+                    y = compactEntrance ? 12 : 64
                     opacity = 0
                 } else if phase.value < 0 {
                     scale = 0.96

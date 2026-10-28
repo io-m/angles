@@ -525,7 +525,10 @@ private struct ProfileTabPage: View {
                             .frame(height: 0)
                             .id("profile-tab-top")
 
-                        tabContent(tallCardMaxHeight: tallCardMaxHeight)
+                        tabContent(
+                            tallCardMaxHeight: tallCardMaxHeight,
+                            contentWidth: proxy.size.width
+                        )
                             .padding(.bottom, 20)
                     }
                     .frame(
@@ -572,7 +575,7 @@ private struct ProfileTabPage: View {
     }
 
     @ViewBuilder
-    private func tabContent(tallCardMaxHeight: CGFloat) -> some View {
+    private func tabContent(tallCardMaxHeight: CGFloat, contentWidth: CGFloat) -> some View {
         switch loadState {
         case .loading:
             ProgressView()
@@ -623,26 +626,48 @@ private struct ProfileTabPage: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    TallHomeCardGrid(
-                        cards: cards,
-                        cardMaxHeight: tallCardMaxHeight,
-                        rowSpacing: HeaderCollapse.horizontalPadding,
-                        openingStyle: tab.matchingStyle,
-                        menuRole: { _ in .owner },
-                        onDelete: onDelete,
-                        onToggleHeart: onToggleHeart,
-                        onSetPublic: onSetPublic,
-                        onRemoveFromBoard: onRemoveFromBoard,
-                        onReport: onReport,
-                        onBlock: onBlock,
-                        shiningCardID: shiningCardID,
-                        onOpenAuthor: onOpenAuthor,
-                        onToggleFollow: onToggleFollow,
-                        onReachEnd: onLoadMore,
-                        loadMorePrefetchDistance: 6,
-                        offersOwnerPrivacyMenu: true
-                    )
-                    .equatable()
+                    MasonryChoice(contentWidth: contentWidth) {
+                        MasonryHomeCardGrid(
+                            cards: cards,
+                            rowSpacing: HeaderCollapse.horizontalPadding,
+                            openingStyle: tab.matchingStyle,
+                            menuRole: { _ in .owner },
+                            onDelete: onDelete,
+                            onToggleHeart: onToggleHeart,
+                            onSetPublic: onSetPublic,
+                            onRemoveFromBoard: onRemoveFromBoard,
+                            onReport: onReport,
+                            onBlock: onBlock,
+                            shiningCardID: shiningCardID,
+                            onOpenAuthor: onOpenAuthor,
+                            onToggleFollow: onToggleFollow,
+                            onReachEnd: onLoadMore,
+                            loadMorePrefetchDistance: 6,
+                            offersOwnerPrivacyMenu: true
+                        )
+                        .equatable()
+                    } list: {
+                        TallHomeCardGrid(
+                            cards: cards,
+                            cardMaxHeight: tallCardMaxHeight,
+                            rowSpacing: HeaderCollapse.horizontalPadding,
+                            openingStyle: tab.matchingStyle,
+                            menuRole: { _ in .owner },
+                            onDelete: onDelete,
+                            onToggleHeart: onToggleHeart,
+                            onSetPublic: onSetPublic,
+                            onRemoveFromBoard: onRemoveFromBoard,
+                            onReport: onReport,
+                            onBlock: onBlock,
+                            shiningCardID: shiningCardID,
+                            onOpenAuthor: onOpenAuthor,
+                            onToggleFollow: onToggleFollow,
+                            onReachEnd: onLoadMore,
+                            loadMorePrefetchDistance: 6,
+                            offersOwnerPrivacyMenu: true
+                        )
+                        .equatable()
+                    }
                     .padding(.horizontal, HeaderCollapse.horizontalPadding)
                     .padding(.top, HeaderCollapse.horizontalPadding)
 

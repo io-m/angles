@@ -45,6 +45,7 @@ struct AppRoot: View {
     @State private var isComposePresented = false
     @State private var membershipRequested = false
     @State private var selectedTab: RootTab = .home
+    @State private var homeSideColumn = HomeSideColumnModel()
     @State private var lastContentTab: RootTab = .home
     @State private var browsePath: [BrowseRoute] = []
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
@@ -85,6 +86,8 @@ struct AppRoot: View {
                         storeKitManager: storeKitManager,
                         canLoadFullAppContent: isHomeRevealed,
                         isActiveTab: selectedTab == .home,
+                        allowsSideColumn: browsePath.isEmpty,
+                        sideColumnModel: homeSideColumn,
                         identityStore: identityStore,
                         onLogOut: logOut,
                         onDeleteAccount: deleteAccount,
@@ -129,6 +132,12 @@ struct AppRoot: View {
                     }
                 }
                 .toolbar(.hidden, for: .navigationBar)
+            }
+            .overlay(alignment: .topTrailing) {
+                HomeSideColumnRail(
+                    model: homeSideColumn,
+                    isVisible: destination == .home && selectedTab == .home && browsePath.isEmpty
+                )
             }
             .tint(theme.ink)
             .opacity(destination == .home ? 1 : 0)

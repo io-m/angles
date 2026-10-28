@@ -19,7 +19,7 @@ Status values: `not started` · `in progress` · `done` · `skipped`
 
 **No product work is queued.** Rows 9w through 26 are done. Do not invent screens or features. Report review for the operator is `https://useangles.app/admin` (`docs/operator-admin.md`); `pnpm reports` over SSH remains the backup.
 
-What is left is launch setup outside the app. The Railway API (`https://api-production-61c9.up.railway.app`) is up: `/health` returns `{"status":"ok","db":"ok"}`, with `APPLE_CLIENT_SECRET` and `APPLE_APP_ID` set. The client secret expires on 3 April 2027 and has to be renewed before then. Still open: App Store Connect settings and the listing. Privacy, terms, and support are live at `https://useangles.app`, including the 9 October 2026 text (six voices, four angles, no Witty or Tough on real harm). The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
+What is left is launch setup outside the app. The Railway API (`https://api-production-61c9.up.railway.app`) is up: `/health` returns `{"status":"ok","db":"ok"}`, with `APPLE_CLIENT_SECRET` (Sign in with Apple key **`3942P5TGN7`**, JWT expires **26 April 2027**) and `APPLE_APP_ID` set. After the 22 Oct 2026 Railway env disclosure, production secrets on `api` were rotated and redeployed through **28 Oct 2026** (details in `docs/app-store-readiness.md`). Still open: App Store Connect settings and the listing. Privacy, terms, and support are live at `https://useangles.app`, including the 9 October 2026 text (six voices, four angles, no Witty or Tough on real harm). The status and the remaining list are in `docs/app-store-readiness.md`. The checkbox version is `docs/release-checklist.md`.
 
 ## Core loop
 
@@ -208,7 +208,7 @@ Not a new screen. Polish on 9b.
 
 Not a new screen. Polish on 9c.
 
-- **One card per row.** `HomeCardGrid` is a `LazyVStack`. Profile library, Hearts, and Home shelf subsets are full width. `usesSingleColumn` is gone. Strips are a landscape peek (`min(pageWidth * 0.84, 340)`).
+- **One card per row.** On a phone and on the narrow Duo face, Home, Profile, and author lists are one card per row (`TallHomeCardGrid`, a `LazyVStack`). Hearts stay one column. On the stretched Duo canvas (the feed is at least 608pt wide, so each column is at least 280pt) those lists are a two-column masonry, and Home's For you, Filter, and Settings move into the trailing side column with the tab bar. Profile and author keep their top headers. `usesSingleColumn` is gone. Strips are a landscape peek (`min(pageWidth * 0.84, 340)`).
 - **Card.** Inset 16, copy pads 8, height 228 so chrome hugs the copy. Overlay shares the metrics.
 - **Chips.** Selected is a labeled pill; the rest stay 36pt circles and morph on tap. Unselected glyphs stay faint. Single-angle cards keep the named pill.
 - **Row gap.** Grid spacing matches the 16pt side padding.
@@ -534,6 +534,8 @@ Nothing queued. Do not invent extras.
 
 ## Shipped log
 
+- 2026-10-28 — Wide Duo canvas is a two-column masonry (phone and the narrow face stay one card per row). Home's For you, Filter, and Settings sit in the trailing side column with the tab bar.
+- 2026-10-28 — Railway env-disclosure rotation on production `api`: app secrets, Resend (`angles-production-report-alerts-2026-10-22`), LLM keys, bucket references, and operator proxy secret; Apple keys **`34376Z8T8L`** (APNs) and **`3942P5TGN7`** (Sign in with Apple JWT through **26 April 2027**). Old Apple and Resend keys revoked/deleted. Documented in `docs/app-store-readiness.md` and `docs/release-checklist.md`.
 - 2026-10-14 — Compose edit, inset quick-reply pills, input X clear/cancel, and smooth accordion layout (26). An edit after any AI reply archives the whole exchange; triage asks when the first message asks for options or is only a bare mood.
 - 2026-10-12 — Opening membership applies `monthly-240-v1` to the current period, so leftover 600 grants drop to 240 (spent credits stay).
 - 2026-10-12 — Build 40: paywall and membership show 240 credits; App Store prices are $2.99 a month and $29.99 a year (`monthly-240-v1`).

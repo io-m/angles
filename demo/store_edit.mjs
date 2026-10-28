@@ -14,15 +14,31 @@ import { layoutStoreCards, renderStoreEnd, renderStoreHook } from "./lib/storePr
 const DEMO = join(dirname(fileURLToPath(import.meta.url)));
 const ROOT = join(DEMO, "..");
 const STORE = join(ROOT, "store");
-const take = process.argv[2];
+const args = process.argv.slice(2);
+const takeIdx = args.findIndex((a) => !a.startsWith("-"));
+const take = takeIdx >= 0 ? args[takeIdx] : undefined;
+const duoIdx = args.indexOf("--duo");
+const duoPose = duoIdx >= 0 ? args[duoIdx + 1] : undefined;
 if (!take) {
-  console.error("usage: node demo/store_edit.mjs <take-dir>");
+  console.error("usage: node demo/store_edit.mjs <take-dir> [--duo outer|inner]");
+  process.exit(2);
+}
+if (duoPose && duoPose !== "outer" && duoPose !== "inner") {
+  console.error("--duo must be outer or inner");
   process.exit(2);
 }
 
-const W = 1320;
-const H = 2868;
-const BAND = 420;
+const CANVAS_IPHONE_67 = { W: 1320, H: 2868, BAND: 420 };
+const CANVAS_DUO_OUTER = { W: 1398, H: 2034, BAND: 300, defaultCropTop: 0 };
+const CANVAS_DUO_INNER = { W: 2007, H: 2853, BAND: 420, defaultCropTop: 320 };
+const canvas = duoPose === "outer"
+  ? CANVAS_DUO_OUTER
+  : duoPose === "inner"
+    ? CANVAS_DUO_INNER
+    : CANVAS_IPHONE_67;
+const W = canvas.W;
+const H = canvas.H;
+const BAND = canvas.BAND;
 const STATUS = 186;
 const PREVIEW_W = 886;
 const PREVIEW_H = 1920;
@@ -183,17 +199,19 @@ function composeShot(rawPath, lines, outPath, cropTop) {
     throw new Error(`${rawPath} is ${info.width}×${info.height}, expected ${W}×${H}`);
   }
   const uiH = H - BAND;
-  if (cropTop + uiH > H) {
-    throw new Error(`crop ${cropTop}+${uiH} exceeds ${H}`);
+  const top = cropTop ?? 0;
+  if (top + uiH > H) {
+    throw new Error(`crop ${top}+${uiH} exceeds ${H}`);
   }
   const band = outPath.replace(/\.png$/, ".band.png");
   renderPng("band", { lines, width: W, height: BAND }, band);
+  const cropFilter = `[0:v]format=rgb24,crop=${W}:${uiH}:0:${top},pad=${W}:${H}:0:${BAND}:color=${PAPER}[base]`;
   run("ffmpeg", [
     "-y", "-v", "error",
     "-i", rawPath,
     "-i", band,
     "-filter_complex",
-    `[0:v]format=rgb24,crop=${W}:${uiH}:0:${cropTop},pad=${W}:${H}:0:${BAND}:color=${PAPER}[base];[1:v]format=rgb24[band];[base][band]overlay=0:0,format=rgb24`,
+    `${cropFilter};[1:v]format=rgb24[band];[base][band]overlay=0:0,format=rgb24`,
     "-frames:v", "1",
     outPath,
   ]);
@@ -237,17 +255,22 @@ function buildFrames(font) {
     ? shotFile("style-initial.png")
     : shotFile(`style-${first.replace("_", "-")}.png`);
   const frames = [
-    { raw: initial, lines: ["FOUR WAYS", "TO SEE IT."], out: "01-four-ways.png", cropTop: 320 },
-    { raw: shotFile("composer.png"), lines: ["WRITE THE", "HARD THOUGHT."], out: "02-write.png", cropTop: 300 },
-    { raw: shotFile("style-witty.png"), lines: ["SAME THOUGHT.", "DIFFERENT VOICE."], out: "03-voice.png", cropTop: 320 },
-    { raw: shotFile("style-hopeful.png"), lines: ["STILL", "POSSIBLE."], out: "04-possible.png", cropTop: 320 },
-    { raw: shotFile("style-tough.png"), lines: ["KEEP THE ONE", "THAT FITS."], out: "05-keep.png", cropTop: 320 },
+    { raw: initial, lines: ["FOUR WAYS", "TO SEE IT."], out: "01-four-ways.png", cropTop: duoPose ? canvas.defaultCropTop ?? 320 : 320 },
+    { raw: shotFile("composer.png"), lines: ["WRITE THE", "HARD THOUGHT."], out: "02-write.png", cropTop: duoPose === "outer" ? 0 : 300 },
+    { raw: shotFile("style-witty.png"), lines: ["SAME THOUGHT.", "DIFFERENT VOICE."], out: "03-voice.png", cropTop: duoPose ? canvas.defaultCropTop ?? 320 : 320 },
+    { raw: shotFile("style-hopeful.png"), lines: ["STILL", "POSSIBLE."], out: "04-possible.png", cropTop: duoPose ? canvas.defaultCropTop ?? 320 : 320 },
+    { raw: shotFile("style-tough.png"), lines: ["KEEP THE ONE", "THAT FITS."], out: "05-keep.png", cropTop: duoPose ? canvas.defaultCropTop ?? 320 : 320 },
   ];
   mkdirSync(STORE, { recursive: true });
+  const outDir = duoPose ? join(STORE, "duo", duoPose) : STORE;
+  mkdirSync(outDir, { recursive: true });
   for (const frame of frames) {
-    const out = join(STORE, frame.out);
+    const out = join(outDir, frame.out);
     log(`frame ${frame.out}`);
     composeShot(frame.raw, frame.lines, out, frame.cropTop);
+  }
+  if (duoPose) {
+    return result;
   }
   const paywall = join(take, "shots", "paywall.png");
   if (existsSync(paywall)) {
@@ -620,6 +643,8 @@ function buildListFrames() {
 const font = ensureFont();
 if (process.argv.includes("--list-frames")) {
   buildListFrames();
+} else if (duoPose) {
+  buildFrames(font);
 } else {
   const previewOnly = process.argv.includes("--preview-only");
   const result = previewOnly

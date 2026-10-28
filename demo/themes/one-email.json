@@ -1,0 +1,37 @@
+{
+  "line": "I've had the same quick reply email open for 11 days and I open it every morning just to close it again.",
+  "followupReply": "It's my landlord about a form — two checkboxes, nothing dramatic.",
+  "bestStyle": "auto",
+  "storeHook": [
+    [
+      { "text": "11 days.", "look": "big" },
+      { "text": "Same email.", "look": "big" },
+      { "text": "4 ways.", "look": "slam" }
+    ]
+  ],
+  "storeEnd": [
+    [
+      { "text": "One thought.", "look": "big" },
+      { "text": "Four ways.", "look": "slam" }
+    ]
+  ],
+  "hook": [
+    [
+      { "text": "11 days.", "look": "big" },
+      { "text": "Same email.", "look": "big" },
+      { "text": "Still open.", "look": "small" }
+    ],
+    [
+      { "text": "So I asked AI", "look": "small" },
+      { "text": "to see it", "look": "small" },
+      { "text": "4 ways.", "look": "slam" }
+    ]
+  ],
+  "bestNote": "The one that hit hardest.",
+  "end": {
+    "wordmark": "Angles",
+    "tagline": "One thought. Four ways to see it.",
+    "badge": "Coming soon to the App Store",
+    "follow": "Follow for more"
+  }
+}

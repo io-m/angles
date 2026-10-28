@@ -1,6 +1,6 @@
 # Release checklist
 
-Current as of **12 October 2026**. Version **1.0**. Latest iOS upload: build **40** (240 credits, $2.99 / $29.99). Release stays manual. App Store Connect app `6811873869` (Angles: Reframe Thoughts).
+Current as of **28 October 2026**. Version **1.0**. Latest iOS upload: build **40** (240 credits, $2.99 / $29.99). Release stays manual. App Store Connect app `6811873869` (Angles: Reframe Thoughts).
 
 Everything under "Left to do" needs you: a dashboard the API cannot reach, your phone, or your judgement.
 
@@ -12,7 +12,7 @@ Published in App Store Connect with the eight data types from this doc (Oct 2026
 
 ### 2. Report alert email — done (production)
 
-Resend domain verified; Railway `api` has `RESEND_API_KEY`, `REPORT_ALERT_FROM`, `REPORT_ALERT_TO`. Redeploy if you change report email copy in `reportAlerts.ts`.
+Resend domain verified; Railway `api` has `RESEND_API_KEY`, `REPORT_ALERT_FROM`, `REPORT_ALERT_TO`. Production sending key **`angles-production-report-alerts-2026-10-22`** (Railway incident rotation, **28 Oct 2026**); old key **`angles-production-report-alerts`** deleted in Resend. Redeploy **api** if you change report email copy in `reportAlerts.ts`.
 
 Wording is now **as soon as possible** (not 24 hours) in Terms, consent sheet, review notes, and alert emails. Redeploy **api** for new email body text; redeploy **web** (or publish `useangles.app`) so live Terms match.
 
@@ -29,9 +29,9 @@ To review reports: [https://useangles.app/admin](https://useangles.app/admin) af
 3. **Latest build:** Use TestFlight build **40**. Attach that build to version 1.0 before submit.
 4. **Follow push (two TestFlight phones):** see "Follow push" below.
 
-### 3a. Follow push — APNs key (done 6 October 2026)
+### 3a. Follow push — APNs key (done; rotated 28 October 2026)
 
-Key `54XP579X5K` (Sandbox & Production) is on Railway `api`; the logs show `apns_config { configured: true, keyValid: true }` and Apple accepted test pushes with `200`. Keep `AuthKey_54XP579X5K.p8` backed up privately. Test push only on TestFlight builds: a Debug install from Xcode replaces the TestFlight app and cannot receive production pushes.
+Key **`34376Z8T8L`** (Sandbox & Production) is on Railway `api`; logs show `apns_config { configured: true, keyValid: true }` and follow push verified on TestFlight **28 Oct 2026**. Keep **`AuthKey_34376Z8T8L.p8`** backed up privately. Old key **`54XP579X5K`** is revoked in Apple Developer. Test push only on TestFlight builds: a Debug install from Xcode replaces the TestFlight app and cannot receive production pushes.
 
 Before the banner proof: install **TestFlight build 23** (do not replace it with a Debug install). Sign in. If Follows is on, iOS should ask for notifications on first launch of that install — Allow. iOS Settings → Angles then shows Notifications. You should not need Settings → Follows → Turn on notifications after every reinstall.
 
@@ -59,12 +59,14 @@ Apple Review does not need you to have two Apple IDs; they test Report on your p
 
 Uploaded to version 1.0, English, iPhone 6.9". Not submitted yet.
 
+**iPhone Duo (optional badge):** Capture with `demo/make_store_duo.sh` (needs **iOS 27.1 Simulator** runtime in Xcode → Settings → Platforms). Writes `store/duo/outer/` and `store/duo/inner/` at 1398×2034 and 2007×2853. **Xcode 27+** has no standalone Simulator.app — use **Device Hub** (Xcode → Open Developer Tool → Device Hub), pick **Angles Store iPhone Duo**, unfold for the inner pass. Upload only when version 1.0 is editable (not Waiting for Review): `node demo/store_upload_duo.mjs` (outer via `APP_IPHONE_DUO`; drag inner in Connect if the API rejects that size). Do not remove the 6.9" set.
+
 ### 5. Provider and operations safety — done (5 October 2026)
 
 - **Mistral:** €20 prepaid credits, auto-recharge **off** (Billing has no monthly limit on this account; API stops at €0).
 - **OpenAI:** $50 hard monthly cap, alerts at $15 and $40, API training/sharing **off**.
 - **You** watch crash Organizer / Railway / report mail during review week.
-- Reminder: Apple client secret expires **3 April 2027**.
+- Reminder: Sign in with Apple client secret JWT expires **26 April 2027** (Apple key **`3942P5TGN7`** on Railway; renew from `AuthKey_3942P5TGN7.p8`).
 
 ### 6. Submit
 
