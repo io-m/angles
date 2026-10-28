@@ -133,6 +133,17 @@ xcrun simctl install "$udid" "$ROOT/AnglesApp/DerivedDataSimulatorDuo/Build/Prod
 
 token="$(cd "$ROOT/backend" && pnpm --silent demo:session)"
 
+log "screenshot bridge"
+node "$DEMO/lib/duo_shot_server.mjs" &
+shot_server_pid=$!
+cleanup_shot_server() { kill "$shot_server_pid" 2>/dev/null || true; }
+trap cleanup_shot_server EXIT
+for _ in $(seq 1 50); do
+  curl -fsS -m 1 -o /dev/null http://127.0.0.1:8765/health && break
+  sleep 0.05
+done
+curl -fsS -m 1 -o /dev/null http://127.0.0.1:8765/health
+
 harvest_shots() {
   local take="$1"
   python3 - "$take" <<'PY'
