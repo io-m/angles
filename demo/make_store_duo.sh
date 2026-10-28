@@ -172,7 +172,7 @@ run_pose() {
     display_id=""
     for _ in $(seq 1 180); do
       if display_id="$(node -e "
-import { enumerateDisplays, displayForPose } from './lib/duo_display.mjs';
+import { enumerateDisplays, displayForPose } from '${DEMO}/lib/duo_display.mjs';
 const u = process.argv[1];
 try {
   process.stdout.write(displayForPose(enumerateDisplays(u), 'inner'));
@@ -188,7 +188,7 @@ try {
     fi
   else
     display_id="$(node -e "
-import { enumerateDisplays, displayForPose } from './lib/duo_display.mjs';
+import { enumerateDisplays, displayForPose } from '${DEMO}/lib/duo_display.mjs';
 process.stdout.write(displayForPose(enumerateDisplays(process.argv[1]), 'outer'));
 " "$udid")"
   fi
