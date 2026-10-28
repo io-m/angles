@@ -102,10 +102,6 @@ appId: app.angles.ios
     timeout: 2000
 - evalScript: ${output.demo.marks.push(['card', Date.now()])}
 - assertVisible:
-    id: "chip.stoic"
-    childOf:
-      id: "compose.card"
-- assertVisible:
     id: "chip.hopeful"
     childOf:
       id: "compose.card"
@@ -148,15 +144,6 @@ appId: app.angles.ios
       STYLE_NAME: Witty
       HOLD_MS: 1800
 - evalScript: ${output.shotName = 'style-witty.png'}
-- runScript:
-    file: flows/duo_screenshot.js
-- runFlow:
-    file: flows/chip.yaml
-    env:
-      STYLE_KEY: stoic
-      STYLE_NAME: Stoic
-      HOLD_MS: 1800
-- evalScript: ${output.shotName = 'style-stoic.png'}
 - runScript:
     file: flows/duo_screenshot.js
 - runFlow:
