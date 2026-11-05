@@ -50,8 +50,13 @@ enum StackMetrics {
 enum StackLayout {
     static let topGap: CGFloat = 22
     static let barGap: CGFloat = 14
-    /// Taller than this and the card turns into a tower; the spare goes to the gaps instead.
-    static let maxAspect: CGFloat = 1.46
+    /// Height cap, as a multiple of the 6.1-inch card width. A wider phone wraps the same
+    /// answer in fewer lines, so it does not get a taller card.
+    static let maxAspect: CGFloat = 1.48
+    static let referenceScreenWidth: CGFloat = 393
+
+    /// How far the card and the action row rise together when the phone has spare height.
+    static let lift: CGFloat = 16
 
     struct Frame: Equatable {
         var card: CGSize
@@ -59,6 +64,8 @@ enum StackLayout {
         var topGap: CGFloat
         /// The card behind's sliver to the action row.
         var barGap: CGFloat
+        /// Spare taken from under the header and placed under the action row.
+        var lift: CGFloat
     }
 
     static func frame(screen: CGSize, safeTop: CGFloat, safeBottom: CGFloat) -> Frame {
@@ -66,12 +73,15 @@ enum StackLayout {
         let header = safeTop + StackMetrics.headerHeight
         let bar = StackMetrics.inspireSize(screenHeight: screen.height) + StackMetrics.barBottom(safeBottom: safeBottom)
         let room = max(0, screen.height - header - bar - topGap - barGap - StackMetrics.sliver)
-        let height = min(room, width * maxAspect)
+        let referenceWidth = referenceScreenWidth - StackMetrics.horizontalInset * 2
+        let height = min(room, min(width, referenceWidth) * maxAspect)
         let spare = room - height
+        let lift = min(Self.lift, spare / 2)
         return Frame(
             card: CGSize(width: width, height: height),
-            topGap: topGap + spare / 2,
-            barGap: barGap + spare / 2
+            topGap: topGap + spare / 2 - lift,
+            barGap: barGap + spare / 2,
+            lift: lift
         )
     }
 }
@@ -207,7 +217,7 @@ struct StackHome: View {
                 onProfile: onOpenProfile
             )
             .padding(.top, layout.barGap)
-            .padding(.bottom, StackMetrics.barBottom(safeBottom: safeAreaInsets.bottom))
+            .padding(.bottom, StackMetrics.barBottom(safeBottom: safeAreaInsets.bottom) + layout.lift)
         }
         .ignoresSafeArea(edges: [.top, .bottom])
         .background(theme.grey.ignoresSafeArea())

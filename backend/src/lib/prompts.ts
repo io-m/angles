@@ -21,12 +21,15 @@ export const THOUGHT_HARD_MAX_CHARS = 240;
 export const THOUGHT_REPAIR_MAX_WORDS = 50;
 export const THOUGHT_REPAIR_MAX_CHARS = 300;
 
-export const REFRAME_MIN_WORDS = 12;
-export const REFRAME_MAX_WORDS = 45;
-export const REFRAME_MIN_CHARS = 80;
-export const REFRAME_MAX_CHARS = 280;
+export const REFRAME_MIN_WORDS = 22;
+export const REFRAME_MAX_WORDS = 40;
+export const REFRAME_MIN_CHARS = 140;
+/** What the prompt asks the writer to stay within so all four angles look similar on the card. */
+export const REFRAME_TARGET_MAX_CHARS = 210;
+/** Slack above the target before lint spends a rewrite call. */
+export const REFRAME_MAX_CHARS = 240;
 /** Past this the style call is retried once, then trimmed at a sentence boundary. */
-export const REFRAME_HARD_MAX_CHARS = 340;
+export const REFRAME_HARD_MAX_CHARS = 280;
 
 const list = (values: readonly string[]): string => values.join(" | ");
 
@@ -200,7 +203,7 @@ Never open with ${quoted(bannedOpeners)}.`;
 
 const CONTEXT_RULES = `Use the context line:
 - timeframe past: acceptance or meaning. ongoing: control or the next step. future: how likely it really is, or how to prepare.
-- intensity 4–5: gentler and shorter, near the low end of the length budget. intensity 1–2: punchier and more playful, except on a savor cook.
+- intensity 4–5: gentler and unhurried, still a full 2–3 sentences inside the length budget. intensity 1–2: punchier and more playful, except on a savor cook.
 - traps: push directly against the named trap in plain words, never the label itself. mind_reading: they cannot know what others think. fortune_telling: the future is not written yet. catastrophizing: the worst case is not the likely case. all_or_nothing: find the middle. labeling: one moment is not who they are.`;
 
 const SAVOR_RULES = `When the thought states something going well and names no complaint, this is a savor cook. Use the Good news line for that voice:
@@ -210,7 +213,7 @@ const SAVOR_RULES = `When the thought states something going well and names no c
 - If they also named a worry, this is not a savor cook. Answer the worry and keep every good fact they stated as true. A hard thought keeps the heavy line and is never softened into good news.`;
 
 const WRITER_SHARED = `Rules for every answer:
-- ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, ${REFRAME_MIN_CHARS}–${REFRAME_MAX_CHARS} characters, 1–3 sentences. It has to fit a glance-sized card; going long is a failure.
+- ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words, ${REFRAME_MIN_CHARS}–${REFRAME_TARGET_MAX_CHARS} characters, 2–3 sentences. Aim for the middle of that range so all four angles on the card have a similar length; going too short or too long is a failure, and a style's short sentences never excuse a one-line answer.
 - English, plain and human, addressed to them as "you". No markdown, bullets, numbering, headings, labels, or quotes around it.
 - No therapy-speak ("it's okay to feel", "you are enough", "hold space", "your truth", "journey", "valid").
 - Never open with ${quoted(SHARED_BANNED_OPENERS)}.
@@ -274,7 +277,7 @@ export const GOLD_CARDS: readonly GoldCard[] = [
     },
     answers: {
       stoic:
-        "A quiet chat is the event. \"They find me annoying\" is a story you added, and it has no witnesses. Let the silence be silence.",
+        "A quiet chat is the event. \"They find me annoying\" is a story you added on top of it, and it has no witnesses. Let the silence just be silence tonight.",
       hopeful:
         "You're the one who reached out, and that's the habit that keeps friendships alive. Group chats go quiet when people are driving, working, or asleep, and your message will be there when they surface.",
       witty:
@@ -326,7 +329,7 @@ export const GOLD_CARDS: readonly GoldCard[] = [
     },
     answers: {
       stoic:
-        "Two hours of road, chosen by someone who could have sent a text. That is the event, and it needs no interpretation. Keep it as it happened.",
+        "Two hours of road, chosen by someone who could have sent a text. That is the event, and it needs no second story. Keep the day just as it happened.",
       hopeful:
         "Nobody drives that far on a whim. Your friend weighed the time against seeing your face and picked you without a second thought, and that says plenty about the friend you have been.",
       witty:
@@ -676,8 +679,8 @@ Write a new one: a different technique from your menu and a different insight, n
 }
 
 const LINT_REWRITE_NOTES: Record<LintIssue, string> = {
-  too_short: `It is too short: at least ${REFRAME_MIN_WORDS} words.`,
-  too_long: `It is too long: at most ${REFRAME_MAX_CHARS} characters. Same angle, fewer words.`,
+  too_short: `It is too short: write 2–3 sentences, ${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words and ${REFRAME_MIN_CHARS}–${REFRAME_TARGET_MAX_CHARS} characters.`,
+  too_long: `It is too long: at most ${REFRAME_TARGET_MAX_CHARS} characters (${REFRAME_MIN_WORDS}–${REFRAME_MAX_WORDS} words). Same angle, tighter words.`,
   question: "It asks a question. Make every sentence a statement.",
   digits: "It has a number the thought did not have. Remove it: no phone numbers, hotlines, or statistics.",
   markdown: "It has formatting or a label. Plain sentences only.",

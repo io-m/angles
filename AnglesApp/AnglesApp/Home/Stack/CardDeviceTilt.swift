@@ -70,9 +70,9 @@ struct CardTiltWash: View {
         let shiftY = pitch * 0.48
         LinearGradient(
             stops: [
-                .init(color: ink.opacity(0.03 * presence), location: 0),
-                .init(color: ink.opacity(0.06 * presence), location: 0.46),
-                .init(color: ink.opacity(0.18 * presence), location: 1)
+                .init(color: ink.opacity(0.022 * presence), location: 0),
+                .init(color: ink.opacity(0.045 * presence), location: 0.46),
+                .init(color: ink.opacity(0.13 * presence), location: 1)
             ],
             startPoint: UnitPoint(
                 x: CGFloat(0.5 - axis.dx * 0.75 + shiftX),

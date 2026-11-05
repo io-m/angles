@@ -275,9 +275,12 @@ struct StackLayoutTests {
             let frame = StackLayout.frame(screen: phone.screen, safeTop: phone.safeTop, safeBottom: phone.safeBottom)
             #expect(frame.card.width == phone.screen.width - StackMetrics.horizontalInset * 2, "\(phone.name)")
             #expect(frame.card.height <= frame.card.width * StackLayout.maxAspect, "\(phone.name)")
-            #expect((StackLayout.topGap...80).contains(frame.topGap), "\(phone.name) top \(frame.topGap)")
-            #expect((StackLayout.barGap...76).contains(frame.barGap), "\(phone.name) bar \(frame.barGap)")
-            #expect(frame.topGap - StackLayout.topGap == frame.barGap - StackLayout.barGap, "\(phone.name)")
+            #expect((StackLayout.topGap...120).contains(frame.topGap), "\(phone.name) top \(frame.topGap)")
+            #expect((StackLayout.barGap...112).contains(frame.barGap), "\(phone.name) bar \(frame.barGap)")
+            let topExtra = frame.topGap - StackLayout.topGap
+            let barExtra = frame.barGap - StackLayout.barGap
+            #expect(barExtra - topExtra == frame.lift, "\(phone.name)")
+            #expect(frame.lift == min(StackLayout.lift, barExtra), "\(phone.name) lift \(frame.lift)")
         }
     }
 
@@ -286,7 +289,7 @@ struct StackLayoutTests {
             let frame = StackLayout.frame(screen: phone.screen, safeTop: phone.safeTop, safeBottom: phone.safeBottom)
             let used = phone.safeTop + StackMetrics.headerHeight + frame.topGap + frame.card.height
                 + StackMetrics.sliver + frame.barGap + StackMetrics.inspireSize(screenHeight: phone.screen.height)
-                + StackMetrics.barBottom(safeBottom: phone.safeBottom)
+                + StackMetrics.barBottom(safeBottom: phone.safeBottom) + frame.lift
             #expect(abs(used - phone.screen.height) < 0.5, "\(phone.name) used \(used)")
         }
     }

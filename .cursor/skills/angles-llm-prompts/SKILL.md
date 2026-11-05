@@ -36,7 +36,7 @@ Load-bearing rules, do not weaken them casually:
 Exported as constants so the pipeline can enforce them:
 
 - Thought: 8–30 words, 40–200 characters. A decision past 40 words or 240 characters is repaired once with the counts in the hint, and the repair pass may land at up to 50 words or 300 characters (the card grows vertically). `thought_original_cleaned` shares the budget.
-- Reframe: 12–45 words, 80–280 characters. Past 340 characters it is trimmed at a sentence boundary; past 280 the lint flags `too_long` and asks for one rewrite.
+- Reframe: 22–40 words, 140–210 target characters (`REFRAME_TARGET_MAX_CHARS`), 2–3 sentences. Past 240 characters (`REFRAME_MAX_CHARS`) the lint flags `too_long` and asks for one rewrite; past 280 (`REFRAME_HARD_MAX_CHARS`) it is trimmed at a sentence boundary. Under 22 words or 140 characters the lint flags `too_short` (reported in evals, never rewritten so cooks stay fast).
 
 The batch output cap is computed from these (`writerMaxOutputTokens`), doubled for a bilingual cook. Change a budget and the cap follows.
 
@@ -61,7 +61,7 @@ Each voice has banned openers; `reframeLint.ts` reads `SHARED_BANNED_OPENERS` an
 
 ## Shared rules (keep in every style)
 
-- 1–3 sentences, inside the length budget
+- 2–3 sentences, inside the length budget
 - No bullets, headings, labels, or markdown
 - No therapy-speak clichés, no technique or trap names, no diagnosis
 - No phone numbers, hotlines, statistics, or percentages

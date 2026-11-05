@@ -6,6 +6,7 @@
 import type { Style } from "../types/index.js";
 import {
   REFRAME_MAX_CHARS,
+  REFRAME_MIN_CHARS,
   REFRAME_MIN_WORDS,
   SHARED_BANNED_OPENERS,
   STYLE_VOICES,
@@ -115,7 +116,7 @@ export function lintReframe(style: Style, reframe: string, thought: string): Lin
   const issues: LintIssue[] = [];
   const text = reframe.trim();
   const lower = normalized(text);
-  if (wordCount(text) < REFRAME_MIN_WORDS) {
+  if (wordCount(text) < REFRAME_MIN_WORDS || text.length < REFRAME_MIN_CHARS) {
     issues.push("too_short");
   }
   if (text.length > REFRAME_MAX_CHARS) {

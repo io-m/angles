@@ -40,7 +40,7 @@ const CHARS_PER_TOKEN = 3;
 const JSON_OVERHEAD_TOKENS = 40;
 /** One "technique_id: 3–8 word insight" line, with its key. */
 const PLAN_TOKENS_PER_STYLE = 28;
-/** Worth one more model call. A short answer may stay short: intensity 4–5 asks for it. */
+/** Worth one more model call. A short answer ships without a second round-trip so the cook stays fast. */
 const REWRITE_ISSUES: ReadonlySet<LintIssue> = new Set([
   "too_long",
   "question",

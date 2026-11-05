@@ -478,7 +478,7 @@ function lead(core: string): string {
 }
 
 const STOIC: Array<(core: string) => string> = [
-  (core) => `Name ${core} as a fact, not a trial. You do not have to retry the scene until it likes you. Put the verdict down and tend to the next small thing in front of you.`,
+  (core) => `Name ${core} as a fact, not a trial. You do not need to retry the scene until it likes you. Set the verdict down and tend to the next plain task today.`,
   (core) => `The sting of ${core} is allowed. It does not get to appoint itself manager of the rest of the day. Feel it once, then give the afternoon back its own errands.`,
   (core) => `Hold ${core} without adding a second story. What happened is enough; the verdict can wait. One true sentence is plenty; the commentary is optional.`,
   (core) => `You can carry ${core} and still put your feet on the next ordinary task. Endurance is not a performance. Nobody is scoring this; just do the next plain thing.`,
@@ -506,7 +506,7 @@ const WITTY: Array<(core: string) => string> = [
   (core) => `${lead(core)} would like a TED talk. Give it ninety seconds, then go drink water like a person with a body. Hydrated people spiral less. Allegedly.`,
   (core) => `You are not a court. ${lead(core)} does not get unlimited closing arguments just because you are still awake. Adjourned. The blanket is the bailiff now.`,
   (core) => `Let ${core} sit in the cheap seats. Front row is for dinner, not for a thought that will not tip. It can heckle from the back all it wants.`,
-  (core) => `${lead(core)} is doing jazz hands in a quiet room. You can clap once and still leave at intermission. Polite applause, then the exit.`,
+  (core) => `${lead(core)} is doing jazz hands in a quiet room. You can clap once and still leave at intermission. Polite applause, then head for the exit.`,
   (core) => `Your inner narrator about ${core} needs an editor with a red pen and a bedtime. Fire the intern. Severance package: one (1) nap.`,
 ];
 
@@ -515,7 +515,7 @@ const TOUGH: Array<(core: string) => string> = [
   (core) => `${lead(core)} is not paying rent in your head. Evict the replay and keep the fact. Then move. Today, not someday, not after one more scroll.`,
   (core) => `You already know what ${core} costs. Quit romanticizing the loop and pick one adult action today. You know the one. Do that one.`,
   (core) => `Nobody is coming to reverse ${core} with a speech. Close the tab. Send the thing. Go to bed on time. Rescue yourself in that order.`,
-  (core) => `If ${core} is true, act like it. If it is a story, stop feeding it snacks at midnight. Either way the next move is yours.`,
+  (core) => `If ${core} is true, act like it. If it is a story, stop feeding it snacks at midnight. Either way the next small move today is still yours.`,
   (core) => `You do not get extra credit for suffering ${core} beautifully. Choose the boring repair and do it twice. Twice, so it sticks this time.`,
   (core) => `Enough museum time with ${core}. Put the artifact down. Your life is not a guided tour of the wound. Exit through the gift shop of doing something.`,
   (core) => `${lead(core)} can be real and still not be the assignment. Do the assignment. Feelings can walk beside you. They walk; they do not drive.`,

@@ -37,10 +37,25 @@ describe("lintReframe", () => {
     expect(lintReframe("stoic", listen, thought)).not.toContain("opener");
   });
 
-  it("flags shared openers, questions, and clichés on any style", () => {
+  it("flags shared openers, questions, clichés, and answers outside the length band", () => {
     expect(lintReframe("witty", "It sounds like the reports have unionised against you and are winning the vote.", thought)).toContain("opener");
     expect(lintReframe("stoic", "What would it look like to finish one report before starting the next one tonight?", thought)).toContain("question");
     expect(lintReframe("hopeful", "This is part of your journey, and every report you finish makes the next one easier.", thought)).toContain("cliche");
+    expect(
+      lintReframe(
+        "stoic",
+        "One by one you do one job on one page and the day is done for you at six.",
+        thought,
+      ),
+    ).toContain("too_short");
+    expect(
+      lintReframe(
+        "stoic",
+        "Three reports are work for tomorrow, not a verdict on you today. Pick the shortest one, finish the first section before dinner, and let the other two wait until morning.",
+        thought,
+      ),
+    ).toEqual([]);
+    expect(lintReframe("stoic", `${"Finish one report before dinner. ".repeat(8)}`, thought)).toContain("too_long");
   });
 });
 
