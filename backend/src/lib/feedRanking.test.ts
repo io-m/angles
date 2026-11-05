@@ -4,17 +4,13 @@ import {
   AFFINITY_CONFIG,
   EMPTY_AFFINITY,
   FOLLOW_MIX,
+  HEAVY_INTENSITY,
   MIN_MIX_CONFIDENCE,
-  PRIMARY_TIE_WEIGHT,
-  offTabFade,
   RANKING_WEIGHTS,
+  RETURN_AFTER_HOURS,
   SPREAD_LIMITS,
-  STYLE_AFFINITY_FULL_HEARTS,
-  STYLE_RANKING_WEIGHTS,
   THEME_MIX,
   affinityTerm,
-  assignPrimaryStyles,
-  blendedAffinityTerm,
   bucketCaps,
   buildAffinity,
   classifyTheme,
@@ -23,24 +19,20 @@ import {
   encodeFeedSession,
   followMix,
   freshnessTerm,
-  isKeptOnShelf,
-  isPartlyKept,
   jitterTerm,
   openingStyle,
   rankCards,
   rankingEnabled,
+  returningCap,
   resonanceTerm,
   scoreCard,
   secondChanceTerm,
   spreadPage,
   spreadRanked,
-  styleAffinityConfidence,
   themeMix,
   type AffinitySignal,
   type RankableCard,
   type SpreadableCard,
-  type StyleShelfContext,
-  type StyleTabs,
   type ThemeBucket,
   type ViewerAffinity,
 } from "./feedRanking.js";
@@ -61,7 +53,7 @@ function card(overrides: Partial<RankableCard> = {}): RankableCard {
     createdAt: hoursAgo(1),
     category: "work",
     emotions: ["shame"],
-    hearts: 0,
+    saves: 0,
     followed: false,
     ...overrides,
   };
@@ -88,6 +80,7 @@ function spreadable(overrides: Partial<SpreadableCard> = {}): SpreadableCard {
     emotions: ["shame"],
     intensity: 3,
     spotlightStyle: "stoic",
+    heavy: false,
     ...overrides,
   };
 }
@@ -104,14 +97,14 @@ describe("ranking terms", () => {
 
   it("lets a newer post beat an older one, and only clear signals overturn that", () => {
     const fresh = scoreCard(card({ id: "a", createdAt: hoursAgo(2) }), { now: NOW, seed: "s" });
-    const yesterday = scoreCard(card({ id: "a", createdAt: hoursAgo(26), hearts: 2 }), {
+    const yesterday = scoreCard(card({ id: "a", createdAt: hoursAgo(26), saves: 2 }), {
       now: NOW,
       seed: "s",
     });
-    // A lone couple of hearts does not lift yesterday's post over a fresh one.
+    // A lone couple of saves does not lift yesterday's post over a fresh one.
     expect(fresh.score).toBeGreaterThan(yesterday.score);
 
-    const threeDays = scoreCard(card({ id: "a", createdAt: hoursAgo(72), hearts: 10 }), {
+    const threeDays = scoreCard(card({ id: "a", createdAt: hoursAgo(72), saves: 10 }), {
       now: NOW,
       seed: "s",
     });
@@ -121,10 +114,10 @@ describe("ranking terms", () => {
   });
 
   it("damps resonance and caps it so one card cannot own the feed", () => {
-    expect(resonanceTerm(card({ hearts: 0 }))).toBe(0);
-    expect(resonanceTerm(card({ hearts: 1 }))).toBeLessThan(resonanceTerm(card({ hearts: 3 })));
-    expect(resonanceTerm(card({ hearts: 10 }))).toBeCloseTo(1, 5);
-    expect(resonanceTerm(card({ hearts: 5_000 }))).toBe(1);
+    expect(resonanceTerm(card({ saves: 0 }))).toBe(0);
+    expect(resonanceTerm(card({ saves: 1 }))).toBeLessThan(resonanceTerm(card({ saves: 3 })));
+    expect(resonanceTerm(card({ saves: 10 }))).toBeCloseTo(1, 5);
+    expect(resonanceTerm(card({ saves: 5_000 }))).toBe(1);
   });
 
   it("scores affinity from the viewer's own life areas and moods", () => {
@@ -140,7 +133,7 @@ describe("ranking terms", () => {
     ).toBeCloseTo(0.4, 5);
   });
 
-  it("gives an unhearted young post a second chance that fades", () => {
+  it("gives an unsaved young post a second chance that fades", () => {
     expect(secondChanceTerm(card({ createdAt: hoursAgo(2) }), NOW)).toBe(0);
     expect(secondChanceTerm(card({ createdAt: hoursAgo(48) }), NOW)).toBe(1);
     expect(secondChanceTerm(card({ createdAt: hoursAgo(24 * 20) }), NOW)).toBeCloseTo(
@@ -149,7 +142,7 @@ describe("ranking terms", () => {
     );
     expect(secondChanceTerm(card({ createdAt: hoursAgo(24 * 40) }), NOW)).toBe(0);
     // Hearted posts do not need help being found.
-    expect(secondChanceTerm(card({ createdAt: hoursAgo(48), hearts: 1 }), NOW)).toBe(0);
+    expect(secondChanceTerm(card({ createdAt: hoursAgo(48), saves: 1 }), NOW)).toBe(0);
   });
 
   it("keeps jitter inside the unit range and stable per seed", () => {
@@ -175,11 +168,11 @@ describe("ranking terms", () => {
 });
 
 describe("rankCards", () => {
-  it("puts a hearted card above an equally fresh unhearted one", () => {
+  it("puts a saved card above an equally fresh unsaved one", () => {
     const ranked = rankCards(
       [
-        card({ id: "aaaaaaaa-0000-4000-8000-000000000001", hearts: 0 }),
-        card({ id: "bbbbbbbb-0000-4000-8000-000000000002", hearts: 6 }),
+        card({ id: "aaaaaaaa-0000-4000-8000-000000000001", saves: 0 }),
+        card({ id: "bbbbbbbb-0000-4000-8000-000000000002", saves: 6 }),
       ],
       { now: NOW, seed: "seed" },
     );
@@ -221,157 +214,6 @@ describe("rankCards", () => {
     const scored = scoreCard(card(), { now: NOW, seed: "s", affinity: EMPTY_AFFINITY });
     expect(scored.terms.affinity).toBe(0);
     expect(scored.score).toBeGreaterThan(0);
-  });
-});
-
-describe("style shelves", () => {
-  const styleAffinity = themes(["work"], ["shame"]);
-
-  function shelf(overrides: Partial<StyleShelfContext> = {}): StyleShelfContext {
-    return {
-      style: "stoic",
-      affinity: EMPTY_AFFINITY,
-      hearts: 0,
-      angleHearts: 0,
-      coverMatches: false,
-      ...overrides,
-    };
-  }
-
-  it("leaves For you scoring untouched when no style shelf is requested", () => {
-    const subject = card({ hearts: 4, followed: true });
-    const scored = scoreCard(subject, { now: NOW, seed: "s", affinity: styleAffinity });
-    const manual =
-      RANKING_WEIGHTS.freshness * scored.terms.freshness +
-      RANKING_WEIGHTS.resonance * scored.terms.resonance +
-      RANKING_WEIGHTS.affinity * scored.terms.affinity +
-      RANKING_WEIGHTS.followed * scored.terms.followed +
-      RANKING_WEIGHTS.secondChance * scored.terms.secondChance +
-      RANKING_WEIGHTS.jitter * scored.terms.jitter;
-    expect(scored.score).toBeCloseTo(manual, 8);
-    expect(scored.terms.affinity).toBeCloseTo(affinityTerm(subject, styleAffinity), 8);
-    expect(scored.terms.jitter).toBe(jitterTerm(subject.id, "s"));
-  });
-
-  it("falls back to general taste when this style has no hearts", () => {
-    const subject = card();
-    expect(styleAffinityConfidence(0)).toBe(0);
-    expect(blendedAffinityTerm(subject, styleAffinity, EMPTY_AFFINITY, 0)).toBeCloseTo(
-      affinityTerm(subject, styleAffinity),
-      8,
-    );
-  });
-
-  it("lets confidence grow without a single heart taking over", () => {
-    const subject = card({ category: "work", emotions: ["shame", "fear"] });
-    const specific = themes(["work"], ["shame", "fear"]);
-    expect(styleAffinityConfidence(1)).toBeCloseTo(1 / STYLE_AFFINITY_FULL_HEARTS, 8);
-    expect(blendedAffinityTerm(subject, EMPTY_AFFINITY, specific, 1)).toBeCloseTo(0.2, 8);
-    expect(blendedAffinityTerm(subject, EMPTY_AFFINITY, specific, 5)).toBeCloseTo(1, 8);
-    expect(blendedAffinityTerm(subject, EMPTY_AFFINITY, specific, 40)).toBeCloseTo(1, 8);
-
-    const oneHeart = scoreCard(subject, {
-      now: NOW,
-      seed: "s",
-      affinity: EMPTY_AFFINITY,
-      style: shelf({ affinity: specific, hearts: 1 }),
-    });
-    const untouched = scoreCard(subject, {
-      now: NOW,
-      seed: "s",
-      affinity: EMPTY_AFFINITY,
-      style: shelf(),
-    });
-    expect(oneHeart.score - untouched.score).toBeLessThan(RANKING_WEIGHTS.affinity);
-  });
-
-  it("ranks a hearted angle above an otherwise equal card, and saturates", () => {
-    const plain = card({ id: "aaaaaaaa-0000-4000-8000-000000000001", angleHearts: 0 });
-    const loved = card({ id: "bbbbbbbb-0000-4000-8000-000000000002", angleHearts: 6 });
-    const ranked = rankCards([plain, loved], {
-      now: NOW,
-      seed: "seed",
-      style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
-    });
-    expect(ranked[0]?.id).toBe(loved.id);
-
-    expect(resonanceTerm(card({ hearts: 5_000 }))).toBe(resonanceTerm(card({ hearts: 10 })));
-    expect(resonanceTerm(card({ hearts: 10 }))).toBeGreaterThan(resonanceTerm(card({ hearts: 6 })));
-    expect(STYLE_RANKING_WEIGHTS.styleResonance).toBeLessThan(RANKING_WEIGHTS.resonance);
-    expect(STYLE_RANKING_WEIGHTS.cover).toBeLessThan(RANKING_WEIGHTS.jitter);
-  });
-
-  it("is deterministic per style and does not collapse two shelves into one order", () => {
-    const pool = Array.from({ length: 8 }, (_, index) =>
-      card({
-        id: `aaaaaaaa-0000-4000-8000-0000000000${String(index).padStart(2, "0")}`,
-        createdAt: hoursAgo(1),
-      }),
-    );
-    const stoic = rankCards(pool, {
-      now: NOW,
-      seed: "shared-seed",
-      style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
-    }).map((item) => item.id);
-    const witty = rankCards(pool, {
-      now: NOW,
-      seed: "shared-seed",
-      style: { style: "witty", affinity: EMPTY_AFFINITY, hearts: 0 },
-    }).map((item) => item.id);
-    expect(
-      rankCards(pool, {
-        now: NOW,
-        seed: "shared-seed",
-        style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
-      }).map((item) => item.id),
-    ).toEqual(stoic);
-    expect(witty).not.toEqual(stoic);
-  });
-
-  it("gives a style shelf a different head from For you when that angle is the strong one", () => {
-    const stoicId = "aaaaaaaa-0000-4000-8000-000000000001";
-    const wittyId = "bbbbbbbb-0000-4000-8000-000000000002";
-    const pool = [
-      card({ id: stoicId, coverStyle: "stoic", createdAt: hoursAgo(6) }),
-      card({ id: wittyId, coverStyle: "witty", createdAt: hoursAgo(1) }),
-    ];
-    const all = rankCards(pool, { now: NOW, seed: "seed" }).map((item) => item.id);
-    const stoic = rankCards(
-      pool.map((item) => ({ ...item, angleHearts: item.id === stoicId ? 8 : 0 })),
-      {
-        now: NOW,
-        seed: "seed",
-        style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0 },
-      },
-    );
-    const witty = rankCards(
-      pool.map((item) => ({ ...item, angleHearts: item.id === wittyId ? 8 : 0 })),
-      {
-        now: NOW,
-        seed: "seed",
-        style: { style: "witty", affinity: EMPTY_AFFINITY, hearts: 0 },
-      },
-    );
-    expect(stoic[0]?.id).toBe(stoicId);
-    expect(witty[0]?.id).toBe(wittyId);
-    expect(stoic.map((item) => item.id)).not.toEqual(witty.map((item) => item.id));
-    expect(all).not.toEqual(stoic.map((item) => item.id));
-  });
-
-  it("breaks an equal score on id, highest id first", () => {
-    const lower = scoreCard(card({ id: "aaaaaaaa-0000-4000-8000-000000000001" }), {
-      now: NOW,
-      seed: "s",
-    });
-    const higher = scoreCard(card({ id: "bbbbbbbb-0000-4000-8000-000000000002" }), {
-      now: NOW,
-      seed: "s",
-    });
-    const tied = [
-      { ...lower, score: 1 },
-      { ...higher, score: 1 },
-    ];
-    expect([...tied].sort(compareRanked).map((item) => item.id)).toEqual([higher.id, lower.id]);
   });
 });
 
@@ -503,7 +345,7 @@ describe("openingStyle", () => {
     expect(pick()).toBe(pick());
   });
 
-  it("leans toward the hearted angle without flattening the mix", () => {
+  it("leans toward the saved angle without flattening the mix", () => {
     const cards = Array.from({ length: 400 }, (_, index) => `card-${index}`);
     const preferredCount = cards.filter(
       (cardId) =>
@@ -532,7 +374,7 @@ describe("openingStyle", () => {
 
 describe("feed session cursor", () => {
   it("round-trips", () => {
-    const session = { seed: "abcdefgh", startedAt: new Date("2026-09-28T09:00:00.000Z"), offset: 48 };
+    const session = { seed: "abcdefgh", startedAt: new Date("2026-09-28T09:00:00.000Z") };
     expect(decodeFeedSession(encodeFeedSession(session))).toEqual(session);
   });
 
@@ -541,12 +383,11 @@ describe("feed session cursor", () => {
     expect(decodeFeedSession("")).toBeNull();
     // A chronological keyset must not decode as a session, or paging would silently swap mode.
     expect(decodeFeedSession("2026-09-10T12:00:00.000Z|22222222-2222-4222-8222-222222222222")).toBeNull();
+    // The old three-part feed cursor is not a stack session.
     expect(
-      decodeFeedSession(
-        encodeFeedSession({ seed: "abcdefgh", startedAt: new Date("2026-09-28T09:00:00.000Z"), offset: -1 }),
-      ),
+      decodeFeedSession(Buffer.from("abcdefgh|2026-09-28T09:00:00.000Z|48", "utf8").toString("base64url")),
     ).toBeNull();
-    expect(decodeFeedSession(Buffer.from("short|nope|0", "utf8").toString("base64url"))).toBeNull();
+    expect(decodeFeedSession(Buffer.from("short|nope", "utf8").toString("base64url"))).toBeNull();
   });
 });
 
@@ -599,18 +440,18 @@ describe("buildAffinity", () => {
     expect(buildAffinity(flat, NOW).categories.size).toBeGreaterThan(0);
   });
 
-  it("lets a heart outweigh something the viewer merely wrote", () => {
+  it("lets a save outweigh something the viewer merely wrote", () => {
     const affinity = buildAffinity(
       [
         signal({ category: "work", emotions: [] }),
-        signal({ category: "grief_loss", emotions: [], source: "hearted" }),
+        signal({ category: "grief_loss", emotions: [], source: "saved" }),
       ],
       NOW,
     );
     expect(affinity.categories.get("grief_loss") ?? 0).toBeGreaterThan(
       affinity.categories.get("work") ?? 0,
     );
-    expect(AFFINITY_CONFIG.heartWeight).toBeGreaterThan(AFFINITY_CONFIG.authoredWeight);
+    expect(AFFINITY_CONFIG.savedWeight).toBeGreaterThan(AFFINITY_CONFIG.authoredWeight);
   });
 
   it("counts recent activity above old, with a half-life and a floor", () => {
@@ -784,7 +625,7 @@ describe("spreadPage with a theme mix", () => {
     );
   });
 
-  it("lets the viewer's own theme run a beat longer than other themes", () => {
+  it("never runs more than two of one life area, the viewer's own included", () => {
     const longestRun = (items: readonly SpreadableCard[]): number => {
       let run = 1;
       let longest = 1;
@@ -816,8 +657,7 @@ describe("spreadPage with a theme mix", () => {
         }),
       ),
     ];
-    expect(SPREAD_LIMITS.coreRun).toBeGreaterThan(SPREAD_LIMITS.run);
-    expect(longestRun(spreadPage(pool("core"), 12))).toBe(SPREAD_LIMITS.coreRun);
+    expect(longestRun(spreadPage(pool("core"), 12))).toBe(SPREAD_LIMITS.run);
     expect(longestRun(spreadPage(pool("explore"), 12))).toBe(SPREAD_LIMITS.run);
   });
 
@@ -831,291 +671,6 @@ describe("spreadPage with a theme mix", () => {
     expect(first).toHaveLength(pool.length);
     expect(new Set(first.map((item) => item.id)).size).toBe(pool.length);
     expect(spreadRanked(pool, 24, { mix }).map((item) => item.id)).toEqual(first.map((item) => item.id));
-  });
-});
-
-describe("primary tab", () => {
-  const VIEWER = "viewer-1";
-  const coldTabs: StyleTabs = {
-    stoic: { affinity: EMPTY_AFFINITY, hearts: 0 },
-    hopeful: { affinity: EMPTY_AFFINITY, hearts: 0 },
-    witty: { affinity: EMPTY_AFFINITY, hearts: 0 },
-    tough: { affinity: EMPTY_AFFINITY, hearts: 0 },
-    tender: { affinity: EMPTY_AFFINITY, hearts: 0 },
-    values: { affinity: EMPTY_AFFINITY, hearts: 0 },
-  };
-
-  function catalog(count: number): RankableCard[] {
-    const categories = ["work", "money", "health", "family", "identity", "future", "grief_loss"] as const;
-    return Array.from({ length: count }, (_, index) =>
-      card({
-        id: `cccccccc-0000-4000-8000-${String(index).padStart(12, "0")}`,
-        authorId: `author-${index}`,
-        category: categories[index % categories.length] ?? "work",
-        createdAt: hoursAgo(index * 6),
-        // A skewed cover habit must not decide the split.
-        coverStyle: "stoic",
-      }),
-    );
-  }
-
-  function firstPage(
-    pool: readonly RankableCard[],
-    style: Style,
-    tabs: StyleTabs = coldTabs,
-    general: ViewerAffinity = EMPTY_AFFINITY,
-    viewerId = VIEWER,
-  ): string[] {
-    const primaryByCard = assignPrimaryStyles(pool, { viewerId, general, tabs });
-    const ranked = rankCards(pool, {
-      now: NOW,
-      seed: `visit-${style}`,
-      affinity: general,
-      style: { style, affinity: tabs[style].affinity, hearts: tabs[style].hearts, primaryByCard },
-    });
-    const byId = new Map(pool.map((item) => [item.id, item]));
-    const spreadInput = ranked.flatMap((scored, index) => {
-      const source = byId.get(scored.id);
-      return source
-        ? [
-            spreadable({
-              id: source.id,
-              authorId: source.authorId,
-              category: source.category,
-              emotions: source.emotions,
-              spotlightStyle: STYLES[index % STYLES.length] ?? "stoic",
-            }),
-          ]
-        : [];
-    });
-    return spreadRanked(spreadInput, 24)
-      .slice(0, 24)
-      .map((item) => item.id);
-  }
-
-  it("gives a cold viewer four mostly different first pages", () => {
-    const pool = catalog(240);
-    const pages = STYLES.map((style) => firstPage(pool, style));
-    for (let left = 0; left < pages.length; left += 1) {
-      for (let right = left + 1; right < pages.length; right += 1) {
-        const shared = pages[left]?.filter((id) => pages[right]?.includes(id)).length ?? 0;
-        expect(shared / 24).toBeLessThanOrEqual(0.1);
-      }
-    }
-  });
-
-  it("keeps the tabs apart for a viewer with hearts, and pulls a tab's own theme to it", () => {
-    const pool = catalog(240);
-    // The viewer is mostly in Work overall, but hearts Witty on grief.
-    const general = themes(["work"], ["shame"]);
-    const tabs: StyleTabs = {
-      ...coldTabs,
-      witty: { affinity: themes(["grief_loss"], ["sadness"]), hearts: 6 },
-    };
-    const pages = STYLES.map((style) => firstPage(pool, style, tabs, general));
-    for (let left = 0; left < pages.length; left += 1) {
-      for (let right = left + 1; right < pages.length; right += 1) {
-        const shared = pages[left]?.filter((id) => pages[right]?.includes(id)).length ?? 0;
-        expect(shared / 24).toBeLessThanOrEqual(0.1);
-      }
-    }
-    const byId = new Map(pool.map((item) => [item.id, item]));
-    const wittyPage = pages[STYLES.indexOf("witty")] ?? [];
-    const grief = wittyPage.filter((id) => byId.get(id)?.category === "grief_loss").length;
-    expect(grief).toBeGreaterThan(wittyPage.length / 2);
-  });
-
-  it("does not let one tab with hearts claim every card that matches the viewer", () => {
-    const pool = catalog(400);
-    const general = themes(["work"], ["shame"]);
-    // Hearts on Witty are the same taste as the general one, so they add no pull.
-    const tabs: StyleTabs = { ...coldTabs, witty: { affinity: general, hearts: 6 } };
-    const primaries = assignPrimaryStyles(pool, { viewerId: VIEWER, general, tabs });
-    const witty = [...primaries.values()].filter((style) => style === "witty").length;
-    expect(witty).toBeLessThan(400 * 0.35);
-  });
-
-  it("splits a cold catalog roughly evenly, whatever covers the authors chose", () => {
-    const pool = catalog(400);
-    const primaries = assignPrimaryStyles(pool, { viewerId: VIEWER, general: EMPTY_AFFINITY, tabs: coldTabs });
-    const counts = new Map<Style, number>();
-    for (const style of primaries.values()) {
-      counts.set(style, (counts.get(style) ?? 0) + 1);
-    }
-    const even = 400 / STYLES.length;
-    for (const style of STYLES) {
-      expect(counts.get(style) ?? 0).toBeGreaterThan(even * 0.6);
-      expect(counts.get(style) ?? 0).toBeLessThan(even * 1.4);
-    }
-  });
-
-  it("is stable for a viewer and different between viewers", () => {
-    const pool = catalog(60);
-    const options = { general: EMPTY_AFFINITY, tabs: coldTabs };
-    const one = assignPrimaryStyles(pool, { viewerId: "viewer-1", ...options });
-    expect([...assignPrimaryStyles(pool, { viewerId: "viewer-1", ...options })]).toEqual([...one]);
-    const two = assignPrimaryStyles(pool, { viewerId: "viewer-2", ...options });
-    expect([...two]).not.toEqual([...one]);
-  });
-
-  it("never assigns an angle the card does not have", () => {
-    const pool = catalog(80).map((item) => ({ ...item, availableStyles: ["witty"] as const }));
-    const primaries = assignPrimaryStyles(pool, { viewerId: VIEWER, general: EMPTY_AFFINITY, tabs: coldTabs });
-    expect(new Set(primaries.values())).toEqual(new Set(["witty"]));
-  });
-
-  it("puts a card on the tab strangers hearted it on", () => {
-    const loved = card({ id: "dddddddd-0000-4000-8000-000000000001", angleHeartsByStyle: { witty: 8 } });
-    expect(PRIMARY_TIE_WEIGHT).toBeLessThan(STYLE_RANKING_WEIGHTS.styleResonance);
-    for (const viewerId of ["viewer-1", "viewer-2", "viewer-3", "viewer-4", "viewer-5"]) {
-      const primaries = assignPrimaryStyles([loved], { viewerId, general: EMPTY_AFFINITY, tabs: coldTabs });
-      expect(primaries.get(loved.id)).toBe("witty");
-    }
-  });
-
-  it("puts a card on the tab whose hearts match its theme", () => {
-    const tabs: StyleTabs = {
-      ...coldTabs,
-      tough: { affinity: themes(["money"], ["envy"]), hearts: 5 },
-    };
-    const subject = card({ id: "dddddddd-0000-4000-8000-000000000002", category: "money", emotions: ["envy"] });
-    for (const viewerId of ["viewer-1", "viewer-2", "viewer-3", "viewer-4", "viewer-5"]) {
-      expect(
-        assignPrimaryStyles([subject], { viewerId, general: EMPTY_AFFINITY, tabs }).get(subject.id),
-      ).toBe("tough");
-    }
-  });
-
-  it("penalises an off-tab card without hiding it, so a thin tab still fills", () => {
-    // Old enough to have settled onto a tab.
-    const home = card({ id: "eeeeeeee-0000-4000-8000-000000000001", createdAt: hoursAgo(24) });
-    const away = card({ id: "eeeeeeee-0000-4000-8000-000000000002", createdAt: hoursAgo(24) });
-    const primaryByCard = new Map<string, Style>([
-      [home.id, "stoic"],
-      [away.id, "witty"],
-    ]);
-    const ranked = rankCards([away, home], {
-      now: NOW,
-      seed: "s",
-      style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0, primaryByCard },
-    });
-    expect(ranked.map((item) => item.id)).toEqual([home.id, away.id]);
-    expect(ranked).toHaveLength(2);
-    const gap = (ranked[0]?.score ?? 0) - (ranked[1]?.score ?? 0);
-    expect(gap).toBeGreaterThan(STYLE_RANKING_WEIGHTS.offTab - RANKING_WEIGHTS.jitter);
-
-    // A much stronger off-tab card can still lead: a penalty, not a wall.
-    const strongAway = { ...away, hearts: 10, createdAt: hoursAgo(1) };
-    const weakHome = { ...home, createdAt: hoursAgo(24 * 20) };
-    expect(
-      rankCards([weakHome, strongAway], {
-        now: NOW,
-        seed: "s",
-        style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0, primaryByCard },
-      })[0]?.id,
-    ).toBe(strongAway.id);
-  });
-
-  it("fades the off-tab penalty in with age, so a fresh post shows on every tab", () => {
-    expect(offTabFade({ createdAt: hoursAgo(0.5) }, NOW)).toBe(0);
-    expect(offTabFade({ createdAt: hoursAgo(1) }, NOW)).toBe(0);
-    expect(offTabFade({ createdAt: hoursAgo(3.5) }, NOW)).toBeCloseTo(0.5, 5);
-    expect(offTabFade({ createdAt: hoursAgo(6) }, NOW)).toBe(1);
-    expect(offTabFade({ createdAt: hoursAgo(200) }, NOW)).toBe(1);
-
-    const primaryByCard = new Map<string, Style>([["ffffffff-0000-4000-8000-000000000001", "witty"]]);
-    const justPosted = card({ id: "ffffffff-0000-4000-8000-000000000001", createdAt: hoursAgo(1) });
-    const onStoic = scoreCard(justPosted, {
-      now: NOW,
-      seed: "s",
-      style: {
-        style: "stoic",
-        affinity: EMPTY_AFFINITY,
-        hearts: 0,
-        angleHearts: 0,
-        coverMatches: false,
-        offTab: primaryByCard.get(justPosted.id) !== "stoic",
-      },
-    });
-    const noPenalty = scoreCard(justPosted, {
-      now: NOW,
-      seed: "s",
-      style: { style: "stoic", affinity: EMPTY_AFFINITY, hearts: 0, angleHearts: 0, coverMatches: false },
-    });
-    expect(onStoic.score).toBeCloseTo(noPenalty.score, 8);
-  });
-
-  it("leaves For you untouched by tab assignment", () => {
-    const subject = card();
-    const plain = scoreCard(subject, { now: NOW, seed: "s" });
-    const ranked = rankCards([subject], { now: NOW, seed: "s" });
-    expect(ranked[0]?.score).toBe(plain.score);
-  });
-});
-
-describe("isKeptOnShelf", () => {
-  it("hides on For you only once every angle is kept, and on a tab as soon as its own is", () => {
-    const kept = new Set<Style>(["hopeful"]);
-    expect(isKeptOnShelf(kept, undefined)).toBe(false);
-    expect(isPartlyKept(kept)).toBe(true);
-    expect(isKeptOnShelf(kept, "hopeful")).toBe(true);
-    expect(isKeptOnShelf(kept, "stoic")).toBe(false);
-
-    expect(isKeptOnShelf(new Set<Style>(STYLES), undefined)).toBe(true);
-    expect(isPartlyKept(new Set<Style>(STYLES))).toBe(false);
-  });
-
-  it("judges a card by the angles it actually has", () => {
-    const kept = new Set<Style>(["stoic", "hopeful"]);
-    expect(isKeptOnShelf(kept, undefined, ["stoic", "hopeful"])).toBe(true);
-    expect(isKeptOnShelf(kept, undefined, ["stoic", "hopeful", "witty"])).toBe(false);
-    expect(isPartlyKept(kept, ["stoic", "hopeful", "witty"])).toBe(true);
-  });
-
-  it("hides nothing for a card the viewer has not kept", () => {
-    expect(isKeptOnShelf(undefined, undefined)).toBe(false);
-    expect(isKeptOnShelf(new Set<Style>(), "stoic")).toBe(false);
-    expect(isPartlyKept(undefined)).toBe(false);
-  });
-});
-
-describe("own cards", () => {
-  const confident = themes(["work"], ["shame"]);
-
-  it("get no theme match or follow, so they compete as a stranger's card would", () => {
-    const mine = scoreCard(card({ own: true, followed: true }), { now: NOW, seed: "s", affinity: confident });
-    const stranger = scoreCard(card({ id: "33333333-3333-4333-8333-333333333333" }), {
-      now: NOW,
-      seed: "s",
-      affinity: EMPTY_AFFINITY,
-    });
-    expect(mine.terms.affinity).toBe(0);
-    expect(mine.terms.followed).toBe(0);
-    expect(mine.terms.freshness).toBeCloseTo(stranger.terms.freshness, 8);
-  });
-
-  it("appear at most once a page, and the list ends when only own cards are left", () => {
-    const ranked = [
-      ...Array.from({ length: 6 }, (_, index) =>
-        spreadable({ id: `mine-${index}`, authorId: "me", own: true }),
-      ),
-      spreadable({ id: "theirs-0", authorId: "martina" }),
-      spreadable({ id: "theirs-1", authorId: "martina", category: "money" }),
-    ];
-    const page = spreadPage(ranked, 24);
-    expect(page.filter((item) => item.own)).toHaveLength(1);
-    expect(page.map((item) => item.id)).toEqual(expect.arrayContaining(["theirs-0", "theirs-1"]));
-
-    const whole = spreadRanked(ranked, 24);
-    expect(whole).toHaveLength(3);
-    expect(whole.filter((item) => item.own)).toHaveLength(1);
-  });
-
-  it("still shows the top one when nobody else has posted", () => {
-    const ranked = Array.from({ length: 4 }, (_, index) =>
-      spreadable({ id: `mine-${index}`, authorId: "me", own: true }),
-    );
-    expect(spreadRanked(ranked, 24).map((item) => item.id)).toEqual(["mine-0"]);
   });
 });
 
@@ -1212,54 +767,151 @@ describe("follow mix", () => {
   });
 });
 
-describe("partly kept cards", () => {
-  it("drop by the partly-kept penalty on For you, and not on a style shelf", () => {
-    const plain = scoreCard(card(), { now: NOW, seed: "s" });
-    const partly = scoreCard(card({ partlyKept: true }), { now: NOW, seed: "s" });
-    expect(partly.score).toBeCloseTo(plain.score + RANKING_WEIGHTS.partlyKept, 8);
+describe("passes", () => {
+  it("take a little from the passer's themes, never below zero, and add no confidence", () => {
+    const saved = signal({ category: "work", emotions: ["fear"], source: "saved" });
+    const base = buildAffinity([saved, signal({ category: "money", emotions: [], source: "authored" })], NOW);
+    const withPass = buildAffinity(
+      [
+        saved,
+        signal({ category: "money", emotions: [], source: "authored" }),
+        signal({ category: "money", emotions: [], source: "passed" }),
+      ],
+      NOW,
+    );
+    expect(withPass.categories.get("money") ?? 0).toBeLessThan(base.categories.get("money") ?? 0);
+    expect(withPass.confidence).toBe(base.confidence);
 
-    const shelf: StyleShelfContext = {
-      style: "stoic",
-      affinity: EMPTY_AFFINITY,
-      hearts: 0,
-      angleHearts: 0,
-      coverMatches: false,
-    };
-    const onShelf = scoreCard(card({ partlyKept: true }), { now: NOW, seed: "s", style: shelf });
-    const plainShelf = scoreCard(card(), { now: NOW, seed: "s", style: shelf });
-    expect(onShelf.score).toBeCloseTo(plainShelf.score, 8);
+    const onlyPasses = buildAffinity(
+      Array.from({ length: 10 }, () => signal({ category: "health", emotions: ["sadness"], source: "passed" })),
+      NOW,
+    );
+    expect(onlyPasses).toEqual(EMPTY_AFFINITY);
   });
 
-  it("open on an answer the viewer has not kept", () => {
-    const face = openingStyle({
-      cardId: "c",
-      viewerId: "v",
-      cover: "witty",
-      available: STYLES,
-      preferred: "witty",
-      kept: new Set<Style>(["witty"]),
-    });
-    expect(face).toBe("tough");
+  it("are not a ranking input for anyone else: resonance reads saves only", () => {
+    expect(Object.keys(card())).not.toContain("passes");
+    expect(resonanceTerm(card({ saves: 0 }))).toBe(0);
+  });
+});
+
+describe("returning cards", () => {
+  it("wait at least twelve hours", () => {
+    expect(RETURN_AFTER_HOURS).toBeGreaterThanOrEqual(12);
+  });
+
+  it("rank below an otherwise equal card", () => {
+    const fresh = scoreCard(card({ id: "a" }), { now: NOW, seed: "s" });
+    const back = scoreCard(card({ id: "a", returning: true }), { now: NOW, seed: "s" });
+    expect(back.score).toBeLessThan(fresh.score);
+    expect(fresh.score - back.score).toBeCloseTo(-RANKING_WEIGHTS.returning, 5);
+  });
+
+  it("fill at most one slot in five, and a page ends short rather than fill with them", () => {
+    expect(returningCap(12)).toBe(2);
+    expect(returningCap(3)).toBe(1);
+    const ranked = [
+      ...Array.from({ length: 10 }, (_, index) =>
+        spreadable({
+          id: `back-${index}`,
+          authorId: `back-author-${index}`,
+          category: CATEGORY_CYCLE[index % 4],
+          emotions: [EMOTION_CYCLE[index % 4] ?? "shame"],
+          returning: true,
+        }),
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        spreadable({
+          id: `new-${index}`,
+          authorId: `new-author-${index}`,
+          category: CATEGORY_CYCLE[(index + 1) % 4],
+          emotions: [EMOTION_CYCLE[(index + 2) % 4] ?? "fear"],
+        }),
+      ),
+    ];
+    const page = spreadPage(ranked, 12);
+    expect(page.filter((item) => item.returning)).toHaveLength(returningCap(12));
+    expect(page).toHaveLength(4 + returningCap(12));
+    // Across pages they all still come, a couple at a time.
+    expect(spreadRanked(ranked, 12)).toHaveLength(ranked.length);
+  });
+});
+
+describe("emotional pacing", () => {
+  const heavyPool = (): SpreadableCard[] =>
+    Array.from({ length: 12 }, (_, index) =>
+      spreadable({
+        id: `card-${index}`,
+        authorId: `author-${index}`,
+        category: CATEGORY_CYCLE[index % 4],
+        emotions: [EMOTION_CYCLE[index % 4] ?? "shame"],
+        intensity: index < 6 ? HEAVY_INTENSITY : 2,
+        heavy: index < 6,
+      }),
+    );
+
+  it("never puts two heavy cards side by side when another order exists", () => {
+    const page = spreadPage(heavyPool(), 12);
+    expect(page).toHaveLength(12);
+    for (let index = 1; index < page.length; index += 1) {
+      expect(page[index - 1]?.heavy && page[index]?.heavy).toBe(false);
+    }
+  });
+
+  it("does not spend the light cards first when ranking puts them on top", () => {
+    const pool = heavyPool();
+    const lightFirst = [...pool.filter((item) => !item.heavy), ...pool.filter((item) => item.heavy)];
+    const page = spreadPage(lightFirst, 12);
+    expect(page).toHaveLength(12);
+    for (let index = 1; index < page.length; index += 1) {
+      expect(page[index - 1]?.heavy && page[index]?.heavy).toBe(false);
+    }
+  });
+
+  it("carries across the page edge", () => {
+    const page = spreadPage(heavyPool(), 4, { afterHeavy: true });
+    expect(page[0]?.heavy).toBe(false);
+    const all = spreadRanked(heavyPool(), 4);
+    for (let index = 1; index < all.length; index += 1) {
+      expect(all[index - 1]?.heavy && all[index]?.heavy).toBe(false);
+    }
+  });
+
+  it("still shows heavy cards back to back when nothing light is left", () => {
+    const page = spreadPage(
+      heavyPool().filter((item) => item.heavy),
+      12,
+    );
+    expect(page).toHaveLength(6);
+  });
+});
+
+describe("openingStyle for a returning card", () => {
+  const available: Style[] = ["stoic", "hopeful", "witty", "tender"];
+
+  it("opens on the first angle not yet seen, in the cook's order, over any taste", () => {
     expect(
       openingStyle({
-        cardId: "c",
+        cardId: "a",
         viewerId: "v",
-        cover: "witty",
-        available: STYLES,
+        cover: "stoic",
+        available,
         preferred: "stoic",
-        kept: new Set<Style>(["witty"]),
+        checked: new Set<Style>(["stoic", "witty"]),
+      }),
+    ).toBe("hopeful");
+  });
+
+  it("falls back to the usual face when every angle was seen", () => {
+    expect(
+      openingStyle({
+        cardId: "a",
+        viewerId: "v",
+        cover: "stoic",
+        available,
+        preferred: null,
+        checked: new Set<Style>(available),
       }),
     ).toBe("stoic");
-    // Nothing unkept left: the cover stands.
-    expect(
-      openingStyle({
-        cardId: "c",
-        viewerId: "v",
-        cover: "witty",
-        available: ["witty"],
-        preferred: null,
-        kept: new Set<Style>(["witty"]),
-      }),
-    ).toBe("witty");
   });
 });

@@ -6,7 +6,7 @@
  *   pnpm db:seed-community
  *
  * Re-running deletes the seeded community (users whose email is seed-…@angles.invalid, with
- * their cards and hearts), then inserts the fixture. Real local accounts are left alone.
+ * their cards and decisions), then inserts the fixture. Real local accounts are left alone.
  * Does not call the live LLM. JM's library is left in place.
  */
 import { readFileSync } from "node:fs";
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
 
   const db = getDb();
   // Only the seeded community goes: fixture authors and seeded readers. A real local
-  // account (a phone sign-in, the demo or simulator users) keeps its cards and hearts.
+  // account (a phone sign-in, the demo or simulator users) keeps its cards and decisions.
   await db.delete(users).where(like(users.email, "seed-%@angles.invalid"));
 
   await db.insert(users).values(

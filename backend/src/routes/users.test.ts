@@ -28,7 +28,7 @@ vi.mock("../db/users.js", () => ({
   updateOwnerIdentity: vi.fn(),
 }));
 
-vi.mock("../db/feed.js", () => ({
+vi.mock("../db/stack.js", () => ({
   listFeed: vi.fn(),
   listPublicCardsForUser: vi.fn(),
   saveFeedAngle: vi.fn(),
@@ -53,7 +53,7 @@ vi.mock("../db/communitySafety.js", () => ({
 
 const { createApp } = await import("../app.js");
 const { blockUser, unblockUser, usersAreBlocked } = await import("../db/communitySafety.js");
-const { listPublicCardsForUser } = await import("../db/feed.js");
+const { listPublicCardsForUser } = await import("../db/stack.js");
 const { followUser, followedAuthorIds, unfollowUser } = await import("../db/follows.js");
 const { getUserById } = await import("../db/users.js");
 
@@ -79,6 +79,7 @@ function userRow(overrides: { id?: string; initials?: string; avatarKey?: string
     termsAcceptedAt: null as Date | null,
     publishingSuspendedAt: null as Date | null,
     notifyFollows: true,
+    kind: "person" as const,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),
   };
@@ -98,9 +99,11 @@ function publicCard(overrides: Partial<StoredCard> = {}): StoredCard {
     safety: "none",
     skippedStyles: [],
     matching: { category: "work", tags: ["waiting"], intensityBand: "high" },
-    results: STYLES.map((style) => ({ style, reframe: `A ${style} take.`, isHearted: false })),
+    results: STYLES.map((style) => ({ style, reframe: `A ${style} take.` })),
     model: "mistral-small-latest",
     spotlightStyle: "hopeful",
+    openingStyle: "hopeful",
+    isHouse: false,
     isPublic: true,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: false,
@@ -172,26 +175,27 @@ describe("GET /users/:id/cards", () => {
     });
   });
 
-  it("passes owner hearts and viewer hearts through unchanged", async () => {
+  it("passes owner save counts and the viewer's decision through unchanged", async () => {
     const ownerCard = publicCard({
       id: "33333333-3333-4333-8333-333333333333",
       isOwner: true,
       author: { id: DEV_USER_ID, initials: "JM", following: false },
+      saveCount: 1,
       results: STYLES.map((style) => ({
         style,
         reframe: `A ${style} take.`,
-        isHearted: style === "stoic",
-        ...(style === "stoic" ? { heartedAt: "2026-09-10T12:00:00.000Z" } : {}),
+        ...(style === "stoic" ? { saveCount: 1 } : {}),
       })),
     });
     const viewerCard = publicCard({
       isOwner: false,
-      results: STYLES.map((style) => ({
-        style,
-        reframe: `A ${style} take.`,
-        isHearted: style === "hopeful",
-        ...(style === "hopeful" ? { heartedAt: "2026-09-11T12:00:00.000Z" } : {}),
-      })),
+      decision: {
+        kind: "save",
+        style: "hopeful",
+        checkedStyles: ["hopeful"],
+        passes: 0,
+        decidedAt: "2026-09-11T12:00:00.000Z",
+      },
     });
     vi.mocked(getUserById).mockResolvedValue(userRow({ id: DEV_USER_ID, initials: "JM" }));
     vi.mocked(listPublicCardsForUser).mockResolvedValue([ownerCard, viewerCard]);

@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { OFF_TAB_FADE_HOURS } from "../lib/feedRanking.js";
 import { LEGACY_STYLES, runWithStyleSet } from "../lib/styleSet.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -92,12 +91,9 @@ const {
   startMeterOperation,
 } = await import("./metering.js");
 const { openReplay, parseReplayKey, sealReplay } = await import("../lib/reframeReplay.js");
-const { clearFeedSaves, listFeed, listRankedFeed, saveFeedAngle } = await import("./feed.js");
+const { listPublicCardsForUser, listStack } = await import("./stack.js");
+const { clearDecision, writeDecision } = await import("./decisions.js");
 const { followUser, unfollowUser } = await import("./follows.js");
-
-async function rankedCards(query: Parameters<typeof listRankedFeed>[0]): Promise<StoredCard[]> {
-  return (await listRankedFeed(query)).cards;
-}
 const {
   deliverFollowPush,
   listFollowNotifications,
@@ -115,6 +111,7 @@ const {
 } = await import("./reportReview.js");
 const { createApp } = await import("../app.js");
 const {
+  cardDecisions,
   cardReframes,
   cardReports,
   cards,
@@ -123,7 +120,6 @@ const {
   followNotifications,
   follows,
   meterOperations,
-  savedAngles,
   subscriptionEntitlements,
   subscriptionEvents,
   tags,
@@ -218,7 +214,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     await getSql()`
       TRUNCATE llm_call_usage, credit_adjustments, meter_operations, daily_usage, taste_usage,
         usage_periods, subscription_events, subscription_entitlements, user_blocks, card_reports,
-        follow_notifications, device_tokens, follows, saved_angles, card_reframes, card_tags, cards,
+        follow_notifications, device_tokens, follows, card_decisions, card_reframes, card_tags, cards,
         tags, category_proposals
         RESTART IDENTITY CASCADE
     `;
@@ -1276,7 +1272,8 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(stored.isPublic).toBe(false);
     expect(stored.isOwner).toBe(true);
     expect(stored.author).toEqual({ id: DEV_USER_ID, initials: "JM", following: false });
-    expect(stored.results.every((item) => item.isHearted === false)).toBe(true);
+    expect(stored.openingStyle).toBe("stoic");
+    expect(stored.isHouse).toBe(false);
 
     const listed = await listCards({ limit: 50 });
     expect(listed).toHaveLength(1);
@@ -1401,41 +1398,27 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(hopeful).toHaveLength(2);
   });
 
-  it("patches per-style heart and public independently", async () => {
+  it("patches public on its own", async () => {
     const stored = await createCard(baseInput);
-    const liked = await patchCard(stored.id, { isHearted: true, style: "stoic" });
-    expect(liked.ok).toBe(true);
-    if (!liked.ok) {
-      return;
-    }
-    expect(liked.card.results.find((item) => item.style === "stoic")?.isHearted).toBe(true);
-    expect(liked.card.results.find((item) => item.style === "hopeful")?.isHearted).toBe(false);
-
     const published = await patchCard(stored.id, { isPublic: true });
     expect(published.ok).toBe(true);
     if (!published.ok) {
       return;
     }
     expect(published.card.isPublic).toBe(true);
-    expect(published.card.results.find((item) => item.style === "stoic")?.isHearted).toBe(true);
-
-    const hearts = await listCards({ limit: 50, hearted: true });
-    expect(hearts.map((card) => card.id)).toEqual([stored.id]);
-
-    const slim = await createCard({
-      ...baseInput,
-      thought: "I keep waiting for the offer that is not coming.",
-      results: [
-        { style: "stoic", reframe: "A stoic take on waiting." },
-        { style: "hopeful", reframe: "A hopeful take on waiting." },
-      ],
-      spotlightStyle: "hopeful",
-    });
-    const missing = await patchCard(slim.id, { isHearted: true, style: "witty" });
-    expect(missing).toEqual({ ok: false, reason: "unknown_style" });
+    const hidden = await patchCard(stored.id, { isPublic: false });
+    expect(hidden.ok && hidden.card.isPublic).toBe(false);
   });
 
   const OTHER_USER_ID = "00000000-0000-4000-8000-000000000099";
+  const HOUSE_USER_ID = "00000000-0000-4000-8000-0000000000aa";
+
+  async function ensureUser(id: string, kind: "person" | "house" = "person"): Promise<void> {
+    await getDb()
+      .insert(users)
+      .values({ id, initials: kind === "house" ? "A" : "AL", name: "AL", email: `seed-${id}@angles.invalid`, kind })
+      .onConflictDoNothing();
+  }
 
   async function insertOtherCard(input: {
     thought: string;
@@ -1444,18 +1427,11 @@ describe.skipIf(!testUrl)("cards integration", () => {
     emotions?: Emotion[];
     createdAt?: Date;
     authorId?: string;
+    intensity?: number;
   }): Promise<string> {
     const db = getDb();
     const authorId = input.authorId ?? OTHER_USER_ID;
-    await db
-      .insert(users)
-      .values({
-        id: authorId,
-        initials: "AL",
-        name: "AL",
-        email: `seed-${authorId}@angles.invalid`,
-      })
-      .onConflictDoNothing();
+    await ensureUser(authorId, authorId === HOUSE_USER_ID ? "house" : "person");
     const [inserted] = await db
       .insert(cards)
       .values({
@@ -1463,7 +1439,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         thoughtEn: input.thought,
         inputLanguage: "en",
         category: input.category ?? "work",
-        intensity: 3,
+        intensity: input.intensity ?? 3,
         intensityBand: "mid",
         timeframe: "ongoing",
         safety: "none",
@@ -1485,97 +1461,169 @@ describe.skipIf(!testUrl)("cards integration", () => {
         style,
         reframe: `A ${style} take that stays with the original sting.`,
         position,
-        isHearted: style === "stoic",
       })),
     );
     return cardId;
   }
 
-  it("includes the viewer's public card and excludes private cards", async () => {
-    const minePublic = await createCard({
-      ...baseInput,
-      thought: "I posted this and I want it on my own Home.",
-      isPublic: true,
-    });
-    const minePrivate = await createCard({
-      ...baseInput,
-      thought: "I keep this one private because it is still too raw to share.",
-      isPublic: false,
-    });
+  /** Someone else's save, written straight to the table: the fixture is not the viewer. */
+  async function strangerSaves(cardId: string, userId: string, style: Style = "stoic"): Promise<void> {
+    await ensureUser(userId);
     await getDb()
-      .update(cards)
-      .set({ createdAt: new Date("2026-09-11T12:00:00.000Z") })
-      .where(eq(cards.id, minePublic.id));
-    await getDb()
-      .update(cards)
-      .set({ createdAt: new Date("2026-09-14T12:00:00.000Z") })
-      .where(eq(cards.id, minePrivate.id));
+      .insert(cardDecisions)
+      .values({ userId, cardId, kind: "save", style, checkedStyles: [style], passes: 0 })
+      .onConflictDoNothing();
+  }
 
-    const publicOther = await insertOtherCard({
+  const save = (cardId: string, style: Style = "stoic") =>
+    writeDecision(cardId, { kind: "save", style, checkedStyles: [style], passes: 0 });
+  const pass = (cardId: string, checkedStyles: Style[] = ["witty"], passes = 1) =>
+    writeDecision(cardId, { kind: "pass", style: checkedStyles[0] ?? "witty", checkedStyles, passes });
+
+  it("saves a whole card on the angle on screen and lists it under Saved", async () => {
+    const theirs = await insertOtherCard({
       thought: "I keep waiting for a reply that is not coming and I feel small.",
       isPublic: true,
-      createdAt: new Date("2026-09-13T12:00:00.000Z"),
     });
-    const privateOther = await insertOtherCard({
-      thought: "Someone else's private note stays off the feed.",
-      isPublic: false,
-      createdAt: new Date("2026-09-12T12:00:00.000Z"),
-    });
+    const own = await createCard(baseInput);
 
-    const feed = await listFeed({ limit: 50 });
-    expect(feed.map((card) => card.id)).toEqual([publicOther, minePublic.id]);
-    expect(feed.map((card) => card.isOwner)).toEqual([false, true]);
-    expect(feed[0]?.author).toEqual({ id: OTHER_USER_ID, initials: "AL", following: false });
-    expect(feed[1]?.author).toEqual({ id: DEV_USER_ID, initials: "JM", following: false });
-    expect(feed.every((card) => card.isPublic)).toBe(true);
-    expect(feed.map((card) => card.id)).not.toContain(minePrivate.id);
-    expect(feed.map((card) => card.id)).not.toContain(privateOther);
-    expect(feed[0]?.results.every((item) => item.isHearted === false)).toBe(true);
+    const saved = await writeDecision(theirs, {
+      kind: "save",
+      style: "hopeful",
+      checkedStyles: ["witty"],
+      passes: 0,
+    });
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) {
+      return;
+    }
+    // The style on screen always counts as seen.
+    expect(saved.decision).toMatchObject({ kind: "save", style: "hopeful", passes: 0 });
+    expect(new Set(saved.decision.checkedStyles)).toEqual(new Set(["witty", "hopeful"]));
+
+    const savedList = await listCards({ limit: 50, saved: true });
+    expect(savedList.map((card) => card.id)).toEqual([theirs]);
+    expect(savedList[0]?.isOwner).toBe(false);
+    expect(savedList[0]?.openingStyle).toBe("hopeful");
+    expect(savedList[0]?.decision?.kind).toBe("save");
+
+    expect((await listCards({ limit: 50, saved: false })).map((card) => card.id)).toEqual([own.id]);
+    expect(new Set((await listCards({ limit: 50 })).map((card) => card.id))).toEqual(new Set([own.id, theirs]));
+
+    // Saving again is the same write, not a second row.
+    expect((await save(theirs, "hopeful")).ok).toBe(true);
+    expect(await getDb().select().from(cardDecisions)).toHaveLength(1);
   });
 
-  it("uses OR within each feed facet and AND between facets", async () => {
-    const workFear = await insertOtherCard({
-      thought: "Work keeps making me afraid I am falling behind.",
-      isPublic: true,
-      category: "work",
-      emotions: ["fear"],
-    });
-    const moneyOverwhelm = await insertOtherCard({
-      thought: "Every bill makes the month feel impossible to hold.",
-      isPublic: true,
-      category: "money",
-      emotions: ["overwhelm"],
-    });
-    await insertOtherCard({
-      thought: "I feel lonely even when my family is in the room.",
-      isPublic: true,
-      category: "family",
-      emotions: ["loneliness"],
-    });
-    const workShame = await insertOtherCard({
-      thought: "Work is going well but I still feel ashamed.",
-      isPublic: true,
-      category: "work",
-      emotions: ["shame"],
-    });
+  it("refuses decisions on your own, private, unknown-style, reported, and missing cards", async () => {
+    const own = await createCard({ ...baseInput, isPublic: true });
+    expect(await save(own.id)).toEqual({ ok: false, reason: "own_card" });
 
-    const categories = await listFeed({ limit: 50, categories: ["work", "money"] });
-    expect(new Set(categories.map((card) => card.id))).toEqual(
-      new Set([workFear, moneyOverwhelm, workShame]),
+    const priv = await insertOtherCard({ thought: "A private note stays undecidable.", isPublic: false });
+    expect(await save(priv)).toEqual({ ok: false, reason: "not_public" });
+
+    const theirs = await insertOtherCard({ thought: "A public note with four classic angles.", isPublic: true });
+    expect(await save(theirs, "tender")).toEqual({ ok: false, reason: "unknown_style" });
+    expect(
+      await writeDecision(theirs, { kind: "pass", style: "stoic", checkedStyles: ["stoic", "values"], passes: 1 }),
+    ).toEqual({ ok: false, reason: "unknown_style" });
+
+    expect(await save("00000000-0000-4000-8000-00000000dead")).toEqual({ ok: false, reason: "not_found" });
+
+    await reportCard(theirs, "other");
+    expect(await save(theirs)).toEqual({ ok: false, reason: "not_found" });
+    expect(await getDb().select().from(cardDecisions)).toHaveLength(0);
+  });
+
+  it("unsaves as a final pass, and rewinds even on a card that went private", async () => {
+    const theirs = await insertOtherCard({ thought: "A card saved and then let go.", isPublic: true });
+    expect((await save(theirs)).ok).toBe(true);
+    const unsaved = await pass(theirs, [...LEGACY_STYLES], 2);
+    expect(unsaved.ok && unsaved.decision.passes).toBe(2);
+    expect((await listCards({ limit: 50, saved: true })).map((card) => card.id)).toEqual([]);
+
+    await getDb().update(cards).set({ isPublic: false }).where(eq(cards.id, theirs));
+    expect(await clearDecision(theirs)).toEqual({ ok: true });
+    // A retried rewind is harmless.
+    expect(await clearDecision(theirs)).toEqual({ ok: true });
+    expect(await getDb().select().from(cardDecisions)).toHaveLength(0);
+    expect(await clearDecision("00000000-0000-4000-8000-00000000dead")).toEqual({ ok: false });
+  });
+
+  it("shows save counts to the author and to nobody else", async () => {
+    const mine = await createCard({ ...baseInput, isPublic: true });
+    const theirs = await insertOtherCard({
+      thought: "Someone else's public card whose numbers stay their own.",
+      isPublic: true,
+    });
+    await strangerSaves(mine.id, OTHER_USER_ID, "stoic");
+    await strangerSaves(mine.id, "00000000-0000-4000-8000-000000000097", "stoic");
+    await strangerSaves(mine.id, "00000000-0000-4000-8000-000000000098", "witty");
+    await strangerSaves(theirs, "00000000-0000-4000-8000-000000000097", "stoic");
+
+    const own = await getCard(mine.id);
+    expect(own?.saveCount).toBe(3);
+    expect(own?.results.find((item) => item.style === "stoic")?.saveCount).toBe(2);
+    expect(own?.results.find((item) => item.style === "witty")?.saveCount).toBe(1);
+    // Absent, not zero: a 0 on a post about your worst day is worse than no number.
+    expect(own?.results.find((item) => item.style === "hopeful")?.saveCount).toBeUndefined();
+
+    const page = await listStack({ limit: 12, session: stackSession(), seen: [] }, true);
+    const other = page.cards.find((card) => card.id === theirs);
+    expect(other?.saveCount).toBeUndefined();
+    expect(other?.results.every((item) => item.saveCount === undefined)).toBe(true);
+
+    // A private card has no audience, so it reports no numbers.
+    const hidden = await patchCard(mine.id, { isPublic: false });
+    expect(hidden.ok && hidden.card.saveCount).toBeUndefined();
+  });
+
+  it("shows the answer in their language to the author and English to everyone else", async () => {
+    const mine = await createCard({
+      ...baseInput,
+      thoughtOriginal: "Upropastio sam intervju i vrtim svaki drhtavi odgovor.",
+      meta: { ...baseInput.meta, inputLanguage: "hr" },
+      results: [
+        { style: "stoic", reframe: "A stoic take on showing up.", reframeOriginal: "Stoički pogled na to da si se pojavio." },
+        { style: "witty", reframe: "A witty take on showing up.", reframeOriginal: "A witty take on showing up." },
+      ],
+      isPublic: true,
+    });
+    expect(mine.results.find((item) => item.style === "stoic")?.reframeOriginal).toBe(
+      "Stoički pogled na to da si se pojavio.",
     );
+    // A second version that is just the English is not stored.
+    expect(mine.results.find((item) => item.style === "witty")).not.toHaveProperty("reframeOriginal");
 
-    const emotions = await listFeed({ limit: 50, emotions: ["fear", "overwhelm"] });
-    expect(new Set(emotions.map((card) => card.id))).toEqual(new Set([workFear, moneyOverwhelm]));
+    const theirs = await insertOtherCard({ thought: "Someone else's card in their own language.", isPublic: true });
+    await getDb()
+      .update(cardReframes)
+      .set({ reframeOriginal: "Tuđi odgovor na hrvatskom." })
+      .where(eq(cardReframes.cardId, theirs));
 
-    const combined = await listFeed({
-      limit: 50,
-      categories: ["money"],
-      emotions: ["fear", "overwhelm"],
-    });
-    expect(combined.map((card) => card.id)).toEqual([moneyOverwhelm]);
+    const page = await listStack({ limit: 12, session: stackSession(), seen: [] }, true);
+    const other = page.cards.find((card) => card.id === theirs);
+    expect(other?.results.length).toBeGreaterThan(0);
+    expect(other?.results.every((item) => item.reframeOriginal === undefined)).toBe(true);
   });
 
-  it("pages equal timestamps by id without a gap or duplicate", async () => {
+  it("drops a saved card from the library once its author makes it private", async () => {
+    const kept = await insertOtherCard({
+      thought: "I keep checking my phone for a message that is not coming.",
+      isPublic: true,
+    });
+    expect((await save(kept)).ok).toBe(true);
+    expect((await listCards({ limit: 50, saved: true })).some((card) => card.id === kept)).toBe(true);
+
+    await getDb().update(cards).set({ isPublic: false }).where(eq(cards.id, kept));
+    expect((await listCards({ limit: 50 })).some((card) => card.id === kept)).toBe(false);
+    expect((await listCards({ limit: 50, saved: true })).some((card) => card.id === kept)).toBe(false);
+
+    await getDb().update(cards).set({ isPublic: true }).where(eq(cards.id, kept));
+    expect((await listCards({ limit: 50, saved: true })).some((card) => card.id === kept)).toBe(true);
+  });
+
+  it("pages an author's posts on equal timestamps by id without a gap or duplicate", async () => {
     const createdAt = new Date("2026-09-11T12:00:00.000Z");
     const ids = await Promise.all(
       ["One shared instant.", "Two shared instant.", "Three shared instant."].map((thought) =>
@@ -1583,15 +1631,14 @@ describe.skipIf(!testUrl)("cards integration", () => {
       ),
     );
 
-    const first = await listFeed({ limit: 2 });
+    const first = await listPublicCardsForUser({ userId: OTHER_USER_ID, limit: 2 });
     expect(first).toHaveLength(2);
     const last = first[1];
-    expect(last).toBeDefined();
     if (!last) {
-      return;
+      throw new Error("no second card");
     }
-
-    const second = await listFeed({
+    const second = await listPublicCardsForUser({
+      userId: OTHER_USER_ID,
       limit: 2,
       before: { createdAt: new Date(last.createdAt), id: last.id },
     });
@@ -1620,159 +1667,25 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(new Set(seen)).toEqual(new Set(created.map((card) => card.id)));
   });
 
-  it("saves a heart without mutating the author's flags", async () => {
-    const publicOther = await insertOtherCard({
-      thought: "I keep waiting for a reply that is not coming and I feel small.",
-      isPublic: true,
-    });
-
-    const liked = await saveFeedAngle(publicOther, "hopeful");
-    expect(liked.ok).toBe(true);
-    if (!liked.ok) {
-      return;
-    }
-    expect(liked.card.results.find((item) => item.style === "hopeful")?.isHearted).toBe(true);
-    expect(liked.card.results.find((item) => item.style === "stoic")?.isHearted).toBe(false);
-
-    const authorRow = await getDb().query.cards.findFirst({
-      where: eq(cards.id, publicOther),
-      with: { reframes: true },
-    });
-    expect(authorRow?.reframes.find((item) => item.style === "stoic")?.isHearted).toBe(true);
-    expect(authorRow?.reframes.find((item) => item.style === "hopeful")?.isHearted).toBe(false);
-
-    const library = await listCards({ limit: 50 });
-    const saved = library.find((card) => card.id === publicOther);
-    expect(saved?.isOwner).toBe(false);
-    expect(saved?.results.find((item) => item.style === "hopeful")?.isHearted).toBe(true);
-    expect(library.some((card) => card.isOwner)).toBe(false);
-
-    const own = await createCard(baseInput);
-    const listed = await listCards({ limit: 50 });
-    expect(listed.some((card) => card.id === own.id && card.isOwner)).toBe(true);
-
-    const ownSave = await saveFeedAngle(own.id, "stoic");
-    expect(ownSave).toEqual({ ok: false, reason: "not_found" });
-
-    const cleared = await clearFeedSaves(publicOther);
-    expect(cleared.ok).toBe(true);
-    const after = await listCards({ limit: 50 });
-    expect(after.some((card) => card.id === publicOther)).toBe(false);
-  });
-
-  it("shows heart counts to the author and to nobody else", async () => {
-    const mine = await createCard({ ...baseInput, isPublic: true });
-    const theirs = await insertOtherCard({
-      thought: "Someone else's public card whose numbers stay their own.",
-      isPublic: true,
-    });
-
-    // Two strangers on one angle, one of them on two angles: people, not angles.
-    const fan = "00000000-0000-4000-8000-000000000097";
-    await getDb()
-      .insert(users)
-      .values({
-        id: fan,
-        initials: "FA",
-        name: "FA",
-        email: `seed-${fan}@angles.invalid`,
-      })
-      .onConflictDoNothing();
-    await getDb().insert(savedAngles).values([
-      { userId: OTHER_USER_ID, cardId: mine.id, style: "stoic" },
-      { userId: OTHER_USER_ID, cardId: mine.id, style: "witty" },
-      { userId: fan, cardId: mine.id, style: "stoic" },
-    ]);
-    await saveFeedAngle(theirs, "hopeful");
-
-    const feed = await listFeed({ limit: 50 });
-    const own = feed.find((card) => card.id === mine.id);
-    expect(own?.isOwner).toBe(true);
-    expect(own?.results.find((item) => item.style === "stoic")?.heartCount).toBe(2);
-    expect(own?.results.find((item) => item.style === "witty")?.heartCount).toBe(1);
-    // Absent, not zero: a 0 on a post about your worst day is worse than no number.
-    expect(own?.results.find((item) => item.style === "hopeful")?.heartCount).toBeUndefined();
-
-    const other = feed.find((card) => card.id === theirs);
-    expect(other?.isOwner).toBe(false);
-    expect(other?.results.every((item) => item.heartCount === undefined)).toBe(true);
-
-    // The count survives the author toggling their own heart, which answers from `loadCard`.
-    const patched = await patchCard(mine.id, { style: "stoic", isHearted: true });
-    expect(patched.ok).toBe(true);
-    if (patched.ok) {
-      expect(patched.card.results.find((item) => item.style === "stoic")?.heartCount).toBe(2);
-    }
-
-    // A private card has no audience, so it reports no numbers.
-    await getDb().update(cards).set({ isPublic: false }).where(eq(cards.id, mine.id));
-    const library = await listCards({ limit: 50 });
-    const hidden = library.find((card) => card.id === mine.id);
-    expect(hidden?.results.every((item) => item.heartCount === undefined)).toBe(true);
-
-    await getDb().delete(users).where(eq(users.id, fan));
-  });
-
-  it("shows the answer in their language to the author and English to everyone else", async () => {
-    const mine = await createCard({
-      ...baseInput,
-      thoughtOriginal: "Upropastio sam intervju i vrtim svaki drhtavi odgovor.",
-      meta: { ...baseInput.meta, inputLanguage: "hr" },
-      results: [
-        { style: "stoic", reframe: "A stoic take on showing up.", reframeOriginal: "Stoički pogled na to da si se pojavio." },
-        { style: "witty", reframe: "A witty take on showing up.", reframeOriginal: "A witty take on showing up." },
-      ],
-      isPublic: true,
-    });
-    expect(mine.results.find((item) => item.style === "stoic")?.reframeOriginal).toBe(
-      "Stoički pogled na to da si se pojavio.",
-    );
-    // A second version that is just the English is not stored.
-    expect(mine.results.find((item) => item.style === "witty")).not.toHaveProperty("reframeOriginal");
-
-    const theirs = await insertOtherCard({ thought: "Someone else's card in their own language.", isPublic: true });
-    await getDb()
-      .update(cardReframes)
-      .set({ reframeOriginal: "Tuđi odgovor na hrvatskom." })
-      .where(eq(cardReframes.cardId, theirs));
-
-    const feed = await listFeed({ limit: 50 });
-    expect(feed.find((card) => card.id === mine.id)?.results[0]?.reframeOriginal).toBe(
-      "Stoički pogled na to da si se pojavio.",
-    );
-    const other = feed.find((card) => card.id === theirs);
-    expect(other?.results.length).toBeGreaterThan(0);
-    expect(other?.results.every((item) => item.reframeOriginal === undefined)).toBe(true);
-  });
-
-  it("drops a hearted card from the library once its author makes it private", async () => {
-    const hearted = await insertOtherCard({
-      thought: "I keep checking my phone for a message that is not coming.",
-      isPublic: true,
-    });
-    expect((await saveFeedAngle(hearted, "stoic")).ok).toBe(true);
-    expect((await listCards({ limit: 50 })).some((card) => card.id === hearted)).toBe(true);
-
-    await getDb().update(cards).set({ isPublic: false }).where(eq(cards.id, hearted));
-
-    expect((await listCards({ limit: 50 })).some((card) => card.id === hearted)).toBe(false);
-    expect((await listCards({ limit: 50, hearted: true })).some((card) => card.id === hearted)).toBe(
-      false,
-    );
-    expect(await clearFeedSaves(hearted)).toEqual({ ok: true });
-    expect(await clearFeedSaves(hearted)).toEqual({ ok: false });
-
-    await getDb().update(cards).set({ isPublic: true }).where(eq(cards.id, hearted));
-    expect((await listCards({ limit: 50 })).some((card) => card.id === hearted)).toBe(false);
-  });
-
-  describe("resonance ranking", () => {
-    const session = (overrides: { offset?: number; seed?: string; startedAt?: Date } = {}) => ({
+  function stackSession(overrides: { seed?: string; startedAt?: Date } = {}) {
+    return {
       seed: overrides.seed ?? "seed-integration",
-      startedAt: overrides.startedAt ?? new Date(),
-      offset: overrides.offset ?? 0,
-    });
+      // A beat ahead, so a card inserted just now is inside the visit.
+      startedAt: overrides.startedAt ?? new Date(Date.now() + 1_000),
+    };
+  }
 
+  async function stackIds(
+    options: { limit?: number; session?: ReturnType<typeof stackSession>; seen?: string[]; ranked?: boolean } = {},
+  ): Promise<string[]> {
+    const page = await listStack(
+      { limit: options.limit ?? 24, session: options.session ?? stackSession(), seen: options.seen ?? [] },
+      options.ranked ?? true,
+    );
+    return page.cards.map((card) => card.id);
+  }
+
+  describe("stack", () => {
     it("projects every card onto the styles the calling app can show", async () => {
       const cardId = await insertOtherCard({ thought: "A card written with the new voices.", isPublic: true });
       const styles: Style[] = ["tender", "values", "stoic", "witty"];
@@ -1783,66 +1696,87 @@ describe.skipIf(!testUrl)("cards integration", () => {
       await getDb().update(cards).set({ spotlightStyle: "tender" }).where(eq(cards.id, cardId));
 
       const lists = async () => [
-        ...(await listFeed({ limit: 50 })),
-        ...(await rankedCards({ limit: 24, session: session() })),
-        ...(await rankedCards({ limit: 24, style: "stoic", session: session() })),
+        ...(await listStack({ limit: 12, session: stackSession(), seen: [] }, true)).cards,
+        ...(await listStack({ limit: 12, session: stackSession(), seen: [] }, false)).cards,
       ];
       const legacy = (await runWithStyleSet(LEGACY_STYLES, lists)).filter((card) => card.id === cardId);
-      expect(legacy).toHaveLength(3);
+      expect(legacy).toHaveLength(2);
       for (const card of legacy) {
         expect(card.results.map((item) => item.style)).toEqual(["stoic", "witty"]);
         expect(["stoic", "witty"]).toContain(card.spotlightStyle);
+        expect(["stoic", "witty"]).toContain(card.openingStyle);
       }
       expect(JSON.stringify(legacy)).not.toMatch(/"(tender|values)"/);
 
       const extended = (await runWithStyleSet(STYLES, lists)).filter((card) => card.id === cardId);
-      expect(extended).toHaveLength(3);
+      expect(extended).toHaveLength(2);
       for (const card of extended) {
         expect(card.results.map((item) => item.style)).toEqual(styles);
       }
     });
 
-    async function heart(cardId: string, userId: string, style: Style = "stoic"): Promise<void> {
+    it("never shows the viewer's own cards, private cards, or posts newer than the visit", async () => {
+      const startedAt = new Date(Date.now() - 60_000);
+      const old = await insertOtherCard({
+        thought: "Posted before the visit began.",
+        isPublic: true,
+        createdAt: new Date(Date.now() - 120_000),
+      });
+      const late = await insertOtherCard({ thought: "Posted after the visit began.", isPublic: true });
+      const priv = await insertOtherCard({
+        thought: "A private thought that belongs to nobody's stack.",
+        isPublic: false,
+        createdAt: new Date(Date.now() - 120_000),
+      });
+      const own = await createCard({ ...baseInput, isPublic: true });
       await getDb()
-        .insert(users)
-        .values({
-          id: userId,
-          initials: "HT",
-          name: "HT",
-          email: `seed-${userId}@angles.invalid`,
-        })
-        .onConflictDoNothing();
-      await getDb().insert(savedAngles).values({ userId, cardId, style }).onConflictDoNothing();
-    }
+        .update(cards)
+        .set({ createdAt: new Date(Date.now() - 120_000) })
+        .where(eq(cards.id, own.id));
 
-    it("ranks a card strangers hearted above an equally fresh one nobody did", async () => {
+      const ids = await stackIds({ session: stackSession({ startedAt }) });
+      expect(ids).toEqual([old]);
+      expect(ids).not.toContain(late);
+      expect(ids).not.toContain(priv);
+    });
+
+    it("ranks a card strangers saved above an equally fresh one nobody did", async () => {
       const createdAt = new Date(Date.now() - 3_600_000);
       const plain = await insertOtherCard({
-        thought: "Nobody has hearted this one yet and it sits in the same hour.",
+        thought: "Nobody has saved this one yet and it sits in the same hour.",
         isPublic: true,
         createdAt,
+        authorId: "00000000-0000-4000-8000-0000000000c1",
       });
       const loved = await insertOtherCard({
         thought: "Three people found something they needed in this one.",
         isPublic: true,
         createdAt,
+        authorId: "00000000-0000-4000-8000-0000000000c2",
       });
-      for (const [index, fan] of [
+      for (const fan of [
         "00000000-0000-4000-8000-0000000000a1",
         "00000000-0000-4000-8000-0000000000a2",
         "00000000-0000-4000-8000-0000000000a3",
-      ].entries()) {
-        await heart(loved, fan, index === 0 ? "stoic" : "hopeful");
+      ]) {
+        await strangerSaves(loved, fan, "hopeful");
       }
+      // A stranger's pass is not a signal against the card.
+      await getDb().insert(cardDecisions).values({
+        userId: "00000000-0000-4000-8000-0000000000a1",
+        cardId: plain,
+        kind: "pass",
+        style: "stoic",
+        checkedStyles: ["stoic"],
+        passes: 1,
+      });
 
-      const ranked = await rankedCards({ limit: 24, session: session() });
-      const ids = ranked.map((card) => card.id);
+      const ids = await stackIds();
       expect(ids.indexOf(loved)).toBeLessThan(ids.indexOf(plain));
+      expect(ids).toContain(plain);
     });
 
     it("ranks the viewer's own subject above a subject they never write about", async () => {
-      // The viewer's library is what affinity reads: work, shame and fear. One card is
-      // only a hint, so they have written enough for the themes to be trusted.
       for (let index = 0; index < 5; index += 1) {
         await createCard({ ...baseInput, thought: `Work keeps making me feel small, note ${index}.` });
       }
@@ -1853,6 +1787,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
         category: "money",
         emotions: ["envy"],
         createdAt,
+        authorId: "00000000-0000-4000-8000-0000000000c1",
       });
       const mirror = await insertOtherCard({
         thought: "Work leaves me ashamed and afraid I am falling behind.",
@@ -1860,56 +1795,14 @@ describe.skipIf(!testUrl)("cards integration", () => {
         category: "work",
         emotions: ["shame", "fear"],
         createdAt,
+        authorId: "00000000-0000-4000-8000-0000000000c2",
       });
 
-      const ranked = await rankedCards({ limit: 24, session: session() });
-      const ids = ranked.map((card) => card.id);
+      const ids = await stackIds();
       expect(ids.indexOf(mirror)).toBeLessThan(ids.indexOf(stranger));
     });
 
-    it("pages a frozen candidate set without repeating or dropping a card", async () => {
-      const ids = new Set<string>();
-      for (let index = 0; index < 7; index += 1) {
-        ids.add(
-          await insertOtherCard({
-            thought: `A public thought number ${index} for the ranked pager.`,
-            isPublic: true,
-            createdAt: new Date(Date.now() - index * 60_000),
-          }),
-        );
-      }
-
-      const seeded = session();
-      const first = await rankedCards({ limit: 3, session: seeded });
-      const second = await rankedCards({ limit: 3, session: { ...seeded, offset: 3 } });
-      const third = await rankedCards({ limit: 3, session: { ...seeded, offset: 6 } });
-
-      const paged = [...first, ...second, ...third].map((card) => card.id);
-      expect(paged).toHaveLength(7);
-      expect(new Set(paged)).toEqual(ids);
-    });
-
-    it("keeps one seed stable and gives another a different order", async () => {
-      const createdAt = new Date("2026-06-01T12:00:00.000Z");
-      for (let index = 0; index < 12; index += 1) {
-        await insertOtherCard({
-          thought: `Another public thought ${index} to shuffle between visits.`,
-          isPublic: true,
-          createdAt,
-        });
-      }
-
-      const startedAt = new Date("2026-06-15T18:00:00.000Z");
-      const one = await rankedCards({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
-      const again = await rankedCards({ limit: 12, session: { seed: "seed-one", startedAt, offset: 0 } });
-      const other = await rankedCards({ limit: 12, session: { seed: "seed-two", startedAt, offset: 0 } });
-
-      expect(again.map((card) => card.id)).toEqual(one.map((card) => card.id));
-      expect(other.map((card) => card.id)).not.toEqual(one.map((card) => card.id));
-    });
-
-    it("learns the viewer's themes from the angles they hearted, not only what they wrote", async () => {
-      // No cards of their own: their taste is what they chose to keep.
+    it("learns the viewer's themes from the cards they saved, not only what they wrote", async () => {
       const createdAt = new Date(Date.now() - 86_400_000 * 3);
       for (let index = 0; index < 3; index += 1) {
         const kept = await insertOtherCard({
@@ -1919,7 +1812,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
           emotions: [],
           createdAt,
         });
-        expect((await saveFeedAngle(kept, "stoic")).ok).toBe(true);
+        expect((await save(kept)).ok).toBe(true);
       }
 
       const fresh = new Date(Date.now() - 3_600_000);
@@ -1929,321 +1822,234 @@ describe.skipIf(!testUrl)("cards integration", () => {
         category: "money",
         emotions: [],
         createdAt: fresh,
+        authorId: "00000000-0000-4000-8000-0000000000c1",
       });
       const grief = await insertOtherCard({
-        thought: "A new grief thought in the subject they keep hearting.",
+        thought: "A new grief thought in the subject they keep saving.",
         isPublic: true,
         category: "grief_loss",
         emotions: [],
         createdAt: fresh,
+        authorId: "00000000-0000-4000-8000-0000000000c2",
       });
 
-      const ids = (await rankedCards({ limit: 24, session: session() })).map((card) => card.id);
+      const ids = await stackIds();
       expect(ids.indexOf(grief)).toBeLessThan(ids.indexOf(money));
     });
 
-    it("gives a new viewer style tabs that mostly show different cards", async () => {
-      const startedAt = new Date("2026-06-15T18:00:00.000Z");
-      const minAgeMs = (OFF_TAB_FADE_HOURS.full + 1) * 3_600_000;
-      for (let index = 0; index < 60; index += 1) {
+    it("hands out every card exactly once across pages, however many get decided in between", async () => {
+      const ids = new Set<string>();
+      for (let index = 0; index < 7; index += 1) {
+        ids.add(
+          await insertOtherCard({
+            thought: `A public thought number ${index} for the stack pager.`,
+            isPublic: true,
+            category: CATEGORIES[index % (CATEGORIES.length - 1)] ?? "work",
+            createdAt: new Date(Date.now() - index * 60_000),
+            authorId: `00000000-0000-4000-8000-0000000001${String(index).padStart(2, "0")}`,
+          }),
+        );
+      }
+
+      const session = stackSession({ seed: "seed-pager" });
+      const whole = await stackIds({ limit: 50, session });
+      const first = await listStack({ limit: 3, session, seen: [] }, true);
+      expect(first.exhausted).toBe(false);
+      expect(first.cards.map((card) => card.id)).toEqual(whole.slice(0, 3));
+
+      // The phone saves one, passes one, and still holds the third when it asks for more.
+      const [a, b] = first.cards;
+      expect((await save(a?.id ?? "")).ok).toBe(true);
+      expect((await pass(b?.id ?? "")).ok).toBe(true);
+      const seen = first.cards.map((card) => card.id);
+      const second = await listStack({ limit: 3, session, seen }, true);
+      seen.push(...second.cards.map((card) => card.id));
+      const third = await listStack({ limit: 3, session, seen }, true);
+      expect(third.exhausted).toBe(true);
+      seen.push(...third.cards.map((card) => card.id));
+
+      expect(seen).toHaveLength(7);
+      expect(new Set(seen)).toEqual(ids);
+      // A replayed request is the same page.
+      const replay = await listStack({ limit: 3, session, seen: first.cards.map((card) => card.id) }, true);
+      expect(replay.cards.map((card) => card.id)).toEqual(second.cards.map((card) => card.id));
+    });
+
+    it("keeps one seed stable and gives another a different order", async () => {
+      const createdAt = new Date("2026-06-01T12:00:00.000Z");
+      for (let index = 0; index < 12; index += 1) {
         await insertOtherCard({
-          thought: `Public thought ${index} for a viewer who has not hearted anything yet.`,
+          thought: `Another public thought ${index} to shuffle between visits.`,
           isPublic: true,
-          category: CATEGORIES[index % (CATEGORIES.length - 1)] ?? "work",
-          emotions: [],
-          createdAt: new Date(startedAt.getTime() - minAgeMs - index * 6 * 3_600_000),
+          createdAt,
+          authorId: `00000000-0000-4000-8000-0000000002${String(index).padStart(2, "0")}`,
         });
       }
 
-      const seeded = session({ seed: "style-tab-diversity", startedAt });
-      const pages = new Map<Style, string[]>();
-      for (const style of LEGACY_STYLES) {
-        const page = await rankedCards({ limit: 12, style, session: seeded });
-        expect(page).toHaveLength(12);
-        pages.set(style, page.map((card) => card.id));
+      const startedAt = new Date("2026-06-15T18:00:00.000Z");
+      const one = await stackIds({ limit: 12, session: { seed: "seed-one", startedAt } });
+      const again = await stackIds({ limit: 12, session: { seed: "seed-one", startedAt } });
+      const other = await stackIds({ limit: 12, session: { seed: "seed-two", startedAt } });
+      expect(again).toEqual(one);
+      expect(other).not.toEqual(one);
+    });
+
+    it("brings a passed card back once, after twelve hours, on an angle not yet seen", async () => {
+      const passedOnce = await insertOtherCard({ thought: "Passed on Witty only.", isPublic: true });
+      const recent = await insertOtherCard({ thought: "Passed an hour ago.", isPublic: true });
+      const twice = await insertOtherCard({ thought: "Passed twice.", isPublic: true });
+      const everyAngle = await insertOtherCard({ thought: "Passed after reading every angle.", isPublic: true });
+      const saved = await insertOtherCard({ thought: "Saved, so it stays in Profile.", isPublic: true });
+      const unsaved = await insertOtherCard({ thought: "Saved and then unsaved.", isPublic: true });
+
+      expect((await pass(passedOnce, ["witty"])).ok).toBe(true);
+      expect((await pass(recent, ["witty"])).ok).toBe(true);
+      expect((await pass(twice, ["witty"], 2)).ok).toBe(true);
+      expect((await pass(everyAngle, [...LEGACY_STYLES])).ok).toBe(true);
+      expect((await save(saved)).ok).toBe(true);
+      expect((await pass(unsaved, [...LEGACY_STYLES], 2)).ok).toBe(true);
+      const longAgo = new Date(Date.now() - 13 * 3_600_000);
+      await getDb()
+        .update(cardDecisions)
+        .set({ decidedAt: longAgo })
+        .where(sql`${cardDecisions.cardId} <> ${recent}`);
+      await getDb()
+        .update(cardDecisions)
+        .set({ decidedAt: new Date(Date.now() - 3_600_000) })
+        .where(eq(cardDecisions.cardId, recent));
+
+      const page = await listStack({ limit: 24, session: stackSession(), seen: [] }, true);
+      expect(page.cards.map((card) => card.id)).toEqual([passedOnce]);
+      const back = page.cards[0];
+      // The first angle in the cook's order the viewer never saw.
+      expect(back?.openingStyle).toBe("stoic");
+      expect(back?.decision).toMatchObject({ kind: "pass", passes: 1, checkedStyles: ["witty"] });
+    });
+
+    it("never puts two heavy cards side by side when lighter ones are left", async () => {
+      for (let index = 0; index < 10; index += 1) {
+        await insertOtherCard({
+          thought: `A ${index < 5 ? "heavy" : "light"} thought number ${index}.`,
+          isPublic: true,
+          // The heavy ones are the newest, so plain rank order would stack them.
+          createdAt: new Date(Date.now() - index * 60_000),
+          category: (["work", "money", "family", "health", "future"] as const)[index % 5],
+          intensity: index < 5 ? 5 : 2,
+          authorId: `00000000-0000-4000-8000-0000000003${String(index).padStart(2, "0")}`,
+        });
       }
-      for (const left of LEGACY_STYLES) {
-        for (const right of LEGACY_STYLES) {
-          if (left >= right) {
-            continue;
-          }
-          const shared = (pages.get(left) ?? []).filter((id) => pages.get(right)?.includes(id));
-          // Only a post from the last few hours is allowed on more than one tab.
-          expect(shared.length).toBeLessThanOrEqual(3);
-        }
+      const page = await listStack({ limit: 10, session: stackSession(), seen: [] }, true);
+      expect(page.cards).toHaveLength(10);
+      for (let index = 1; index < page.cards.length; index += 1) {
+        const pair = [page.cards[index - 1], page.cards[index]];
+        expect(pair.every((card) => (card?.intensity ?? 0) >= 4)).toBe(false);
       }
     });
 
-    it("pages a confident viewer's themed mix without repeating or dropping a card", async () => {
-      for (let index = 0; index < 5; index += 1) {
-        await createCard({ ...baseInput, thought: `Work keeps making me feel small, note ${index}.` });
-      }
-      const ids = new Set<string>();
-      for (let index = 0; index < 30; index += 1) {
-        ids.add(
+    it("puts the house cards after every community card, then ends", async () => {
+      const house = await insertOtherCard({
+        thought: "A curated house thought, newest of all.",
+        isPublic: true,
+        authorId: HOUSE_USER_ID,
+      });
+      const community: string[] = [];
+      for (let index = 0; index < 3; index += 1) {
+        community.push(
           await insertOtherCard({
-            thought: `Public thought ${index} for the themed pager.`,
+            thought: `A community thought ${index}.`,
             isPublic: true,
-            category: CATEGORIES[index % (CATEGORIES.length - 1)] ?? "work",
-            emotions: index % 2 === 0 ? ["shame"] : ["hope"],
-            createdAt: new Date(Date.now() - index * 3_600_000),
+            createdAt: new Date(Date.now() - (index + 1) * 86_400_000),
+            authorId: `00000000-0000-4000-8000-0000000004${String(index).padStart(2, "0")}`,
           }),
         );
       }
 
-      const seeded = session();
-      const paged: string[] = [];
-      for (const offset of [0, 7, 14, 21, 28]) {
-        const page = await rankedCards({ limit: 7, session: { ...seeded, offset } });
-        paged.push(...page.map((card) => card.id));
+      for (const ranked of [true, false]) {
+        const session = stackSession();
+        const first = await listStack({ limit: 3, session, seen: [] }, ranked);
+        expect(new Set(first.cards.map((card) => card.id))).toEqual(new Set(community));
+        expect(first.exhausted).toBe(false);
+        const second = await listStack({ limit: 3, session, seen: first.cards.map((card) => card.id) }, ranked);
+        expect(second.cards.map((card) => card.id)).toEqual([house]);
+        expect(second.exhausted).toBe(true);
+        expect(second.cards[0]?.isHouse).toBe(true);
+        expect(second.cards[0]?.author.following).toBe(false);
       }
-      expect(paged).toHaveLength(ids.size);
-      expect(new Set(paged)).toEqual(ids);
 
-      const again: string[] = [];
-      for (const offset of [0, 7, 14, 21, 28]) {
-        const page = await rankedCards({ limit: 7, session: { ...seeded, offset } });
-        again.push(...page.map((card) => card.id));
-      }
-      expect(again).toEqual(paged);
+      // No one to follow behind a house card.
+      expect(await followUser(HOUSE_USER_ID)).toEqual({ result: "not_found", notificationId: null });
+      // It can still be saved and passed like any other card.
+      expect((await save(house)).ok).toBe(true);
     });
 
-    it("does not show again an angle the viewer already kept, per shelf", async () => {
-      const createdAt = new Date(Date.now() - 3_600_000);
-      const kept = await insertOtherCard({
-        thought: "A thought the viewer has already kept on one angle.",
+    it("is newest first with ranking off", async () => {
+      const older = await insertOtherCard({
+        thought: "Older, but saved by people.",
         isPublic: true,
-        createdAt,
+        createdAt: new Date(Date.now() - 86_400_000),
       });
-      const untouched = await insertOtherCard({
-        thought: "A thought the viewer has not kept anything from.",
-        isPublic: true,
-        createdAt,
-      });
-      expect((await saveFeedAngle(kept, "witty")).ok).toBe(true);
-      const later = { ...session(), startedAt: new Date(Date.now() + 1_000) };
-
-      // A heart is on one answer: For you still shows the card, lower, opening on an answer
-      // the viewer has not kept (the fixture's cover is the one they hearted).
-      const forYou = await rankedCards({ limit: 24, session: later });
-      const all = forYou.map((card) => card.id);
-      expect(all).toContain(kept);
-      expect(all.indexOf(kept)).toBeGreaterThan(all.indexOf(untouched));
-      expect(forYou.find((card) => card.id === kept)?.spotlightStyle).not.toBe("witty");
-
-      // Once every angle is kept, For you has nothing new to show from it.
-      for (const style of ["stoic", "hopeful", "tough"] as const) {
-        expect((await saveFeedAngle(kept, style)).ok).toBe(true);
-      }
-      const fullyKept = { ...session(), startedAt: new Date(Date.now() + 2_000) };
-      expect((await rankedCards({ limit: 24, session: fullyKept })).map((card) => card.id)).not.toContain(
-        kept,
-      );
-      for (const style of ["stoic", "hopeful", "tough"] as const) {
-        await getDb()
-          .delete(savedAngles)
-          .where(and(eq(savedAngles.cardId, kept), eq(savedAngles.style, style)));
-      }
-
-      const sameAngle = await rankedCards({ limit: 24, style: "witty", session: later });
-      expect(sameAngle.map((card) => card.id)).not.toContain(kept);
-
-      // Another voice for the same thought is still worth meeting.
-      const otherAngle = await rankedCards({ limit: 24, style: "stoic", session: later });
-      expect(otherAngle.map((card) => card.id)).toContain(kept);
+      const newer = await insertOtherCard({ thought: "Newer and unsaved.", isPublic: true });
+      await strangerSaves(older, "00000000-0000-4000-8000-0000000000a1");
+      expect(await stackIds({ ranked: false })).toEqual([newer, older]);
     });
 
-    it("keeps a card that was hearted after the visit began, so paging cannot shift", async () => {
-      const ids: string[] = [];
-      for (let index = 0; index < 6; index += 1) {
-        ids.push(
-          await insertOtherCard({
-            thought: `Public thought ${index} for the frozen heart test.`,
-            isPublic: true,
-            createdAt: new Date(Date.now() - (index + 1) * 60_000),
-          }),
-        );
-      }
-      const startedAt = new Date(Date.now() - 5_000);
-      const before = await rankedCards({ limit: 24, session: { seed: "seed-frozen-h", startedAt, offset: 0 } });
-
-      const target = ids[0];
-      if (!target) {
-        throw new Error("no fixture card");
-      }
-      expect((await saveFeedAngle(target, "stoic")).ok).toBe(true);
-
-      const after = await rankedCards({ limit: 24, session: { seed: "seed-frozen-h", startedAt, offset: 0 } });
-      // Hearts, follows and themes are read as of the visit's start, so a heart made
-      // during the visit leaves its order exactly as it was.
-      expect(after.map((card) => card.id)).toEqual(before.map((card) => card.id));
-      expect(after.map((card) => card.id)).toContain(target);
-    });
-
-    it("honours the facets, privacy, blocks and reports that chronological order honours", async () => {
-      const work = await insertOtherCard({
-        thought: "A work thought that matches the facet under test.",
-        isPublic: true,
-        category: "work",
-        emotions: ["fear"],
-      });
-      const money = await insertOtherCard({
-        thought: "A money thought that the facet should exclude.",
-        isPublic: true,
-        category: "money",
-        emotions: ["envy"],
-      });
-      const priv = await insertOtherCard({
-        thought: "A private thought that belongs to nobody's feed.",
-        isPublic: false,
-        category: "work",
-      });
-
-      const filtered = await rankedCards({
-        limit: 24,
-        categories: ["work"],
-        emotions: ["fear"],
-        session: session(),
-      });
-      const ids = filtered.map((card) => card.id);
-      expect(ids).toContain(work);
-      expect(ids).not.toContain(money);
-      expect(ids).not.toContain(priv);
+    it("honours blocks and reports", async () => {
+      const work = await insertOtherCard({ thought: "A work thought.", isPublic: true });
+      const other = await insertOtherCard({ thought: "Another thought.", isPublic: true });
 
       await reportCard(work, "other");
-      expect((await rankedCards({ limit: 24, session: session() })).map((card) => card.id)).not.toContain(
-        work,
-      );
+      expect(await stackIds()).toEqual([other]);
 
       expect(await blockUser(OTHER_USER_ID)).toBe("ok");
-      expect(await rankedCards({ limit: 24, session: session() })).toEqual([]);
+      expect(await stackIds()).toEqual([]);
       await unblockUser(OTHER_USER_ID);
     });
 
-    it("opens other people's cards on the angle the viewer keeps hearting", async () => {
-      const ids: string[] = [];
+    it("opens other people's cards on the angle the viewer keeps saving", async () => {
       for (let index = 0; index < 30; index += 1) {
-        ids.push(
-          await insertOtherCard({
-            thought: `A public thought ${index} whose cover the viewer may never have chosen.`,
-            isPublic: true,
-            createdAt: new Date(Date.now() - index * 60_000),
-          }),
-        );
+        await insertOtherCard({
+          thought: `A public thought ${index} whose cover the viewer may never have chosen.`,
+          isPublic: true,
+          createdAt: new Date(Date.now() - index * 60_000),
+        });
       }
+      const before = await listStack({ limit: 50, session: stackSession(), seen: [] }, true);
       // Every fixture card covers "witty", so a lean has to be visible to be real.
-      const before = await listFeed({ limit: 50 });
-      expect(before.every((card) => card.spotlightStyle === "witty")).toBe(true);
+      expect(before.cards.every((card) => card.openingStyle === "witty")).toBe(true);
 
-      const target = ids[0];
+      const target = before.cards[0]?.id;
       if (!target) {
         throw new Error("no fixture card");
       }
-      expect((await saveFeedAngle(target, "tough")).ok).toBe(true);
+      expect((await save(target, "tough")).ok).toBe(true);
 
-      const after = await listFeed({ limit: 50 });
-      const leaning = after.filter((card) => card.spotlightStyle === "tough");
+      const after = await listStack({ limit: 50, session: stackSession(), seen: [] }, true);
+      const leaning = after.cards.filter((card) => card.openingStyle === "tough");
       expect(leaning.length).toBeGreaterThan(0);
-      // A lean, not a takeover: Home's For you tab is meant to show mixed covers.
-      expect(leaning.length).toBeLessThan(after.length);
-
-      // Their own card keeps the cover they saved it with.
-      const own = await createCard({ ...baseInput, isPublic: true, spotlightStyle: "stoic" });
-      const withOwn = await listFeed({ limit: 50 });
-      expect(withOwn.find((card) => card.id === own.id)?.spotlightStyle).toBe("stoic");
+      // A lean, not a takeover: the mix of voices is the point.
+      expect(leaning.length).toBeLessThan(after.cards.length);
     });
 
-    it("mixes a two-person community instead of showing the viewer only their own posts", async () => {
-      // Production on 2026-10-06: the viewer wrote most of the catalog and hearted one angle
-      // of each of the other person's two newer posts.
-      for (let index = 0; index < 6; index += 1) {
-        await createCard({
-          ...baseInput,
-          thought: `My own public post number ${index}.`,
-          isPublic: true,
-        });
-      }
-      const theirs: string[] = [];
-      for (let index = 0; index < 2; index += 1) {
-        const id = await insertOtherCard({
-          thought: `Their newer post number ${index}.`,
-          isPublic: true,
-          category: index === 0 ? "family" : "future",
-          createdAt: new Date(Date.now() - (index + 1) * 60_000),
-        });
-        expect((await saveFeedAngle(id, "witty")).ok).toBe(true);
-        theirs.push(id);
-      }
-
-      const startedAt = new Date(Date.now() + 1_000);
-      const page = await listRankedFeed({ limit: 24, session: { seed: "seed-pair", startedAt, offset: 0 } });
-      const ids = page.cards.map((card) => card.id);
-      expect(ids).toEqual(expect.arrayContaining(theirs));
-      expect(page.cards.filter((card) => card.isOwner)).toHaveLength(1);
-
-      // A pull right after page 1 finds nothing new: everything up to the mark is in the visit.
-      const [markAt, markId] = page.arrivalsAfter.split("|");
-      const arrivals = await listFeed(
-        { limit: 8, after: { createdAt: new Date(markAt ?? ""), id: markId ?? "" } },
-        { rankedArrivals: true },
-      );
-      expect(arrivals).toEqual([]);
-    });
-
-    it("keeps its order across pages when the viewer follows someone mid-visit", async () => {
+    it("keeps its order when the viewer follows someone mid-visit", async () => {
       const second = "00000000-0000-4000-8000-0000000000b2";
       for (let index = 0; index < 12; index += 1) {
         await insertOtherCard({
           thought: `A post ${index} for the mid-visit follow test.`,
           isPublic: true,
           category: CATEGORIES[index % (CATEGORIES.length - 1)] ?? "work",
-          createdAt: new Date(Date.now() - index * 3_600_000),
+          createdAt: new Date(Date.now() - (index + 1) * 3_600_000),
           authorId: index % 2 === 0 ? OTHER_USER_ID : second,
         });
       }
-      const seeded = { seed: "seed-follow-mid", startedAt: new Date(), offset: 0 };
-      const first = await rankedCards({ limit: 4, session: seeded });
+      const session = stackSession({ seed: "seed-follow-mid", startedAt: new Date(Date.now() - 1_000) });
+      const before = await stackIds({ limit: 12, session });
       expect(await followUser(second)).toMatchObject({ result: "ok" });
-      const rest: StoredCard[] = [];
-      for (const offset of [4, 8]) {
-        rest.push(...(await rankedCards({ limit: 4, session: { ...seeded, offset } })));
-      }
-      const paged = [...first, ...rest].map((card) => card.id);
-      expect(new Set(paged).size).toBe(12);
-      expect(paged).toHaveLength(12);
-
-      // The same visit replayed now reads the same order: the follow waits for the next visit.
-      const replay: string[] = [];
-      for (const offset of [0, 4, 8]) {
-        replay.push(...(await rankedCards({ limit: 4, session: { ...seeded, offset } })).map((card) => card.id));
-      }
-      expect(replay).toEqual(paged);
+      expect(await stackIds({ limit: 12, session })).toEqual(before);
       expect(await unfollowUser(second)).toBe("ok");
-    });
-
-    it("leaves a post newer than the session out, so arrivals stay the other half", async () => {
-      const startedAt = new Date(Date.now() - 60_000);
-      const late = await insertOtherCard({
-        thought: "Posted after the viewer opened Home, so it is an arrival.",
-        isPublic: true,
-        createdAt: new Date(),
-      });
-
-      const ranked = await rankedCards({
-        limit: 24,
-        session: { seed: "seed-frozen", startedAt, offset: 0 },
-      });
-      expect(ranked.map((card) => card.id)).not.toContain(late);
-
-      const arrivals = await listFeed({
-        limit: 8,
-        after: { createdAt: startedAt, id: "00000000-0000-4000-8000-000000000000" },
-      });
-      expect(arrivals.map((card) => card.id)).toContain(late);
     });
   });
 
-  it("follows and unfollows another user without changing feed order", async () => {
+  it("follows and unfollows another user", async () => {
     expect(await followUser(DEV_USER_ID)).toEqual({ result: "self", notificationId: null });
     expect(await followUser("00000000-0000-4000-8000-000000000066")).toEqual({
       result: "not_found",
@@ -2257,17 +2063,16 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(await followUser(OTHER_USER_ID)).toMatchObject({ result: "ok" });
     expect(await followUser(OTHER_USER_ID)).toEqual({ result: "ok", notificationId: null });
 
-    const followed = await listFeed({ limit: 50 });
-    expect(followed.find((card) => card.id === cardId)?.author.following).toBe(true);
+    const followed = await listStack({ limit: 12, session: stackSession(), seen: [] }, false);
+    expect(followed.cards.find((card) => card.id === cardId)?.author.following).toBe(true);
 
     expect(await unfollowUser(OTHER_USER_ID)).toBe("ok");
     expect(await unfollowUser(OTHER_USER_ID)).toBe("ok");
-    const cleared = await listFeed({ limit: 50 });
-    expect(cleared.map((card) => card.id)).toEqual(followed.map((card) => card.id));
-    expect(cleared.find((card) => card.id === cardId)?.author.following).toBe(false);
+    const cleared = await listStack({ limit: 12, session: stackSession(), seen: [] }, false);
+    expect(cleared.cards.find((card) => card.id === cardId)?.author.following).toBe(false);
   });
 
-  it("enforces mutual isolation and clears cross-user follows and saves on block", async () => {
+  it("enforces mutual isolation and clears cross-user follows and decisions on block", async () => {
     const otherCard = await insertOtherCard({
       thought: "This public card should disappear after either side blocks.",
       isPublic: true,
@@ -2278,18 +2083,18 @@ describe.skipIf(!testUrl)("cards integration", () => {
       { followerId: DEV_USER_ID, followeeId: OTHER_USER_ID },
       { followerId: OTHER_USER_ID, followeeId: DEV_USER_ID },
     ]);
-    await getDb().insert(savedAngles).values([
-      { userId: DEV_USER_ID, cardId: otherCard, style: "stoic" },
-      { userId: OTHER_USER_ID, cardId: ownerCard.id, style: "stoic" },
+    await getDb().insert(cardDecisions).values([
+      { userId: DEV_USER_ID, cardId: otherCard, kind: "save", style: "stoic", checkedStyles: ["stoic"], passes: 0 },
+      { userId: OTHER_USER_ID, cardId: ownerCard.id, kind: "pass", style: "stoic", checkedStyles: ["stoic"], passes: 1 },
     ]);
 
     expect(await blockUser(OTHER_USER_ID)).toBe("ok");
     expect(await blockUser(OTHER_USER_ID)).toBe("ok");
     expect(await getDb().select().from(follows)).toHaveLength(0);
-    expect(await getDb().select().from(savedAngles)).toHaveLength(0);
-    expect((await listFeed({ limit: 50 })).map((card) => card.id)).not.toContain(otherCard);
+    expect(await getDb().select().from(cardDecisions)).toHaveLength(0);
+    expect(await stackIds()).not.toContain(otherCard);
     expect(await followUser(OTHER_USER_ID)).toEqual({ result: "blocked", notificationId: null });
-    expect(await saveFeedAngle(otherCard, "stoic")).toEqual({ ok: false, reason: "not_found" });
+    expect(await save(otherCard)).toEqual({ ok: false, reason: "not_found" });
     expect(await getDb().select().from(userBlocks)).toHaveLength(1);
 
     expect(await unblockUser(OTHER_USER_ID)).toBe("ok");
@@ -2309,8 +2114,8 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(await getDb().select().from(userBlocks)).toHaveLength(1);
 
     expect(await unblockUser(OTHER_USER_ID)).toBe("ok");
-    await Promise.all([saveFeedAngle(otherCard, "stoic"), blockUser(OTHER_USER_ID)]);
-    expect(await getDb().select().from(savedAngles)).toHaveLength(0);
+    await Promise.all([save(otherCard), blockUser(OTHER_USER_ID)]);
+    expect(await getDb().select().from(cardDecisions)).toHaveLength(0);
     expect(await getDb().select().from(userBlocks)).toHaveLength(1);
   });
 
@@ -2605,7 +2410,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       expect(await patchCard(owned.id, { isPublic: true })).toMatchObject({ ok: true });
     });
 
-    it("hide stamps the card, upholds reports, blocks the author, and removes it from feed", async () => {
+    it("hide stamps the card, upholds reports, blocks the author, and removes it from the stack", async () => {
       const owned = await createCard({ ...baseInput, isPublic: true });
       await reportFromAll(owned.id);
 
@@ -2629,7 +2434,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       });
       expect(publish.status).toBe(400);
       await expect(publish.json()).resolves.toMatchObject({ code: "PUBLIC_CONTENT_NOT_ALLOWED" });
-      const strangerFeed = await safetyApp.request("/feed?limit=50", {
+      const strangerFeed = await safetyApp.request("/stack?limit=50", {
         headers: { Authorization: `Bearer test:${OTHER_USER_ID}` },
       });
       expect(strangerFeed.status).toBe(200);
@@ -2638,7 +2443,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
     });
 
     async function feedIdsFor(viewerId: string): Promise<string[]> {
-      const response = await safetyApp.request("/feed?limit=50", {
+      const response = await safetyApp.request("/stack?limit=50", {
         headers: { Authorization: `Bearer test:${viewerId}` },
       });
       expect(response.status).toBe(200);
@@ -2694,7 +2499,6 @@ describe.skipIf(!testUrl)("cards integration", () => {
         for (const reporterId of reviewerIds) {
           expect(await feedIdsFor(reporterId)).not.toContain(owned.id);
         }
-        expect(await feedIdsFor(DEV_USER_ID)).toContain(owned.id);
         expect(await feedIdsFor(OTHER_USER_ID)).toContain(owned.id);
 
         expect(await patchCard(owned.id, { isPublic: false })).toMatchObject({ ok: true });
@@ -2727,7 +2531,6 @@ describe.skipIf(!testUrl)("cards integration", () => {
       for (const reporterId of reviewerIds) {
         expect(await feedIdsFor(reporterId)).not.toContain(owned.id);
       }
-      expect(await feedIdsFor(DEV_USER_ID)).toContain(owned.id);
       expect(await feedIdsFor(OTHER_USER_ID)).toContain(owned.id);
 
       expect(await patchCard(owned.id, { isPublic: false })).toMatchObject({ ok: true });

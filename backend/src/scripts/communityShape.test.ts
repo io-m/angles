@@ -5,8 +5,8 @@ import {
   mulberry32,
   planPosts,
   planReaders,
-  planViewerHearts,
-  type HeartableCard,
+  planViewerDecisions,
+  type DecidableCard,
   type PostInput,
 } from "./communityShape.js";
 
@@ -79,40 +79,50 @@ describe("community post shape", () => {
 
 describe("community readers", () => {
   const planned = plan();
-  const cards: HeartableCard[] = planned.map((item) => ({
+  const cards: DecidableCard[] = planned.map((item) => ({
     id: item.id,
     category: posts.find((post) => post.id === item.id)?.category ?? "work",
     createdAt: item.createdAt,
     styles: STYLES,
   }));
 
-  it("hearts after a post lands, never in the future, once per angle", () => {
+  it("decides after a post lands, never in the future, once per reader and card", () => {
     const readers = planReaders(cards, NOW, mulberry32(3));
     const byId = new Map(cards.map((card) => [card.id, card]));
     const seen = new Set<string>();
     for (const reader of readers) {
-      for (const heart of reader.hearts) {
-        const card = byId.get(heart.cardId);
-        expect(heart.heartedAt.getTime()).toBeGreaterThan(card?.createdAt.getTime() ?? Infinity);
-        expect(heart.heartedAt.getTime()).toBeLessThan(NOW.getTime());
-        const key = `${heart.userId}:${heart.cardId}:${heart.style}`;
+      for (const decision of reader.decisions) {
+        const card = byId.get(decision.cardId);
+        expect(decision.decidedAt.getTime()).toBeGreaterThan(card?.createdAt.getTime() ?? Infinity);
+        expect(decision.decidedAt.getTime()).toBeLessThan(NOW.getTime());
+        expect(decision.checkedStyles).toContain(decision.style);
+        expect(decision.passes).toBe(decision.kind === "pass" ? 1 : 0);
+        const key = `${decision.userId}:${decision.cardId}`;
         expect(seen.has(key)).toBe(false);
         seen.add(key);
       }
     }
   });
 
-  it("leaves most posts unloved and a few adored", () => {
+  it("leaves most posts unsaved and a few adored, and passes more than it saves", () => {
     const readers = planReaders(cards, NOW, mulberry32(3));
     const perCard = new Map<string, number>();
+    let saves = 0;
+    let passes = 0;
     for (const reader of readers) {
-      for (const heart of reader.hearts) {
-        perCard.set(heart.cardId, (perCard.get(heart.cardId) ?? 0) + 1);
+      for (const decision of reader.decisions) {
+        if (decision.kind === "save") {
+          saves += 1;
+          perCard.set(decision.cardId, (perCard.get(decision.cardId) ?? 0) + 1);
+        } else {
+          passes += 1;
+        }
       }
     }
     const unloved = cards.filter((card) => !perCard.has(card.id)).length;
     expect(unloved / cards.length).toBeGreaterThan(0.35);
     expect(Math.max(...perCard.values())).toBeGreaterThanOrEqual(8);
+    expect(passes).toBeGreaterThan(saves);
   });
 
   it("gives readers different tastes", () => {
@@ -122,16 +132,22 @@ describe("community readers", () => {
     expect(new Set(readers.flatMap((reader) => reader.categories)).size).toBeGreaterThan(4);
   });
 
-  it("plans a small themed history for the viewer, hearted recently", () => {
-    const hearts = planViewerHearts("viewer", cards, NOW, mulberry32(5));
-    expect(hearts.length).toBeGreaterThan(3);
-    expect(hearts.length).toBeLessThanOrEqual(8);
+  it("plans a small themed history for the viewer, saved recently, with a few passes elsewhere", () => {
+    const decisions = planViewerDecisions("viewer", cards, NOW, mulberry32(5));
+    const saves = decisions.filter((decision) => decision.kind === "save");
+    expect(saves.length).toBeGreaterThan(3);
+    expect(saves.length).toBeLessThanOrEqual(8);
     const byId = new Map(cards.map((card) => [card.id, card]));
-    for (const heart of hearts) {
-      expect(["work", "self_worth"]).toContain(byId.get(heart.cardId)?.category);
-      expect(["stoic", "tough"]).toContain(heart.style);
-      expect(NOW.getTime() - heart.heartedAt.getTime()).toBeLessThanOrEqual(3 * DAY);
-      expect(heart.heartedAt.getTime()).toBeGreaterThan(byId.get(heart.cardId)?.createdAt.getTime() ?? Infinity);
+    for (const decision of decisions) {
+      const category = byId.get(decision.cardId)?.category;
+      if (decision.kind === "save") {
+        expect(["work", "self_worth"]).toContain(category);
+        expect(["stoic", "tough"]).toContain(decision.style);
+      } else {
+        expect(["work", "self_worth"]).not.toContain(category);
+      }
+      expect(NOW.getTime() - decision.decidedAt.getTime()).toBeLessThanOrEqual(3 * DAY);
+      expect(decision.decidedAt.getTime()).toBeGreaterThan(byId.get(decision.cardId)?.createdAt.getTime() ?? Infinity);
     }
   });
 });

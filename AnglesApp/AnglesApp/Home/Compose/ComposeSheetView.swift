@@ -17,7 +17,6 @@ final class ComposeSheetContext {
     var close: () -> Void = {}
     var showMembership: () -> Void = {}
     var saved: (HomeCard) -> Void = { _ in }
-    var landSavedCard: (HomeCard) -> Void = { _ in }
     var presentSaveCover: (String) -> Void = { _ in }
     var dismissSaveCover: (UUID) -> Void = { _ in }
     var acceptTerms: () async -> Bool = { true }
@@ -201,7 +200,6 @@ struct ComposeSheetView: View {
             state.isCelebratingSave = true
             let label = savedCard.isPublic ? "Posted" : "Saved privately"
             context.presentSaveCover(label)
-            context.landSavedCard(savedCard)
             context.saved(savedCard)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 400 : 1600))

@@ -286,13 +286,44 @@ export type StoredReframeResult = {
   reframe: string;
   /** Sent to the author only; everyone else reads the English. */
   reframeOriginal?: string;
-  isHearted: boolean;
-  heartedAt?: string;
   /**
-   * How many other people hearted this angle. Present only on the author's own
-   * public cards, so nobody can read another author's numbers. Omitted at zero.
+   * How many people saved the card while this angle was on screen. Present only on the
+   * author's own public cards, so nobody can read another author's numbers. Omitted at zero.
    */
-  heartCount?: number;
+  saveCount?: number;
+};
+
+export const DECISION_KINDS = ["save", "pass"] as const;
+
+export type DecisionKind = (typeof DECISION_KINDS)[number];
+
+/** Most passes a card can take. At this count it never returns to the stack. */
+export const MAX_PASSES = 2;
+
+/**
+ * The viewer's own record on someone else's card. A stack card carries it when it is
+ * returning, so a rewind can write it back exactly; Saved cards carry their save.
+ */
+export type CardDecision = {
+  kind: DecisionKind;
+  /** The angle on screen when they decided. */
+  style: Style;
+  /** Every angle that had been on screen. Always includes `style`. */
+  checkedStyles: Style[];
+  passes: number;
+  decidedAt: string;
+};
+
+/** `PUT /cards/:id/decision`. The full row, so a retry or a rewind writes the same state. */
+export type DecisionBody = {
+  kind: DecisionKind;
+  style: Style;
+  checkedStyles: Style[];
+  passes: number;
+};
+
+export type DecisionResponse = {
+  decision: CardDecision;
 };
 
 export type StoredCard = {
@@ -313,10 +344,22 @@ export type StoredCard = {
   matching: MatchingKey;
   results: StoredReframeResult[];
   model: string;
+  /** The cover the author saved. */
   spotlightStyle: Style;
+  /**
+   * The angle this viewer opens the card on: the cover on your own card, the saved angle
+   * on a saved card, and on the stack a ranked pick that is never an angle already seen.
+   */
+  openingStyle: Style;
   isPublic: boolean;
   createdAt: string;
   isOwner: boolean;
+  /** A curated card from the Angles house account, not a person. */
+  isHouse: boolean;
+  /** The viewer's save or pass on someone else's card. Absent when they have not decided. */
+  decision?: CardDecision;
+  /** People who saved this card. Present only on the author's own public card; omitted at zero. */
+  saveCount?: number;
   /**
    * True only on the owner's own card, and only while an operator hide is in force.
    * Absent everywhere else.
@@ -341,44 +384,33 @@ export type CardListQuery = {
   category?: Category;
   /** Cards that include this style in `results`. Cover (`spotlightStyle`) is display-only. */
   style?: Style;
-  /** Cards that have at least one liked style (owner heart or viewer save). */
-  hearted?: boolean;
+  /** `true`: only cards the viewer saved. `false`: only their own. Absent: both. */
+  saved?: boolean;
 };
 
-export type FeedListQuery = {
-  limit: number;
-  before?: FeedCursor;
-  /** Ranked page pointer. Mutually exclusive with `before`. */
-  session?: FeedSessionCursor;
-  /** Cards strictly newer than this, newest first. The arrivals half of a refresh. */
-  after?: FeedCursor;
-  categories?: Category[];
-  emotions?: Emotion[];
-  /** Cards that include this style. Ranked feeds also reorder around that angle. */
-  style?: Style;
-};
-
+/** One visit to the stack. Opaque to the client, which echoes it back. */
 export type FeedSessionCursor = {
   seed: string;
   startedAt: Date;
-  offset: number;
 };
 
-export type FeedListResponse = {
+export type StackQuery = {
+  limit: number;
+  session: FeedSessionCursor;
+  /** Cards this visit already handed out, newest last. Never sent again in the same visit. */
+  seen: string[];
+  /** Only these life areas, when set. */
+  categories?: Category[];
+  /** Only cards sharing at least one of these moods, when set. */
+  emotions?: Emotion[];
+};
+
+export type StackResponse = {
   cards: StoredCard[];
-  /**
-   * Present when the server owns the page pointer, which a ranked order does because
-   * it cannot be derived from the cards. Clients echo it back opaquely.
-   */
-  page?: {
-    nextCursor: string;
-    /**
-     * `createdAt|id` of the newest card this ranked visit could show. A pull asks for
-     * arrivals after this, never after the newest card on screen: a ranked page need not
-     * hold the newest posts, and those are already in the visit's order.
-     */
-    arrivalsAfter?: string;
-  };
+  /** Echo it back for the next page of this visit. */
+  session: string;
+  /** Nothing is left after these cards, house cards included. The end card comes next. */
+  exhausted: boolean;
 };
 
 export type FeedCursor = {
@@ -387,9 +419,7 @@ export type FeedCursor = {
 };
 
 export type PatchCardInput = {
-  isHearted?: boolean;
-  style?: Style;
-  isPublic?: boolean;
+  isPublic: boolean;
 };
 
 const STYLE_SET: ReadonlySet<string> = new Set(STYLES);

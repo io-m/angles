@@ -10,11 +10,11 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 - `src/app.ts` — middleware, route mount, `onError`
 - `src/index.ts` — Node `serve()`, signing-key and schema checks, pool shutdown
 - `src/routes/reframe.ts` — `POST /reframe`; signs the cook and every result (`src/lib/cookSignature.ts`)
-- `src/routes/cards.ts` — card CRUD. `POST` verifies the `/reframe` signatures and `safety: none` before storing. `PATCH` sets per-style `isHearted` (requires `style`) and/or `isPublic`. `GET ?style=` means the card has that reframe; `?heart=` means any liked style; `?before=createdAt|id` pages.
-- `src/db/schema.ts` / `src/db/cards.ts` — Drizzle schema and SQL seam. Hearts live on `card_reframes`; `isPublic` lives on `cards`. There are no pins. The library includes hearted cards only while they are public.
-- `src/db/cursor.ts` / `src/lib/cursor.ts` — one `createdAt|id` cursor for author and library pages, and for Home when ranking is off. `cards.created_at` has millisecond precision so the cursor round-trips through a JS `Date`.
-- `src/lib/feedRanking.ts` — the only place to tune Home order. `src/db/feed.ts` loads the signals and pages the result.
-- `src/routes/feed.ts` — `GET /feed`. Optional `style` selects a Home shelf. Life area and mood are the facets.
+- `src/routes/cards.ts` — card CRUD. `POST` verifies the `/reframe` signatures and `safety: none` before storing. `PATCH` sets `isPublic`. `GET ?saved=true` is the viewer's saved cards, `?saved=false` their own; `?style=` means the card has that reframe; `?before=createdAt|id` pages. `PUT/DELETE /:id/decision` writes or clears the viewer's whole save/pass row.
+- `src/db/schema.ts` / `src/db/cards.ts` — Drizzle schema and SQL seam. Saves and passes are one `card_decisions` row per viewer and card (`src/db/decisions.ts`); `isPublic` lives on `cards`. There are no pins. Saved cards stay in the library only while they are public.
+- `src/db/cursor.ts` / `src/lib/cursor.ts` — one `createdAt|id` cursor for author and library pages. `cards.created_at` has millisecond precision so the cursor round-trips through a JS `Date`.
+- `src/lib/feedRanking.ts` — the only place to tune Home stack order. `src/db/stack.ts` loads the signals and builds each page.
+- `src/routes/stack.ts` — `GET /stack?limit&session&seen`, answering `{ cards, session, exhausted }`.
 - `src/lib/decision.ts` — decision call, JSON parsing, one repair retry, metadata mapping
 - `src/lib/llmClient.ts` — `generateReframe({ text, systemPrompt })`, `generateJson({ ... })`
 - `src/lib/prompts.ts` — `DECISION_PROMPT`, `SYSTEM_PROMPTS`, length budgets
@@ -22,11 +22,11 @@ description: Extend or change the Angles Hono API (reframe, health, validation, 
 
 ## Home order
 
-`FEED_RANKING=resonance` ranks `GET /feed` for the signed-in viewer. Unset or `chronological` is newest-first, including a style filter, so the rollback is one variable. Do not add the flag to production fail-fast config.
+`FEED_RANKING=resonance` ranks `GET /stack` for the signed-in viewer. Unset or `chronological` is newest-first, so the rollback is one variable. Do not add the flag to production fail-fast config.
 
-For you (no `style`) scores freshness, hearts from distinct people, overlap with the viewer's own recent life areas and moods, follows, a second chance for an unhearted young post, and session-stable jitter. Intensity is capped by the page spread, never rewarded. A style shelf keeps that score, then blends general taste toward hearts on that style (full confidence at five), adds capped hearts on that exact angle, and a small cover tie-break. Jitter is salted by style. One heart cannot take over a shelf. With no `style`, the For you score and the mixed opening angle stay as they are.
+The score is freshness, saves from distinct other people, closeness to the viewer's themes (from what they write and save, minus a little per pass), follows, a second chance for an unsaved young post, session-stable jitter, and a penalty for a card returning after a pass. Intensity is capped by pacing, never rewarded; two heavy cards are never side by side while a lighter one is left. Passes never count against a card for anyone else.
 
-Candidates are the newest 1000 matching public cards, frozen for the session. The response cursor is an opaque `seed|startedAt|offset`. `after` stays newest-first even while ranking is on. Do not put other people's per-style heart counts on the wire. Author and model lists stay chronological. Weights and spread limits are documented in `BUILD.md` sections 14 and 15.
+Candidates are the newest 1000 public cards by other people that the viewer has not decided, read as of the visit's `startedAt`. Paging is by exclusion, not offset: the phone echoes `session` and names the cards it was handed whose decision is not confirmed yet in `seen`. A card passed once returns after 12 hours while it has an angle the viewer never saw. House cards (`users.kind = 'house'`) come only after the community's are used up. Do not put other people's save counts on the wire. Author and library lists stay chronological. Weights and spread limits are in `BUILD.md` section 14.
 
 ## Adding a route
 

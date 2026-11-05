@@ -15,43 +15,43 @@ private enum AnglesWidgetPalette {
 @main
 struct AnglesWidgetBundle: WidgetBundle {
     var body: some Widget {
-        HeartAngleWidget()
+        SavedAngleWidget()
         WriteThoughtWidget()
     }
 }
 
-private struct HeartAngleEntry: TimelineEntry {
+private struct SavedAngleEntry: TimelineEntry {
     let date: Date
-    let item: HeartAngleWidgetItem?
+    let item: SavedAngleWidgetItem?
 }
 
-private struct HeartAngleProvider: TimelineProvider {
+private struct SavedAngleProvider: TimelineProvider {
     /// WidgetKit may coalesce display updates, but prebuilding short timeline entries gives
-    /// hearts a frequent rotation without waking the app or spending background budget.
+    /// saved cards a frequent rotation without waking the app or spending background budget.
     private static let refreshInterval: TimeInterval = 5 * 60
 
-    func placeholder(in context: Context) -> HeartAngleEntry {
-        HeartAngleEntry(date: Date(), item: .placeholder)
+    func placeholder(in context: Context) -> SavedAngleEntry {
+        SavedAngleEntry(date: Date(), item: .placeholder)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (HeartAngleEntry) -> Void) {
-        let item = WidgetSnapshotStore()?.loadHeartAngles().items.first
+    func getSnapshot(in context: Context, completion: @escaping (SavedAngleEntry) -> Void) {
+        let item = WidgetSnapshotStore()?.loadSavedAngles().items.first
             ?? (context.isPreview ? .placeholder : nil)
-        completion(HeartAngleEntry(date: Date(), item: item))
+        completion(SavedAngleEntry(date: Date(), item: item))
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<HeartAngleEntry>) -> Void) {
+    func getTimeline(in context: Context, completion: @escaping (Timeline<SavedAngleEntry>) -> Void) {
         let now = Date()
-        let items = WidgetSnapshotStore()?.loadHeartAngles().items ?? []
+        let items = WidgetSnapshotStore()?.loadSavedAngles().items ?? []
         guard !items.isEmpty else {
-            let entry = HeartAngleEntry(date: now, item: nil)
+            let entry = SavedAngleEntry(date: now, item: nil)
             completion(Timeline(entries: [entry], policy: .after(now.addingTimeInterval(Self.refreshInterval))))
             return
         }
 
         let startingIndex = Int(now.timeIntervalSince1970 / Self.refreshInterval) % items.count
         let entries = (0 ..< 24).map { offset in
-            HeartAngleEntry(
+            SavedAngleEntry(
                 date: now.addingTimeInterval(Double(offset) * Self.refreshInterval),
                 item: items[(startingIndex + offset) % items.count]
             )
@@ -65,9 +65,9 @@ private struct HeartAngleProvider: TimelineProvider {
     }
 }
 
-private struct HeartAngleView: View {
+private struct SavedAngleView: View {
     @Environment(\.widgetFamily) private var family
-    let entry: HeartAngleEntry
+    let entry: SavedAngleEntry
 
     var body: some View {
         Group {
@@ -86,11 +86,11 @@ private struct HeartAngleView: View {
                 background(for: entry.item?.style)
             }
         }
-        .widgetURL(AnglesWidgetConstants.heartsURL)
+        .widgetURL(AnglesWidgetConstants.savedURL)
     }
 
     @ViewBuilder
-    private func content(_ item: HeartAngleWidgetItem) -> some View {
+    private func content(_ item: SavedAngleWidgetItem) -> some View {
         if family == .accessoryRectangular {
             HStack(alignment: .top, spacing: 6) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -137,7 +137,7 @@ private struct HeartAngleView: View {
                 size: family == .accessoryRectangular ? 16 : 22,
                 emphasis: family == .accessoryRectangular ? .accessory : .home
             )
-            Text("Heart an angle to keep it close.")
+            Text("Love a card to keep it close.")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(family == .accessoryRectangular ? Color.white : AnglesWidgetPalette.ink)
                 .multilineTextAlignment(family == .accessoryRectangular ? .leading : .center)
@@ -214,15 +214,15 @@ private struct HeartAngleView: View {
     }
 }
 
-struct HeartAngleWidget: Widget {
-    let kind = AnglesWidgetConstants.heartWidgetKind
+struct SavedAngleWidget: Widget {
+    let kind = AnglesWidgetConstants.savedWidgetKind
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: HeartAngleProvider()) { entry in
-            HeartAngleView(entry: entry)
+        StaticConfiguration(kind: kind, provider: SavedAngleProvider()) { entry in
+            SavedAngleView(entry: entry)
         }
-        .configurationDisplayName("Hearts")
-        .description("Keep an angle you hearted close by.")
+        .configurationDisplayName("Loved")
+        .description("Keep a card you loved close by.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
     }
 }
@@ -412,14 +412,14 @@ struct WriteThoughtWidget: Widget {
     }
 }
 
-private extension HeartAngleWidgetItem {
-    static let placeholder = HeartAngleWidgetItem(
+private extension SavedAngleWidgetItem {
+    static let placeholder = SavedAngleWidgetItem(
         id: "placeholder-stoic",
         cardID: "placeholder",
         answer: "Name what is yours to influence, and let the rest stop borrowing your attention.",
         style: "stoic",
         styleDisplayName: "Stoic",
         lifeAreaLabel: "Self-worth",
-        heartedAt: Date()
+        savedAt: Date()
     )
 }

@@ -137,18 +137,18 @@ struct SafetyContractTests {
     }
 
     @Test func storedAnswerCarriesTheAuthorsOwnLanguage() throws {
-        let json = #"{"style":"stoic","reframe":"It passed.","reframeOriginal":"Prošlo je.","isHearted":false}"#
+        let json = #"{"style":"stoic","reframe":"It passed.","reframeOriginal":"Prošlo je."}"#
         let stored = try JSONDecoder().decode(StoredReframeResult.self, from: Data(json.utf8))
         #expect(stored.result == ReframeResult(style: .stoic, reframe: "It passed.", reframeOriginal: "Prošlo je."))
     }
 
     @Test func moderationHiddenIsOptionalAndControlsTheOwnerPresentation() throws {
-        let visibleJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isHearted":false}],"spotlightStyle":"stoic","isPublic":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
+        let visibleJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle."}],"spotlightStyle":"stoic","isPublic":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
         let visible = try JSONDecoder().decode(StoredCard.self, from: Data(visibleJSON.utf8))
         #expect(visible.moderationHidden == nil)
         #expect(HomeCard(stored: visible)?.moderationHidden == false)
 
-        let hiddenJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle.","isHearted":false}],"spotlightStyle":"stoic","isPublic":false,"moderationHidden":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
+        let hiddenJSON = #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle."}],"spotlightStyle":"stoic","isPublic":false,"moderationHidden":true,"createdAt":"2026-10-05T10:00:00.000Z","isOwner":true,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"JM","following":false}}"#
         let hidden = try JSONDecoder().decode(StoredCard.self, from: Data(hiddenJSON.utf8))
         let card = try #require(HomeCard(stored: hidden))
         #expect(hidden.moderationHidden == true)
@@ -167,7 +167,7 @@ struct SafetyContractTests {
 
 struct StyleCatalogContractTests {
     private func card(results: [String], spotlight: String) -> String {
-        let angles = results.map { #"{"style":"\#($0)","reframe":"An angle.","isHearted":false}"# }.joined(separator: ",")
+        let angles = results.map { #"{"style":"\#($0)","reframe":"An angle."}"# }.joined(separator: ",")
         return #"{"id":"11111111-1111-4111-8111-111111111111","thought":"A thought.","category":"work","results":[\#(angles)],"spotlightStyle":"\#(spotlight)","isPublic":true,"createdAt":"2026-10-08T10:00:00.000Z","isOwner":false,"author":{"id":"22222222-2222-4222-8222-222222222222","initials":"AL","following":false}}"#
     }
 
@@ -239,18 +239,37 @@ struct GraceOnlyAccessTests {
     }
 }
 
-struct FeedPageContractTests {
-    @Test func rankedPageCarriesTheArrivalMark() throws {
-        let json = #"{"cards":[],"page":{"nextCursor":"c2VlZA","arrivalsAfter":"2026-10-06T10:00:00.000Z|00000000-0000-4000-8000-000000000001"}}"#
-        let response = try JSONDecoder().decode(CardListResponse.self, from: Data(json.utf8))
-        #expect(response.page.serverCursor == "c2VlZA")
-        #expect(response.page.arrivalsAfter == "2026-10-06T10:00:00.000Z|00000000-0000-4000-8000-000000000001")
+struct StackContractTests {
+    private static let card = #"{"id":"00000000-0000-4000-8000-000000000001","thought":"A thought.","category":"work","results":[{"style":"stoic","reframe":"An angle."},{"style":"hopeful","reframe":"Another."}],"spotlightStyle":"stoic","openingStyle":"hopeful","isPublic":true,"isHouse":true,"createdAt":"2026-10-06T10:00:00.000Z","isOwner":false,"author":{"id":"00000000-0000-4000-8000-0000000000aa","initials":"A","following":false},"decision":{"kind":"pass","style":"stoic","checkedStyles":["stoic"],"passes":1,"decidedAt":"2026-10-05T10:00:00.000Z"}}"#
+
+    @Test func stackPageKeepsIdsOfCardsThisBuildCannotRead() throws {
+        let unreadable = #"{"id":"00000000-0000-4000-8000-000000000002","thought":"x"}"#
+        let json = #"{"cards":[\#(Self.card),\#(unreadable)],"session":"s1","exhausted":false}"#
+        let response = try JSONDecoder().decode(StackResponse.self, from: Data(json.utf8))
+        #expect(response.cards.count == 1)
+        #expect(response.receivedIds.count == 2)
+        #expect(response.session == "s1")
+        #expect(!response.exhausted)
     }
 
-    @Test func chronologicalPageHasNoArrivalMark() throws {
-        let json = #"{"cards":[]}"#
-        let response = try JSONDecoder().decode(CardListResponse.self, from: Data(json.utf8))
-        #expect(response.page.serverCursor == nil)
-        #expect(response.page.arrivalsAfter == nil)
+    @Test func storedCardCarriesHouseOpeningAndDecision() throws {
+        let stored = try JSONDecoder().decode(StoredCard.self, from: Data(Self.card.utf8))
+        let card = try #require(HomeCard(stored: stored))
+        #expect(card.isHouse)
+        #expect(card.openingStyle == .hopeful)
+        #expect(card.decision?.kind == .pass)
+        #expect(card.decision?.passes == 1)
+        #expect(!card.isSaved)
+    }
+
+    @Test func decisionRequestEncodesTheWholeRow() throws {
+        let request = DecisionRequest(kind: .save, style: .stoic, checkedStyles: [.stoic, .hopeful], passes: 1)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any]
+        )
+        #expect(object["kind"] as? String == "save")
+        #expect(object["style"] as? String == "stoic")
+        #expect(object["checkedStyles"] as? [String] == ["stoic", "hopeful"])
+        #expect(object["passes"] as? Int == 1)
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 struct CardsService: Sendable {
-    /// Heart, privacy, and delete are one small row write. The 15s session default is the
+    /// A decision, privacy, and delete are one small row write. The 15s session default is the
     /// cook's network slack; here it only hides an unreachable server behind a long spinner.
     private static let writeTimeout: TimeInterval = 6
 
@@ -15,8 +15,17 @@ struct CardsService: Sendable {
         try await client.post(path: "cards", body: body)
     }
 
-    func list(limit: Int, before: String? = nil, timeout: TimeInterval? = nil) async throws -> CardListResponse {
+    /// `saved` false is your own cards, true the cards you saved, nil both.
+    func list(
+        limit: Int,
+        before: String? = nil,
+        saved: Bool? = nil,
+        timeout: TimeInterval? = nil
+    ) async throws -> CardListResponse {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let saved {
+            queryItems.append(URLQueryItem(name: "saved", value: saved ? "true" : "false"))
+        }
         if let before {
             queryItems.append(URLQueryItem(name: "before", value: before))
         }
@@ -35,57 +44,38 @@ struct CardsService: Sendable {
         try await client.delete(path: "cards/\(id)", timeout: Self.writeTimeout)
     }
 
-    /// `before` is whatever cursor the last page handed back, opaque on purpose: the
-    /// server may be paging chronologically or by rank. `after` asks the opposite
-    /// question — what has been posted since this cursor — and is always chronological.
-    func listFeed(
+    /// One page of the stack. A missing `session` starts a new visit. `seen` names the cards
+    /// this visit already handed out that the server cannot leave out on its own yet.
+    func stack(
         limit: Int,
-        before: String? = nil,
-        after: String? = nil,
-        categories: Set<ThoughtCategory> = [],
-        emotions: Set<Emotion> = [],
-        style: Style? = nil
-    ) async throws -> CardListResponse {
+        session: String?,
+        seen: [String],
+        filter: StackFilter = StackFilter()
+    ) async throws -> StackResponse {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
-        if let before {
-            queryItems.append(URLQueryItem(name: "before", value: before))
+        if !filter.categories.isEmpty {
+            let value = filter.categories.map(\.rawValue).sorted().joined(separator: ",")
+            queryItems.append(URLQueryItem(name: "categories", value: value))
         }
-        if let after {
-            queryItems.append(URLQueryItem(name: "after", value: after))
+        if !filter.emotions.isEmpty {
+            let value = filter.emotions.map(\.rawValue).sorted().joined(separator: ",")
+            queryItems.append(URLQueryItem(name: "emotions", value: value))
         }
-        let orderedCategories = ThoughtCategory.allCases.filter(categories.contains)
-        if !orderedCategories.isEmpty {
-            queryItems.append(
-                URLQueryItem(
-                    name: "categories",
-                    value: orderedCategories.map(\.rawValue).joined(separator: ",")
-                )
-            )
+        if let session {
+            queryItems.append(URLQueryItem(name: "session", value: session))
         }
-        let orderedEmotions = Emotion.allCases.filter(emotions.contains)
-        if !orderedEmotions.isEmpty {
-            queryItems.append(
-                URLQueryItem(
-                    name: "emotions",
-                    value: orderedEmotions.map(\.rawValue).joined(separator: ",")
-                )
-            )
+        if !seen.isEmpty {
+            queryItems.append(URLQueryItem(name: "seen", value: seen.joined(separator: ",")))
         }
-        if let style {
-            queryItems.append(URLQueryItem(name: "style", value: style.rawValue))
-        }
-        return try await client.get(path: "feed", queryItems: queryItems)
+        return try await client.get(path: "stack", queryItems: queryItems)
     }
 
-    func saveFeedAngle(id: String, style: Style) async throws -> StoredCard {
-        try await client.put(path: "feed/cards/\(id)/angles/\(style.rawValue)", timeout: Self.writeTimeout)
+    func decide(id: String, _ body: DecisionRequest) async throws -> DecisionResponse {
+        try await client.put(path: "cards/\(id)/decision", body: body, timeout: Self.writeTimeout)
     }
 
-    func unsaveFeedAngle(id: String, style: Style) async throws -> StoredCard {
-        try await client.deleteJSON(
-            path: "feed/cards/\(id)/angles/\(style.rawValue)",
-            timeout: Self.writeTimeout
-        )
+    func clearDecision(id: String) async throws {
+        try await client.delete(path: "cards/\(id)/decision", timeout: Self.writeTimeout)
     }
 
     func follow(id: String) async throws -> FollowStateResponse {
@@ -102,10 +92,6 @@ struct CardsService: Sendable {
             queryItems.append(URLQueryItem(name: "before", value: before))
         }
         return try await client.get(path: "users/\(id)/cards", queryItems: queryItems)
-    }
-
-    func removeFromBoard(id: String) async throws {
-        try await client.delete(path: "feed/cards/\(id)/saves", timeout: Self.writeTimeout)
     }
 
     func report(id: String, reason: ReportReason) async throws -> ReportStateResponse {

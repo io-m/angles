@@ -2,7 +2,7 @@
  * The shape of a believable community, decided without touching the database.
  *
  * The fixture posts are flat on purpose: 30 per life area, 7 per author, every one dated
- * weeks ago, no hearts. A feed ranked on time, hearts and themes has nothing to work with
+ * weeks ago, no saves. A stack ranked on time, saves and themes has nothing to work with
  * there. This turns the same posts into something that looks like real use: a busy last
  * day, prolific and quiet authors, themes that trend, and readers with tastes.
  *
@@ -185,21 +185,29 @@ export function planPosts(
   });
 }
 
-export type HeartableCard = {
+export type DecidableCard = {
   id: string;
   category: Category;
   createdAt: Date;
   styles: readonly Style[];
 };
 
-export type HeartPlan = { userId: string; cardId: string; style: Style; heartedAt: Date };
+export type DecisionPlan = {
+  userId: string;
+  cardId: string;
+  kind: "save" | "pass";
+  style: Style;
+  checkedStyles: Style[];
+  passes: number;
+  decidedAt: Date;
+};
 
 export type ReaderPlan = {
   id: string;
   initials: string;
   categories: Category[];
   style: Style;
-  hearts: HeartPlan[];
+  decisions: DecisionPlan[];
 };
 
 export function readerId(index: number): string {
@@ -231,14 +239,26 @@ const STYLE_POPULARITY: Record<Style, number> = {
   values: 14,
 };
 
+/** Passes per save for a reader: most cards in a stack are swiped past. */
+const PASSES_PER_SAVE = 2;
+
+/** A decision some hours after the post lands, more often within the day; never in the future. */
+function decidedAfter(card: DecidableCard, now: Date, rng: Rng): Date | null {
+  const delayMs = -Math.log(Math.max(rng(), 1e-6)) * 8 * HOUR_MS;
+  const at = new Date(Math.min(now.getTime() - 60_000, card.createdAt.getTime() + 5 * 60_000 + delayMs));
+  return at.getTime() > card.createdAt.getTime() ? at : null;
+}
+
 /**
- * Readers with tastes, hearting a heavy-tailed subset: most posts get nothing, a few
- * are loved. A heart is always dated after the post, and never in the future.
+ * Readers with tastes, saving a heavy-tailed subset: most posts get nothing, a few are
+ * loved. Each reader also passes on about twice as many as they save, after reading an
+ * angle or two. One decision per reader and card, dated after the post and never in the
+ * future.
  */
-export function planReaders(cards: readonly HeartableCard[], now: Date, rng: Rng): ReaderPlan[] {
+export function planReaders(cards: readonly DecidableCard[], now: Date, rng: Rng): ReaderPlan[] {
   const themeCategories = CATEGORIES.filter((category) => category !== "other");
   const themeWeights = themeCategories.map((category) => THEME_POPULARITY[category]);
-  // How appealing each post is, lognormal, so a handful run away with the hearts.
+  // How appealing each post is, lognormal, so a handful run away with the saves.
   const appeal = new Map(cards.map((card) => [card.id, Math.exp(1.5 * gaussian(rng))]));
 
   return Array.from({ length: SHAPE.readers }, (_, index) => {
@@ -250,81 +270,129 @@ export function planReaders(cards: readonly HeartableCard[], now: Date, rng: Rng
     const style = STYLES[weightedIndex(rng, STYLES.map((item) => STYLE_POPULARITY[item]))] as Style;
     // Some readers are devoted, most drop in.
     const activity = Math.max(2, Math.round(3 + Math.exp(1.1 * gaussian(rng)) * 3));
+    const recency = (card: DecidableCard): number =>
+      // Readers find newer posts more, and older ones keep a trickle.
+      0.3 + Math.exp(-(now.getTime() - card.createdAt.getTime()) / (10 * DAY_MS));
 
-    const pool = cards.map((card) => ({
+    const savePool = cards.map((card) => ({
       card,
-      weight:
-        (appeal.get(card.id) ?? 1) *
-        (categories.has(card.category) ? 5 : 1) *
-        // Readers find newer posts more, and older ones keep a trickle.
-        (0.3 + Math.exp(-(now.getTime() - card.createdAt.getTime()) / (10 * DAY_MS))),
+      weight: (appeal.get(card.id) ?? 1) * (categories.has(card.category) ? 5 : 1) * recency(card),
+    }));
+    const passPool = cards.map((card) => ({
+      card,
+      weight: (categories.has(card.category) ? 0.5 : 1) * recency(card),
     }));
 
-    const hearts: HeartPlan[] = [];
+    const decisions: DecisionPlan[] = [];
     const taken = new Set<string>();
-    for (let attempt = 0; hearts.length < activity && attempt < activity * 6; attempt += 1) {
-      const { card } = pool[weightedIndex(rng, pool.map((entry) => entry.weight))] as (typeof pool)[number];
-      const available = card.styles;
-      if (available.length === 0) {
+    const userId = readerId(index);
+    for (let attempt = 0; decisions.length < activity && attempt < activity * 6; attempt += 1) {
+      const { card } = savePool[weightedIndex(rng, savePool.map((entry) => entry.weight))] as (typeof savePool)[number];
+      if (card.styles.length === 0 || taken.has(card.id)) {
         continue;
       }
       const chosen =
-        available.includes(style) && rng() < 0.55
+        card.styles.includes(style) && rng() < 0.55
           ? style
-          : (available[Math.floor(rng() * available.length)] as Style);
-      const key = `${card.id}:${chosen}`;
-      if (taken.has(key)) {
+          : (card.styles[Math.floor(rng() * card.styles.length)] as Style);
+      const decidedAt = decidedAfter(card, now, rng);
+      if (!decidedAt) {
         continue;
       }
-      // A reader sees a post some hours after it lands, more often within the day.
-      const delayMs = -Math.log(Math.max(rng(), 1e-6)) * 8 * HOUR_MS;
-      const heartedAt = new Date(
-        Math.min(now.getTime() - 60_000, card.createdAt.getTime() + 5 * 60_000 + delayMs),
-      );
-      if (heartedAt.getTime() <= card.createdAt.getTime()) {
+      taken.add(card.id);
+      const opened = card.styles[0] as Style;
+      decisions.push({
+        userId,
+        cardId: card.id,
+        kind: "save",
+        style: chosen,
+        checkedStyles: [...new Set([opened, chosen])],
+        passes: 0,
+        decidedAt,
+      });
+    }
+
+    const passTarget = decisions.length * PASSES_PER_SAVE;
+    let passed = 0;
+    for (let attempt = 0; passed < passTarget && attempt < passTarget * 6; attempt += 1) {
+      const { card } = passPool[weightedIndex(rng, passPool.map((entry) => entry.weight))] as (typeof passPool)[number];
+      if (card.styles.length === 0 || taken.has(card.id)) {
         continue;
       }
-      taken.add(key);
-      hearts.push({ userId: readerId(index), cardId: card.id, style: chosen, heartedAt });
+      const decidedAt = decidedAfter(card, now, rng);
+      if (!decidedAt) {
+        continue;
+      }
+      taken.add(card.id);
+      const read = card.styles.slice(0, rng() < 0.7 ? 1 : 2);
+      decisions.push({
+        userId,
+        cardId: card.id,
+        kind: "pass",
+        style: read[read.length - 1] as Style,
+        checkedStyles: read,
+        passes: 1,
+        decidedAt,
+      });
+      passed += 1;
     }
 
     return {
-      id: readerId(index),
+      id: userId,
       initials: `R${(index + 1) % 10}`,
       categories: [...categories],
       style,
-      hearts,
+      decisions,
     };
   });
 }
 
 /**
- * A small taste for the phone account: a couple of life areas, mostly Stoic and Tough
- * love, on posts a few days old, hearted over the last few days.
+ * A small taste for the phone account: a couple of life areas saved, mostly on Stoic and
+ * Tough, on posts a few days old, over the last few days; and a few passes elsewhere.
  */
-export function planViewerHearts(
+export function planViewerDecisions(
   userId: string,
-  cards: readonly HeartableCard[],
+  cards: readonly DecidableCard[],
   now: Date,
   rng: Rng,
-): HeartPlan[] {
+): DecisionPlan[] {
   const themes: Category[] = ["work", "self_worth"];
   const styles: Style[] = ["stoic", "tough"];
-  const candidates = shuffled(
-    cards.filter((card) => {
-      const age = now.getTime() - card.createdAt.getTime();
-      return themes.includes(card.category) && age >= 3 * DAY_MS && age <= 14 * DAY_MS;
-    }),
+  const inWindow = (card: DecidableCard): boolean => {
+    const age = now.getTime() - card.createdAt.getTime();
+    return age >= 3 * DAY_MS && age <= 14 * DAY_MS;
+  };
+  const saved = shuffled(
+    cards.filter((card) => themes.includes(card.category) && inWindow(card)),
     rng,
   ).slice(0, 8);
+  const passed = shuffled(
+    cards.filter((card) => !themes.includes(card.category) && inWindow(card)),
+    rng,
+  ).slice(0, 4);
+  // Spread over the last three days, oldest first.
+  const at = (index: number, count: number) => new Date(now.getTime() - (3 * DAY_MS * (count - index)) / count);
 
-  return candidates.flatMap((card, index) => {
-    const style = styles[index % styles.length] as Style;
-    if (!card.styles.includes(style)) {
-      return [];
-    }
-    // Spread over the last three days, oldest first.
-    const heartedAt = new Date(now.getTime() - (3 * DAY_MS * (candidates.length - index)) / candidates.length);
-    return [{ userId, cardId: card.id, style, heartedAt }];
-  });
+  return [
+    ...saved.flatMap((card, index): DecisionPlan[] => {
+      const style = styles[index % styles.length] as Style;
+      if (!card.styles.includes(style)) {
+        return [];
+      }
+      const decidedAt = at(index, saved.length);
+      if (decidedAt <= card.createdAt) {
+        return [];
+      }
+      return [{ userId, cardId: card.id, kind: "save", style, checkedStyles: [style], passes: 0, decidedAt }];
+    }),
+    ...passed.flatMap((card, index): DecisionPlan[] => {
+      const style = card.styles[0];
+      const decidedAt = at(index, passed.length);
+      if (!style || decidedAt <= card.createdAt) {
+        return [];
+      }
+      return [{ userId, cardId: card.id, kind: "pass", style, checkedStyles: [style], passes: 1, decidedAt }];
+    }),
+  ];
 }

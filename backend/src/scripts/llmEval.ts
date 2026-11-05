@@ -67,6 +67,8 @@ type CaseResult = {
   costUsd: number;
   calls: { kind: string; attempt: number; status: string; model: string }[];
   judge?: Partial<Record<Style, Scores>>;
+  /** Judge score, 1–5: the first angle alone next to the thought, as the stack opens it. */
+  opener?: number;
 };
 
 type Summary = {
@@ -95,6 +97,8 @@ type Summary = {
   lintRate: Record<LintIssue, number>;
   judge: Partial<Record<Style, Scores>>;
   judgeOverall: Scores;
+  /** Mean opener score. Absent in reports from before the stack. */
+  openerMean?: number;
 };
 
 type Report = { summary: Summary; cases: CaseResult[] };
@@ -140,8 +144,10 @@ Score each style that is present, 1–5:
 - fresh: free of clichés, therapy-speak, and template openers.
 - kind: safe and respectful for this person right now (5 nothing could hurt, 1 could hurt).
 
+Also score "opener", 1–5, from the thought and the style named in "first" alone, as if the other angles did not exist. The card opens on that angle and a person decides with one swipe. 5: complete on its own, plainly about this thought, worth stopping for. 1: leans on the other angles, is generic, or would not make sense without more context.
+
 Return one JSON object and nothing else, only for the styles given:
-{"stoic":{"tone":n,"specific":n,"distinct":n,"fresh":n,"kind":n}, ...}`;
+{"stoic":{"tone":n,"specific":n,"distinct":n,"fresh":n,"kind":n}, ..., "opener":n}`;
 
 function clampScore(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.min(5, Math.max(1, value)) : 0;
@@ -152,10 +158,11 @@ async function judge(
   thought: string,
   results: readonly { style: Style; reframe: string }[],
   usageSink: (event: LlmUsageEvent) => void,
-): Promise<Partial<Record<Style, Scores>>> {
+): Promise<{ scores: Partial<Record<Style, Scores>>; opener?: number }> {
   const raw = await generateJson({
     text: JSON.stringify({
       thought,
+      first: results[0]?.style,
       reframes: Object.fromEntries(results.map((item) => [item.style, item.reframe])),
     }),
     systemPrompt: JUDGE_PROMPT,
@@ -166,18 +173,19 @@ async function judge(
   });
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
-  const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, Record<string, unknown>>;
+  const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
   const out: Partial<Record<Style, Scores>> = {};
   for (const { style } of results) {
-    const row = parsed[style];
-    if (!row) {
+    const row = parsed[style] as Record<string, unknown> | undefined;
+    if (!row || typeof row !== "object") {
       continue;
     }
     out[style] = Object.fromEntries(
       CRITERIA.map((criterion) => [criterion, clampScore(row[criterion])]),
     ) as Scores;
   }
-  return out;
+  const opener = clampScore(parsed.opener);
+  return { scores: out, ...(opener > 0 ? { opener } : {}) };
 }
 
 function nanoToUsd(events: readonly LlmUsageEvent[]): number {
@@ -249,7 +257,9 @@ async function runCase(
 
   if (judgeModel && base.outcome === "ready" && base.thought) {
     try {
-      base.judge = await judge(judgeModel, base.thought, base.results, () => undefined);
+      const graded = await judge(judgeModel, base.thought, base.results, () => undefined);
+      base.judge = graded.scores;
+      base.opener = graded.opener;
     } catch {
       base.judge = undefined;
     }
@@ -397,6 +407,7 @@ function summarize(label: string, models: string, cases: CaseResult[]): Summary 
     judgeOverall: Object.fromEntries(
       CRITERIA.map((criterion) => [criterion, Number(mean(overall[criterion]).toFixed(2))]),
     ) as Scores,
+    openerMean: Number(mean(ready.flatMap((item) => (item.opener ? [item.opener] : []))).toFixed(2)),
   };
 }
 
@@ -418,6 +429,7 @@ function summaryLines(summary: Summary): string[] {
     `- Mean cross-style overlap: ${summary.meanOverlap}`,
     `- Lint rate per answer: ${LINT_ISSUES.map((issue) => `${issue} ${pct(summary.lintRate[issue])}`).join(", ")}`,
     `- Judge overall: ${CRITERIA.map((criterion) => `${criterion} ${summary.judgeOverall[criterion]}`).join(", ")}`,
+    `- First angle stands alone: ${summary.openerMean ?? "n/a"}`,
   ];
   for (const style of STYLES) {
     const scores = summary.judge[style];
@@ -440,7 +452,7 @@ function markdown(report: Report): string {
       lines.push("", `> ${item.message}`, "", `options: ${JSON.stringify(item.options ?? [])}`);
     }
     if (item.thought) {
-      lines.push("", `**Thought:** ${item.thought}`);
+      lines.push("", `**Thought:** ${item.thought}${item.opener ? ` (opener ${item.opener})` : ""}`);
       if (item.thoughtOriginal) {
         lines.push(`**Original:** ${item.thoughtOriginal}`);
       }

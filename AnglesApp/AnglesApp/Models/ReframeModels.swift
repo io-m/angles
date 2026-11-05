@@ -373,19 +373,22 @@ struct StoredReframeResult: Codable, Equatable, Sendable {
     let reframe: String
     /// Sent to the author only.
     let reframeOriginal: String?
-    let isHearted: Bool
-    let heartedAt: String?
-    /// How many other people hearted this angle. The server sends it only on your own
-    /// public cards, and only above zero, so nil means "no number to show".
-    let heartCount: Int?
+    /// How many people saved the card while this angle was on screen. The server sends it
+    /// only on your own public cards, and only above zero, so nil means "no number to show".
+    let saveCount: Int?
+
+    init(style: Style, reframe: String, reframeOriginal: String? = nil, saveCount: Int? = nil) {
+        self.style = style
+        self.reframe = reframe
+        self.reframeOriginal = reframeOriginal
+        self.saveCount = saveCount
+    }
 
     private enum CodingKeys: String, CodingKey {
         case style
         case reframe
         case reframeOriginal
-        case isHearted
-        case heartedAt
-        case heartCount
+        case saveCount
     }
 
     var result: ReframeResult {
@@ -397,9 +400,7 @@ struct StoredReframeResult: Codable, Equatable, Sendable {
         style = try container.decode(Style.self, forKey: .style)
         reframe = try container.decode(String.self, forKey: .reframe)
         reframeOriginal = try container.decodeIfPresent(String.self, forKey: .reframeOriginal)
-        isHearted = try container.decodeIfPresent(Bool.self, forKey: .isHearted) ?? false
-        heartedAt = try container.decodeIfPresent(String.self, forKey: .heartedAt)
-        heartCount = try container.decodeIfPresent(Int.self, forKey: .heartCount)
+        saveCount = try container.decodeIfPresent(Int.self, forKey: .saveCount)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -407,9 +408,7 @@ struct StoredReframeResult: Codable, Equatable, Sendable {
         try container.encode(style, forKey: .style)
         try container.encode(reframe, forKey: .reframe)
         try container.encodeIfPresent(reframeOriginal, forKey: .reframeOriginal)
-        try container.encode(isHearted, forKey: .isHearted)
-        try container.encodeIfPresent(heartedAt, forKey: .heartedAt)
-        try container.encodeIfPresent(heartCount, forKey: .heartCount)
+        try container.encodeIfPresent(saveCount, forKey: .saveCount)
     }
 }
 
@@ -814,12 +813,22 @@ struct StoredCard: Codable, Equatable, Sendable {
     let matching: MatchingKey
     let results: [StoredReframeResult]
     let model: String
+    /// The cover the author saved.
     let spotlightStyle: Style
+    /// The angle this viewer opens the card on: the cover on your own card, the saved angle
+    /// on a saved card, and on the stack an angle the viewer has not seen yet.
+    let openingStyle: Style
     let isPublic: Bool
     /// True when an operator hid this card. Only the owner's copy ever carries it.
     let moderationHidden: Bool?
     let createdAt: String
     let isOwner: Bool
+    /// A curated card from Angles, not a person.
+    let isHouse: Bool
+    /// The viewer's save or pass on someone else's card. Nil when they have not decided.
+    let decision: CardDecision?
+    /// People who saved this card. Only on the author's own public card, and only above zero.
+    let saveCount: Int?
     let author: StoredCardAuthor
 
     private enum CodingKeys: String, CodingKey {
@@ -841,10 +850,14 @@ struct StoredCard: Codable, Equatable, Sendable {
         case results
         case model
         case spotlightStyle
+        case openingStyle
         case isPublic
         case moderationHidden
         case createdAt
         case isOwner
+        case isHouse
+        case decision
+        case saveCount
         case author
     }
 
@@ -899,10 +912,17 @@ struct StoredCard: Codable, Equatable, Sendable {
         let cover = try container.decodeIfPresent(String.self, forKey: .spotlightStyle).flatMap(Style.init(rawValue:))
         spotlightStyle = cover.flatMap { style in decodedResults.contains { $0.style == style } ? style : nil }
             ?? firstResult.style
+        let opening = try container.decodeIfPresent(String.self, forKey: .openingStyle).flatMap(Style.init(rawValue:))
+        openingStyle = opening.flatMap { style in decodedResults.contains { $0.style == style } ? style : nil }
+            ?? spotlightStyle
         isPublic = try container.decodeIfPresent(Bool.self, forKey: .isPublic) ?? false
         moderationHidden = try container.decodeIfPresent(Bool.self, forKey: .moderationHidden)
         createdAt = try container.decode(String.self, forKey: .createdAt)
         isOwner = try container.decodeIfPresent(Bool.self, forKey: .isOwner) ?? true
+        isHouse = try container.decodeIfPresent(Bool.self, forKey: .isHouse) ?? false
+        // A decision naming an angle this build cannot show is dropped, not the card.
+        decision = try? container.decodeIfPresent(CardDecision.self, forKey: .decision)
+        saveCount = try container.decodeIfPresent(Int.self, forKey: .saveCount)
         author = try container.decodeIfPresent(StoredCardAuthor.self, forKey: .author)
             ?? StoredCardAuthor(initials: "JM")
         matching = try container.decodeIfPresent(MatchingKey.self, forKey: .matching)
@@ -933,10 +953,14 @@ struct StoredCard: Codable, Equatable, Sendable {
         try container.encode(results, forKey: .results)
         try container.encode(model, forKey: .model)
         try container.encode(spotlightStyle, forKey: .spotlightStyle)
+        try container.encode(openingStyle, forKey: .openingStyle)
         try container.encode(isPublic, forKey: .isPublic)
         try container.encodeIfPresent(moderationHidden, forKey: .moderationHidden)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(isOwner, forKey: .isOwner)
+        try container.encode(isHouse, forKey: .isHouse)
+        try container.encodeIfPresent(decision, forKey: .decision)
+        try container.encodeIfPresent(saveCount, forKey: .saveCount)
         try container.encode(author, forKey: .author)
     }
 }
@@ -976,21 +1000,68 @@ struct CreateCardRequest: Encodable, Equatable, Sendable {
 }
 
 struct PatchCardRequest: Encodable, Equatable, Sendable {
-    var isHearted: Bool?
-    var style: Style?
-    var isPublic: Bool?
+    let isPublic: Bool
+}
+
+enum DecisionKind: String, Codable, Equatable, Sendable {
+    case save
+    case pass
+}
+
+/// Most passes a card can take. At this count it never comes back to the stack.
+let maxDecisionPasses = 2
+
+/// The viewer's own record on someone else's card: the whole row, so a rewind can put
+/// back exactly what was there.
+struct CardDecision: Codable, Equatable, Sendable {
+    let kind: DecisionKind
+    /// The angle on screen when they decided.
+    let style: Style
+    /// Every angle that had been on screen. Always includes `style`.
+    let checkedStyles: [Style]
+    let passes: Int
+    let decidedAt: String
+}
+
+/// `PUT /cards/:id/decision`. The full row, so a retry and a rewind write the same state.
+struct DecisionRequest: Encodable, Equatable, Sendable {
+    let kind: DecisionKind
+    let style: Style
+    let checkedStyles: [Style]
+    let passes: Int
+}
+
+struct DecisionResponse: Decodable, Equatable, Sendable {
+    let decision: CardDecision
+}
+
+/// `GET /stack`. Echo `session` back for the next page of the same visit.
+struct StackResponse: Decodable, Equatable, Sendable {
+    let cards: [StoredCard]
+    let session: String
+    /// Nothing is left after these cards, house cards included. The end card comes next.
+    let exhausted: Bool
+    /// Cards the server sent, including any this build could not decode.
+    let receivedIds: [String]
 
     private enum CodingKeys: String, CodingKey {
-        case isHearted
-        case style
-        case isPublic
+        case cards
+        case session
+        case exhausted
     }
 
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(isHearted, forKey: .isHearted)
-        try container.encodeIfPresent(style, forKey: .style)
-        try container.encodeIfPresent(isPublic, forKey: .isPublic)
+    private struct Key: Decodable {
+        let id: String
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
+        cards = raw.compactMap(\.value)
+        receivedIds = (try container.decodeIfPresent([Failable<Key>].self, forKey: .cards) ?? [])
+            .compactMap { $0.value?.id.lowercased() }
+        session = try container.decode(String.self, forKey: .session)
+        exhausted = try container.decodeIfPresent(Bool.self, forKey: .exhausted) ?? false
     }
 }
 
@@ -1000,61 +1071,32 @@ struct CardListResponse: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case cards
-        case page
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let raw = try container.decodeIfPresent([Failable<StoredCard>].self, forKey: .cards) ?? []
         cards = raw.compactMap(\.value)
-        let server = try container.decodeIfPresent(ServerPageCursor.self, forKey: .page)
-        page = try CardPage(
-            container: container,
-            key: .cards,
-            serverCursor: server?.nextCursor,
-            arrivalsAfter: server?.arrivalsAfter
-        )
+        page = try CardPage(container: container, key: .cards)
     }
-}
-
-/// A page pointer the server owns. A ranked order cannot be derived from the cards, so
-/// when this arrives it wins; the client only echoes it back.
-private struct ServerPageCursor: Decodable, Equatable, Sendable {
-    let nextCursor: String?
-    let arrivalsAfter: String?
 }
 
 /// What the server sent, before cards this build cannot decode are dropped. Paging reads this,
 /// so one unreadable card neither ends the list early nor moves the cursor off the server's order.
 struct CardPage: Equatable, Sendable {
     let receivedCount: Int
-    /// Set when the server owns paging, which a ranked order requires because its
-    /// cursor cannot be derived from the cards. Authoritative wherever it is present.
-    let serverCursor: String?
-    /// The server's own cursor when it sent one, else `createdAt|id` of its last card.
+    /// `createdAt|id` of the server's last card.
     let nextCursor: String?
-    /// `createdAt|id` of the newest card a ranked visit could show. A pull asks for
-    /// arrivals after this, not after the newest card on screen: a ranked page need not
-    /// hold the newest posts. Absent on chronological pages, where the two are the same.
-    let arrivalsAfter: String?
 
     private struct Key: Decodable {
         let id: String
         let createdAt: String
     }
 
-    init<K: CodingKey>(
-        container: KeyedDecodingContainer<K>,
-        key: K,
-        serverCursor: String? = nil,
-        arrivalsAfter: String? = nil
-    ) throws {
+    init<K: CodingKey>(container: KeyedDecodingContainer<K>, key: K) throws {
         let keys = try container.decodeIfPresent([Failable<Key>].self, forKey: key) ?? []
         receivedCount = keys.count
-        self.serverCursor = serverCursor
-        self.arrivalsAfter = arrivalsAfter
-        nextCursor = serverCursor
-            ?? keys.last?.value.map { "\($0.createdAt)|\($0.id.lowercased())" }
+        nextCursor = keys.last?.value.map { "\($0.createdAt)|\($0.id.lowercased())" }
     }
 
     func hasMore(pageSize: Int) -> Bool {

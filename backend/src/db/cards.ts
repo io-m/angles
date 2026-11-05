@@ -16,15 +16,14 @@ import {
   publishingSuspended,
 } from "./communitySafety.js";
 import { olderThanCursor } from "./cursor.js";
-import { loadStyleHeartCounts } from "./hearts.js";
-import { storedCardsForViewer, toStoredCard } from "./mapCard.js";
+import { storedCardsForViewer } from "./mapCard.js";
 import {
+  cardDecisions,
   cardReframes,
   cardReports,
   cardTags,
   cards,
   categoryProposals,
-  savedAngles,
   tags,
   users,
 } from "./schema.js";
@@ -46,10 +45,9 @@ async function loadCard(
   if (!row) {
     return null;
   }
-  // Always the owner's own card. Without this, publishing or hearting an angle would
-  // answer with the counts stripped and the numerals would vanish from the card.
-  const hearts = row.isPublic ? await loadStyleHeartCounts([row.id], db) : undefined;
-  return toStoredCard(row, { angles: new Map() }, undefined, undefined, hearts?.get(row.id));
+  // Always the owner's own card, so its save counts come back with it.
+  const [card] = await storedCardsForViewer([row], getOwnerUserId(), db);
+  return card ?? null;
 }
 
 /** The viewer's card saved from this signed cook, if one exists. */
@@ -196,28 +194,24 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
-    const savedAngleIds = db
-      .select({ id: savedAngles.cardId })
-      .from(savedAngles)
-      .where(eq(savedAngles.userId, viewerId));
-    const ownedHeartIds = db
-      .select({ id: cardReframes.cardId })
-      .from(cardReframes)
-      .innerJoin(cards, eq(cards.id, cardReframes.cardId))
-      .where(and(eq(cardReframes.isHearted, true), eq(cards.userId, viewerId)));
+    const savedIds = db
+      .select({ id: cardDecisions.cardId })
+      .from(cardDecisions)
+      .where(and(eq(cardDecisions.userId, viewerId), eq(cardDecisions.kind, "save")));
+    const savedVisible = and(
+      eq(cards.isPublic, true),
+      inArray(cards.id, savedIds),
+      notBlockedBetween(viewerId, cards.userId),
+      notReportedBy(viewerId, cards.id),
+    )!;
 
-    // The library is the viewer's own cards plus anything they hearted on Home that is still public.
-    const filters = [
-      or(
-        eq(cards.userId, viewerId),
-        and(
-          eq(cards.isPublic, true),
-          inArray(cards.id, savedAngleIds),
-          notBlockedBetween(viewerId, cards.userId),
-          notReportedBy(viewerId, cards.id),
-        ),
-      )!,
-    ];
+    // The library is the viewer's own cards plus the cards they saved that are still public.
+    const filters =
+      query.saved === true
+        ? [savedVisible]
+        : query.saved === false
+          ? [eq(cards.userId, viewerId)]
+          : [or(eq(cards.userId, viewerId), savedVisible)!];
     if (query.category) {
       filters.push(eq(cards.category, query.category));
     }
@@ -228,11 +222,6 @@ export async function listCards(query: CardListQuery): Promise<StoredCard[]> {
           db.select({ id: cardReframes.cardId }).from(cardReframes).where(eq(cardReframes.style, query.style)),
         ),
       );
-    }
-    if (query.hearted === true) {
-      filters.push(or(inArray(cards.id, ownedHeartIds), inArray(cards.id, savedAngleIds))!);
-    } else if (query.hearted === false) {
-      filters.push(not(or(inArray(cards.id, ownedHeartIds), inArray(cards.id, savedAngleIds))!));
     }
     if (query.before) {
       filters.push(olderThanCursor(query.before));
@@ -293,7 +282,7 @@ export async function ownerPublishingSuspended(): Promise<boolean> {
 
 export type PatchCardResult =
   | { ok: true; card: StoredCard }
-  | { ok: false; reason: "not_found" | "unknown_style" | "publication_blocked" };
+  | { ok: false; reason: "not_found" | "publication_blocked" };
 
 export async function patchCard(id: string, patch: PatchCardInput): Promise<PatchCardResult> {
   try {
@@ -307,50 +296,17 @@ export async function patchCard(id: string, patch: PatchCardInput): Promise<Patc
         return { ok: false, reason: "not_found" };
       }
 
-      const existing = await tx.query.cards.findFirst({
-        where: eq(cards.id, id),
-        columns: { id: true },
-        with: {
-          reframes: { columns: { style: true } },
-        },
-      });
-      if (!existing) {
-        return { ok: false, reason: "not_found" };
-      }
-
       if (
-        patch.isPublic === true &&
+        patch.isPublic &&
         ((await cardPublicationLocked(id, tx)) || (await publishingSuspended(getOwnerUserId(), tx)))
       ) {
         return { ok: false, reason: "publication_blocked" };
       }
 
-      if (patch.isHearted !== undefined) {
-        const style = patch.style;
-        if (!style || !existing.reframes.some((item) => item.style === style)) {
-          return { ok: false, reason: "unknown_style" };
-        }
-        await tx
-          .update(cardReframes)
-          .set({
-            isHearted: patch.isHearted,
-            heartedAt: patch.isHearted ? new Date() : null,
-          })
-          .where(and(eq(cardReframes.cardId, id), eq(cardReframes.style, style)));
-      }
-
-      const cardSet: {
-        isPublic?: boolean;
-      } = {};
-      if (patch.isPublic !== undefined) {
-        cardSet.isPublic = patch.isPublic;
-      }
-      if (Object.keys(cardSet).length > 0) {
-        await tx
-          .update(cards)
-          .set(cardSet)
-          .where(and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())));
-      }
+      await tx
+        .update(cards)
+        .set({ isPublic: patch.isPublic })
+        .where(and(eq(cards.id, id), eq(cards.userId, getOwnerUserId())));
 
       const loaded = await loadCard(tx, id);
       if (!loaded) {

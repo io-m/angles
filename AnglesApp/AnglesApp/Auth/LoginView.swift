@@ -60,14 +60,8 @@ struct LoginView: View {
 
     private var hero: some View {
         VStack(spacing: 14) {
-            HStack(spacing: 8) {
-                ForEach(Style.allCases, id: \.self) { style in
-                    Circle()
-                        .fill(CardStyleAppearance(style: style).ink)
-                        .frame(width: 7, height: 7)
-                }
-            }
-            .accessibilityHidden(true)
+            StyleDotsMark()
+                .accessibilityHidden(true)
 
             VStack(spacing: 8) {
                 Text("ANGLES")
@@ -262,8 +256,7 @@ private enum LoginSample {
             slide(
                 freezeThought,
                 .stoic,
-                "Name freezing in that meeting as a fact, not a trial. Put the verdict down and tend to the next small thing.",
-                heart: true
+                "Name freezing in that meeting as a fact, not a trial. Put the verdict down and tend to the next small thing."
             ),
             slide(
                 freezeThought,
@@ -294,8 +287,7 @@ private enum LoginSample {
             slide(
                 deckThought,
                 .hopeful,
-                "Nothing about watching them take the deck cancels the person who noticed it. That noticing is already a kind of strength.",
-                heart: true
+                "Nothing about watching them take the deck cancels the person who noticed it. That noticing is already a kind of strength."
             ),
             slide(
                 deckThought,
@@ -326,8 +318,7 @@ private enum LoginSample {
             slide(
                 lateThought,
                 .tough,
-                "If saying yes again is true, act like it. If it is a story, stop feeding it snacks at midnight. The next move is yours.",
-                heart: true
+                "If saying yes again is true, act like it. If it is a story, stop feeding it snacks at midnight. The next move is yours."
             ),
             slide(
                 lateThought,
@@ -362,14 +353,12 @@ private enum LoginSample {
     private static func slide(
         _ thought: String,
         _ style: Style,
-        _ reframe: String,
-        heart: Bool = false
+        _ reframe: String
     ) -> HomeCardSlide {
         HomeCardSlide(
             id: UUID(),
             thought: thought,
-            result: ReframeResult(style: style, reframe: reframe),
-            isHearted: heart
+            result: ReframeResult(style: style, reframe: reframe)
         )
     }
 
@@ -406,11 +395,14 @@ private struct LoginCardFloat {
 }
 
 private struct LoginCardStage: View {
+    /// About one card tall, so a card starts its fall fully off screen.
+    private static let cardAllowance: CGFloat = 284
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { geo in
-            let fallDistance = geo.size.height + ReframeCardMetrics.storedMinimumHeight + 48
+            let fallDistance = geo.size.height + Self.cardAllowance + 48
             let depth = geo.size.height > 520 ? 3 : 1
 
             ZStack(alignment: .bottom) {
@@ -504,11 +496,11 @@ private struct LoginFallingCard: View {
     @State private var floating = false
 
     var body: some View {
-        ReframeCardView(
+        AngleCardFace(
             card: card,
-            presentation: .library,
-            menuRole: .feed,
-            openingStyle: opening
+            sizing: .list,
+            style: .constant(opening),
+            isInteractive: false
         )
         .scaleEffect(rest.scale)
         .rotationEffect(.degrees(rotation))

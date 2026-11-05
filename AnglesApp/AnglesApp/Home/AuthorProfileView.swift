@@ -30,43 +30,37 @@ struct AuthorProfileView: View {
     }
 
     var body: some View {
-        HomeFeedPager(
-            safeAreaInsets: safeAreaInsets,
-            cards: { tab in
-                viewModel.authorCards(for: route.id, tab: tab)
-            },
-            loadState: { _ in viewModel.authorLoadState(for: route.id) },
-            footerState: { _ in viewModel.authorFooterState(for: route.id) },
-            emptyState: { tab in
-                tab.emptyState(appliedFilter: HomeFeedFilter(), audience: .author)
-            },
-            refreshOutcome: viewModel.authorRefreshOutcome(for: route.id),
-            refreshToken: viewModel.authorRefreshToken(for: route.id),
-            onConsumeRefresh: { viewModel.consumeAuthorRefreshBanner(route.id) },
-            onRetry: { _ in viewModel.retryLoadAuthor(route.id) },
-            onRefresh: { _ in await viewModel.refreshAuthor(route.id) },
-            onLoadMore: { _ in viewModel.loadMoreAuthor(route.id) },
-            onRetryLoadMore: { _ in viewModel.retryLoadMoreAuthor(route.id) },
-            onDelete: deleteCard,
-            onToggleHeart: toggleHeart,
-            onSetPublic: setPublic,
-            onRemoveFromBoard: removeFromBoard,
-            onReport: reportCard,
-            onBlock: blockAuthor,
-            onOpenAuthor: onOpenAuthor,
-            onToggleFollow: toggleFollow
-        ) { pagerState, settledSelection, onSelectTab in
+        VStack(spacing: 0) {
             AuthorChrome(
-                safeTop: safeAreaInsets.top,
-                pagerState: pagerState,
-                settledSelection: settledSelection,
                 header: header,
                 onBack: dismiss.callAsFunction,
-                onSelectTab: onSelectTab,
                 onToggleFollow: { viewModel.toggleFollow(route.id) },
                 onRequestBlock: { showBlockConfirm = true }
             )
+            .padding(.top, safeAreaInsets.top + HeaderCollapse.headerTopPad)
+            .padding(.bottom, 8)
+
+            ScrollView {
+                AngleCardListContent(
+                    list: viewModel.authorList(route.id),
+                    loadingLabel: "Loading posts",
+                    makeActions: actions,
+                    onRetry: { viewModel.retryLoadAuthor(route.id) },
+                    onLoadMore: { viewModel.loadMoreAuthor(route.id) },
+                    onRetryLoadMore: { viewModel.retryLoadMoreAuthor(route.id) }
+                ) {
+                    CardListEmptyNote(text: header.isSelf ? "You haven't posted anything yet." : "No posts yet.")
+                }
+                .padding(.bottom, max(safeAreaInsets.bottom, 12) + 20)
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.always)
+            .refreshable {
+                await viewModel.refreshAuthor(route.id)
+            }
         }
+        .ignoresSafeArea(edges: [.top, .bottom])
+        .background(theme.grey.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .wideBackSwipe()
         .tint(theme.ink)
@@ -88,48 +82,23 @@ struct AuthorProfileView: View {
         }
     }
 
-    private func deleteCard(_ card: HomeCard) {
-        guard card.isOwner else {
-            return
-        }
-        viewModel.deleteCard(card.id)
-    }
-
-    private func toggleHeart(_ card: HomeCard, _ style: Style) {
-        viewModel.toggleHeart(card.id, style: style)
-    }
-
-    private func toggleFollow(_ card: HomeCard) {
-        guard let authorId = card.authorId, !card.isOwner else {
-            return
-        }
-        viewModel.toggleFollow(authorId)
-    }
-
-    private func setPublic(_ card: HomeCard, _ isPublic: Bool) {
+    private func actions(for card: HomeCard, style: Style) -> AngleCardActions {
+        var actions = AngleCardActions()
         if card.isOwner {
-            viewModel.setPublic(card.id, isPublic: isPublic)
+            actions.onDelete = { viewModel.deleteCard(card.id) }
+            actions.onSetPublic = { viewModel.setPublic(card.id, isPublic: $0) }
+            return actions
         }
-    }
-
-    private func removeFromBoard(_ card: HomeCard) {
-        if !card.isOwner {
-            viewModel.removeFromBoard(card.id)
+        actions.onToggleSave = { viewModel.toggleSave(card.id, style: style) }
+        guard let authorId = card.authorId else {
+            return actions
         }
-    }
-
-    private func reportCard(_ card: HomeCard, _ reason: ReportReason) {
-        guard !card.isOwner else { return }
-        viewModel.reportCard(card.id, reason: reason)
-    }
-
-    private func blockAuthor(_ card: HomeCard) {
-        guard !card.isOwner, let authorId = card.authorId else { return }
-        viewModel.blockAuthor(
-            authorId,
-            initials: card.authorInitials,
-            avatarPath: card.authorAvatarPath
-        )
+        actions.onToggleFollow = { viewModel.toggleFollow(authorId) }
+        actions.onReport = { viewModel.reportCard(card.id, reason: $0) }
+        actions.onBlock = {
+            viewModel.blockAuthor(authorId, initials: card.authorInitials, avatarPath: card.authorAvatarPath)
+        }
+        return actions
     }
 
     private func blockRouteAuthor() {
@@ -148,12 +117,8 @@ struct AuthorProfileView: View {
 }
 
 private struct AuthorChrome: View {
-    let safeTop: CGFloat
-    let pagerState: StyleTabPagerState<HomeFeedTab>
-    let settledSelection: HomeFeedTab
     let header: AuthorHeader
     let onBack: () -> Void
-    let onSelectTab: (HomeFeedTab) -> Void
     let onToggleFollow: () -> Void
     let onRequestBlock: () -> Void
 
@@ -162,77 +127,49 @@ private struct AuthorChrome: View {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Color.clear
-                .frame(height: safeTop + HeaderCollapse.headerTopPad)
-                .allowsHitTesting(false)
+        HStack(alignment: .center, spacing: 12) {
+            Button(action: onBack) {
+                CircleIcon(
+                    systemName: "chevron.left",
+                    fill: theme.surface,
+                    symbol: theme.ink,
+                    weight: .semibold,
+                    hairline: theme.cardHairline
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
 
-            ZStack(alignment: .trailing) {
-                HStack(alignment: .center, spacing: 12) {
-                    Button(action: onBack) {
-                        CircleIcon(
-                            systemName: "chevron.left",
-                            fill: theme.surface,
-                            symbol: theme.ink,
-                            weight: .semibold,
-                            hairline: theme.cardHairline
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Back")
+            Spacer(minLength: 0)
 
-                    AdaptiveStyleTabBar(
-                        pagerState: pagerState,
-                        settledSelection: settledSelection,
-                        reservedTrailingWidth: CircleIcon.Size.normal.side,
-                        includesTrailingSpacer: true,
-                        padded: false,
-                        onSelect: onSelectTab
-                    )
-                }
-                .frame(maxWidth: .infinity)
-
-                ZStack(alignment: .bottomTrailing) {
-                    if header.isSelf {
-                        authorMark
-                    } else {
-                        Menu {
-                            Button(role: .destructive, action: onRequestBlock) {
-                                Label("Block", systemImage: "hand.raised")
-                            }
-                        } label: {
-                            authorMark
+            ZStack(alignment: .bottomTrailing) {
+                if header.isSelf {
+                    authorMark
+                } else {
+                    Menu {
+                        Button(role: .destructive, action: onRequestBlock) {
+                            Label("Block", systemImage: "hand.raised")
                         }
-                        .menuStyle(.borderlessButton)
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Author actions")
-                        .accessibilityHint("Includes block")
+                    } label: {
+                        authorMark
                     }
+                    .menuStyle(.borderlessButton)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Author actions")
+                    .accessibilityHint("Includes block")
+                }
 
-                    if !header.isSelf {
-                        FollowBadge(
-                            following: header.following,
-                            action: onToggleFollow
-                        )
-                        .offset(FollowBadge.overhang)
-                    }
+                if !header.isSelf {
+                    FollowBadge(
+                        following: header.following,
+                        action: onToggleFollow
+                    )
+                    .offset(FollowBadge.overhang)
                 }
             }
-            .padding(.horizontal, HeaderCollapse.horizontalPadding)
-            .frame(height: HeaderCollapse.headerHeight)
-
-            Color.clear
-                .frame(height: StyleTabMetrics.chromeBottomInset)
-                .allowsHitTesting(false)
         }
-        .frame(
-            height: HomeFeedPagerMetrics.chromeHeight(safeTop: safeTop),
-            alignment: .top
-        )
-        .background {
-            StyleTabChromeBackground(pagerState: pagerState)
-                .ignoresSafeArea(edges: .top)
-        }
+        .padding(.horizontal, HeaderCollapse.horizontalPadding)
+        .frame(height: HeaderCollapse.headerHeight)
     }
 
     private var authorMark: some View {

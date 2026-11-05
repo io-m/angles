@@ -1,53 +1,32 @@
-import { and, eq, inArray } from "drizzle-orm";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
 import { openingStyle } from "../lib/feedRanking.js";
 import { isStyleShown } from "../lib/styleSet.js";
 import { intensityBand, type StoredCard, type StoredReframeResult, type Style } from "../types/index.js";
 import { getDb } from "./client.js";
+import { loadViewerDecisions, toCardDecision } from "./decisions.js";
 import { followedAuthorIds } from "./follows.js";
-import { loadStyleHeartCounts, loadViewerStyleTaste } from "./hearts.js";
-import { savedAngles, type CardReframeRow, type CardRow, type TagRow } from "./schema.js";
+import { loadSaveCountsByStyle, loadViewerSavedStyle } from "./saves.js";
+import type { CardDecisionRow, CardReframeRow, CardRow, TagRow, UserRow } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 
 export type CardLoaded = CardRow & {
   reframes: CardReframeRow[];
   cardTags: { tag: TagRow }[];
-  user: { initials: string; avatarKey: string | null };
+  user: Pick<UserRow, "initials" | "avatarKey" | "kind">;
 };
 
-/** A viewer's saves on other people's cards. Hearts are the only save there is. */
-export type ViewerSaves = {
-  angles: Map<string, Map<Style, Date>>;
+/** Everything about the viewer that shapes how a card reads for them. */
+export type CardViewContext = {
+  viewerId: string;
+  decisions: ReadonlyMap<string, CardDecisionRow>;
+  followed: ReadonlySet<string>;
+  /** Saves per angle, for the viewer's own public cards only. */
+  saveCounts: ReadonlyMap<string, ReadonlyMap<Style, number>>;
+  /** The angle this viewer most often saves on. */
+  preferredStyle: Style | null;
 };
-
-/** Only the saves on `cardIds`, so the cost follows the page rather than every heart ever made. */
-export async function loadViewerSaves(
-  cardIds: string[],
-  viewerId: string = getOwnerUserId(),
-  db: Selectable = getDb(),
-): Promise<ViewerSaves> {
-  const angles = new Map<string, Map<Style, Date>>();
-  if (cardIds.length === 0) {
-    return { angles };
-  }
-  const angleRows = await db
-    .select()
-    .from(savedAngles)
-    .where(and(eq(savedAngles.userId, viewerId), inArray(savedAngles.cardId, cardIds)));
-
-  for (const row of angleRows) {
-    let byStyle = angles.get(row.cardId);
-    if (!byStyle) {
-      byStyle = new Map();
-      angles.set(row.cardId, byStyle);
-    }
-    byStyle.set(row.style, row.heartedAt);
-  }
-
-  return { angles };
-}
 
 export function authorOf(
   userId: string,
@@ -66,21 +45,17 @@ export async function storedCardsForViewer(
   loaded: CardLoaded[],
   viewerId: string = getOwnerUserId(),
   db: Selectable = getDb(),
-  /** For you: someone else's card opens on an answer the viewer has not hearted, when it has one. */
-  options: { coverAvoidsKept?: boolean; followed?: ReadonlySet<string> } = {},
+  /** A ranked visit passes what it read at its start, so every page opens cards alike. */
+  options: { followed?: ReadonlySet<string>; preferredStyle?: Style | null } = {},
 ): Promise<StoredCard[]> {
   // An app that cannot show any of a card's angles would fail to decode it; it never sees it.
   const rows = loaded.filter((row) => row.reframes.some((item) => isStyleShown(item.style)));
   const ownPublicIds = rows
     .filter((row) => row.userId === viewerId && row.isPublic)
     .map((row) => row.id);
-  const needsTaste = rows.some((row) => row.userId !== viewerId);
-  const [saves, followed, hearts, taste] = await Promise.all([
-    loadViewerSaves(
-      rows.map((row) => row.id),
-      viewerId,
-      db,
-    ),
+  const othersIds = rows.filter((row) => row.userId !== viewerId).map((row) => row.id);
+  const [decisions, followed, saveCounts, preferredStyle] = await Promise.all([
+    loadViewerDecisions(othersIds, viewerId, db),
     options.followed
       ? Promise.resolve(new Set(options.followed))
       : followedAuthorIds(
@@ -90,31 +65,25 @@ export async function storedCardsForViewer(
         ),
     // Only ever queried for the viewer's own published cards, so there is nothing to
     // leak even if a later caller forgets the owner check below.
-    loadStyleHeartCounts(ownPublicIds, db),
-    needsTaste ? loadViewerStyleTaste(viewerId, db) : Promise.resolve(null),
+    loadSaveCountsByStyle(ownPublicIds, db),
+    options.preferredStyle !== undefined
+      ? Promise.resolve(options.preferredStyle)
+      : othersIds.length > 0
+        ? loadViewerSavedStyle(viewerId, db)
+        : Promise.resolve(null),
   ]);
-  return rows.map((row) =>
-    toStoredCard(row, saves, viewerId, followed, hearts.get(row.id), taste, options.coverAvoidsKept),
-  );
+  const context: CardViewContext = { viewerId, decisions, followed, saveCounts, preferredStyle };
+  return rows.map((row) => toStoredCard(row, context));
 }
 
 function shownCover(cover: Style, results: readonly StoredReframeResult[]): Style {
   return results.some((item) => item.style === cover) ? cover : (results[0]?.style ?? cover);
 }
 
-export function toStoredCard(
-  row: CardLoaded,
-  saves: ViewerSaves,
-  viewerId: string = getOwnerUserId(),
-  followedIds: ReadonlySet<string> = new Set(),
-  /** Strangers' hearts per style. Passed only for the author's own public card. */
-  styleHearts?: ReadonlyMap<Style, number>,
-  /** The angle this viewer keeps hearting, when they have one. */
-  preferredStyle?: Style | null,
-  coverAvoidsKept = false,
-): StoredCard {
-  const isOwner = row.userId === viewerId;
-  const savedStyles = saves.angles.get(row.id);
+export function toStoredCard(row: CardLoaded, context: CardViewContext): StoredCard {
+  const isOwner = row.userId === context.viewerId;
+  const decision = isOwner ? undefined : context.decisions.get(row.id);
+  const ownSaves = isOwner && row.isPublic ? context.saveCounts.get(row.id) : undefined;
   const tagList = row.cardTags.map((join) => ({
     slug: join.tag.slug,
     label: join.tag.label,
@@ -124,39 +93,40 @@ export function toStoredCard(
     .filter((item) => isStyleShown(item.style))
     .sort((left, right) => left.position - right.position)
     .map((item) => {
-      if (isOwner) {
-        const stored: StoredReframeResult = {
-          style: item.style,
-          reframe: item.reframe,
-          isHearted: item.isHearted,
-        };
-        // The public card is English; only its author reads the answer in their language.
-        if (item.reframeOriginal) {
-          stored.reframeOriginal = item.reframeOriginal;
-        }
-        if (item.heartedAt) {
-          stored.heartedAt = item.heartedAt.toISOString();
-        }
-        // Absent at zero: a 0 on a post you just published about your worst day is
-        // worse than no number at all.
-        const hearts = row.isPublic ? styleHearts?.get(item.style) : undefined;
-        if (hearts !== undefined && hearts > 0) {
-          stored.heartCount = hearts;
-        }
+      const stored: StoredReframeResult = { style: item.style, reframe: item.reframe };
+      if (!isOwner) {
         return stored;
       }
-
-      const heartedAt = savedStyles?.get(item.style);
-      const stored: StoredReframeResult = {
-        style: item.style,
-        reframe: item.reframe,
-        isHearted: heartedAt !== undefined,
-      };
-      if (heartedAt) {
-        stored.heartedAt = heartedAt.toISOString();
+      // The public card is English; only its author reads the answer in their language.
+      if (item.reframeOriginal) {
+        stored.reframeOriginal = item.reframeOriginal;
+      }
+      // Absent at zero: a 0 on a post you just published about your worst day is
+      // worse than no number at all.
+      const saves = ownSaves?.get(item.style);
+      if (saves !== undefined && saves > 0) {
+        stored.saveCount = saves;
       }
       return stored;
     });
+
+  const available = results.map((item) => item.style);
+  const cover = shownCover(row.spotlightStyle, results);
+  let opening = cover;
+  if (!isOwner) {
+    if (decision?.kind === "save" && available.includes(decision.style)) {
+      opening = decision.style;
+    } else {
+      opening = openingStyle({
+        cardId: row.id,
+        viewerId: context.viewerId,
+        cover,
+        available,
+        preferred: context.preferredStyle,
+        checked: decision?.kind === "pass" ? new Set(decision.checkedStyles) : undefined,
+      });
+    }
+  }
 
   const stored: StoredCard = {
     id: row.id,
@@ -177,32 +147,34 @@ export function toStoredCard(
     },
     results,
     model: row.model,
-    // Your own card keeps the cover you saved it with; someone else's can open on the
-    // angle you keep hearting, some of the time, and on For you never on one you kept.
-    // Either way it is an angle this card returns, which an older build requires.
-    spotlightStyle: shownCover(
-      isOwner
-        ? row.spotlightStyle
-        : openingStyle({
-            cardId: row.id,
-            viewerId,
-            cover: row.spotlightStyle,
-            available: results.map((item) => item.style),
-            preferred: preferredStyle ?? null,
-            kept: coverAvoidsKept && savedStyles ? new Set(savedStyles.keys()) : undefined,
-          }),
-      results,
-    ),
+    spotlightStyle: cover,
+    openingStyle: opening,
     isPublic: row.isPublic,
     createdAt: row.createdAt.toISOString(),
     isOwner,
-    author: authorOf(row.userId, row.user, !isOwner && followedIds.has(row.userId)),
+    isHouse: row.user.kind === "house",
+    author: authorOf(
+      row.userId,
+      row.user,
+      !isOwner && row.user.kind !== "house" && context.followed.has(row.userId),
+    ),
   };
 
+  if (decision) {
+    stored.decision = toCardDecision(decision);
+  }
+  if (ownSaves) {
+    let total = 0;
+    for (const saves of ownSaves.values()) {
+      total += saves;
+    }
+    if (total > 0) {
+      stored.saveCount = total;
+    }
+  }
   if (isOwner && !row.isPublic && row.moderationHiddenAt) {
     stored.moderationHidden = true;
   }
-
   if (row.thoughtOriginal) {
     stored.thoughtOriginal = row.thoughtOriginal;
   }

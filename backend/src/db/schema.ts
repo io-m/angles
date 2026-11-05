@@ -10,6 +10,7 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -63,6 +64,8 @@ export const llmCallKindEnum = pgEnum("llm_call_kind", [
 ]);
 export const llmCallStatusEnum = pgEnum("llm_call_status", ["succeeded", "failed"]);
 export const usageSourceEnum = pgEnum("usage_source", ["reported", "estimated"]);
+export const userKindEnum = pgEnum("user_kind", ["person", "house"]);
+export const decisionKindEnum = pgEnum("decision_kind", ["save", "pass"]);
 
 export const users = pgTable(
   "users",
@@ -82,11 +85,14 @@ export const users = pgTable(
     publishingSuspendedAt: timestamp("publishing_suspended_at", { withTimezone: true, mode: "date" }),
     /** Push when someone follows this account. The in-app list stays either way. */
     notifyFollows: boolean("notify_follows").notNull().default(true),
+    /** `house` is the one Angles account whose curated cards fill the stack after the community's. */
+    kind: userKindEnum("kind").notNull().default("person"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex("users_email_unique").on(table.email),
+    uniqueIndex("users_one_house_idx").on(table.kind).where(sql`${table.kind} = 'house'`),
     check("users_initials_len", sql`char_length(initials) between 1 and 2`),
   ],
 );
@@ -471,8 +477,6 @@ export const cardReframes = pgTable(
     /** The answer in the card's input language. Shown to the author only. */
     reframeOriginal: text("reframe_original"),
     position: integer("position").notNull(),
-    isHearted: boolean("is_hearted").notNull().default(false),
-    heartedAt: timestamp("hearted_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [uniqueIndex("card_reframes_card_style_idx").on(table.cardId, table.style)],
 );
@@ -500,8 +504,13 @@ export const cardTags = pgTable(
   ],
 );
 
-export const savedAngles = pgTable(
-  "saved_angles",
+/**
+ * What a viewer did with someone else's card on the stack. One row per viewer and card:
+ * a save keeps the whole card, a pass skips it. `checked_styles` are the angles that were
+ * on screen, so a card passed once can come back on one the viewer never saw.
+ */
+export const cardDecisions = pgTable(
+  "card_decisions",
   {
     userId: uuid("user_id")
       .notNull()
@@ -509,17 +518,35 @@ export const savedAngles = pgTable(
     cardId: uuid("card_id")
       .notNull()
       .references(() => cards.id, { onDelete: "cascade" }),
+    kind: decisionKindEnum("kind").notNull(),
+    /** The angle on screen when the viewer decided. Saved opens on it. */
     style: styleEnum("style").notNull(),
-    heartedAt: timestamp("hearted_at", { withTimezone: true, mode: "date" })
+    checkedStyles: styleEnum("checked_styles").array().notNull(),
+    /** Passes so far. Two means the card never comes back. */
+    passes: smallint("passes").notNull().default(0),
+    decidedAt: timestamp("decided_at", { withTimezone: true, mode: "date", precision: 3 })
       .notNull()
       .defaultNow(),
   },
   (table) => [
-    primaryKey({ columns: [table.userId, table.cardId, table.style] }),
-    index("saved_angles_user_hearted_idx").on(table.userId, table.heartedAt.desc()),
-    // The primary key leads with the user, so counting the hearts *on* a card needs
-    // its own index: the feed ranks by them and an author sees them on their own posts.
-    index("saved_angles_card_idx").on(table.cardId),
+    primaryKey({ columns: [table.userId, table.cardId] }),
+    index("card_decisions_user_kind_decided_idx").on(
+      table.userId,
+      table.kind,
+      table.decidedAt.desc(),
+    ),
+    // The primary key leads with the user, so counting the saves *on* a card needs its own
+    // index: ranking reads them and an author sees them on their own posts.
+    index("card_decisions_card_saves_idx").on(table.cardId).where(sql`${table.kind} = 'save'`),
+    check("card_decisions_passes_range", sql`${table.passes} between 0 and 2`),
+    check(
+      "card_decisions_pass_counted",
+      sql`${table.kind} <> 'pass' or ${table.passes} >= 1`,
+    ),
+    check(
+      "card_decisions_style_checked",
+      sql`${table.style} = any(${table.checkedStyles})`,
+    ),
   ],
 );
 
@@ -648,7 +675,6 @@ export const categoryProposals = pgTable("category_proposals", {
 
 export const usersRelations = relations(users, ({ many }) => ({
   cards: many(cards),
-  savedAngles: many(savedAngles),
   following: many(follows, { relationName: "following" }),
   followers: many(follows, { relationName: "followers" }),
   subscriptionEvents: many(subscriptionEvents),
@@ -658,12 +684,6 @@ export const cardsRelations = relations(cards, ({ many, one }) => ({
   user: one(users, { fields: [cards.userId], references: [users.id] }),
   reframes: many(cardReframes),
   cardTags: many(cardTags),
-  savedAngles: many(savedAngles),
-}));
-
-export const savedAnglesRelations = relations(savedAngles, ({ one }) => ({
-  user: one(users, { fields: [savedAngles.userId], references: [users.id] }),
-  card: one(cards, { fields: [savedAngles.cardId], references: [cards.id] }),
 }));
 
 export const followsRelations = relations(follows, ({ one }) => ({
@@ -692,6 +712,7 @@ export const cardTagsRelations = relations(cardTags, ({ one }) => ({
   tag: one(tags, { fields: [cardTags.tagId], references: [tags.id] }),
 }));
 
+export type CardDecisionRow = typeof cardDecisions.$inferSelect;
 export type CardRow = typeof cards.$inferSelect;
 export type CardReframeRow = typeof cardReframes.$inferSelect;
 export type TagRow = typeof tags.$inferSelect;

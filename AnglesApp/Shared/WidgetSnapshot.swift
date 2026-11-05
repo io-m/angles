@@ -2,13 +2,13 @@ import Foundation
 
 enum AnglesWidgetConstants {
     static let appGroupIdentifier = "group.app.angles.ios"
-    static let heartWidgetKind = "HeartAngleWidget"
-    static let heartsURL = URL(string: "angles://hearts")!
+    static let savedWidgetKind = "SavedAngleWidget"
+    static let savedURL = URL(string: "angles://saved")!
     static let composeURL = URL(string: "angles://compose")!
 }
 
 enum AnglesDeepLink: String, Codable, Equatable {
-    case hearts
+    case saved
     case compose
 
     init?(url: URL) {
@@ -23,33 +23,33 @@ enum AnglesDeepLink: String, Codable, Equatable {
 
     var url: URL {
         switch self {
-        case .hearts:
-            return AnglesWidgetConstants.heartsURL
+        case .saved:
+            return AnglesWidgetConstants.savedURL
         case .compose:
             return AnglesWidgetConstants.composeURL
         }
     }
 }
 
-struct HeartAngleWidgetItem: Codable, Equatable, Identifiable {
+struct SavedAngleWidgetItem: Codable, Equatable, Identifiable {
     let id: String
     let cardID: String
     let answer: String
     let style: String
     let styleDisplayName: String
     let lifeAreaLabel: String?
-    let heartedAt: Date
+    let savedAt: Date
 }
 
-struct HeartAngleWidgetSnapshot: Codable, Equatable {
-    static let empty = HeartAngleWidgetSnapshot(items: [], updatedAt: .distantPast)
+struct SavedAngleWidgetSnapshot: Codable, Equatable {
+    static let empty = SavedAngleWidgetSnapshot(items: [], updatedAt: .distantPast)
 
-    let items: [HeartAngleWidgetItem]
+    let items: [SavedAngleWidgetItem]
     let updatedAt: Date
 }
 
 struct WidgetSnapshotStore {
-    private static let snapshotKey = "angles.heartAngleWidget.snapshot"
+    private static let snapshotKey = "angles.savedAngleWidget.snapshot"
 
     private let defaults: UserDefaults
 
@@ -64,23 +64,23 @@ struct WidgetSnapshotStore {
         self.defaults = defaults
     }
 
-    func loadHeartAngles() -> HeartAngleWidgetSnapshot {
+    func loadSavedAngles() -> SavedAngleWidgetSnapshot {
         guard let data = defaults.data(forKey: Self.snapshotKey),
-              let snapshot = try? JSONDecoder().decode(HeartAngleWidgetSnapshot.self, from: data)
+              let snapshot = try? JSONDecoder().decode(SavedAngleWidgetSnapshot.self, from: data)
         else {
             return .empty
         }
         return snapshot
     }
 
-    func saveHeartAngles(_ snapshot: HeartAngleWidgetSnapshot) {
+    func saveSavedAngles(_ snapshot: SavedAngleWidgetSnapshot) {
         guard let data = try? JSONEncoder().encode(snapshot) else {
             return
         }
         defaults.set(data, forKey: Self.snapshotKey)
     }
 
-    func clearHeartAngles() {
+    func clearSavedAngles() {
         defaults.removeObject(forKey: Self.snapshotKey)
     }
 }

@@ -47,6 +47,16 @@ vi.mock("../db/communitySafety.js", () => ({
   listBlockedUsers: vi.fn(),
 }));
 
+vi.mock("../db/decisions.js", () => ({
+  writeDecision: vi.fn(),
+  clearDecision: vi.fn(),
+}));
+
+vi.mock("../db/stack.js", () => ({
+  listStack: vi.fn(),
+  listPublicCardsForUser: vi.fn(),
+}));
+
 vi.mock("../lib/publicModeration.js", () => ({
   moderatePublicCard: vi.fn(async () => true),
 }));
@@ -63,6 +73,9 @@ const {
   patchCard,
 } = await import("../db/cards.js");
 const { reportCard } = await import("../db/communitySafety.js");
+const { clearDecision, writeDecision } = await import("../db/decisions.js");
+const { listStack } = await import("../db/stack.js");
+const { decodeFeedSession, encodeFeedSession } = await import("../lib/feedRanking.js");
 const { announceReport } = await import("../lib/reportAlerts.js");
 const { moderatePublicCard } = await import("../lib/publicModeration.js");
 
@@ -116,9 +129,11 @@ function storedCard(overrides: Partial<StoredCard> = {}): StoredCard {
     safety: "none",
     skippedStyles: [],
     matching: { category: "work", tags: ["job_interview", "shame"], intensityBand: "high" },
-    results: cookBody.results.map(({ style, reframe }) => ({ style, reframe, isHearted: false })),
+    results: cookBody.results.map(({ style, reframe }) => ({ style, reframe })),
     model: cookBody.model,
     spotlightStyle: "stoic",
+    openingStyle: "stoic",
+    isHouse: false,
     isPublic: false,
     createdAt: "2026-09-10T12:00:00.000Z",
     isOwner: true,
@@ -417,7 +432,7 @@ describe("GET /cards", () => {
       before: undefined,
       category: undefined,
       style: undefined,
-      hearted: undefined,
+      saved: undefined,
     });
   });
 
@@ -425,7 +440,7 @@ describe("GET /cards", () => {
     vi.mocked(listCards).mockResolvedValue([]);
     const createdAt = "2026-09-10T12:00:00.000Z";
     const response = await app.request(
-      `/cards?limit=10&before=${encodeURIComponent(`${createdAt}|${CARD_ID}`)}&category=work&style=stoic&hearted=true`,
+      `/cards?limit=10&before=${encodeURIComponent(`${createdAt}|${CARD_ID}`)}&category=work&style=stoic&saved=true`,
     );
     expect(response.status).toBe(200);
     expect(listCards).toHaveBeenCalledWith({
@@ -433,7 +448,7 @@ describe("GET /cards", () => {
       before: { createdAt: new Date(createdAt), id: CARD_ID },
       category: "work",
       style: "stoic",
-      hearted: true,
+      saved: true,
     });
   });
 });
@@ -468,27 +483,6 @@ describe("PATCH /cards/:id", () => {
     vi.mocked(hasPublicationReportLock).mockResolvedValue(false);
     vi.mocked(moderatePublicCard).mockReset();
     vi.mocked(moderatePublicCard).mockResolvedValue(true);
-  });
-
-  it("sets a per-style heart", async () => {
-    const stored = storedCard({
-      results: storedCard().results.map((item) =>
-        item.style === "stoic"
-          ? { ...item, isHearted: true, heartedAt: "2026-09-10T12:01:00.000Z" }
-          : item,
-      ),
-    });
-    vi.mocked(patchCard).mockResolvedValue({ ok: true, card: stored });
-
-    const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isHearted: true, style: "stoic" }),
-    );
-    expect(response.status).toBe(200);
-    await expect(jsonOf(response)).resolves.toEqual(stored);
-    expect(patchCard).toHaveBeenCalledWith(
-      CARD_ID,
-      expect.objectContaining({ isHearted: true, style: "stoic" }),
-    );
   });
 
   it("sets public on its own", async () => {
@@ -565,9 +559,9 @@ describe("PATCH /cards/:id", () => {
     expect(patchCard).not.toHaveBeenCalled();
   });
 
-  it("rejects heart without a style", async () => {
+  it("rejects the old heart patch", async () => {
     const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isHearted: true }),
+      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isHearted: true, style: "stoic" }),
     );
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
@@ -579,15 +573,6 @@ describe("PATCH /cards/:id", () => {
     expect(response.status).toBe(400);
     await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
     expect(patchCard).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when the style is not on the card", async () => {
-    vi.mocked(patchCard).mockResolvedValue({ ok: false, reason: "unknown_style" });
-    const response = await app.request(
-      jsonRequest(`/cards/${CARD_ID}`, "PATCH", { isHearted: true, style: "witty" }),
-    );
-    expect(response.status).toBe(400);
-    await expect(jsonOf(response)).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   it("returns 404 when missing", async () => {
@@ -666,5 +651,139 @@ describe("DELETE /cards/:id", () => {
     const response = await app.request(`/cards/${CARD_ID}`, { method: "DELETE" });
     expect(response.status).toBe(404);
     await expect(jsonOf(response)).resolves.toEqual({ error: "Not found", code: "NOT_FOUND" });
+  });
+});
+
+describe("PUT /cards/:id/decision", () => {
+  const decision = {
+    kind: "pass" as const,
+    style: "stoic" as const,
+    checkedStyles: ["stoic", "hopeful"] as ("stoic" | "hopeful")[],
+    passes: 1,
+  };
+
+  beforeEach(() => {
+    vi.mocked(writeDecision).mockReset();
+  });
+
+  it("stores the whole row and answers with it", async () => {
+    const stored = { ...decision, decidedAt: "2026-09-10T12:00:00.000Z" };
+    vi.mocked(writeDecision).mockResolvedValue({ ok: true, decision: stored });
+    const response = await app.request(jsonRequest(`/cards/${CARD_ID}/decision`, "PUT", decision));
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toEqual({ decision: stored });
+    expect(writeDecision).toHaveBeenCalledWith(CARD_ID, decision);
+  });
+
+  it("rejects a pass that does not count itself", async () => {
+    const response = await app.request(
+      jsonRequest(`/cards/${CARD_ID}/decision`, "PUT", { ...decision, passes: 0 }),
+    );
+    expect(response.status).toBe(400);
+    expect(writeDecision).not.toHaveBeenCalled();
+  });
+
+  it("rejects more than two passes, repeated styles, and extra fields", async () => {
+    for (const body of [
+      { ...decision, passes: 3 },
+      { ...decision, checkedStyles: ["stoic", "stoic"] },
+      { ...decision, checkedStyles: [] },
+      { ...decision, isHearted: true },
+    ]) {
+      const response = await app.request(jsonRequest(`/cards/${CARD_ID}/decision`, "PUT", body));
+      expect(response.status).toBe(400);
+    }
+    expect(writeDecision).not.toHaveBeenCalled();
+  });
+
+  it("maps own, private, and unknown-style cards to 400 and a missing card to 404", async () => {
+    for (const [reason, status] of [
+      ["own_card", 400],
+      ["not_public", 400],
+      ["unknown_style", 400],
+      ["not_found", 404],
+    ] as const) {
+      vi.mocked(writeDecision).mockResolvedValueOnce({ ok: false, reason });
+      const response = await app.request(jsonRequest(`/cards/${CARD_ID}/decision`, "PUT", decision));
+      expect(response.status).toBe(status);
+    }
+  });
+});
+
+describe("DELETE /cards/:id/decision", () => {
+  beforeEach(() => {
+    vi.mocked(clearDecision).mockReset();
+  });
+
+  it("answers 204 when cleared", async () => {
+    vi.mocked(clearDecision).mockResolvedValue({ ok: true });
+    const response = await app.request(`/cards/${CARD_ID}/decision`, { method: "DELETE" });
+    expect(response.status).toBe(204);
+  });
+
+  it("answers 404 for a card that does not exist", async () => {
+    vi.mocked(clearDecision).mockResolvedValue({ ok: false });
+    const response = await app.request(`/cards/${CARD_ID}/decision`, { method: "DELETE" });
+    expect(response.status).toBe(404);
+  });
+});
+
+describe("GET /stack", () => {
+  beforeEach(() => {
+    vi.mocked(listStack).mockReset();
+    vi.mocked(listStack).mockResolvedValue({ cards: [], exhausted: true });
+  });
+
+  it("starts a visit and hands back its session", async () => {
+    const response = await app.request("/stack");
+    expect(response.status).toBe(200);
+    const body = (await jsonOf(response)) as { session: string; exhausted: boolean };
+    expect(body.exhausted).toBe(true);
+    expect(decodeFeedSession(body.session)).not.toBeNull();
+    expect(listStack).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 12, seen: [] }),
+      expect.any(Boolean),
+    );
+  });
+
+  it("keeps the visit and passes what the phone already has", async () => {
+    const session = { seed: "abcdefgh12", startedAt: new Date("2026-09-10T12:00:00.000Z") };
+    const encoded = encodeFeedSession(session);
+    const response = await app.request(`/stack?session=${encoded}&seen=${CARD_ID}`);
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toMatchObject({ session: encoded });
+    expect(listStack).toHaveBeenCalledWith(
+      { limit: 12, session, seen: [CARD_ID] },
+      expect.any(Boolean),
+    );
+  });
+
+  it("narrows by life areas and moods in their own order", async () => {
+    const response = await app.request("/stack?categories=money,work&emotions=shame,anger");
+    expect(response.status).toBe(200);
+    expect(listStack).toHaveBeenCalledWith(
+      expect.objectContaining({ categories: ["work", "money"], emotions: ["anger", "shame"] }),
+      expect.any(Boolean),
+    );
+  });
+
+  it("rejects a forged session, bad ids, unknown filters, and the old feed parameters", async () => {
+    for (const query of [
+      "session=nope",
+      "seen=not-a-uuid",
+      "categories=astrology",
+      "emotions=shame,,",
+      "style=stoic",
+      "after=x",
+    ]) {
+      const response = await app.request(`/stack?${query}`);
+      expect(response.status).toBe(400);
+    }
+    expect(listStack).not.toHaveBeenCalled();
+  });
+
+  it("no longer serves /feed", async () => {
+    const response = await app.request("/feed");
+    expect(response.status).toBe(404);
   });
 });

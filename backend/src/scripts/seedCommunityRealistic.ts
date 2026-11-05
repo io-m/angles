@@ -5,15 +5,15 @@
  *   pnpm db:seed-realistic --viewer=you@example.com   # also give that account a taste
  *
  * The fixture posts are flat and weeks old (see `communityShape.ts`). This re-dates them
- * relative to now, skews authors, intensity and themes, and adds readers with hearts, so
- * a feed ranked on time, hearts and themes has something real to rank. Re-run it any time
+ * relative to now, skews authors, intensity and themes, and adds readers who save and
+ * pass, so a stack ranked on time, saves and themes has something real to rank. Re-run it any time
  * to move everything back to "now".
  *
  * Non-destructive by design (unlike `seedCommunity`, which deletes every user but the dev
  * one, including a real phone account). It only touches:
  *  - the fixture community cards and their authors, by updating them,
- *  - its own `seed-reader-*` accounts and their hearts,
- *  - with `--viewer`, that account's hearts on community cards.
+ *  - its own `seed-reader-*` accounts and their decisions,
+ *  - with `--viewer`, that account's decisions on community cards.
  * No users or cards are deleted, and there are no LLM calls.
  */
 import { readFileSync } from "node:fs";
@@ -23,16 +23,16 @@ import { DEV_USER_ID } from "../lib/authStub.js";
 import { STEP_DEFAULT_MODELS } from "../lib/llmClient.js";
 import type { Category, Style } from "../types/index.js";
 import { closePool, getDb } from "../db/client.js";
-import { cardReframes, cards, savedAngles, users } from "../db/schema.js";
+import { cardDecisions, cardReframes, cards, users } from "../db/schema.js";
 import type { CommunityFixture } from "./communityCopy.js";
 import {
   READER_EMAIL_PREFIX,
   mulberry32,
   planPosts,
   planReaders,
-  planViewerHearts,
-  type HeartableCard,
-  type HeartPlan,
+  planViewerDecisions,
+  type DecidableCard,
+  type DecisionPlan,
 } from "./communityShape.js";
 import { assertCommunitySeedAllowed } from "./seedCommunityGuard.js";
 
@@ -105,16 +105,16 @@ async function main(): Promise<void> {
     stylesByCard.set(row.cardId, [...(stylesByCard.get(row.cardId) ?? []), row.style]);
   }
   const categoryByCard = new Map(fixture.posts.map((post) => [post.id, post.category as Category]));
-  const heartable: HeartableCard[] = plan.map((item) => ({
+  const decidable: DecidableCard[] = plan.map((item) => ({
     id: item.id,
     category: categoryByCard.get(item.id) ?? "other",
     createdAt: item.createdAt,
     styles: stylesByCard.get(item.id) ?? [],
   }));
 
-  // Readers are ours: replace them, and their hearts cascade away with them.
+  // Readers are ours: replace them, and their decisions cascade away with them.
   await db.delete(users).where(like(users.email, `${READER_EMAIL_PREFIX}%`));
-  const readers = planReaders(heartable, now, rng);
+  const readers = planReaders(decidable, now, rng);
   await db.insert(users).values(
     readers.map((reader) => ({
       id: reader.id,
@@ -123,9 +123,9 @@ async function main(): Promise<void> {
       email: `${READER_EMAIL_PREFIX}${reader.id}@angles.invalid`,
     })),
   );
-  const readerHearts = readers.flatMap((reader) => reader.hearts);
-  for (let start = 0; start < readerHearts.length; start += 500) {
-    await db.insert(savedAngles).values(readerHearts.slice(start, start + 500)).onConflictDoNothing();
+  const readerDecisions = readers.flatMap((reader) => reader.decisions);
+  for (let start = 0; start < readerDecisions.length; start += 500) {
+    await db.insert(cardDecisions).values(readerDecisions.slice(start, start + 500)).onConflictDoNothing();
   }
 
   let viewerNote = "no --viewer given";
@@ -139,22 +139,27 @@ async function main(): Promise<void> {
       throw new Error("--viewer must be a real account, not a seeded one");
     }
     const removed = await db
-      .delete(savedAngles)
-      .where(and(eq(savedAngles.userId, viewer.id), inArray(savedAngles.cardId, cardIds)))
-      .returning({ cardId: savedAngles.cardId });
-    const hearts: HeartPlan[] = planViewerHearts(viewer.id, heartable, now, rng);
-    if (hearts.length > 0) {
-      await db.insert(savedAngles).values(hearts).onConflictDoNothing();
+      .delete(cardDecisions)
+      .where(and(eq(cardDecisions.userId, viewer.id), inArray(cardDecisions.cardId, cardIds)))
+      .returning({ cardId: cardDecisions.cardId });
+    const decisions: DecisionPlan[] = planViewerDecisions(viewer.id, decidable, now, rng);
+    if (decisions.length > 0) {
+      await db.insert(cardDecisions).values(decisions).onConflictDoNothing();
     }
-    viewerNote = `${email}: replaced ${removed.length} heart(s) on community cards with ${hearts.length} (${[
-      ...new Set(hearts.map((heart) => categoryByCard.get(heart.cardId))),
-    ].join(", ")}; ${[...new Set(hearts.map((heart) => heart.style))].join(", ")})`;
+    const saves = decisions.filter((decision) => decision.kind === "save");
+    viewerNote = `${email}: replaced ${removed.length} decision(s) on community cards with ${saves.length} save(s) (${[
+      ...new Set(saves.map((decision) => categoryByCard.get(decision.cardId))),
+    ].join(", ")}; ${[...new Set(saves.map((decision) => decision.style))].join(", ")}) and ${
+      decisions.length - saves.length
+    } pass(es)`;
   }
 
   const hoursOld = plan.map((item) => (now.getTime() - item.createdAt.getTime()) / 3_600_000);
   const perCard = new Map<string, number>();
-  for (const heart of readerHearts) {
-    perCard.set(heart.cardId, (perCard.get(heart.cardId) ?? 0) + 1);
+  for (const decision of readerDecisions) {
+    if (decision.kind === "save") {
+      perCard.set(decision.cardId, (perCard.get(decision.cardId) ?? 0) + 1);
+    }
   }
   const perAuthor = new Map<string, number>();
   for (const item of plan) {
@@ -174,7 +179,7 @@ async function main(): Promise<void> {
     }, authors ${perAuthor.size}`,
   );
   console.log(
-    `Readers ${readers.length}, hearts ${readerHearts.length}; posts with 0 hearts ${
+    `Readers ${readers.length}, decisions ${readerDecisions.length}; posts with 0 saves ${
       plan.filter((item) => !perCard.has(item.id)).length
     }, max on one post ${Math.max(0, ...perCard.values())}`,
   );

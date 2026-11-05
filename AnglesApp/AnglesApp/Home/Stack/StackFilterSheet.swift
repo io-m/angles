@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-struct HomeFilterSheet: View {
+struct StackFilterSheet: View {
     private enum FilterTab: String, CaseIterable {
         case lifeAreas
         case moods
@@ -14,17 +14,17 @@ struct HomeFilterSheet: View {
         }
     }
 
-    let onApply: (HomeFeedFilter) -> Void
+    let onApply: (StackFilter) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
-    @State private var draft: HomeFeedFilter
+    @State private var draft: StackFilter
     @State private var selectedTab: FilterTab = .lifeAreas
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
-    init(appliedFilter: HomeFeedFilter, onApply: @escaping (HomeFeedFilter) -> Void) {
+    init(appliedFilter: StackFilter, onApply: @escaping (StackFilter) -> Void) {
         self.onApply = onApply
         _draft = State(initialValue: appliedFilter)
     }
@@ -76,7 +76,7 @@ struct HomeFilterSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Clear") {
-                        draft = HomeFeedFilter()
+                        draft = StackFilter()
                     }
                     .tint(draft.appliedCount > 0 ? .red : theme.faint)
                     .disabled(draft.appliedCount == 0)

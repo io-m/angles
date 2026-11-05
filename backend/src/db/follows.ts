@@ -98,9 +98,10 @@ export async function followUser(followeeId: string): Promise<FollowWriteOutcome
       await lockUserPair(tx, followerId, followeeId);
       const user = await tx.query.users.findFirst({
         where: eq(users.id, followeeId),
-        columns: { id: true },
+        columns: { id: true, kind: true },
       });
-      if (!user) {
+      // Angles' own cards come from no one to follow.
+      if (!user || user.kind === "house") {
         return followOutcome("not_found");
       }
       if (await usersAreBlocked(followerId, followeeId, tx)) {

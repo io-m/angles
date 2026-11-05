@@ -5,7 +5,7 @@ import { avatarUrlFor } from "../lib/avatarUrl.js";
 import type { ReportReason } from "../lib/communitySafetyTypes.js";
 import type { StoredCardAuthor } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
-import { cardReports, cards, followNotifications, follows, savedAngles, userBlocks, users } from "./schema.js";
+import { cardDecisions, cardReports, cards, followNotifications, follows, userBlocks, users } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 export type AppTransaction = Parameters<
@@ -156,11 +156,11 @@ export async function blockUser(blockedId: string): Promise<BlockWriteResult> {
       const blockerCards = tx.select({ id: cards.id }).from(cards).where(eq(cards.userId, blockerId));
       const blockedCards = tx.select({ id: cards.id }).from(cards).where(eq(cards.userId, blockedId));
       await tx
-        .delete(savedAngles)
+        .delete(cardDecisions)
         .where(
           or(
-            and(eq(savedAngles.userId, blockerId), inArray(savedAngles.cardId, blockedCards)),
-            and(eq(savedAngles.userId, blockedId), inArray(savedAngles.cardId, blockerCards)),
+            and(eq(cardDecisions.userId, blockerId), inArray(cardDecisions.cardId, blockedCards)),
+            and(eq(cardDecisions.userId, blockedId), inArray(cardDecisions.cardId, blockerCards)),
           ),
         );
       return "ok";
@@ -266,8 +266,8 @@ export async function reportCard(cardId: string, reason: ReportReason): Promise<
 
       await tx.insert(cardReports).values({ reporterId, cardId, reason });
       await tx
-        .delete(savedAngles)
-        .where(and(eq(savedAngles.userId, reporterId), eq(savedAngles.cardId, cardId)));
+        .delete(cardDecisions)
+        .where(and(eq(cardDecisions.userId, reporterId), eq(cardDecisions.cardId, cardId)));
 
       const madePrivate = await cardPublicationLocked(cardId, tx);
       if (madePrivate) {

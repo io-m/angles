@@ -18,6 +18,7 @@ private enum SessionEnd {
 }
 
 enum BrowseRoute: Hashable {
+    case profile
     case author(AuthorRoute)
 }
 
@@ -44,9 +45,6 @@ struct AppRoot: View {
     /// Sparkle compose over Home. The onboarding taste is a destination, not this flag.
     @State private var isComposePresented = false
     @State private var membershipRequested = false
-    @State private var selectedTab: RootTab = .home
-    @State private var homeSideColumn = HomeSideColumnModel()
-    @State private var lastContentTab: RootTab = .home
     @State private var browsePath: [BrowseRoute] = []
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
     @State private var paywallShowsCelebration = false
@@ -55,7 +53,6 @@ struct AppRoot: View {
     @State private var splashPhase: LaunchSplashPhase = .holding
     @State private var splashHoldElapsed = false
     @State private var splashMaximumElapsed = false
-    @State private var homeFeedTask: Task<Void, Never>?
     @State private var homeArrivalCapTask: Task<Void, Never>?
     @State private var homeArrivalTimedOut = false
     @State private var saveCoverLabel: String?
@@ -79,46 +76,34 @@ struct AppRoot: View {
                 .ignoresSafeArea()
 
             NavigationStack(path: $browsePath) {
-                TabView(selection: $selectedTab) {
-                    HomeView(
-                        safeAreaInsets: homeSafeAreaInsets,
-                        viewModel: viewModel,
-                        storeKitManager: storeKitManager,
-                        canLoadFullAppContent: isHomeRevealed,
-                        isActiveTab: selectedTab == .home,
-                        allowsSideColumn: browsePath.isEmpty,
-                        sideColumnModel: homeSideColumn,
-                        identityStore: identityStore,
-                        onLogOut: logOut,
-                        onDeleteAccount: deleteAccount,
-                        onOpenAuthor: openAuthor,
-                        onInspire: presentCompose
-                    )
-                    .tabItem { Label("Home", systemImage: "house") }
-                    .tag(RootTab.home)
-
-                    Color.clear
-                        .tabItem { Label("Inspire me", image: "InspireMarkTab") }
-                        .tag(RootTab.compose)
-
-                    ProfileView(
-                        safeAreaInsets: homeSafeAreaInsets,
-                        viewModel: viewModel,
-                        storeKitManager: storeKitManager,
-                        identityStore: identityStore,
-                        onInspire: presentCompose,
-                        onLogOut: logOut,
-                        onDeleteAccount: deleteAccount,
-                        canLoadFullAppContent: canLoadProfileContent,
-                        onOpenAuthor: openAuthor,
-                        onOpenFollowed: openFollowed
-                    )
-                    .badge(viewModel.unreadFollowCount)
-                    .tabItem { Label("Profile", systemImage: "person") }
-                    .tag(RootTab.profile)
-                }
+                StackHome(
+                    viewModel: viewModel,
+                    safeAreaInsets: homeSafeAreaInsets,
+                    storeKitManager: storeKitManager,
+                    identityStore: identityStore,
+                    onLogOut: logOut,
+                    onDeleteAccount: deleteAccount,
+                    onInspire: presentCompose,
+                    onOpenProfile: showOwnProfile,
+                    onOpenAuthor: openAuthor,
+                    onOpenFollowed: openFollowed
+                )
+                .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: BrowseRoute.self) { route in
                     switch route {
+                    case .profile:
+                        ProfileView(
+                            safeAreaInsets: homeSafeAreaInsets,
+                            viewModel: viewModel,
+                            storeKitManager: storeKitManager,
+                            identityStore: identityStore,
+                            onInspire: presentCompose,
+                            onLogOut: logOut,
+                            onDeleteAccount: deleteAccount,
+                            canLoadFullAppContent: isHomeRevealed,
+                            onOpenAuthor: openAuthor,
+                            onOpenFollowed: openFollowed
+                        )
                     case .author(let author):
                         AuthorProfileView(
                             route: author,
@@ -131,21 +116,11 @@ struct AppRoot: View {
                         // the page itself, never globally).
                     }
                 }
-                .toolbar(.hidden, for: .navigationBar)
-            }
-            .overlay(alignment: .topTrailing) {
-                HomeSideColumnRail(
-                    model: homeSideColumn,
-                    isVisible: destination == .home && selectedTab == .home && browsePath.isEmpty
-                )
             }
             .tint(theme.ink)
             .opacity(destination == .home ? 1 : 0)
             .allowsHitTesting(isHomeRevealed)
             .accessibilityHidden(!isHomeRevealed)
-            .onChange(of: selectedTab) { _, newTab in
-                handleTabChange(newTab)
-            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.keyboard)
 
@@ -349,6 +324,12 @@ struct AppRoot: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                viewModel.stack.noteBackground()
+            }
+            if phase == .active, isHomeRevealed {
+                viewModel.stack.noteForeground()
+            }
             if phase == .active, sessionStore.isSignedIn {
                 Task { await syncFollowPush() }
             }
@@ -450,15 +431,11 @@ struct AppRoot: View {
         if homeArrivalTimedOut || splashMaximumElapsed {
             return true
         }
-        return viewModel.launchPrefetchFinished
+        return viewModel.stack.firstLoadFinished
     }
 
     private var coveringFrostAnimation: Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.45)
-    }
-
-    private var canLoadProfileContent: Bool {
-        isHomeRevealed && selectedTab == .profile
     }
 
     /// Set once: the handlers act on this view's live state, so they never go stale.
@@ -466,7 +443,6 @@ struct AppRoot: View {
         composeContext.close = handleComposeClose
         composeContext.showMembership = presentMembershipPaywall
         composeContext.saved = handleSavedCard
-        composeContext.landSavedCard = { viewModel.landSavedCard($0, animated: false) }
         composeContext.presentSaveCover = presentSaveCover
         composeContext.dismissSaveCover = dismissSaveCover
         composeContext.acceptTerms = { await sessionStore.acceptTerms() }
@@ -506,8 +482,8 @@ struct AppRoot: View {
         async let sessionRestore: Void = sessionStore.restore()
         async let productLoad: Void = storeKitManager.loadProducts()
         _ = await (sessionRestore, productLoad)
-        if let session = sessionStore.session {
-            Task { await viewModel.prefetchLaunchFeed(userId: session.id) }
+        if sessionStore.session != nil {
+            viewModel.stack.startVisitIfNeeded()
         }
         storeKitManager.configureAccount(userID: sessionStore.session?.id)
         viewModel.configureUsageAccount(userID: sessionStore.session?.id)
@@ -559,24 +535,23 @@ struct AppRoot: View {
     /// Home is already covered on this frame. Taste/paywall are gone structurally; the reveal
     /// waits for checkout, then the first Home result, then fades once.
     private func enterHome() {
-        viewModel.prepareForFullAppAccess()
         withoutAnimations {
             isComposePresented = false
             homeArrivalTimedOut = false
             homeRevealPhase = .waitingForCheckout
-            selectedTab = .home
-            lastContentTab = .home
             browsePath.removeAll()
         }
-        homeFeedTask?.cancel()
-        homeFeedTask = Task { await viewModel.loadFeedIfNeeded() }
+        // A launch prefetch that failed before the entitlement settled gets one more try here.
+        if viewModel.stack.loadState == .failed, viewModel.stack.deck.cards.isEmpty {
+            viewModel.stack.retry()
+        } else {
+            viewModel.stack.startVisitIfNeeded()
+        }
         storeKitManager.releaseCheckoutLock()
         advanceHomeRevealIfPossible()
     }
 
     private func leaveHome() {
-        homeFeedTask?.cancel()
-        homeFeedTask = nil
         homeArrivalCapTask?.cancel()
         homeArrivalCapTask = nil
         withoutAnimations {
@@ -786,16 +761,13 @@ struct AppRoot: View {
         case .viewProfile:
             openAuthorFromFollowPush(id)
         case .followBack:
-            selectedTab = .profile
-            lastContentTab = .profile
             viewModel.requestOpenFollowNotifications()
+            showOwnProfile()
             viewModel.followBack(id)
         }
     }
 
     private func openAuthorFromFollowPush(_ authorId: UUID) {
-        // Author pages sit on the NavigationStack that wraps the tabs. Do not change
-        // selectedTab here: switching Home after a push pops that stack and lands on Home.
         if let notice = viewModel.followNotices.first(where: { $0.actorId == authorId }) {
             openFollowed(
                 FollowedPerson(
@@ -833,8 +805,6 @@ struct AppRoot: View {
                 }
             }
         }
-        homeFeedTask?.cancel()
-        homeFeedTask = nil
         homeArrivalCapTask?.cancel()
         homeArrivalCapTask = nil
         withoutAnimations {
@@ -904,31 +874,15 @@ struct AppRoot: View {
         )
     }
 
+    /// Profile is pushed over the stack. From deeper in, going back to it pops to it.
     private func showOwnProfile() {
-        if !browsePath.isEmpty {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                selectedTab = .profile
-            }
-            browsePath.removeAll()
-            return
-        }
-        selectedTab = .profile
-    }
-
-    private func handleTabChange(_ newTab: RootTab) {
-        if newTab == .compose {
-            presentCompose()
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                selectedTab = lastContentTab
+        if let index = browsePath.firstIndex(of: .profile) {
+            if index < browsePath.count - 1 {
+                browsePath.removeSubrange((index + 1)...)
             }
             return
         }
-
-        lastContentTab = newTab
+        browsePath.append(.profile)
     }
 
     // MARK: - Compose
@@ -948,13 +902,11 @@ struct AppRoot: View {
         pendingWidgetDeepLink = nil
 
         switch deepLink {
-        case .hearts:
+        case .saved:
             withoutAnimations {
                 isComposePresented = false
-                browsePath.removeAll()
-                viewModel.profileGridFilter = .hearts
-                selectedTab = .profile
-                lastContentTab = .profile
+                viewModel.profileSegment = .saved
+                browsePath = [.profile]
             }
         case .compose:
             presentCompose()
@@ -1002,7 +954,7 @@ struct AppRoot: View {
             isComposePresented = false
         }
         slideSaveCoverAway {
-            viewModel.highlightSavedCard(cardID)
+            viewModel.announcePost(cardID)
         }
     }
 
@@ -1025,7 +977,7 @@ struct AppRoot: View {
 
     /// Read after the save cover has left. A covered or off-home screen never asks.
     private var settledSaveReviewContext: AppRatingPromptContext {
-        let onRootList = browsePath.isEmpty && (selectedTab == .home || selectedTab == .profile)
+        let onRootList = browsePath.isEmpty || browsePath == [.profile]
         return AppRatingPromptContext(
             destinationIsHome: destination == .home,
             homeIsRevealed: isHomeRevealed,
@@ -1044,19 +996,10 @@ struct AppRoot: View {
                 isEntitled: storeKitManager.isEntitledForGate,
                 safetyClear: !viewModel.compose.composeSessionNeedsCare
             )
-            if card.isPublic {
-                lastContentTab = .home
-                selectedTab = .home
-            } else {
-                lastContentTab = .profile
-                selectedTab = .profile
-            }
             return
         }
 
         withoutAnimations {
-            lastContentTab = .home
-            selectedTab = .home
             paywallHeroCard = card
             paywallShowsCelebration = true
             sessionStore.noteTasteCompleted()
@@ -1072,8 +1015,8 @@ struct AppRoot: View {
     }
 }
 
-/// AppRoot's reactions to values it never draws. They live here so a feed page landing, a badge
-/// count, or a push token redraws this empty view, not the root and every tab under it.
+/// AppRoot's reactions to values it never draws. They live here so a stack page landing, a badge
+/// count, or a push token redraws this empty view, not the root and everything under it.
 private struct RootChangeObservers: View {
     let viewModel: HomeViewModel
     let storeKitManager: StoreKitManager
@@ -1106,10 +1049,7 @@ private struct RootChangeObservers: View {
             .onChange(of: storeKitManager.isCheckoutOperationInFlight) { _, _ in
                 onCheckoutOperationChange()
             }
-            .onChange(of: viewModel.feedLoadState) { _, _ in
-                onHomeLoadProgress()
-            }
-            .onChange(of: viewModel.launchPrefetchFinished) { _, _ in
+            .onChange(of: viewModel.stack.firstLoadFinished) { _, _ in
                 onHomeLoadProgress()
             }
             .allowsHitTesting(false)
@@ -1117,7 +1057,7 @@ private struct RootChangeObservers: View {
     }
 }
 
-/// The root banner. It reads its messages itself, so a failed heart or a credit warning redraws
+/// The root banner. It reads its messages itself, so a failed save or a credit warning redraws
 /// only the banner.
 private struct RootMessageBanner: View {
     let viewModel: HomeViewModel

@@ -493,6 +493,11 @@ const SOLEMN_SKIP_REASONS: Partial<Record<Style, string>> = {
   tough: GRAVE_TOUGH_SKIP_REASON,
 };
 
+/** A stored skip that marks the cook as about real harm to people. */
+export function isSolemnSkip(item: SkippedStyle): boolean {
+  return SOLEMN_BLOCKED_STYLES.includes(item.style) && item.reason === SOLEMN_SKIP_REASONS[item.style];
+}
+
 /** How many angles a card gets whenever the catalog has room for them. */
 export const ANGLES_PER_CARD = 4;
 

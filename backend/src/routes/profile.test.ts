@@ -109,6 +109,7 @@ const owner = {
   termsAcceptedAt: null as Date | null,
   publishingSuspendedAt: null as Date | null,
   notifyFollows: true,
+  kind: "person" as const,
   createdAt: new Date("2026-09-10T12:00:00.000Z"),
   updatedAt: new Date("2026-09-10T12:00:00.000Z"),
 };

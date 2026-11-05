@@ -9,10 +9,10 @@ import { styleSetMiddleware } from "./lib/styleSet.js";
 import { adminRoute } from "./routes/admin.js";
 import { appStoreNotificationsRoute } from "./routes/appStoreNotifications.js";
 import { cardsRoute } from "./routes/cards.js";
-import { feedRoute } from "./routes/feed.js";
 import { healthRoute } from "./routes/health.js";
 import { avatarsRoute, profileRoute } from "./routes/profile.js";
 import { reframeRoute } from "./routes/reframe.js";
+import { stackRoute } from "./routes/stack.js";
 import { usersRoute } from "./routes/users.js";
 
 const MAX_BODY_BYTES = 8 * 1024;
@@ -56,7 +56,7 @@ export function createApp(): Hono {
   app.on(["POST", "GET"], "/api/auth/*/*", (c) => getAuth().handler(c.req.raw));
   app.route("/reframe", reframeRoute);
   app.route("/cards", cardsRoute);
-  app.route("/feed", feedRoute);
+  app.route("/stack", stackRoute);
   app.route("/profile", profileRoute);
   app.route("/users", usersRoute);
   app.route("/avatars", avatarsRoute);

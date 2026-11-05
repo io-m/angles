@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import { blockUser, unblockUser, usersAreBlocked } from "../db/communitySafety.js";
-import { listPublicCardsForUser } from "../db/feed.js";
+import { listPublicCardsForUser } from "../db/stack.js";
 import { deliverFollowPush } from "../db/followNotifications.js";
 import { followedAuthorIds, followUser, unfollowUser } from "../db/follows.js";
 import { authorOf } from "../db/mapCard.js";

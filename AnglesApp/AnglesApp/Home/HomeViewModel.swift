@@ -3,433 +3,52 @@ import Observation
 import SwiftUI
 import UIKit
 
-struct HomeCardSlide: Identifiable, Equatable {
-    let id: UUID
-    let thought: String
-    var result: ReframeResult
-    var isHearted: Bool
-    var heartedAt: Date?
-    /// Strangers who hearted this angle. Only your own public cards carry it.
-    var heartCount: Int?
-}
-
-struct HomeCard: Identifiable, Equatable {
-    let id: UUID
-    let createdAt: Date
-    /// Exact server timestamp retained for cursor pagination.
-    let createdAtCursor: String
-    var slides: [HomeCardSlide]
-    var spotlightStyle: Style
-    /// Cleaned thought in the language it was typed in, when that is not English.
-    var thoughtOriginal: String?
-    var isPublic: Bool
-    /// An operator hid this card. The author sees why, and cannot publish it.
-    var moderationHidden: Bool
-    var isOwner: Bool
-    /// Stable author id. Nil when the payload has no UUID, so the avatar does not navigate.
-    var authorId: UUID?
-    var authorInitials: String
-    /// `/avatars/{id}?v=` when this author has a photo. Nil means initials.
-    var authorAvatarPath: String?
-    /// Viewer follows this author. Always false on your own cards.
-    var authorFollowing: Bool
-    /// In memory only until History (SwiftData) lands. Shape exists now for matching later.
-    var meta: ReframeMeta?
-
-    init(
-        id: UUID = UUID(),
-        createdAt: Date = Date(),
-        createdAtCursor: String? = nil,
-        slides: [HomeCardSlide],
-        spotlightStyle: Style = .stoic,
-        thoughtOriginal: String? = nil,
-        isPublic: Bool = false,
-        moderationHidden: Bool = false,
-        isOwner: Bool = true,
-        authorId: UUID? = nil,
-        authorInitials: String = UserInitials.letters,
-        authorAvatarPath: String? = nil,
-        authorFollowing: Bool = false,
-        meta: ReframeMeta? = nil
-    ) {
-        self.id = id
-        self.createdAt = createdAt
-        self.createdAtCursor = createdAtCursor ?? ISO8601Dates.string(from: createdAt)
-        self.slides = slides
-        self.spotlightStyle = spotlightStyle
-        self.thoughtOriginal = thoughtOriginal
-        self.isPublic = isPublic
-        self.moderationHidden = moderationHidden
-        self.isOwner = isOwner
-        self.authorId = authorId
-        self.authorInitials = authorInitials
-        self.authorAvatarPath = authorAvatarPath
-        self.authorFollowing = authorFollowing
-        self.meta = meta
-    }
-
-    init?(stored: StoredCard) {
-        guard let id = UUID(uuidString: stored.id) else {
-            return nil
-        }
-        let slides = stored.results.map { result in
-            HomeCardSlide(
-                id: UUID(),
-                thought: stored.thought,
-                result: result.result,
-                isHearted: result.isHearted,
-                heartedAt: result.heartedAt.flatMap { ISO8601Dates.date(from: $0) },
-                heartCount: result.heartCount
-            )
-        }
-        guard !slides.isEmpty else {
-            return nil
-        }
-        self.init(
-            id: id,
-            createdAt: ISO8601Dates.date(from: stored.createdAt) ?? Date(),
-            createdAtCursor: stored.createdAt,
-            slides: slides,
-            spotlightStyle: stored.spotlightStyle,
-            thoughtOriginal: stored.thoughtOriginal,
-            isPublic: stored.isPublic,
-            moderationHidden: stored.moderationHidden ?? false,
-            isOwner: stored.isOwner,
-            authorId: UUID(uuidString: stored.author.id),
-            authorInitials: stored.author.initials,
-            authorAvatarPath: stored.author.avatarUrl,
-            authorFollowing: stored.isOwner ? false : stored.author.following,
-            meta: stored.reframeMeta
-        )
-    }
-
-    var thought: String {
-        slides.first?.thought ?? ""
-    }
-
-    static let moderationHiddenMessage =
-        "Hidden by Angles. This post broke the community rules."
-
-    var moderationNoticeText: String? {
-        isOwner && !isPublic && moderationHidden ? Self.moderationHiddenMessage : nil
-    }
-
-    var allowsOwnerVisibilityChange: Bool {
-        isOwner && !(!isPublic && moderationHidden)
-    }
-
-    /// Life-area chrome: closed category plus a proposed label when the cook landed on `other`.
-    var lifeAreaPresentation: (category: ThoughtCategory, label: String)? {
-        guard let meta else {
-            return nil
-        }
-        let label =
-            meta.category == .other
-            ? (meta.proposedLabel ?? meta.category.displayName)
-            : meta.category.displayName
-        return (meta.category, label)
-    }
-
-    var hasHeartAngle: Bool {
-        slides.contains(where: \.isHearted)
-    }
-
-    var latestHeartedAt: Date? {
-        slides.compactMap(\.heartedAt).max()
-    }
-
-    var latestHeartStyle: Style? {
-        slides
-            .filter(\.isHearted)
-            .max { ($0.heartedAt ?? .distantPast) < ($1.heartedAt ?? .distantPast) }?
-            .result
-            .style
-    }
-
-    func hasStyle(_ style: Style) -> Bool {
-        slides.contains { $0.result.style == style }
-    }
-
-    func isStyleHearted(_ style: Style) -> Bool {
-        slides.first(where: { $0.result.style == style })?.isHearted ?? false
-    }
-
-    /// Other people who hearted this angle. Only your own public cards carry a number,
-    /// and never a zero, so nil means there is nothing to show.
-    func strangerHearts(for style: Style) -> Int? {
-        slides.first(where: { $0.result.style == style })?.heartCount
-    }
-
-    mutating func apply(_ stored: StoredCard) {
-        isPublic = stored.isPublic
-        moderationHidden = stored.moderationHidden ?? false
-        thoughtOriginal = stored.thoughtOriginal
-        if let authorId = UUID(uuidString: stored.author.id) {
-            self.authorId = authorId
-        }
-        authorInitials = stored.author.initials
-        authorAvatarPath = stored.author.avatarUrl
-        authorFollowing = stored.isOwner ? false : stored.author.following
-        for index in slides.indices {
-            let style = slides[index].result.style
-            guard let match = stored.results.first(where: { $0.style == style }) else {
-                continue
-            }
-            slides[index].result = match.result
-            slides[index].isHearted = match.isHearted
-            slides[index].heartedAt = match.heartedAt.flatMap { ISO8601Dates.date(from: $0) }
-            slides[index].heartCount = match.heartCount
-        }
-    }
-}
-
-extension Style {
-    var displayName: String {
-        switch self {
-        case .stoic:
-            return "Stoic"
-        case .hopeful:
-            return "Hopeful"
-        case .witty:
-            return "Witty"
-        case .tough:
-            return "Tough"
-        case .tender:
-            return "Tender"
-        case .values:
-            return "Values"
-        }
-    }
-}
-
 enum LibraryLoadState: Equatable {
     case loading
     case loaded
     case failed(String)
 }
 
-struct HomeFeedFilter: Equatable, Sendable {
-    var categories: Set<ThoughtCategory> = []
-    var emotions: Set<Emotion> = []
-
-    var appliedCount: Int {
-        categories.count + emotions.count
-    }
-}
-
-enum FeedFooterState: Equatable {
+enum ListFooterState: Equatable {
     case idle
     case loading
     case failed
 }
 
-enum HomeFeedTab: Equatable, Hashable, CaseIterable {
-    case all
-    case stoic
-    case hopeful
-    case witty
-    case tough
-    case tender
-    case values
+/// Profile's two lists: the cards you wrote and the cards you loved.
+enum ProfileSegment: String, CaseIterable, Hashable {
+    case yours
+    case saved
 
     var title: String {
-        matchingStyle?.displayName ?? "For you"
-    }
-
-    var matchingStyle: Style? {
         switch self {
-        case .all:
-            return nil
-        case .stoic:
-            return .stoic
-        case .hopeful:
-            return .hopeful
-        case .witty:
-            return .witty
-        case .tough:
-            return .tough
-        case .tender:
-            return .tender
-        case .values:
-            return .values
+        case .yours: "Yours"
+        case .saved: "Loved"
         }
     }
 
-    var systemImage: String {
-        guard let style = matchingStyle else {
-            return "star.fill"
-        }
-
-        return CardStyleAppearance(style: style).systemImage
-    }
-
-    func symbolColor(ink: Color) -> Color {
-        guard let style = matchingStyle else {
-            return ink
-        }
-
-        return CardStyleAppearance(style: style).ink
-    }
-
-    var headerWashInk: Color {
-        guard let style = matchingStyle else {
-            return .clear
-        }
-
-        return CardStyleAppearance(style: style).ink
-    }
-
-    func emptyState(
-        appliedFilter: HomeFeedFilter,
-        audience: HomeFeedEmptyAudience
-    ) -> HomeFeedEmptyState {
-        if appliedFilter.appliedCount > 0 {
-            return HomeFeedEmptyState(
-                systemImage: "line.3.horizontal.decrease",
-                title: "Nothing matches",
-                detail: "Try another life area or mood."
-            )
-        }
-        let canInspire = audience == .community
-        if let style = matchingStyle {
-            let name = style.displayName
-            switch audience {
-            case .community:
-                return HomeFeedEmptyState(
-                    systemImage: systemImage,
-                    title: "No \(name) angles yet",
-                    detail: "When someone shares a \(name) angle, it shows up here.",
-                    offersInspire: canInspire
-                )
-            case .author:
-                return HomeFeedEmptyState(
-                    systemImage: systemImage,
-                    title: "No \(name) angles yet",
-                    detail: "A \(name) angle they share will show up here."
-                )
-            }
-        }
-        switch audience {
-        case .community:
-            return HomeFeedEmptyState(
-                systemImage: systemImage,
-                title: "Nothing here yet",
-                detail: "When someone shares a thought, it shows up here.",
-                offersInspire: canInspire
-            )
-        case .author:
-            return HomeFeedEmptyState(
-                systemImage: systemImage,
-                title: "No posts yet",
-                detail: "When they share a thought, it shows up here."
-            )
-        }
+    /// `GET /cards?saved=`.
+    var savedQuery: Bool {
+        self == .saved
     }
 }
 
-enum HomeFeedEmptyAudience: Equatable {
-    case community
-    case author
+/// One paged list of cards: a Profile segment or an author page.
+struct CardList: Equatable {
+    var cards: [HomeCard] = []
+    var loadState: LibraryLoadState = .loading
+    var footerState: ListFooterState = .idle
+    var before: String?
+    var hasMore = false
+    var hasLoaded = false
+    var generation = 0
 }
 
-struct HomeFeedEmptyState: Equatable {
-    var systemImage: String
-    var title: String
-    var detail: String
-    /// Community boards can open compose. An author's empty page cannot.
-    var offersInspire: Bool = false
-}
-
-enum ProfileGridFilter: Equatable, Hashable, CaseIterable {
-    case hearts
-    case stoic
-    case hopeful
-    case witty
-    case tough
-    case tender
-    case values
-
-    var title: String {
-        matchingStyle?.displayName ?? "Hearts"
-    }
-
-    var matchingStyle: Style? {
-        switch self {
-        case .stoic:
-            return .stoic
-        case .hopeful:
-            return .hopeful
-        case .witty:
-            return .witty
-        case .tough:
-            return .tough
-        case .tender:
-            return .tender
-        case .values:
-            return .values
-        case .hearts:
-            return nil
-        }
-    }
-
-    var systemImage: String {
-        guard let style = matchingStyle else {
-            return "heart.fill"
-        }
-
-        return CardStyleAppearance(style: style).systemImage
-    }
-
-    func symbolColor(ink: Color) -> Color {
-        guard let style = matchingStyle else {
-            return ink
-        }
-
-        return CardStyleAppearance(style: style).ink
-    }
-
-    var presentation: ReframeCardPresentation {
-        self == .hearts ? .heartAngles : .library
-    }
-
-    var emptyCopy: String {
-        switch self {
-        case .hearts:
-            return "No hearts yet"
-        case .stoic, .hopeful, .witty, .tough, .tender, .values:
-            return "No cards with a \(title) angle yet"
-        }
-    }
-
-    var headerWashInk: Color {
-        guard let style = matchingStyle else {
-            return .clear
-        }
-
-        return CardStyleAppearance(style: style).ink
-    }
-
-    init(spotlight style: Style) {
-        switch style {
-        case .stoic:
-            self = .stoic
-        case .hopeful:
-            self = .hopeful
-        case .witty:
-            self = .witty
-        case .tough:
-            self = .tough
-        case .tender:
-            self = .tender
-        case .values:
-            self = .values
-        }
-    }
-}
-
-enum SaveLanding: Equatable {
-    case home
-    case profile(ProfileGridFilter)
+/// The toast over the action row after a post: "Posted" or "Saved privately".
+struct PostToast: Equatable {
+    let label: String
+    let tint: Style
+    let token: Int
 }
 
 struct AuthorHeader: Equatable {
@@ -444,98 +63,32 @@ private struct AuthorFeed {
     var avatarPath: String?
     var isSelf: Bool
     var following: Bool = false
-    var cards: [HomeCard] = []
-    var cardIDs: Set<UUID> = []
-    var loadState: LibraryLoadState = .loading
-    var footerState: FeedFooterState = .idle
-    var before: String?
-    var hasMore = true
-    var hasLoaded = false
-    var generation = 0
+    var list = CardList()
     var task: Task<Void, Never>?
-    var isRefreshing = false
-    var refreshOutcome: FeedRefreshOutcome?
-    var refreshToken = 0
-}
-
-private struct PendingForYouMix {
-    var cards: [StoredCard]
-    var nextCursor: String?
-    var arrivalsAfter: String?
-    var hasMore: Bool
-}
-
-private struct BlockAuthorSnapshot {
-    let libraryEntries: [(index: Int, card: HomeCard)]
-    let shelfEntries: [(placement: HomeFeedPlacement, card: HomeCard)]
-    let feedAnchors: [UUID: HomeCard]
-    let followedEntry: (index: Int, person: FollowedPerson)?
-    let blockedEntry: (index: Int, person: BlockedPerson)?
-    let authorFeeds: [UUID: AuthorFeed]
 }
 
 @MainActor
 @Observable
 final class HomeViewModel {
-    private(set) var cards: [HomeCard] {
+    private(set) var yours = CardList()
+    private(set) var saved = CardList() {
         didSet {
-            HeartAngleWidgetPublisher.publish(cards: cards)
+            SavedAngleWidgetPublisher.publish(cards: saved.cards)
         }
     }
-
-    /// Outcome of the last pull-to-refresh, with a token so the banner can
-    /// re-announce an identical outcome on a second pull.
-    private(set) var libraryRefreshOutcome: FeedRefreshOutcome?
-    private(set) var libraryRefreshToken = 0
+    var profileSegment: ProfileSegment = .yours
 
     private(set) var usageSummary: UsageSummary?
     private(set) var usageBanner: String?
     /// The server refused a cook because this account's free taste is spent. AppRoot moves a
     /// taste destination to the paywall so the composer is never a dead end.
     private(set) var tasteEndedByServer = false
-    var profileGridFilter: ProfileGridFilter = .hearts {
-        didSet {
-            if profileGridFilter != oldValue {
-                ensureProfileTabFilled()
-            }
-        }
-    }
-    var homeFeedTab: HomeFeedTab = .all {
-        didSet {
-            if homeFeedTab != oldValue {
-                loadShelfIfNeeded(homeFeedTab)
-            }
-        }
-    }
-    private(set) var appliedFilter = HomeFeedFilter()
-    private(set) var libraryLoadState: LibraryLoadState
-    private(set) var libraryFooterState: FeedFooterState = .idle
-    private(set) var feedBoard = HomeFeedBoard()
-    /// Cards each Home shelf has put on screen. Read only when a pull plans a rotation,
-    /// so it stays out of observation and scrolling never redraws Home.
-    @ObservationIgnored private var feedDisplayedIDs: [HomeFeedTab: Set<UUID>] = [:]
-    /// For you's first load. Style shelves stay unloaded until their tab is opened.
-    var feedLoadState: LibraryLoadState { feedBoard.shelf(.all).loadState }
-    /// The banner for the shelf that was just pulled. Switching tabs must not replay it.
-    private(set) var feedRefreshOutcome: FeedRefreshOutcome?
-    private(set) var feedRefreshToken = 0
-    /// Sticky See latest pill. A newer For you mix is parked, never swapped under a finger.
-    private(set) var forYouLatestToken = 0
-    var showsLatestForYouPill: Bool { pendingLaunchMix != nil }
-    private var feedSnapshotStore = HomeFeedSnapshotStore()
-    private var feedAccountID: String?
-    private var pendingLaunchMix: PendingForYouMix?
-    /// Ids that were on the snapshot when this visit opened, so a local delete is not undone.
-    private var launchSnapshotIDs: Set<UUID> = []
-    private var launchPrefetchStarted = false
-    /// Live For you prefetch finished (loaded or failed). Splash waits on this in Debug.
-    private(set) var launchPrefetchFinished = false
-    /// Set when a non-taste save should already be on screen under the compose overlay.
-    private(set) var saveLanding: SaveLanding?
-    private(set) var saveLandingToken = 0
-    /// The card whose border shines once after the save cover slides away.
-    private(set) var shiningCardID: UUID?
-    /// A heart, privacy flag, or delete that did not reach the server. The rollback is
+
+    private(set) var postToast: PostToast?
+    /// Bumped after a save or a post so the Profile button pulses once.
+    private(set) var profilePulseToken = 0
+
+    /// A save, privacy flag, or delete that did not reach the server. The rollback is
     /// invisible on its own, so the root banner reads this.
     private(set) var writeError: String?
     private(set) var followedPeople: [FollowedPerson] = []
@@ -545,75 +98,66 @@ final class HomeViewModel {
     private(set) var followNotices: [FollowNotice] = []
     private(set) var followNoticesLoadState: LibraryLoadState = .loading
     private(set) var unreadFollowCount = 0
-    /// Bumps on every load or mark, so the icon badge is rewritten even when the count is the
-    /// same and a push left a stale number on the icon.
+    /// Bumped whenever the unread count is set, even to the same value, so the app icon is
+    /// rewritten after a push changed it behind the app's back.
     private(set) var followBadgeRevision = 0
-    /// Bumps when a push should open the follows sheet.
-    var openFollowNotificationsToken = 0
-    /// Bumped by every mark. A list that left before it answers with the old unread state.
-    private var followNoticesGeneration = 0
-    private var followReadTask: Task<Void, Never>?
+    /// A follow push asked for People on Notifications. Profile opens it when it is on screen.
+    private(set) var wantsFollowNotifications = false
 
-    /// The thought being composed. Compose views read it directly, never this model.
     let compose: ComposeSession
-    private let cardsService: CardsService
-    private let profileService: ProfileService
-    private var libraryTask: Task<Void, Never>?
-    private var feedTasks: [HomeFeedTab: Task<Void, Never>] = [:]
-    private var hasLoadedLibrary = false
-    private var libraryPageTask: Task<Void, Never>?
-    private var libraryBefore: String?
-    private var libraryHasMore = false
-    private var isLibraryRefreshing = false
-    private var heartTasks: [String: Task<Void, Never>] = [:]
-    private var heartGeneration: [String: Int] = [:]
-    private var followTasks: [UUID: Task<Void, Never>] = [:]
-    private var followGeneration: [UUID: Int] = [:]
-    private var publicTasks: [UUID: Task<Void, Never>] = [:]
-    private var publicGeneration: [UUID: Int] = [:]
-    private var deleteTasks: [UUID: Task<Void, Never>] = [:]
-    private var deleteGeneration: [UUID: Int] = [:]
-    private var boardTasks: [UUID: Task<Void, Never>] = [:]
-    private var boardGeneration: [UUID: Int] = [:]
-    private var reportTasks: [UUID: Task<Void, Never>] = [:]
-    private var reportGeneration: [UUID: Int] = [:]
-    private var blockTasks: [UUID: Task<Void, Never>] = [:]
-    private var blockGeneration: [UUID: Int] = [:]
-    private var blocksGeneration = 0
-    private var writeSessionGeneration = 0
-    private var authorFeeds: [UUID: AuthorFeed] = [:]
+    let stack: StackModel
+
+    @ObservationIgnored private let cardsService: CardsService
+    @ObservationIgnored private let profileService: ProfileService
+    @ObservationIgnored private let writer: DecisionWriter
+    @ObservationIgnored private var listTasks: [ProfileSegment: Task<Void, Never>] = [:]
+    @ObservationIgnored private var followTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var followGeneration: [UUID: Int] = [:]
+    @ObservationIgnored private var publicTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var publicGeneration: [UUID: Int] = [:]
+    @ObservationIgnored private var deleteTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var reportTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var blockTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var blockGeneration: [UUID: Int] = [:]
+    @ObservationIgnored private var blocksGeneration = 0
+    @ObservationIgnored private var writeSessionGeneration = 0
+    @ObservationIgnored private var authorFeeds: [UUID: AuthorFeed] = [:]
     @ObservationIgnored private var authorFeedOrder: [UUID] = []
-    private var writeErrorTask: Task<Void, Never>?
-    private var shineTask: Task<Void, Never>?
-    private var usageBannerTask: Task<Void, Never>?
-    private var isLoadingUsage = false
-    private var hasLoadedUsage = false
-    private var usageAccountID: String?
-    private var usageGeneration = 0
+    /// Author pages are observed through this, so a page redraws when its feed changes.
+    private var authorRevision = 0
+    @ObservationIgnored private var followNoticesGeneration = 0
+    @ObservationIgnored private var followReadTask: Task<Void, Never>?
+    @ObservationIgnored private var writeErrorTask: Task<Void, Never>?
+    @ObservationIgnored private var usageBannerTask: Task<Void, Never>?
+    @ObservationIgnored private var toastTask: Task<Void, Never>?
+    @ObservationIgnored private var isLoadingUsage = false
+    @ObservationIgnored private var hasLoadedUsage = false
+    @ObservationIgnored private var usageAccountID: String?
+    @ObservationIgnored private var usageGeneration = 0
 
     private static let lowWarningPeriodKeyPrefix = "angles.lowCreditWarningPeriod"
     private static let writeErrorDuration: Duration = .seconds(3)
-    private static let initialLoadRetryDelays: [Duration] = [
-        .milliseconds(400),
-        .seconds(1),
-        .seconds(2),
-    ]
+    private static let toastDuration: Duration = .milliseconds(2600)
+    static let listPageSize = 50
+    static let authorPageSize = 24
 
     init(
-        cards: [HomeCard] = [],
         reframeService: ReframeService = ReframeService(),
         cardsService: CardsService = CardsService(),
-        profileService: ProfileService = ProfileService(),
-        libraryLoadState: LibraryLoadState = .loading
+        profileService: ProfileService = ProfileService()
     ) {
-        self.cards = cards
+        let writer = DecisionWriter(cardsService: cardsService)
         self.compose = ComposeSession(reframeService: reframeService, cardsService: cardsService)
         self.cardsService = cardsService
         self.profileService = profileService
-        self.libraryLoadState = libraryLoadState
+        self.writer = writer
+        self.stack = StackModel(cardsService: cardsService, writer: writer)
         UserDefaults.standard.removeObject(forKey: "angles.llmModel")
         compose.host = self
+        stack.host = self
     }
+
+    // MARK: - Usage
 
     /// False only once the server says the balance cannot pay for one more cook.
     /// Local development may run against a backend without `/profile/usage`.
@@ -639,127 +183,6 @@ final class HomeViewModel {
             return "\(usageSummary.creditsRemaining) credits remaining · Almost out."
         case .normal, .low:
             return "\(usageSummary.creditsRemaining) credits remaining"
-        }
-    }
-
-    static let feedPageSize = 24
-    /// A refresh only asks the head for arrivals, which are rare. A full page there
-    /// would be wasted bytes on every pull.
-    static let feedHeadLimit = 8
-    static let libraryPageSize = 200
-    /// A For you pull waits for the visibility read before it commits, so a slow one is
-    /// dropped and the page lands without it.
-    private static let ownerVisibilityTimeout: TimeInterval = 4
-    /// Profile keeps paging a thin style tab until it has something to show.
-    private static let tabFillMinimum = 6
-
-    var ownedCards: [HomeCard] {
-        cards.filter(\.isOwner)
-    }
-
-    func applyOwnerIdentity(initials: String, avatarPath: String?) {
-        for index in cards.indices where cards[index].isOwner {
-            cards[index].authorInitials = initials
-            cards[index].authorAvatarPath = avatarPath
-        }
-        feedBoard.updateOwners(initials: initials, avatarPath: avatarPath)
-        for authorId in Array(authorFeeds.keys) {
-            mutateAuthor(authorId) { feed in
-                if feed.isSelf {
-                    feed.initials = initials
-                    feed.avatarPath = avatarPath
-                }
-                for index in feed.cards.indices where feed.cards[index].isOwner {
-                    feed.cards[index].authorInitials = initials
-                    feed.cards[index].authorAvatarPath = avatarPath
-                }
-            }
-        }
-    }
-
-    var heartAngleCards: [HomeCard] {
-        cards
-            .filter(\.hasHeartAngle)
-            .sorted { ($0.latestHeartedAt ?? .distantPast) > ($1.latestHeartedAt ?? .distantPast) }
-    }
-
-    var filteredProfileCards: [HomeCard] {
-        profileCards(for: profileGridFilter)
-    }
-
-    func profileCards(for filter: ProfileGridFilter) -> [HomeCard] {
-        switch filter {
-        case .hearts:
-            return heartAngleCards
-        case .stoic, .hopeful, .witty, .tough, .tender, .values:
-            guard let style = filter.matchingStyle else {
-                return []
-            }
-
-            return ownedCards.filter { $0.hasStyle(style) }
-        }
-    }
-
-    func homeCards(for tab: HomeFeedTab) -> [HomeCard] {
-        feedBoard.cards(on: tab)
-    }
-
-    func feedLoadState(for tab: HomeFeedTab) -> LibraryLoadState {
-        feedBoard.shelf(tab).loadState
-    }
-
-    func feedFooterState(for tab: HomeFeedTab) -> FeedFooterState {
-        feedBoard.shelf(tab).footerState
-    }
-
-    func feedEmptyState(for tab: HomeFeedTab) -> HomeFeedEmptyState {
-        tab.emptyState(appliedFilter: appliedFilter, audience: .community)
-    }
-
-    /// Puts a finished non-taste save on Home or Profile before the cover slides away.
-    /// Taste never calls this.
-    func landSavedCard(_ card: HomeCard, animated: Bool) {
-        if card.isPublic {
-            if !matchesFeedFilter(card, appliedFilter) {
-                clearFilterWithoutBlanking()
-            }
-            let animation: Animation? = animated ? .easeOut(duration: 0.32) : nil
-            var transaction = Transaction(animation: animation)
-            if animation == nil {
-                transaction.disablesAnimations = true
-            }
-            withTransaction(transaction) {
-                insertFeedCardAtFront(card)
-                insertPublicCardIntoLoadedAuthorFeed(card)
-            }
-            homeFeedTab = .all
-            saveLanding = .home
-        } else {
-            let filter = ProfileGridFilter(spotlight: card.spotlightStyle)
-            profileGridFilter = filter
-            saveLanding = .profile(filter)
-        }
-        saveLandingToken &+= 1
-    }
-
-    /// Clears any active highlight so setting it again restarts the animation.
-    func clearShiningCard() {
-        shineTask?.cancel()
-        shineTask = nil
-        shiningCardID = nil
-    }
-
-    /// A short colored glow on the card the save just revealed.
-    func highlightSavedCard(_ id: UUID) {
-        shiningCardID = id
-        shineTask?.cancel()
-        shineTask = Task { @MainActor in
-            defer { shineTask = nil }
-            try? await Task.sleep(for: .milliseconds(2000))
-            guard !Task.isCancelled, shiningCardID == id else {
-                return
-            }
-            shiningCardID = nil
         }
     }
 
@@ -804,1063 +227,644 @@ final class HomeViewModel {
         }
     }
 
-    /// Returning to Profile must not re-run a cold library load.
-    /// Clears the Home refresh pill after it has been shown once.
-    func consumeFeedRefreshBanner() {
-        feedRefreshOutcome = nil
+    func dismissUsageBanner() {
+        usageBannerTask?.cancel()
+        usageBannerTask = nil
+        usageBanner = nil
     }
 
-    /// Clears the Profile library refresh pill after it has been shown once.
-    func consumeLibraryRefreshBanner() {
-        libraryRefreshOutcome = nil
+    private func showUsageBanner(_ message: String) {
+        usageBanner = message
+        usageBannerTask?.cancel()
+        usageBannerTask = Task { @MainActor in
+            defer { usageBannerTask = nil }
+            try? await Task.sleep(for: Self.writeErrorDuration)
+            guard !Task.isCancelled else {
+                return
+            }
+            usageBanner = nil
+        }
     }
 
-    func authorRefreshOutcome(for authorId: UUID) -> FeedRefreshOutcome? {
-        authorFeeds[authorId]?.refreshOutcome
+    private func applyUsage(_ summary: UsageSummary) {
+        hasLoadedUsage = true
+        usageSummary = summary
+        showLowCreditWarningIfNeeded(summary)
     }
 
-    func authorRefreshToken(for authorId: UUID) -> Int {
-        authorFeeds[authorId]?.refreshToken ?? 0
+    func applyCookUsage(_ usage: ReframeUsage) {
+        let previous = usageSummary
+        applyUsage(
+            UsageSummary(
+                creditsGranted: usage.granted,
+                creditsRemaining: usage.remaining,
+                periodStart: previous?.periodStart,
+                periodEnd: previous?.periodEnd,
+                resetsAt: usage.resetsAt,
+                warning: usage.warning,
+                creditCost: usage.creditCost,
+                plan: usage.plan
+            )
+        )
     }
 
-    func consumeAuthorRefreshBanner(_ authorId: UUID) {
-        mutateAuthor(authorId) { $0.refreshOutcome = nil }
+    func applyUsage(from payload: APIErrorPayload) {
+        guard let creditsRemaining = payload.creditsRemaining,
+              let creditsGranted = payload.creditsGranted else {
+            return
+        }
+        let previous = usageSummary
+        applyUsage(
+            UsageSummary(
+                creditsGranted: creditsGranted,
+                creditsRemaining: creditsRemaining,
+                periodStart: previous?.periodStart,
+                periodEnd: previous?.periodEnd,
+                resetsAt: payload.resetsAt,
+                warning: Self.usageWarning(remaining: creditsRemaining, granted: creditsGranted),
+                creditCost: previous?.creditCost ?? 1,
+                plan: previous?.plan ?? .membership
+            )
+        )
+    }
+
+    private func showLowCreditWarningIfNeeded(_ summary: UsageSummary) {
+        guard summary.warning == .low, let usageAccountID else {
+            return
+        }
+        let period = summary.periodStart ?? summary.resetsAt ?? "granted-\(summary.creditsGranted)"
+        let key = Self.lowWarningDefaultsKey(userID: usageAccountID)
+        guard UserDefaults.standard.string(forKey: key) != period else {
+            return
+        }
+        UserDefaults.standard.set(period, forKey: key)
+        showUsageBanner("Credits are getting low")
+    }
+
+    static func lowWarningDefaultsKey(userID: String) -> String {
+        "\(lowWarningPeriodKeyPrefix).\(userID.lowercased())"
+    }
+
+    private static func usageWarning(remaining: Int, granted: Int) -> UsageWarning {
+        if remaining <= 0 {
+            return .empty
+        }
+        let base = max(granted, 1)
+        if remaining <= base / 10 {
+            return .critical
+        }
+        if remaining <= base / 5 {
+            return .low
+        }
+        return .normal
+    }
+
+    // MARK: - Profile lists
+
+    func list(_ segment: ProfileSegment) -> CardList {
+        segment == .yours ? yours : saved
+    }
+
+    private func mutateList(_ segment: ProfileSegment, _ body: (inout CardList) -> Void) {
+        switch segment {
+        case .yours:
+            body(&yours)
+        case .saved:
+            body(&saved)
+        }
+    }
+
+    func applyOwnerIdentity(initials: String, avatarPath: String?) {
+        for index in yours.cards.indices {
+            yours.cards[index].authorInitials = initials
+            yours.cards[index].authorAvatarPath = avatarPath
+        }
+        for authorId in Array(authorFeeds.keys) {
+            mutateAuthor(authorId) { feed in
+                if feed.isSelf {
+                    feed.initials = initials
+                    feed.avatarPath = avatarPath
+                }
+                for index in feed.list.cards.indices where feed.list.cards[index].isOwner {
+                    feed.list.cards[index].authorInitials = initials
+                    feed.list.cards[index].authorAvatarPath = avatarPath
+                }
+            }
+        }
     }
 
     func loadLibraryIfNeeded() async {
-        guard !hasLoadedLibrary else {
+        async let own: Void = loadListIfNeeded(.yours)
+        async let kept: Void = loadListIfNeeded(.saved)
+        _ = await (own, kept)
+    }
+
+    func loadListIfNeeded(_ segment: ProfileSegment) async {
+        guard !list(segment).hasLoaded, listTasks[segment] == nil else {
             return
         }
-
-        for attempt in 0 ... Self.initialLoadRetryDelays.count {
-            let reportsFailure = attempt == Self.initialLoadRetryDelays.count
-            await loadLibrary(reportsFailure: reportsFailure)
-            guard !hasLoadedLibrary, !Task.isCancelled else {
-                return
-            }
-            guard attempt < Self.initialLoadRetryDelays.count else {
-                return
-            }
-
-            libraryLoadState = .loading
-            do {
-                try await Task.sleep(for: Self.initialLoadRetryDelays[attempt])
-            } catch {
-                return
-            }
-        }
+        startListTask(segment, replacing: true)
+        await listTasks[segment]?.value
     }
 
-    @discardableResult
-    func loadLibrary(showsLoading: Bool = true, reportsFailure: Bool = true) async -> PageFetchResult {
-        if showsLoading, cards.isEmpty {
-            libraryLoadState = .loading
-        }
-        let writes = publicGeneration
-        do {
-            let response = try await cardsService.list(limit: Self.libraryPageSize)
-            guard !Task.isCancelled else {
-                return .discarded
+    func retryList(_ segment: ProfileSegment) {
+        listTasks[segment]?.cancel()
+        listTasks[segment] = nil
+        mutateList(segment) { list in
+            list.generation &+= 1
+            if list.cards.isEmpty {
+                list.loadState = .loading
             }
-            cards = merged(cards, with: response.cards)
-            libraryBefore = response.page.nextCursor
-            libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
-            libraryFooterState = .idle
-            hasLoadedLibrary = true
-            libraryLoadState = .loaded
-            withoutAnimation {
-                applyOwnerVisibility(OwnerVisibilityPayload(cards: response.cards, publicWrites: writes))
+        }
+        startListTask(segment, replacing: true)
+    }
+
+    func refreshList(_ segment: ProfileSegment) async {
+        listTasks[segment]?.cancel()
+        listTasks[segment] = nil
+        mutateList(segment) { list in
+            list.generation &+= 1
+            if list.footerState == .loading {
+                list.footerState = .idle
             }
-            ensureProfileTabFilled()
-            return .success
-        } catch {
-            guard !Task.isCancelled, !Self.isCancellation(error) else {
-                return .discarded
-            }
-            if reportsFailure, cards.isEmpty {
-                libraryLoadState = .failed("Couldn't load your cards.")
-            }
-            return .failure
         }
+        startListTask(segment, replacing: true)
+        await listTasks[segment]?.value
     }
 
-    func retryLoadLibrary() {
-        libraryTask?.cancel()
-        libraryTask = Task { @MainActor in
-            defer { libraryTask = nil }
-            await loadLibrary()
-        }
-    }
-
-    /// Pull-to-refresh: keep showing the current library while re-fetching.
-    func refreshLibrary() async {
-        libraryTask?.cancel()
-        libraryTask = nil
-        libraryPageTask?.cancel()
-        libraryPageTask = nil
-        if libraryFooterState == .loading {
-            libraryFooterState = .idle
-        }
-        isLibraryRefreshing = true
-        // Cleared on every exit: a stuck flag would silently block paging.
-        defer { isLibraryRefreshing = false }
-
-        let known = Set(cards.map(\.id))
-        let result = await loadLibrary(showsLoading: false)
-        let added = cards.filter { !known.contains($0.id) }.count
-        switch result {
-        case .success:
-            libraryRefreshOutcome = added > 0 ? .newItems(added) : .upToDate
-            libraryRefreshToken &+= 1
-        case .failure:
-            libraryRefreshOutcome = .failed
-            libraryRefreshToken &+= 1
-        case .discarded:
-            break
-        }
-    }
-
-    /// Library cards plus the privacy writes this phone had made when they were requested.
-    struct OwnerVisibilityPayload {
-        let cards: [StoredCard]
-        let publicWrites: [UUID: Int]
-    }
-
-    /// The first library page, read on a For you pull for which of our cards are public.
-    /// Nil when it did not land, and the pull then applies without it.
-    private func fetchOwnerVisibility(when needed: Bool) async -> OwnerVisibilityPayload? {
-        guard needed else {
-            return nil
-        }
-        let writes = publicGeneration
-        do {
-            let response = try await cardsService.list(
-                limit: Self.libraryPageSize,
-                timeout: Self.ownerVisibilityTimeout
-            )
-            guard !Task.isCancelled else {
-                return nil
-            }
-            return OwnerVisibilityPayload(cards: response.cards, publicWrites: writes)
-        } catch {
-            return nil
-        }
-    }
-
-    /// The library is the only response that reports our private cards, so this is where a
-    /// card an operator hid leaves Home and where it returns once it is public again.
-    /// A card whose privacy this phone changed after the payload was requested is skipped:
-    /// the payload predates that write. Assigns nothing unless something changed, and a
-    /// caller on Home runs it inside the same no-animation commit as its feed page.
-    private func applyOwnerVisibility(_ payload: OwnerVisibilityPayload, syncsLibrary: Bool = false) {
-        let current = payload.cards.filter { item in
-            guard let id = UUID(uuidString: item.id) else {
-                return false
-            }
-            return publicTasks[id] == nil && publicGeneration[id] == payload.publicWrites[id]
-        }
-        let owners = current.compactMap(HomeCard.init(stored:)).filter(\.isOwner)
-        var board = feedBoard
-        let filter = appliedFilter
-        let change = board.reconcileOwnerVisibility(owners) { matchesFeedFilter($0, filter) }
-        if change.changed {
-            feedBoard = board
-        }
-        for card in owners where !card.isPublic {
-            removeFromAuthorFeeds(card.id)
-        }
-        for card in change.republished {
-            insertPublicCardIntoLoadedAuthorFeed(change.placed.first { $0.id == card.id } ?? card)
-        }
-        if syncsLibrary {
-            syncLoadedLibrary(with: current)
-        }
-    }
-
-    /// Brings library entries already loaded up to date with one page, in place, with one
-    /// assignment and only when an entry differs. Paging, order, and the widget stay as
-    /// they are when nothing moved.
-    private func syncLoadedLibrary(with stored: [StoredCard]) {
-        guard hasLoadedLibrary, !stored.isEmpty else {
-            return
-        }
-        var fresh: [UUID: HomeCard] = [:]
-        for card in merged(cards, with: stored) {
-            fresh[card.id] = card
-        }
-        var next = cards
-        var changed = false
-        for index in next.indices {
-            guard let card = fresh[next[index].id], card != next[index] else {
-                continue
-            }
-            next[index] = card
-            changed = true
-        }
-        if changed {
-            cards = next
-        }
-    }
-
-    private func withoutAnimation(_ body: () -> Void) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction, body)
-    }
-
-    func loadMoreLibrary() {
-        guard hasLoadedLibrary,
-              libraryHasMore,
-              let before = libraryBefore,
-              libraryFooterState == .idle,
-              libraryPageTask == nil,
-              !isLibraryRefreshing
+    func loadMore(_ segment: ProfileSegment) {
+        let current = list(segment)
+        guard current.hasLoaded, current.hasMore, current.before != nil,
+              current.footerState == .idle, listTasks[segment] == nil
         else {
             return
         }
+        mutateList(segment) { $0.footerState = .loading }
+        startListTask(segment, replacing: false)
+    }
 
-        libraryFooterState = .loading
-        let writes = publicGeneration
-        libraryPageTask = Task { @MainActor in
+    func retryLoadMore(_ segment: ProfileSegment) {
+        guard list(segment).footerState == .failed else {
+            return
+        }
+        mutateList(segment) { $0.footerState = .idle }
+        loadMore(segment)
+    }
+
+    private func startListTask(_ segment: ProfileSegment, replacing: Bool) {
+        let generation = list(segment).generation
+        let before = replacing ? nil : list(segment).before
+        listTasks[segment] = Task { @MainActor in
+            defer {
+                if list(segment).generation == generation {
+                    listTasks[segment] = nil
+                }
+            }
             do {
-                let response = try await cardsService.list(limit: Self.libraryPageSize, before: before)
-                guard !Task.isCancelled else {
+                let response = try await cardsService.list(
+                    limit: Self.listPageSize,
+                    before: before,
+                    saved: segment.savedQuery
+                )
+                guard !Task.isCancelled, list(segment).generation == generation else {
                     return
                 }
-                let known = Set(cards.map(\.id))
-                cards.append(contentsOf: response.cards.compactMap(HomeCard.init(stored:)).filter {
-                    !known.contains($0.id) && !isLocallyBlocked($0)
-                })
-                libraryBefore = response.page.nextCursor ?? libraryBefore
-                libraryHasMore = response.page.hasMore(pageSize: Self.libraryPageSize)
-                libraryFooterState = .idle
-                libraryPageTask = nil
+                let incoming = response.cards
+                    .compactMap(HomeCard.init(stored:))
+                    .filter { !isLocallyBlocked($0) }
                 withoutAnimation {
-                    applyOwnerVisibility(OwnerVisibilityPayload(cards: response.cards, publicWrites: writes))
-                }
-                ensureProfileTabFilled()
-            } catch {
-                guard !Task.isCancelled, !Self.isCancellation(error) else {
-                    return
-                }
-                libraryFooterState = .failed
-                libraryPageTask = nil
-            }
-        }
-    }
-
-    func retryLoadMoreLibrary() {
-        guard libraryFooterState == .failed else {
-            return
-        }
-        libraryFooterState = .idle
-        loadMoreLibrary()
-    }
-
-    private func ensureProfileTabFilled() {
-        guard hasLoadedLibrary,
-              libraryHasMore,
-              profileCards(for: profileGridFilter).count < Self.tabFillMinimum
-        else {
-            return
-        }
-        loadMoreLibrary()
-    }
-
-    /// Log out starts over on this iPhone: nothing the last session loaded stays in memory, and
-    /// the next unlock loads Home and the library from scratch.
-    func resetForSignOut() {
-        tasteEndedByServer = false
-        writeSessionGeneration &+= 1
-        compose.abandonInFlight()
-        libraryTask?.cancel()
-        libraryTask = nil
-        libraryPageTask?.cancel()
-        libraryPageTask = nil
-        for task in heartTasks.values { task.cancel() }
-        for task in followTasks.values { task.cancel() }
-        for task in publicTasks.values { task.cancel() }
-        for task in deleteTasks.values { task.cancel() }
-        for task in boardTasks.values { task.cancel() }
-        for task in reportTasks.values { task.cancel() }
-        for task in blockTasks.values { task.cancel() }
-        for task in feedTasks.values { task.cancel() }
-        for feed in authorFeeds.values { feed.task?.cancel() }
-        heartTasks = [:]
-        heartGeneration = [:]
-        followTasks = [:]
-        followGeneration = [:]
-        publicTasks = [:]
-        publicGeneration = [:]
-        deleteTasks = [:]
-        deleteGeneration = [:]
-        boardTasks = [:]
-        boardGeneration = [:]
-        reportTasks = [:]
-        reportGeneration = [:]
-        blockTasks = [:]
-        blockGeneration = [:]
-        authorFeeds = [:]
-        authorFeedOrder = []
-
-        feedTasks = [:]
-        feedBoard.reset()
-        feedDisplayedIDs = [:]
-        appliedFilter = HomeFeedFilter()
-        homeFeedTab = .all
-        pendingLaunchMix = nil
-        launchSnapshotIDs = []
-        launchPrefetchStarted = false
-        launchPrefetchFinished = false
-        feedAccountID = nil
-        feedSnapshotStore.delete()
-
-        cards = []
-        libraryLoadState = .loading
-        libraryFooterState = .idle
-        libraryBefore = nil
-        libraryHasMore = false
-        hasLoadedLibrary = false
-        profileGridFilter = .hearts
-
-        followedPeople = []
-        followingLoadState = .loading
-        blockedPeople = []
-        blocksLoadState = .loading
-        followNotices = []
-        followNoticesLoadState = .loading
-        unreadFollowCount = 0
-        followBadgeRevision &+= 1
-        followNoticesGeneration &+= 1
-        followReadTask?.cancel()
-        followReadTask = nil
-        blocksGeneration &+= 1
-        configureUsageAccount(userID: nil)
-        saveLanding = nil
-        dismissWriteError()
-        clearShiningCard()
-    }
-
-    /// Clears a stale failure before the root decides whether Home is ready to reveal.
-    /// Clears a stale failure before the root decides whether Home is ready to reveal.
-    func prepareForFullAppAccess() {
-        let shelf = feedBoard.shelf(.all)
-        guard !shelf.hasLoaded, shelf.order.isEmpty else {
-            return
-        }
-        feedBoard.markLoading(on: .all, replacing: true)
-    }
-
-    /// Paints last For you from disk so splash can punch without waiting on GET /feed.
-    func hydrateForYouSnapshot(userId: String) {
-        feedAccountID = userId
-        guard !feedBoard.shelf(.all).hasLoaded,
-              appliedFilter == HomeFeedFilter(),
-              let snapshot = feedSnapshotStore.load(userId: userId)
-        else {
-            return
-        }
-        let cards = snapshot.cards.compactMap(HomeCard.init(stored:))
-        guard !cards.isEmpty else {
-            return
-        }
-        launchSnapshotIDs = Set(cards.map(\.id))
-        _ = feedBoard.replace(
-            cards,
-            on: .all,
-            before: snapshot.nextCursor,
-            hasMore: snapshot.hasMore,
-            generation: feedBoard.shelf(.all).generation,
-            filter: { matchesFeedFilter($0, appliedFilter) },
-            pageSize: Self.feedPageSize,
-            arrivalsAfter: snapshot.arrivalsAfter
-        )
-    }
-
-    /// Starts the live For you fetch as soon as the bearer token exists. A snapshot
-    /// stays on screen; a different mix is parked for See latest.
-    func prefetchLaunchFeed(userId: String? = nil) async {
-        if let userId {
-            feedAccountID = userId
-        }
-        guard !launchPrefetchStarted else {
-            return
-        }
-        launchPrefetchStarted = true
-        defer { launchPrefetchFinished = true }
-        if feedBoard.shelf(.all).hasLoaded {
-            await fetchPendingLaunchMix()
-            return
-        }
-        await loadFeedIfNeeded()
-    }
-
-    func applyPendingForYouMix() {
-        guard let pending = pendingLaunchMix else {
-            return
-        }
-        dropPendingLaunchMix()
-        forYouLatestToken &+= 1
-        let stored = mergeLaunchMix(pending.cards)
-        let generation = feedBoard.shelf(.all).generation
-        withAnimation(
-            reduceMotionLaunchMix
-                ? nil
-                : .spring(response: 0.42, dampingFraction: 0.86)
-        ) {
-            _ = feedBoard.replace(
-                stored,
-                on: .all,
-                before: pending.nextCursor,
-                hasMore: pending.hasMore,
-                generation: generation,
-                filter: { matchesFeedFilter($0, appliedFilter) },
-                pageSize: Self.feedPageSize,
-                arrivalsAfter: pending.arrivalsAfter
-            )
-        }
-        persistForYouSnapshot(
-            cards: pending.cards,
-            nextCursor: pending.nextCursor,
-            arrivalsAfter: pending.arrivalsAfter,
-            hasMore: pending.hasMore
-        )
-        launchSnapshotIDs = Set(stored.map(\.id))
-    }
-
-    private var reduceMotionLaunchMix: Bool {
-        UIAccessibility.isReduceMotionEnabled
-    }
-
-    private func dropPendingLaunchMix() {
-        pendingLaunchMix = nil
-    }
-
-    private func fetchPendingLaunchMix() async {
-        guard appliedFilter == HomeFeedFilter() else {
-            return
-        }
-        do {
-            let response = try await cardsService.listFeed(limit: Self.feedPageSize)
-            let pendingIDs = response.cards.compactMap { UUID(uuidString: $0.id) }
-            let onScreen = feedBoard.shelf(.all).order
-            guard ForYouMix.differs(pendingIDs: pendingIDs, onScreenIDs: onScreen) else {
-                persistForYouSnapshot(
-                    cards: response.cards,
-                    nextCursor: response.page.nextCursor,
-                    arrivalsAfter: response.page.arrivalsAfter,
-                    hasMore: response.page.hasMore(pageSize: Self.feedPageSize)
-                )
-                return
-            }
-            pendingLaunchMix = PendingForYouMix(
-                cards: response.cards,
-                nextCursor: response.page.nextCursor,
-                arrivalsAfter: response.page.arrivalsAfter,
-                hasMore: response.page.hasMore(pageSize: Self.feedPageSize)
-            )
-        } catch {
-            // Keep the snapshot. Pull-to-refresh is the retry.
-        }
-    }
-
-    private func persistForYouSnapshot(
-        cards: [StoredCard],
-        nextCursor: String?,
-        arrivalsAfter: String?,
-        hasMore: Bool
-    ) {
-        guard let feedAccountID, appliedFilter == HomeFeedFilter(), !cards.isEmpty else {
-            return
-        }
-        feedSnapshotStore.save(
-            HomeFeedSnapshot(
-                userId: feedAccountID,
-                cards: cards,
-                nextCursor: nextCursor,
-                arrivalsAfter: arrivalsAfter,
-                hasMore: hasMore,
-                savedAt: Date()
-            )
-        )
-    }
-
-    private func mergeLaunchMix(_ stored: [StoredCard]) -> [HomeCard] {
-        let locals = feedBoard.records
-        return merged(Array(locals.values), with: stored).compactMap { card in
-            if launchSnapshotIDs.contains(card.id), locals[card.id] == nil {
-                return nil
-            }
-            guard let local = locals[card.id] else {
-                return card
-            }
-            var next = card
-            next.isPublic = local.isPublic
-            if !next.isOwner {
-                next.authorFollowing = local.authorFollowing
-            }
-            for index in next.slides.indices {
-                let style = next.slides[index].result.style
-                guard let previous = local.slides.first(where: { $0.result.style == style }) else {
-                    continue
-                }
-                next.slides[index].isHearted = previous.isHearted
-                next.slides[index].heartedAt = previous.heartedAt
-            }
-            return next
-        }
-    }
-
-    func loadFeedIfNeeded() async {
-        let initial = feedBoard.shelf(.all)
-        guard !initial.hasLoaded else {
-            return
-        }
-
-        let generation = initial.generation
-        defer {
-            let shelf = feedBoard.shelf(.all)
-            // A cancelled first load must not strand the arrival on Loading with nothing running.
-            if Task.isCancelled, shelf.generation == generation, !shelf.hasLoaded,
-               feedTasks[.all] == nil, shelf.order.isEmpty, shelf.loadState == .loading {
-                _ = feedBoard.fail(
-                    on: .all,
-                    generation: generation,
-                    replacing: true,
-                    message: "Couldn't load Home."
-                )
-            }
-        }
-
-        for attempt in 0 ... Self.initialLoadRetryDelays.count {
-            if let task = feedTasks[.all] {
-                await task.value
-            } else {
-                let reportsFailure = attempt == Self.initialLoadRetryDelays.count
-                startFeedTask(on: .all, replacing: true, reportsFailure: reportsFailure)
-                await feedTasks[.all]?.value
-            }
-
-            guard !feedBoard.shelf(.all).hasLoaded, !Task.isCancelled else {
-                return
-            }
-            guard attempt < Self.initialLoadRetryDelays.count else {
-                return
-            }
-
-            do {
-                try await Task.sleep(for: Self.initialLoadRetryDelays[attempt])
-            } catch {
-                return
-            }
-        }
-    }
-
-    func applyFeedFilter(_ filter: HomeFeedFilter) {
-        guard filter != appliedFilter else {
-            return
-        }
-
-        appliedFilter = filter
-        dropPendingLaunchMix()
-        cancelFeedTasks()
-        feedBoard.invalidate(blank: true)
-        startFeedTask(on: homeFeedTab, replacing: true)
-    }
-
-    func retryLoadFeed(_ tab: HomeFeedTab = .all) {
-        cancelFeedTask(tab)
-        feedBoard.stopRefresh(on: tab)
-        _ = feedBoard.bump(tab)
-        feedBoard.markLoading(on: tab, replacing: true)
-        startFeedTask(on: tab, replacing: true)
-    }
-
-    func noteFeedCardDisplayed(_ id: UUID, on tab: HomeFeedTab) {
-        feedDisplayedIDs[tab, default: []].insert(id)
-    }
-
-    /// Pull-to-refresh for the shelf that was pulled. Each tab keeps its own cursor,
-    /// so a Stoic pull cannot rotate For you, and the other way around.
-    func refreshFeed(_ tab: HomeFeedTab = .all) async {
-        if tab == .all {
-            dropPendingLaunchMix()
-        }
-        guard let generation = feedBoard.beginRefresh(on: tab) else {
-            return
-        }
-        cancelFeedTask(tab)
-        defer { feedBoard.endRefresh(on: tab, refreshID: generation) }
-
-        let filter = appliedFilter
-        let shelf = feedBoard.shelf(tab)
-
-        // `after` makes the head strictly arrivals. Without it the server would answer
-        // with the top of the feed, which under ranking need not contain the newest posts.
-        async let headFetch = fetchFeedCards(
-            on: tab,
-            limit: Self.feedHeadLimit,
-            after: shelf.highWater?.cursor,
-            filter: filter,
-            generation: generation
-        )
-        async let tailFetch = fetchFeedTail(on: tab, filter: filter, generation: generation)
-        // For you also reads which of our cards are public, in parallel, so a card an
-        // operator hid or published moves in the same commit as the page.
-        async let visibilityFetch = fetchOwnerVisibility(when: tab == .all)
-        let head = await headFetch
-        let tail = await tailFetch
-        let visibility = await visibilityFetch
-
-        guard feedBoard.shelf(tab).generation == generation else {
-            return
-        }
-        // The shelf is still this pull's, so a half that did not land is just a miss:
-        // the other half still applies. Only both missing stays silent.
-        if case .discarded = head, case .discarded = tail {
-            if let visibility {
-                withoutAnimation {
-                    applyOwnerVisibility(visibility, syncsLibrary: true)
-                }
-            }
-            return
-        }
-
-        await applyRefresh(
-            head: head.landedOrFailed,
-            tail: tail.landedOrFailed,
-            visibility: visibility,
-            filter: filter,
-            tab: tab,
-            generation: generation
-        )
-    }
-
-    private func fetchFeedTail(
-        on tab: HomeFeedTab,
-        filter: HomeFeedFilter,
-        generation: Int
-    ) async -> FeedPageOutcome {
-        let shelf = feedBoard.shelf(tab)
-        guard shelf.hasMore, let before = shelf.before else {
-            return .exhausted
-        }
-        return await fetchFeedCards(
-            on: tab,
-            limit: Self.feedPageSize,
-            before: before,
-            filter: filter,
-            generation: generation
-        )
-    }
-
-    /// Every visible change of one pull lands in one no-animation commit: the page, our
-    /// cards' visibility, and the banner. A reload commits inside `fetchFeedPage`, and the
-    /// banner follows in the same main-actor turn.
-    private func applyRefresh(
-        head: FeedPageOutcome,
-        tail: FeedPageOutcome,
-        visibility: OwnerVisibilityPayload?,
-        filter: HomeFeedFilter,
-        tab: HomeFeedTab,
-        generation: Int
-    ) async {
-        let applyVisibility = {
-            if let visibility {
-                self.applyOwnerVisibility(visibility, syncsLibrary: true)
-            }
-        }
-        if case .failed = head, case .failed = tail {
-            withoutAnimation {
-                applyVisibility()
-                publishFeedRefresh(.failed, on: tab, generation: generation)
-            }
-            return
-        }
-
-        let current = feedBoard.cards(on: tab)
-        let shelf = feedBoard.shelf(tab)
-        let headCards = head.stored.map { merged(current, with: $0) }
-        let plan = FeedRefreshPlanner.plan(
-            head: headCards,
-            headLimit: Self.feedHeadLimit,
-            tail: tail.stored.map { merged(current, with: $0) } ?? [],
-            highWater: shelf.highWater,
-            seenIDs: shelf.seenIDs,
-            onShelf: current,
-            displayedIDs: feedDisplayedIDs[tab] ?? [],
-            pageSize: Self.feedPageSize,
-            isRotated: shelf.isRotated
-        )
-
-        switch plan {
-        case let .prepend(arrivals):
-            withoutAnimation {
-                _ = feedBoard.prepend(arrivals, on: tab, generation: generation)
-                applyVisibility()
-                publishFeedRefresh(.newItems(arrivals.count), on: tab, generation: generation)
-            }
-        case let .catchUp(newCount):
-            await reloadNewestFeedPage(on: tab, generation: generation, visibility: visibility)
-            withoutAnimation {
-                publishFeedRefresh(.newItems(newCount), on: tab, generation: generation)
-            }
-        case let .rotate(rotation):
-            // A tail that did not load leaves the shelf's cursor where it was, so the
-            // next load more still asks for it.
-            let tailLoaded = tail.stored != nil
-            withoutAnimation {
-                _ = feedBoard.rotate(
-                    rotation.page,
-                    on: tab,
-                    before: tailLoaded
-                        ? tail.serverCursor ?? rotation.nextBefore ?? shelf.before
-                        : shelf.before,
-                    hasMore: !tailLoaded
-                        ? shelf.hasMore
-                        : rotation.consumedWholeTail ? tail.hasMore : true,
-                    generation: generation,
-                    filter: { matchesFeedFilter($0, filter) },
-                    pageSize: Self.feedPageSize
-                )
-                applyVisibility()
-                publishFeedRefresh(.rotated, on: tab, generation: generation)
-            }
-        case .restart:
-            await reloadNewestFeedPage(on: tab, generation: generation, visibility: visibility)
-            withoutAnimation {
-                publishFeedRefresh(.restarted, on: tab, generation: generation)
-            }
-        case .unchanged:
-            withoutAnimation {
-                applyVisibility()
-                publishFeedRefresh(tail.didFail ? .failed : .upToDate, on: tab, generation: generation)
-            }
-        }
-    }
-
-    private func publishFeedRefresh(
-        _ outcome: FeedRefreshOutcome,
-        on tab: HomeFeedTab,
-        generation: Int
-    ) {
-        guard feedBoard.publish(outcome, on: tab, generation: generation) == .applied else {
-            return
-        }
-        guard tab == homeFeedTab else {
-            return
-        }
-        feedRefreshOutcome = outcome
-        feedRefreshToken &+= 1
-    }
-
-    private func publishAuthorRefresh(_ outcome: FeedRefreshOutcome, authorId: UUID) {
-        mutateAuthor(authorId) { feed in
-            feed.refreshOutcome = outcome
-            feed.refreshToken &+= 1
-        }
-    }
-
-    /// Back to the top of this shelf's rotation: the newest page, with its visit history cleared.
-    private func reloadNewestFeedPage(
-        on tab: HomeFeedTab,
-        generation: Int,
-        visibility: OwnerVisibilityPayload? = nil
-    ) async {
-        guard feedBoard.clearVisitHistory(on: tab, generation: generation) == .applied else {
-            return
-        }
-        // What the reader reached belongs to the visit that just ended, like `seenIDs`.
-        feedDisplayedIDs[tab] = nil
-        await fetchFeedPage(on: tab, replacing: true, generation: generation, visibility: visibility)
-    }
-
-    func loadMoreFeed(_ tab: HomeFeedTab = .all) {
-        let shelf = feedBoard.shelf(tab)
-        guard shelf.hasMore,
-              shelf.before != nil,
-              shelf.footerState == .idle,
-              feedTasks[tab] == nil,
-              !shelf.isRefreshing
-        else {
-            return
-        }
-
-        feedBoard.setFooter(.loading, on: tab)
-        startFeedTask(on: tab, replacing: false)
-    }
-
-    func retryLoadMoreFeed(_ tab: HomeFeedTab = .all) {
-        let shelf = feedBoard.shelf(tab)
-        guard shelf.footerState == .failed, feedTasks[tab] == nil, !shelf.isRefreshing else {
-            return
-        }
-
-        feedBoard.setFooter(.loading, on: tab)
-        startFeedTask(on: tab, replacing: shelf.before == nil)
-    }
-
-    private func loadShelfIfNeeded(_ tab: HomeFeedTab) {
-        let shelf = feedBoard.shelf(tab)
-        guard !shelf.hasLoaded, feedTasks[tab] == nil else {
-            return
-        }
-        startFeedTask(on: tab, replacing: true)
-    }
-
-    private func startFeedTask(on tab: HomeFeedTab, replacing: Bool, reportsFailure: Bool = true) {
-        guard feedTasks[tab] == nil else {
-            return
-        }
-
-        let generation = feedBoard.shelf(tab).generation
-        feedTasks[tab] = Task { @MainActor in
-            await fetchFeedPage(
-                on: tab,
-                replacing: replacing,
-                generation: generation,
-                reportsFailure: reportsFailure
-            )
-            guard feedBoard.shelf(tab).generation == generation else {
-                return
-            }
-            feedTasks[tab] = nil
-        }
-    }
-
-    private func cancelFeedTask(_ tab: HomeFeedTab) {
-        feedTasks[tab]?.cancel()
-        feedTasks[tab] = nil
-    }
-
-    private func cancelFeedTasks() {
-        for tab in HomeFeedTab.allCases {
-            cancelFeedTask(tab)
-        }
-    }
-
-    @discardableResult
-    private func fetchFeedPage(
-        on tab: HomeFeedTab,
-        replacing: Bool,
-        generation: Int,
-        reportsFailure: Bool = true,
-        visibility: OwnerVisibilityPayload? = nil
-    ) async -> PageFetchResult {
-        let filter = appliedFilter
-        let before = replacing ? nil : feedBoard.shelf(tab).before
-
-        do {
-            let response = try await cardsService.listFeed(
-                limit: Self.feedPageSize,
-                before: before,
-                categories: filter.categories,
-                emotions: filter.emotions,
-                style: tab.matchingStyle
-            )
-            guard !Task.isCancelled, feedBoard.shelf(tab).generation == generation else {
-                return .discarded
-            }
-
-            let stored = mergeFeed(response.cards)
-            var commit = HomeFeedBoard.Commit.stale
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                if replacing {
-                    commit = feedBoard.replace(
-                        stored,
-                        on: tab,
-                        before: response.page.nextCursor,
-                        hasMore: response.page.hasMore(pageSize: Self.feedPageSize),
-                        generation: generation,
-                        filter: { matchesFeedFilter($0, filter) },
-                        pageSize: Self.feedPageSize,
-                        arrivalsAfter: response.page.arrivalsAfter
-                    )
-                } else {
-                    commit = feedBoard.append(
-                        stored,
-                        on: tab,
-                        before: response.page.nextCursor,
-                        hasMore: response.page.hasMore(pageSize: Self.feedPageSize),
-                        generation: generation
-                    )
-                }
-                if let visibility {
-                    applyOwnerVisibility(visibility, syncsLibrary: true)
-                }
-            }
-            if commit == .applied, replacing, tab == .all {
-                persistForYouSnapshot(
-                    cards: response.cards,
-                    nextCursor: response.page.nextCursor,
-                    arrivalsAfter: response.page.arrivalsAfter,
-                    hasMore: response.page.hasMore(pageSize: Self.feedPageSize)
-                )
-            }
-            return commit == .stale ? .discarded : .success
-        } catch {
-            guard !Task.isCancelled, feedBoard.shelf(tab).generation == generation, !Self.isCancellation(error) else {
-                return .discarded
-            }
-
-            withoutAnimation {
-                if reportsFailure {
-                    _ = feedBoard.fail(
-                        on: tab,
-                        generation: generation,
-                        replacing: replacing,
-                        message: "Couldn't load Home."
-                    )
-                }
-                if let visibility {
-                    applyOwnerVisibility(visibility, syncsLibrary: true)
-                }
-            }
-            return .failure
-        }
-    }
-
-    /// Why a page fetch ended. `discarded` means it was cancelled or
-    /// superseded, so it must not report an outcome either way.
-    enum PageFetchResult {
-        case success
-        case failure
-        case discarded
-    }
-
-    /// One read-only `GET /feed` page. A refresh fetches two of these and decides what
-    /// to do with them before any state moves, so a half-failed pull stays coherent.
-    enum FeedPageOutcome {
-        case loaded(cards: [StoredCard], hasMore: Bool, serverCursor: String?)
-        /// Nothing older to ask for, so the tail was never requested.
-        case exhausted
-        case failed
-        case discarded
-
-        var stored: [StoredCard]? {
-            if case let .loaded(cards, _, _) = self {
-                return cards
-            }
-            return nil
-        }
-
-        var hasMore: Bool {
-            if case let .loaded(_, hasMore, _) = self {
-                return hasMore
-            }
-            return false
-        }
-
-        /// Present only when the server pages this feed itself, as a ranked order does.
-        var serverCursor: String? {
-            if case let .loaded(_, _, cursor) = self {
-                return cursor
-            }
-            return nil
-        }
-
-        var didFail: Bool {
-            if case .failed = self {
-                return true
-            }
-            return false
-        }
-
-        /// A half of a pull that was cut off counts as one that failed.
-        var landedOrFailed: FeedPageOutcome {
-            if case .discarded = self {
-                return .failed
-            }
-            return self
-        }
-    }
-
-    /// Fetches a feed page without touching state, so the refresh planner sees both
-    /// halves of a pull before either is applied.
-    private func fetchFeedCards(
-        on tab: HomeFeedTab,
-        limit: Int,
-        before: String? = nil,
-        after: String? = nil,
-        filter: HomeFeedFilter,
-        generation: Int
-    ) async -> FeedPageOutcome {
-        do {
-            let response = try await cardsService.listFeed(
-                limit: limit,
-                before: before,
-                after: after,
-                categories: filter.categories,
-                emotions: filter.emotions,
-                style: tab.matchingStyle
-            )
-            guard !Task.isCancelled, feedBoard.shelf(tab).generation == generation else {
-                return .discarded
-            }
-            return .loaded(
-                cards: response.cards,
-                hasMore: response.page.hasMore(pageSize: limit),
-                serverCursor: response.page.serverCursor
-            )
-        } catch {
-            guard !Task.isCancelled, feedBoard.shelf(tab).generation == generation, !Self.isCancellation(error) else {
-                return .discarded
-            }
-            return .failed
-        }
-    }
-
-    private func mergeFeed(_ stored: [StoredCard]) -> [HomeCard] {
-        merged(Array(feedBoard.records.values), with: stored)
-    }
-
-    private func merged(_ current: [HomeCard], with stored: [StoredCard]) -> [HomeCard] {
-        var pool: [UUID: HomeCard] = [:]
-        pool.reserveCapacity(current.count)
-        for card in current {
-            pool[card.id] = card
-        }
-
-        var next: [HomeCard] = []
-        next.reserveCapacity(stored.count)
-        for item in stored {
-            guard let id = UUID(uuidString: item.id) else {
-                continue
-            }
-            if !item.isOwner,
-               let authorId = UUID(uuidString: item.author.id),
-               blockedPeople.contains(where: { $0.id == authorId }) {
-                continue
-            }
-            if var existing = pool[id] {
-                let authorId = existing.authorId
-                let keepFollow = authorId.map { followTasks[$0] != nil } ?? false
-                let previousFollow = existing.authorFollowing
-                let previousSlides = existing.slides
-                existing.apply(item)
-                if keepFollow, !existing.isOwner {
-                    existing.authorFollowing = previousFollow
-                }
-                // A shelf page must not snap a heart back while that write is still in flight.
-                for index in existing.slides.indices {
-                    let style = existing.slides[index].result.style
-                    guard heartTasks[Self.heartTaskKey(id: id, style: style)] != nil,
-                          let previous = previousSlides.first(where: { $0.result.style == style })
-                    else {
-                        continue
+                    mutateList(segment) { list in
+                        list.cards = replacing
+                            ? reconciled(incoming, over: list.cards, segment: segment)
+                            : appended(incoming, to: list.cards, segment: segment)
+                        list.before = response.page.nextCursor ?? (replacing ? nil : list.before)
+                        list.hasMore = response.page.hasMore(pageSize: Self.listPageSize)
+                        list.footerState = .idle
+                        list.loadState = .loaded
+                        list.hasLoaded = true
                     }
-                    existing.slides[index].isHearted = previous.isHearted
-                    existing.slides[index].heartedAt = previous.heartedAt
                 }
-                next.append(existing)
-            } else if let created = HomeCard(stored: item) {
-                next.append(created)
+            } catch {
+                guard !Task.isCancelled, list(segment).generation == generation, !Self.isCancellation(error) else {
+                    return
+                }
+                mutateList(segment) { list in
+                    if replacing, list.cards.isEmpty {
+                        list.loadState = .failed(
+                            segment == .yours ? "Couldn't load your cards." : "Couldn't load your loved cards."
+                        )
+                    } else if !replacing {
+                        list.footerState = .failed
+                    }
+                }
             }
         }
+    }
 
-        return next
+    /// A fresh first page, with this phone's own writes still in flight laid over it: a save
+    /// or unsave the server may not have yet, a follow, or a privacy change.
+    private func reconciled(_ incoming: [HomeCard], over current: [HomeCard], segment: ProfileSegment) -> [HomeCard] {
+        let local = Dictionary(current.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var result: [HomeCard] = []
+        for card in incoming {
+            if writer.isPending(card.id), local[card.id] == nil, segment == .saved {
+                continue
+            }
+            result.append(patched(card, local: local[card.id]))
+        }
+        if segment == .saved {
+            let fresh = Set(result.map(\.id))
+            let kept = current.filter { writer.isPending($0.id) && !fresh.contains($0.id) }
+            result.insert(contentsOf: kept, at: 0)
+        }
+        return result
+    }
+
+    private func appended(_ incoming: [HomeCard], to current: [HomeCard], segment: ProfileSegment) -> [HomeCard] {
+        var known = Set(current.map(\.id))
+        var result = current
+        for card in incoming where known.insert(card.id).inserted {
+            if segment == .saved, writer.isPending(card.id) {
+                continue
+            }
+            result.append(patched(card, local: nil))
+        }
+        return result
+    }
+
+    private func patched(_ card: HomeCard, local: HomeCard?) -> HomeCard {
+        var card = card
+        if let authorId = card.authorId, followTasks[authorId] != nil, let local {
+            card.authorFollowing = local.authorFollowing
+        }
+        if publicTasks[card.id] != nil, let local {
+            card.isPublic = local.isPublic
+        }
+        return card
+    }
+
+    // MARK: - Stack and posting
+
+    /// After the save cover slides away: a toast over the action row and a Profile pulse.
+    func announcePost(_ cardID: UUID) {
+        guard let card = yours.cards.first(where: { $0.id == cardID }) else {
+            return
+        }
+        let token = (postToast?.token ?? 0) &+ 1
+        postToast = PostToast(
+            label: card.isPublic ? "Posted" : "Saved privately",
+            tint: card.spotlightStyle,
+            token: token
+        )
+        profilePulseToken &+= 1
+        toastTask?.cancel()
+        toastTask = Task { @MainActor in
+            try? await Task.sleep(for: Self.toastDuration)
+            guard !Task.isCancelled, postToast?.token == token else {
+                return
+            }
+            postToast = nil
+        }
+    }
+
+    func dismissPostToast() {
+        toastTask?.cancel()
+        toastTask = nil
+        postToast = nil
+    }
+
+    // MARK: - Saving from a list
+
+    /// The heart on a list card. Unloving counts every angle as seen, so the card does not
+    /// come back to the stack.
+    func toggleSave(_ id: UUID, style: Style) {
+        guard let card = card(id: id), card.isDecidable else {
+            return
+        }
+        let previous = card.decision
+        let request = card.isSaved
+            ? StackDeck.unsaveRequest(for: card)
+            : StackDeck.request(kind: .save, card: card, style: style, checked: [style])
+        let next = CardDecision(request)
+        applyLocal(id: id) { $0.decision = next }
+        if request.kind == .save {
+            var savedCard = card
+            savedCard.decision = next
+            insertSaved(savedCard)
+            stack.remove { $0.id == id }
+            profilePulseToken &+= 1
+        } else {
+            saved.cards.removeAll { $0.id == id }
+        }
+
+        let session = writeSessionGeneration
+        writer.enqueue(id, .put(request)) { [weak self] outcome in
+            guard let self, writeSessionGeneration == session else {
+                return
+            }
+            switch outcome {
+            case .done:
+                break
+            case .gone:
+                dropUnavailableCard(id)
+                reportWriteFailure(APIError.httpStatus(404, nil, nil), Self.unavailableCardMessage)
+            case .failed(let error):
+                applyLocal(id: id) { $0.decision = previous }
+                if request.kind == .save {
+                    saved.cards.removeAll { $0.id == id }
+                } else if var restored = self.card(id: id) {
+                    restored.decision = previous
+                    insertSaved(restored)
+                }
+                reportWriteFailure(
+                    error,
+                    request.kind == .save
+                        ? "Couldn't love that card. Check your connection."
+                        : "Couldn't remove that card. Check your connection."
+                )
+            }
+        }
+    }
+
+    private func insertSaved(_ card: HomeCard) {
+        guard card.isSaved else {
+            return
+        }
+        if let index = saved.cards.firstIndex(where: { $0.id == card.id }) {
+            saved.cards[index] = card
+        } else {
+            saved.cards.insert(card, at: 0)
+        }
+    }
+
+    // MARK: - Owner writes
+
+    func deleteCard(_ id: UUID) {
+        guard let snapshot = ownerCard(id: id), deleteTasks[id] == nil else {
+            return
+        }
+        let libraryIndex = yours.cards.firstIndex { $0.id == id }
+        let authorIndexes = authorCardIndexes(id)
+        yours.cards.removeAll { $0.id == id }
+        removeFromAuthorFeeds(id)
+
+        let session = writeSessionGeneration
+        deleteTasks[id] = Task { @MainActor in
+            defer {
+                if writeSessionGeneration == session {
+                    deleteTasks[id] = nil
+                }
+            }
+            do {
+                try await cardsService.delete(id: id.uuidString.lowercased())
+            } catch {
+                guard !Task.isCancelled, writeSessionGeneration == session else {
+                    return
+                }
+                if Self.isNotFound(error) {
+                    return
+                }
+                if let libraryIndex, !yours.cards.contains(where: { $0.id == id }) {
+                    yours.cards.insert(snapshot, at: min(libraryIndex, yours.cards.count))
+                }
+                restoreAuthorCards(snapshot, at: authorIndexes)
+                reportWriteFailure(error, "Couldn't delete that card. Check your connection.")
+            }
+        }
+    }
+
+    func setPublic(_ id: UUID, isPublic: Bool) {
+        guard let snapshot = ownerCard(id: id), snapshot.isPublic != isPublic else {
+            return
+        }
+        let previousPublic = snapshot.isPublic
+        let authorIndexes = authorCardIndexes(id)
+        applyLocal(id: id) { $0.isPublic = isPublic }
+        if !isPublic {
+            removeFromAuthorFeeds(id)
+        }
+
+        let previousTask = publicTasks[id]
+        let generation = (publicGeneration[id] ?? 0) + 1
+        publicGeneration[id] = generation
+        let session = writeSessionGeneration
+        publicTasks[id] = Task { @MainActor in
+            // Serialize privacy writes for this card. A cancelled transport can still commit,
+            // so overlapping PATCH requests could otherwise leave the server in tap-old order.
+            await previousTask?.value
+            guard !Task.isCancelled, publicGeneration[id] == generation, writeSessionGeneration == session else {
+                return
+            }
+            defer {
+                if publicGeneration[id] == generation, writeSessionGeneration == session {
+                    publicTasks[id] = nil
+                }
+            }
+            do {
+                let stored = try await cardsService.patch(
+                    id: id.uuidString.lowercased(),
+                    PatchCardRequest(isPublic: isPublic)
+                )
+                guard !Task.isCancelled, publicGeneration[id] == generation, writeSessionGeneration == session else {
+                    return
+                }
+                applyLocal(id: id) { $0.apply(stored) }
+                if !stored.isPublic {
+                    removeFromAuthorFeeds(id)
+                }
+            } catch {
+                guard !Task.isCancelled, publicGeneration[id] == generation, writeSessionGeneration == session else {
+                    return
+                }
+                if Self.isNotFound(error) {
+                    dropUnavailableCard(id)
+                    reportWriteFailure(error, Self.unavailableCardMessage)
+                    return
+                }
+                applyLocal(id: id) { $0.isPublic = previousPublic }
+                if previousPublic {
+                    var restored = snapshot
+                    restored.isPublic = true
+                    restoreAuthorCards(restored, at: authorIndexes)
+                }
+                reportWriteFailure(
+                    error,
+                    Self.publicModerationMessage(for: error)
+                        ?? "Couldn't change who can see this. Check your connection."
+                )
+            }
+        }
+    }
+
+    // MARK: - Community safety
+
+    func reportCard(_ id: UUID, reason: ReportReason) {
+        guard reportTasks[id] == nil, let target = card(id: id) ?? stackCard(id), !target.isOwner else {
+            return
+        }
+        let savedIndex = saved.cards.firstIndex { $0.id == id }
+        let authorIndexes = authorCardIndexes(id)
+        dropUnavailableCard(id)
+
+        let session = writeSessionGeneration
+        reportTasks[id] = Task { @MainActor in
+            defer {
+                if writeSessionGeneration == session {
+                    reportTasks[id] = nil
+                }
+            }
+            do {
+                let state = try await cardsService.report(id: id.uuidString.lowercased(), reason: reason)
+                guard state.reported else {
+                    throw APIError.decoding("The report was not accepted.")
+                }
+            } catch {
+                guard !Task.isCancelled, writeSessionGeneration == session else {
+                    return
+                }
+                if let savedIndex, !saved.cards.contains(where: { $0.id == id }) {
+                    saved.cards.insert(target, at: min(savedIndex, saved.cards.count))
+                }
+                restoreAuthorCards(target, at: authorIndexes)
+                reportWriteFailure(error, "Couldn't report that card. Check your connection.")
+            }
+        }
+    }
+
+    func blockAuthor(_ authorId: UUID, initials: String, avatarPath: String?) {
+        guard !isOwnAuthor(authorId), blockTasks[authorId] == nil else {
+            return
+        }
+        let savedSnapshot = saved.cards
+        let followedSnapshot = followedPeople
+        let feedSnapshot = authorFeeds
+        let person = BlockedPerson(id: authorId, initials: initials, avatarPath: avatarPath)
+        removeAuthorLocally(authorId)
+        if !blockedPeople.contains(where: { $0.id == authorId }) {
+            blockedPeople.insert(person, at: 0)
+        }
+        followTasks[authorId]?.cancel()
+        followTasks[authorId] = nil
+        followGeneration[authorId, default: 0] &+= 1
+
+        blocksGeneration &+= 1
+        let generation = (blockGeneration[authorId] ?? 0) + 1
+        blockGeneration[authorId] = generation
+        let session = writeSessionGeneration
+        blockTasks[authorId] = Task { @MainActor in
+            defer {
+                if blockGeneration[authorId] == generation, writeSessionGeneration == session {
+                    blockTasks[authorId] = nil
+                }
+            }
+            do {
+                let state = try await profileService.block(id: authorId.uuidString.lowercased())
+                guard state.blocked else {
+                    throw APIError.decoding("The block was not accepted.")
+                }
+                blocksGeneration &+= 1
+            } catch {
+                guard !Task.isCancelled, blockGeneration[authorId] == generation, writeSessionGeneration == session else {
+                    return
+                }
+                saved.cards = savedSnapshot
+                followedPeople = followedSnapshot
+                for (id, snapshot) in feedSnapshot {
+                    mutateAuthor(id) { feed in
+                        feed.list.cards = snapshot.list.cards
+                        feed.list.hasMore = snapshot.list.hasMore
+                        feed.list.before = snapshot.list.before
+                        feed.following = snapshot.following
+                    }
+                }
+                blockedPeople.removeAll { $0.id == authorId }
+                reportWriteFailure(error, "Couldn't block that person. Check your connection.")
+            }
+        }
+    }
+
+    func unblock(_ person: BlockedPerson) {
+        guard blockTasks[person.id] == nil else {
+            return
+        }
+        let index = blockedPeople.firstIndex(where: { $0.id == person.id }) ?? 0
+        blockedPeople.removeAll { $0.id == person.id }
+
+        blocksGeneration &+= 1
+        let generation = (blockGeneration[person.id] ?? 0) + 1
+        blockGeneration[person.id] = generation
+        let session = writeSessionGeneration
+        blockTasks[person.id] = Task { @MainActor in
+            defer {
+                if blockGeneration[person.id] == generation, writeSessionGeneration == session {
+                    blockTasks[person.id] = nil
+                }
+            }
+            do {
+                let state = try await profileService.unblock(id: person.id.uuidString.lowercased())
+                guard !state.blocked else {
+                    throw APIError.decoding("The unblock was not accepted.")
+                }
+                blocksGeneration &+= 1
+            } catch {
+                guard !Task.isCancelled, blockGeneration[person.id] == generation, writeSessionGeneration == session else {
+                    return
+                }
+                if !blockedPeople.contains(where: { $0.id == person.id }) {
+                    blockedPeople.insert(person, at: min(index, blockedPeople.count))
+                }
+                reportWriteFailure(error, "Couldn't unblock that person. Check your connection.")
+            }
+        }
+    }
+
+    func loadBlocks() async {
+        blocksGeneration &+= 1
+        let generation = blocksGeneration
+        if blockedPeople.isEmpty {
+            blocksLoadState = .loading
+        }
+        do {
+            let response = try await profileService.blocks()
+            guard !Task.isCancelled, generation == blocksGeneration else {
+                return
+            }
+            blockedPeople = response.users.compactMap(BlockedPerson.init)
+            blocksLoadState = .loaded
+        } catch {
+            guard generation == blocksGeneration, !Self.isCancellation(error) else {
+                return
+            }
+            if blockedPeople.isEmpty {
+                blocksLoadState = .failed("Couldn't load blocked people.")
+            }
+        }
+    }
+
+    private func removeAuthorLocally(_ authorId: UUID) {
+        let isTheirs: (HomeCard) -> Bool = { $0.authorId == authorId && !$0.isOwner }
+        saved.cards.removeAll(where: isTheirs)
+        stack.remove(where: isTheirs)
+        followedPeople.removeAll { $0.id == authorId }
+        followNotices.removeAll { $0.actorId == authorId }
+        unreadFollowCount = followNotices.filter { $0.readAt == nil }.count
+        followBadgeRevision &+= 1
+        for id in Array(authorFeeds.keys) {
+            mutateAuthor(id) { feed in
+                feed.task?.cancel()
+                feed.task = nil
+                feed.list.generation &+= 1
+                feed.list.cards.removeAll(where: isTheirs)
+                feed.list.footerState = .idle
+                if id == authorId {
+                    feed.following = false
+                    feed.list.hasMore = false
+                    feed.list.before = nil
+                    feed.list.hasLoaded = true
+                    feed.list.loadState = .loaded
+                }
+            }
+        }
     }
 
     private func isLocallyBlocked(_ card: HomeCard) -> Bool {
@@ -1870,451 +874,7 @@ final class HomeViewModel {
         return blockedPeople.contains { $0.id == authorId }
     }
 
-    private func matchesFeedFilter(_ card: HomeCard, _ filter: HomeFeedFilter) -> Bool {
-        if !filter.categories.isEmpty {
-            guard let category = card.meta?.category, filter.categories.contains(category) else {
-                return false
-            }
-        }
-        if !filter.emotions.isEmpty {
-            let emotions = Set(card.meta?.emotions ?? [])
-            guard !emotions.isDisjoint(with: filter.emotions) else {
-                return false
-            }
-        }
-        return true
-    }
-
-    private func clearFilterWithoutBlanking() {
-        guard appliedFilter.appliedCount > 0 else {
-            return
-        }
-
-        cancelFeedTasks()
-        appliedFilter = HomeFeedFilter()
-        // For you stays on screen until the unfiltered page arrives. The shelf you are
-        // looking at reloads now; the others reload on their next visit.
-        feedBoard.invalidate(blank: false)
-        startFeedTask(on: homeFeedTab, replacing: true, reportsFailure: true)
-        if homeFeedTab != .all {
-            startFeedTask(on: .all, replacing: true, reportsFailure: true)
-        }
-    }
-
-    private func insertFeedCardAtFront(_ card: HomeCard) {
-        // Your own fresh post must not come back as an arrival on the next pull.
-        feedBoard.insertPublishedAtFront(card)
-    }
-
-    /// Newest-first position on every loaded shelf that should show this card.
-    private func insertPublicCardIntoLoadedFeed(_ card: HomeCard) {
-        guard card.isPublic, feedBoard.shelf(.all).hasLoaded, matchesFeedFilter(card, appliedFilter) else {
-            return
-        }
-        feedBoard.insertPublishedInOrder(card)
-    }
-
-    /// Keeps a loaded author page in step with a public card that just appeared.
-    private func insertPublicCardIntoLoadedAuthorFeed(_ card: HomeCard) {
-        guard card.isPublic, let authorId = card.authorId, var feed = authorFeeds[authorId], feed.hasLoaded else {
-            return
-        }
-        if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
-            feed.cards[index].isPublic = true
-            authorFeeds[authorId] = feed
-            return
-        }
-        if feed.hasMore, let last = feed.cards.last, !feedSortIsBefore(card, last) {
-            return
-        }
-        let index = feed.cards.firstIndex { feedSortIsBefore(card, $0) } ?? feed.cards.endIndex
-        feed.cards.insert(card, at: index)
-        feed.cardIDs.insert(card.id)
-        authorFeeds[authorId] = feed
-    }
-
-    private func removeFromAuthorFeeds(_ id: UUID) {
-        for (authorId, feed) in authorFeeds
-        where feed.cardIDs.contains(id) || feed.cards.contains(where: { $0.id == id }) {
-            mutateAuthor(authorId) { feed in
-                feed.cardIDs.remove(id)
-                feed.cards.removeAll { $0.id == id }
-            }
-        }
-    }
-
-    private func authorCardIndexes(_ id: UUID) -> [UUID: Int] {
-        var indexes: [UUID: Int] = [:]
-        for (authorId, feed) in authorFeeds {
-            if let index = feed.cards.firstIndex(where: { $0.id == id }) {
-                indexes[authorId] = index
-            }
-        }
-        return indexes
-    }
-
-    private func restoreAuthorCards(_ card: HomeCard, at indexes: [UUID: Int]) {
-        for (authorId, index) in indexes {
-            mutateAuthor(authorId) { feed in
-                guard !feed.cards.contains(where: { $0.id == card.id }) else {
-                    return
-                }
-                feed.cards.insert(card, at: min(index, feed.cards.count))
-                feed.cardIDs.insert(card.id)
-            }
-        }
-    }
-
-    private func removeFromFeed(_ id: UUID) {
-        feedBoard.remove(id)
-    }
-
-    /// True when `card` belongs above `other` in the newest-first feed.
-    private func feedSortIsBefore(_ card: HomeCard, _ other: HomeCard) -> Bool {
-        FeedOrder.isBefore(card, other)
-    }
-
-    private func ownerCard(id: UUID) -> HomeCard? {
-        if let match = cards.first(where: { $0.id == id }), match.isOwner {
-            return match
-        }
-        if let match = feedBoard.record(id), match.isOwner {
-            return match
-        }
-        for feed in authorFeeds.values {
-            if let match = feed.cards.first(where: { $0.id == id }), match.isOwner {
-                return match
-            }
-        }
-        return nil
-    }
-
-    private func ensureOwnerInLibrary(_ card: HomeCard) {
-        guard card.isOwner else {
-            return
-        }
-        if let index = cards.firstIndex(where: { $0.id == card.id }) {
-            cards[index] = card
-        } else {
-            cards.insert(card, at: 0)
-        }
-    }
-
-    func deleteCard(_ id: UUID) {
-        guard let snapshot = ownerCard(id: id) else {
-            return
-        }
-
-        let libraryIndex = cards.firstIndex(where: { $0.id == id })
-        let placements = feedBoard.placements(of: id)
-        let previousAuthorIndexes = authorCardIndexes(id)
-        if libraryIndex != nil {
-            cards.removeAll { $0.id == id }
-        }
-        removeFromFeed(id)
-        removeFromAuthorFeeds(id)
-
-        deleteTasks[id]?.cancel()
-        let generation = (deleteGeneration[id] ?? 0) + 1
-        deleteGeneration[id] = generation
-        let sessionGeneration = writeSessionGeneration
-        deleteTasks[id] = Task { @MainActor in
-            defer {
-                if deleteGeneration[id] == generation,
-                   writeSessionGeneration == sessionGeneration {
-                    deleteTasks[id] = nil
-                }
-            }
-            do {
-                try await cardsService.delete(id: id.uuidString.lowercased())
-            } catch {
-                guard !Task.isCancelled,
-                      deleteGeneration[id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                if Self.isNotFound(error) {
-                    dropUnavailableCard(id)
-                    reportWriteFailure(error, Self.unavailableCardMessage)
-                    return
-                }
-                if let libraryIndex, !cards.contains(where: { $0.id == id }) {
-                    cards.insert(snapshot, at: min(libraryIndex, cards.count))
-                }
-                for placement in placements where feedBoard.record(id) == nil || !feedBoard.placements(of: id).contains(placement) {
-                    feedBoard.restore(snapshot, at: placement)
-                }
-                restoreAuthorCards(snapshot, at: previousAuthorIndexes)
-                reportWriteFailure(error, "Couldn't delete that card. Check your connection.")
-            }
-        }
-    }
-
-    func removeFromBoard(_ id: UUID) {
-        guard let snapshot = card(id: id), !snapshot.isOwner else {
-            return
-        }
-
-        applyLocal(id: id) { card in
-            for index in card.slides.indices {
-                card.slides[index].isHearted = false
-                card.slides[index].heartedAt = nil
-            }
-        }
-        if let current = card(id: id) {
-            syncSavedOtherIntoLibrary(current)
-        }
-
-        boardTasks[id]?.cancel()
-        let generation = (boardGeneration[id] ?? 0) + 1
-        boardGeneration[id] = generation
-        let sessionGeneration = writeSessionGeneration
-        boardTasks[id] = Task { @MainActor in
-            defer {
-                if boardGeneration[id] == generation,
-                   writeSessionGeneration == sessionGeneration {
-                    boardTasks[id] = nil
-                }
-            }
-            do {
-                try await cardsService.removeFromBoard(id: id.uuidString.lowercased())
-                guard !Task.isCancelled,
-                      boardGeneration[id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                applyLocal(id: id) { card in
-                    for index in card.slides.indices {
-                        card.slides[index].isHearted = false
-                        card.slides[index].heartedAt = nil
-                    }
-                }
-                if let current = card(id: id) {
-                    syncSavedOtherIntoLibrary(current)
-                }
-            } catch {
-                guard !Task.isCancelled,
-                      boardGeneration[id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                if Self.isNotFound(error) {
-                    dropUnavailableCard(id)
-                    reportWriteFailure(error, Self.unavailableCardMessage)
-                    return
-                }
-                replaceCard(snapshot)
-                syncSavedOtherIntoLibrary(snapshot)
-                reportWriteFailure(error, "Couldn't remove that card. Check your connection.")
-            }
-        }
-    }
-
-    private static let unavailableCardMessage = "That card isn't available anymore."
-
-    private static func isNotFound(_ error: Error) -> Bool {
-        if case APIError.httpStatus(404, _, _) = error {
-            return true
-        }
-        return false
-    }
-
-    static func publicModerationMessage(for error: Error) -> String? {
-        guard let apiError = error as? APIError else {
-            return nil
-        }
-        switch apiError.serverCode {
-        case "PUBLIC_CONTENT_NOT_ALLOWED":
-            return "This card can't be posted publicly. Save it privately instead."
-        case "PUBLIC_MODERATION_UNAVAILABLE":
-            return "Posting is temporarily unavailable. Save privately or try again."
-        default:
-            return nil
-        }
-    }
-
-    /// A card the server no longer has leaves every cached presentation at once.
-    private func dropUnavailableCard(_ id: UUID) {
-        cards.removeAll { $0.id == id }
-        removeFromFeed(id)
-        removeFromAuthorFeeds(id)
-    }
-
-    private func blockAuthorSnapshot(_ authorId: UUID) -> BlockAuthorSnapshot {
-        let libraryEntries = cards.enumerated().compactMap { index, card in
-            card.authorId == authorId && !card.isOwner
-                ? (index: index, card: card)
-                : nil
-        }
-        let shelfEntries = feedBoard.placements { card in
-            card.authorId == authorId && !card.isOwner
-        }
-        let affectedIDs = Set(libraryEntries.map(\.card.id) + shelfEntries.map(\.card.id))
-        let anchors = feedBoard.anchors.filter { affectedIDs.contains($0.key) }
-        let followedEntry = followedPeople.firstIndex(where: { $0.id == authorId }).map {
-            (index: $0, person: followedPeople[$0])
-        }
-        let blockedEntry = blockedPeople.firstIndex(where: { $0.id == authorId }).map {
-            (index: $0, person: blockedPeople[$0])
-        }
-        let affectedAuthorFeeds = authorFeeds.filter { id, feed in
-            id == authorId || feed.cards.contains { $0.authorId == authorId && !$0.isOwner }
-        }
-
-        return BlockAuthorSnapshot(
-            libraryEntries: libraryEntries,
-            shelfEntries: shelfEntries,
-            feedAnchors: anchors,
-            followedEntry: followedEntry,
-            blockedEntry: blockedEntry,
-            authorFeeds: affectedAuthorFeeds
-        )
-    }
-
-    private func restoreBlockedAuthor(_ snapshot: BlockAuthorSnapshot, authorId: UUID) {
-        for entry in snapshot.libraryEntries.sorted(by: { $0.index < $1.index })
-        where !cards.contains(where: { $0.id == entry.card.id }) {
-            cards.insert(entry.card, at: min(entry.index, cards.count))
-        }
-        for entry in snapshot.shelfEntries.sorted(by: { $0.placement.index < $1.placement.index }) {
-            feedBoard.restore(entry.card, at: entry.placement)
-        }
-        for (_, anchor) in snapshot.feedAnchors {
-            feedBoard.restoreAnchor(anchor)
-        }
-        if let entry = snapshot.followedEntry,
-           !followedPeople.contains(where: { $0.id == authorId }) {
-            followedPeople.insert(entry.person, at: min(entry.index, followedPeople.count))
-        }
-        blockedPeople.removeAll { $0.id == authorId }
-        if let entry = snapshot.blockedEntry {
-            blockedPeople.insert(entry.person, at: min(entry.index, blockedPeople.count))
-        }
-
-        for (id, var feed) in snapshot.authorFeeds {
-            feed.task = nil
-            if feed.footerState == .loading {
-                feed.footerState = .idle
-            }
-            feed.isRefreshing = false
-            authorFeeds[id] = feed
-        }
-    }
-
-    private func removeAuthorLocally(_ authorId: UUID) {
-        cards.removeAll { $0.authorId == authorId && !$0.isOwner }
-        feedBoard.remove { $0.authorId == authorId && !$0.isOwner }
-        followedPeople.removeAll { $0.id == authorId }
-        followNotices.removeAll { $0.actorId == authorId }
-        unreadFollowCount = followNotices.filter { $0.readAt == nil }.count
-        followBadgeRevision &+= 1
-
-        for id in Array(authorFeeds.keys)
-        where id == authorId
-            || authorFeeds[id]?.cards.contains(where: { $0.authorId == authorId && !$0.isOwner }) == true {
-            mutateAuthor(id) { feed in
-                feed.task?.cancel()
-                feed.task = nil
-                feed.generation &+= 1
-                feed.cards.removeAll { $0.authorId == authorId && !$0.isOwner }
-                feed.cardIDs = Set(feed.cards.map(\.id))
-                feed.footerState = .idle
-                feed.isRefreshing = false
-                if id == authorId {
-                    feed.following = false
-                    feed.hasMore = false
-                    feed.before = nil
-                    feed.hasLoaded = true
-                    feed.loadState = .loaded
-                }
-            }
-        }
-    }
-
-    func toggleHeart(_ id: UUID, style: Style) {
-        guard let snapshot = card(id: id),
-              let slideIndex = snapshot.slides.firstIndex(where: { $0.result.style == style })
-        else {
-            return
-        }
-
-        let previousHeart = snapshot.slides[slideIndex].isHearted
-        let previousHeartedAt = snapshot.slides[slideIndex].heartedAt
-        let nextHeart = !previousHeart
-        applyLocal(id: id) { card in
-            guard let currentSlide = card.slides.firstIndex(where: { $0.result.style == style }) else {
-                return
-            }
-            card.slides[currentSlide].isHearted = nextHeart
-            card.slides[currentSlide].heartedAt = nextHeart ? Date() : nil
-        }
-        if let current = card(id: id) {
-            syncSavedOtherIntoLibrary(current)
-        }
-
-        let key = Self.heartTaskKey(id: id, style: style)
-        let previousTask = heartTasks[key]
-        let generation = (heartGeneration[key] ?? 0) + 1
-        heartGeneration[key] = generation
-        let sessionGeneration = writeSessionGeneration
-        heartTasks[key] = Task { @MainActor in
-            // Preserve request order. Cancelling an in-flight URL request cannot prove the
-            // server did not commit it, so a later tap waits for its response before writing.
-            await previousTask?.value
-            guard !Task.isCancelled,
-                  heartGeneration[key] == generation,
-                  writeSessionGeneration == sessionGeneration else {
-                return
-            }
-            defer {
-                if heartGeneration[key] == generation,
-                   writeSessionGeneration == sessionGeneration {
-                    heartTasks[key] = nil
-                }
-            }
-            do {
-                let stored: StoredCard
-                if snapshot.isOwner {
-                    stored = try await cardsService.patch(
-                        id: id.uuidString.lowercased(),
-                        PatchCardRequest(isHearted: nextHeart, style: style)
-                    )
-                } else if nextHeart {
-                    stored = try await cardsService.saveFeedAngle(id: id.uuidString.lowercased(), style: style)
-                } else {
-                    stored = try await cardsService.unsaveFeedAngle(id: id.uuidString.lowercased(), style: style)
-                }
-                guard !Task.isCancelled,
-                      heartGeneration[key] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                applyStored(stored)
-            } catch {
-                guard !Task.isCancelled,
-                      heartGeneration[key] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                if Self.isNotFound(error) {
-                    dropUnavailableCard(id)
-                    reportWriteFailure(error, Self.unavailableCardMessage)
-                    return
-                }
-                applyLocal(id: id) { card in
-                    guard let currentSlide = card.slides.firstIndex(where: { $0.result.style == style }) else {
-                        return
-                    }
-                    card.slides[currentSlide].isHearted = previousHeart
-                    card.slides[currentSlide].heartedAt = previousHeartedAt
-                }
-                if let current = card(id: id) {
-                    syncSavedOtherIntoLibrary(current)
-                }
-                reportWriteFailure(error, "Couldn't save that. Check your connection.")
-            }
-        }
-    }
+    // MARK: - Follows
 
     func loadFollowing() async {
         if followedPeople.isEmpty {
@@ -2415,7 +975,15 @@ final class HomeViewModel {
     }
 
     func requestOpenFollowNotifications() {
-        openFollowNotificationsToken += 1
+        wantsFollowNotifications = true
+    }
+
+    func consumeFollowNotificationsRequest() -> Bool {
+        guard wantsFollowNotifications else {
+            return false
+        }
+        wantsFollowNotifications = false
+        return true
     }
 
     func followBack(_ authorId: UUID) {
@@ -2425,188 +993,7 @@ final class HomeViewModel {
         if followNotices.contains(where: { $0.actorId == authorId && $0.following }) || isFollowing(authorId) {
             return
         }
-        commitFollow(authorId, following: true, origin: .followBack)
-    }
-
-    func loadBlocks() async {
-        blocksGeneration &+= 1
-        let generation = blocksGeneration
-        if blockedPeople.isEmpty {
-            blocksLoadState = .loading
-        }
-        do {
-            let response = try await profileService.blocks()
-            guard !Task.isCancelled, generation == blocksGeneration else {
-                return
-            }
-            blockedPeople = response.users.compactMap(BlockedPerson.init)
-            blocksLoadState = .loaded
-        } catch {
-            guard generation == blocksGeneration, !Self.isCancellation(error) else {
-                return
-            }
-            if blockedPeople.isEmpty {
-                blocksLoadState = .failed("Couldn't load blocked people.")
-            }
-        }
-    }
-
-    func reportCard(_ id: UUID, reason: ReportReason) {
-        guard reportTasks[id] == nil,
-              let target = card(id: id),
-              !target.isOwner
-        else {
-            return
-        }
-
-        let libraryIndex = cards.firstIndex { $0.id == id }
-        let placements = feedBoard.placements(of: id)
-        let previousAuthorIndexes = authorCardIndexes(id)
-        let feedAnchor = feedBoard.anchors[id]
-        dropUnavailableCard(id)
-        let generation = (reportGeneration[id] ?? 0) + 1
-        reportGeneration[id] = generation
-        let sessionGeneration = writeSessionGeneration
-        reportTasks[id] = Task { @MainActor in
-            defer {
-                if reportGeneration[id] == generation,
-                   writeSessionGeneration == sessionGeneration {
-                    reportTasks[id] = nil
-                }
-            }
-            do {
-                let state = try await cardsService.report(
-                    id: id.uuidString.lowercased(),
-                    reason: reason
-                )
-                guard !Task.isCancelled,
-                      reportGeneration[id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                guard state.reported else {
-                    throw APIError.decoding("The report was not accepted.")
-                }
-            } catch {
-                guard !Task.isCancelled,
-                      reportGeneration[id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                if let libraryIndex, !cards.contains(where: { $0.id == id }) {
-                    cards.insert(target, at: min(libraryIndex, cards.count))
-                }
-                for placement in placements {
-                    feedBoard.restore(target, at: placement)
-                }
-                if let feedAnchor {
-                    feedBoard.restoreAnchor(feedAnchor)
-                }
-                restoreAuthorCards(target, at: previousAuthorIndexes)
-                reportWriteFailure(error, "Couldn't report that card. Check your connection.")
-            }
-        }
-    }
-
-    func blockAuthor(
-        _ authorId: UUID,
-        initials: String,
-        avatarPath: String?
-    ) {
-        guard !isOwnAuthor(authorId), blockTasks[authorId] == nil else {
-            return
-        }
-
-        let snapshot = blockAuthorSnapshot(authorId)
-        let person = BlockedPerson(id: authorId, initials: initials, avatarPath: avatarPath)
-        removeAuthorLocally(authorId)
-        if !blockedPeople.contains(where: { $0.id == authorId }) {
-            blockedPeople.insert(person, at: 0)
-        }
-
-        followTasks[authorId]?.cancel()
-        followTasks[authorId] = nil
-        followGeneration[authorId, default: 0] &+= 1
-
-        blocksGeneration &+= 1
-        let generation = (blockGeneration[authorId] ?? 0) + 1
-        blockGeneration[authorId] = generation
-        let sessionGeneration = writeSessionGeneration
-        blockTasks[authorId] = Task { @MainActor in
-            defer {
-                if blockGeneration[authorId] == generation,
-                   writeSessionGeneration == sessionGeneration {
-                    blockTasks[authorId] = nil
-                }
-            }
-            do {
-                let state = try await profileService.block(id: authorId.uuidString.lowercased())
-                guard !Task.isCancelled,
-                      blockGeneration[authorId] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                guard state.blocked else {
-                    throw APIError.decoding("The block was not accepted.")
-                }
-                if !blockedPeople.contains(where: { $0.id == authorId }) {
-                    blockedPeople.insert(person, at: 0)
-                }
-                blocksGeneration &+= 1
-            } catch {
-                guard !Task.isCancelled,
-                      blockGeneration[authorId] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                restoreBlockedAuthor(snapshot, authorId: authorId)
-                reportWriteFailure(error, "Couldn't block that person. Check your connection.")
-            }
-        }
-    }
-
-    func unblock(_ person: BlockedPerson) {
-        guard blockTasks[person.id] == nil else {
-            return
-        }
-        let index = blockedPeople.firstIndex(where: { $0.id == person.id }) ?? 0
-        blockedPeople.removeAll { $0.id == person.id }
-
-        blocksGeneration &+= 1
-        let generation = (blockGeneration[person.id] ?? 0) + 1
-        blockGeneration[person.id] = generation
-        let sessionGeneration = writeSessionGeneration
-        blockTasks[person.id] = Task { @MainActor in
-            defer {
-                if blockGeneration[person.id] == generation,
-                   writeSessionGeneration == sessionGeneration {
-                    blockTasks[person.id] = nil
-                }
-            }
-            do {
-                let state = try await profileService.unblock(id: person.id.uuidString.lowercased())
-                guard !Task.isCancelled,
-                      blockGeneration[person.id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                guard !state.blocked else {
-                    throw APIError.decoding("The unblock was not accepted.")
-                }
-                blockedPeople.removeAll { $0.id == person.id }
-                blocksGeneration &+= 1
-            } catch {
-                guard !Task.isCancelled,
-                      blockGeneration[person.id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                if !blockedPeople.contains(where: { $0.id == person.id }) {
-                    blockedPeople.insert(person, at: min(index, blockedPeople.count))
-                }
-                reportWriteFailure(error, "Couldn't unblock that person. Check your connection.")
-            }
-        }
+        commitFollow(authorId, following: true)
     }
 
     func unfollow(_ person: FollowedPerson) {
@@ -2627,62 +1014,41 @@ final class HomeViewModel {
         guard !isOwnAuthor(authorId) else {
             return
         }
-        commitFollow(authorId, following: !isFollowing(authorId), origin: .browse)
+        commitFollow(authorId, following: !isFollowing(authorId))
     }
 
-    private enum FollowOrigin {
-        /// Home, an author page, or a hearted card in the library.
-        case browse
-        /// The people sheet or a push action: answering someone who followed you.
-        case followBack
-    }
-
-    private func commitFollow(
-        _ authorId: UUID,
-        following next: Bool,
-        origin: FollowOrigin = .browse,
-        onRollback: (() -> Void)? = nil
-    ) {
+    private func commitFollow(_ authorId: UUID, following next: Bool, onRollback: (() -> Void)? = nil) {
         setFollowing(authorId, following: next)
         let generation = (followGeneration[authorId] ?? 0) + 1
         followGeneration[authorId] = generation
-        let sessionGeneration = writeSessionGeneration
+        let session = writeSessionGeneration
         followTasks[authorId]?.cancel()
         followTasks[authorId] = Task { @MainActor in
             defer {
-                if self.followGeneration[authorId] == generation,
-                   self.writeSessionGeneration == sessionGeneration {
+                if self.followGeneration[authorId] == generation, self.writeSessionGeneration == session {
                     self.followTasks[authorId] = nil
                 }
             }
             do {
-                let state =
-                    next
+                let state = next
                     ? try await cardsService.follow(id: authorId.uuidString.lowercased())
                     : try await cardsService.unfollow(id: authorId.uuidString.lowercased())
-                guard !Task.isCancelled,
-                      self.followGeneration[authorId] == generation,
-                      self.writeSessionGeneration == sessionGeneration else {
+                guard !Task.isCancelled, self.followGeneration[authorId] == generation,
+                      self.writeSessionGeneration == session else {
                     return
                 }
                 setFollowing(authorId, following: state.following)
-                if next, state.following {
-                    if let notice = followNotices.first(where: { $0.actorId == authorId }),
-                       !followedPeople.contains(where: { $0.id == authorId }) {
-                        followedPeople.insert(
-                            FollowedPerson(
-                                id: authorId,
-                                initials: notice.initials,
-                                avatarPath: notice.avatarPath
-                            ),
-                            at: 0
-                        )
-                    }
+                if next, state.following,
+                   let notice = followNotices.first(where: { $0.actorId == authorId }),
+                   !followedPeople.contains(where: { $0.id == authorId }) {
+                    followedPeople.insert(
+                        FollowedPerson(id: authorId, initials: notice.initials, avatarPath: notice.avatarPath),
+                        at: 0
+                    )
                 }
             } catch {
-                guard !Task.isCancelled,
-                      self.followGeneration[authorId] == generation,
-                      self.writeSessionGeneration == sessionGeneration else {
+                guard !Task.isCancelled, self.followGeneration[authorId] == generation,
+                      self.writeSessionGeneration == session else {
                     return
                 }
                 setFollowing(authorId, following: !next)
@@ -2692,119 +1058,351 @@ final class HomeViewModel {
         }
     }
 
-    func setPublic(_ id: UUID, isPublic: Bool) {
-        guard var snapshot = ownerCard(id: id) else {
+    private func isOwnAuthor(_ authorId: UUID) -> Bool {
+        if authorFeeds[authorId]?.isSelf == true {
+            return true
+        }
+        return yours.cards.contains { $0.authorId == authorId }
+    }
+
+    private func isFollowing(_ authorId: UUID) -> Bool {
+        if let feed = authorFeeds[authorId], !feed.isSelf {
+            return feed.following
+        }
+        let isTheirs: (HomeCard) -> Bool = { $0.authorId == authorId && !$0.isOwner }
+        if let card = stack.deck.cards.first(where: isTheirs) ?? saved.cards.first(where: isTheirs) {
+            return card.authorFollowing
+        }
+        for feed in authorFeeds.values {
+            if let card = feed.list.cards.first(where: isTheirs) {
+                return card.authorFollowing
+            }
+        }
+        return followedPeople.contains { $0.id == authorId }
+    }
+
+    private func setFollowing(_ authorId: UUID, following: Bool) {
+        let update: (inout HomeCard) -> Void = { card in
+            if card.authorId == authorId, !card.isOwner, !card.isHouse {
+                card.authorFollowing = following
+            }
+        }
+        for index in saved.cards.indices {
+            update(&saved.cards[index])
+        }
+        stack.updateCards(update)
+        for id in Array(authorFeeds.keys) {
+            mutateAuthor(id) { feed in
+                if id == authorId, !feed.isSelf {
+                    feed.following = following
+                }
+                for index in feed.list.cards.indices {
+                    update(&feed.list.cards[index])
+                }
+            }
+        }
+        for index in followNotices.indices where followNotices[index].actorId == authorId {
+            followNotices[index].following = following
+        }
+    }
+
+    // MARK: - Author pages
+
+    /// Author pages are kept so a back and forth costs no fetch, but not without limit: past
+    /// `maxAuthorFeeds`, the oldest idle ones go. Opening them again just refetches.
+    private static let maxAuthorFeeds = 16
+
+    func authorHeader(for authorId: UUID) -> AuthorHeader? {
+        _ = authorRevision
+        guard let feed = authorFeeds[authorId] else {
+            return nil
+        }
+        return AuthorHeader(
+            initials: feed.initials,
+            avatarPath: feed.avatarPath,
+            isSelf: feed.isSelf,
+            following: feed.isSelf ? false : feed.following
+        )
+    }
+
+    func authorList(_ authorId: UUID) -> CardList {
+        _ = authorRevision
+        return authorFeeds[authorId]?.list ?? CardList()
+    }
+
+    func loadAuthorIfNeeded(_ route: AuthorRoute) async {
+        if authorFeeds[route.id] == nil {
+            evictOldAuthorFeeds(keeping: route.id)
+            authorFeeds[route.id] = AuthorFeed(
+                initials: route.initials,
+                avatarPath: route.avatarPath,
+                isSelf: route.isSelf,
+                following: route.isSelf ? false : isFollowing(route.id)
+            )
+            authorRevision &+= 1
+        }
+        guard authorFeeds[route.id]?.list.hasLoaded != true else {
             return
         }
-        let previousPublic = snapshot.isPublic
-        guard previousPublic != isPublic else {
+        if let task = authorFeeds[route.id]?.task {
+            await task.value
             return
         }
+        startAuthorTask(route.id, replacing: true)
+        await authorFeeds[route.id]?.task?.value
+    }
 
-        ensureOwnerInLibrary(snapshot)
-        let previousPlacements = feedBoard.placements(of: id)
-        let previousAuthorIndexes = authorCardIndexes(id)
-        applyLocal(id: id) { card in
-            card.isPublic = isPublic
+    func refreshAuthor(_ id: UUID) async {
+        guard authorFeeds[id] != nil else {
+            return
         }
-        if isPublic {
-            snapshot.isPublic = true
-            insertPublicCardIntoLoadedFeed(snapshot)
-            insertPublicCardIntoLoadedAuthorFeed(snapshot)
-        } else {
-            removeFromFeed(id)
-            removeFromAuthorFeeds(id)
+        mutateAuthor(id) { feed in
+            feed.task?.cancel()
+            feed.task = nil
+            feed.list.generation &+= 1
+            feed.list.footerState = .idle
         }
+        startAuthorTask(id, replacing: true)
+        await authorFeeds[id]?.task?.value
+    }
 
-        let previousTask = publicTasks[id]
-        let generation = (publicGeneration[id] ?? 0) + 1
-        publicGeneration[id] = generation
-        let sessionGeneration = writeSessionGeneration
-        publicTasks[id] = Task { @MainActor in
-            // Serialize privacy writes for this card. A cancelled transport can still commit,
-            // so overlapping PATCH requests could otherwise leave the server in tap-old order.
-            await previousTask?.value
-            guard !Task.isCancelled,
-                  publicGeneration[id] == generation,
-                  writeSessionGeneration == sessionGeneration else {
+    func retryLoadAuthor(_ id: UUID) {
+        guard authorFeeds[id] != nil else {
+            return
+        }
+        mutateAuthor(id) { feed in
+            feed.task?.cancel()
+            feed.task = nil
+            feed.list.generation &+= 1
+            feed.list.before = nil
+            feed.list.footerState = .idle
+            feed.list.hasLoaded = false
+            if feed.list.cards.isEmpty {
+                feed.list.loadState = .loading
+            }
+        }
+        startAuthorTask(id, replacing: true)
+    }
+
+    func loadMoreAuthor(_ id: UUID) {
+        guard let feed = authorFeeds[id], feed.list.hasLoaded, feed.list.hasMore,
+              feed.list.before != nil, feed.list.footerState == .idle, feed.task == nil
+        else {
+            return
+        }
+        mutateAuthor(id) { $0.list.footerState = .loading }
+        startAuthorTask(id, replacing: false)
+    }
+
+    func retryLoadMoreAuthor(_ id: UUID) {
+        guard let feed = authorFeeds[id], feed.list.footerState == .failed, feed.task == nil else {
+            return
+        }
+        mutateAuthor(id) { $0.list.footerState = .loading }
+        startAuthorTask(id, replacing: feed.list.before == nil)
+    }
+
+    private func evictOldAuthorFeeds(keeping id: UUID) {
+        authorFeedOrder.removeAll { $0 == id || authorFeeds[$0] == nil }
+        while authorFeeds.count >= Self.maxAuthorFeeds,
+              let oldest = authorFeedOrder.first(where: { authorFeeds[$0]?.task == nil }) {
+            authorFeeds[oldest] = nil
+            authorFeedOrder.removeAll { $0 == oldest }
+        }
+        authorFeedOrder.append(id)
+    }
+
+    private func startAuthorTask(_ id: UUID, replacing: Bool) {
+        guard let feed = authorFeeds[id], feed.task == nil else {
+            return
+        }
+        let generation = feed.list.generation
+        let task = Task { @MainActor in
+            await self.fetchAuthorPage(id: id, replacing: replacing, generation: generation)
+            guard self.authorFeeds[id]?.list.generation == generation else {
                 return
             }
-            defer {
-                if publicGeneration[id] == generation,
-                   writeSessionGeneration == sessionGeneration {
-                    publicTasks[id] = nil
+            self.mutateAuthor(id) { $0.task = nil }
+        }
+        mutateAuthor(id) { $0.task = task }
+    }
+
+    private func fetchAuthorPage(id: UUID, replacing: Bool, generation: Int) async {
+        let before = replacing ? nil : authorFeeds[id]?.list.before
+        do {
+            let response = try await cardsService.listAuthorCards(
+                id: id.uuidString.lowercased(),
+                limit: Self.authorPageSize,
+                before: before
+            )
+            guard !Task.isCancelled, authorFeeds[id]?.list.generation == generation else {
+                return
+            }
+            let incoming = response.cards.compactMap(HomeCard.init(stored:)).filter { !isLocallyBlocked($0) }
+            withoutAnimation {
+                mutateAuthor(id) { feed in
+                    let preserveFollow = self.followTasks[id] != nil
+                    feed.initials = response.user.initials
+                    feed.avatarPath = response.user.avatarUrl
+                    if response.cards.contains(where: \.isOwner) {
+                        feed.isSelf = true
+                    }
+                    if replacing {
+                        let local = Dictionary(feed.list.cards.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                        feed.list.cards = incoming.map { card in
+                            var card = self.patched(card, local: local[card.id])
+                            if self.writer.isPending(card.id), let mine = local[card.id] {
+                                card.decision = mine.decision
+                            }
+                            return card
+                        }
+                    } else {
+                        feed.list.cards = self.appended(incoming, to: feed.list.cards, segment: .yours)
+                    }
+                    if let cursor = response.page.nextCursor {
+                        feed.list.before = cursor
+                    } else if replacing {
+                        feed.list.before = nil
+                    }
+                    feed.list.hasMore = response.page.hasMore(pageSize: Self.authorPageSize)
+                    feed.list.footerState = .idle
+                    feed.list.loadState = .loaded
+                    feed.list.hasLoaded = true
+                    if feed.isSelf {
+                        feed.following = false
+                    } else if !preserveFollow {
+                        feed.following = response.user.following
+                    }
                 }
             }
-            do {
-                let stored = try await cardsService.patch(
-                    id: id.uuidString.lowercased(),
-                    PatchCardRequest(isPublic: isPublic)
-                )
-                guard !Task.isCancelled,
-                      publicGeneration[id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                if let current = cards.firstIndex(where: { $0.id == id }) {
-                    cards[current].apply(stored)
-                }
-                _ = feedBoard.update(id) { card in
-                    card.apply(stored)
-                }
-                if let cardId = UUID(uuidString: stored.id) {
-                    for authorId in Array(authorFeeds.keys) {
-                        mutateAuthor(authorId) { feed in
-                            if let index = feed.cards.firstIndex(where: { $0.id == cardId }) {
-                                feed.cards[index].apply(stored)
-                            }
-                        }
-                    }
-                }
-                if stored.isPublic, let card = ownerCard(id: id) {
-                    insertPublicCardIntoLoadedFeed(card)
-                    insertPublicCardIntoLoadedAuthorFeed(card)
+        } catch {
+            guard !Task.isCancelled, authorFeeds[id]?.list.generation == generation, !Self.isCancellation(error) else {
+                return
+            }
+            mutateAuthor(id) { feed in
+                if case APIError.httpStatus(404, _, _) = error {
+                    feed.list.loadState = .failed("That profile isn't available.")
+                    feed.list.footerState = .idle
+                    feed.list.hasMore = false
+                } else if replacing, feed.list.cards.isEmpty {
+                    feed.list.loadState = .failed("Couldn't load these posts.")
+                    feed.list.footerState = .idle
                 } else {
-                    removeFromFeed(id)
-                    removeFromAuthorFeeds(id)
+                    feed.list.footerState = .failed
                 }
-            } catch {
-                guard !Task.isCancelled,
-                      publicGeneration[id] == generation,
-                      writeSessionGeneration == sessionGeneration else {
-                    return
-                }
-                if Self.isNotFound(error) {
-                    dropUnavailableCard(id)
-                    reportWriteFailure(error, Self.unavailableCardMessage)
-                    return
-                }
-                applyLocal(id: id) { card in
-                    card.isPublic = previousPublic
-                }
-                if previousPlacements.isEmpty {
-                    removeFromFeed(id)
-                } else {
-                    var restored = snapshot
-                    restored.isPublic = previousPublic
-                    for placement in previousPlacements {
-                        feedBoard.restore(restored, at: placement)
-                    }
-                }
-                if previousPublic {
-                    var restored = snapshot
-                    restored.isPublic = previousPublic
-                    restoreAuthorCards(restored, at: previousAuthorIndexes)
-                } else {
-                    removeFromAuthorFeeds(id)
-                }
-                reportWriteFailure(
-                    error,
-                    Self.publicModerationMessage(for: error)
-                        ?? "Couldn't change who can see this. Check your connection."
-                )
             }
         }
     }
+
+    private func mutateAuthor(_ id: UUID, _ body: (inout AuthorFeed) -> Void) {
+        guard var feed = authorFeeds[id] else {
+            return
+        }
+        body(&feed)
+        authorFeeds[id] = feed
+        authorRevision &+= 1
+    }
+
+    private func removeFromAuthorFeeds(_ id: UUID) {
+        for authorId in Array(authorFeeds.keys) where authorFeeds[authorId]?.list.cards.contains(where: { $0.id == id }) == true {
+            mutateAuthor(authorId) { $0.list.cards.removeAll { $0.id == id } }
+        }
+    }
+
+    private func authorCardIndexes(_ id: UUID) -> [UUID: Int] {
+        var indexes: [UUID: Int] = [:]
+        for (authorId, feed) in authorFeeds {
+            if let index = feed.list.cards.firstIndex(where: { $0.id == id }) {
+                indexes[authorId] = index
+            }
+        }
+        return indexes
+    }
+
+    private func restoreAuthorCards(_ card: HomeCard, at indexes: [UUID: Int]) {
+        for (authorId, index) in indexes {
+            mutateAuthor(authorId) { feed in
+                guard !feed.list.cards.contains(where: { $0.id == card.id }) else {
+                    return
+                }
+                feed.list.cards.insert(card, at: min(index, feed.list.cards.count))
+            }
+        }
+    }
+
+    // MARK: - Shared card state
+
+    private func card(id: UUID) -> HomeCard? {
+        if let match = saved.cards.first(where: { $0.id == id }) ?? yours.cards.first(where: { $0.id == id }) {
+            return match
+        }
+        for feed in authorFeeds.values {
+            if let match = feed.list.cards.first(where: { $0.id == id }) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func stackCard(_ id: UUID) -> HomeCard? {
+        stack.deck.cards.first { $0.id == id }
+    }
+
+    private func ownerCard(id: UUID) -> HomeCard? {
+        guard let match = card(id: id), match.isOwner else {
+            return nil
+        }
+        return match
+    }
+
+    private func applyLocal(id: UUID, _ body: (inout HomeCard) -> Void) {
+        if let index = yours.cards.firstIndex(where: { $0.id == id }) {
+            body(&yours.cards[index])
+        }
+        if let index = saved.cards.firstIndex(where: { $0.id == id }) {
+            body(&saved.cards[index])
+        }
+        for authorId in Array(authorFeeds.keys) where authorFeeds[authorId]?.list.cards.contains(where: { $0.id == id }) == true {
+            mutateAuthor(authorId) { feed in
+                if let index = feed.list.cards.firstIndex(where: { $0.id == id }) {
+                    body(&feed.list.cards[index])
+                }
+            }
+        }
+    }
+
+    /// A card the server no longer has leaves every list and the stack at once.
+    private func dropUnavailableCard(_ id: UUID) {
+        yours.cards.removeAll { $0.id == id }
+        saved.cards.removeAll { $0.id == id }
+        removeFromAuthorFeeds(id)
+        stack.remove { $0.id == id }
+    }
+
+    private static let unavailableCardMessage = "That card isn't available anymore."
+
+    private static func isNotFound(_ error: Error) -> Bool {
+        if case APIError.httpStatus(404, _, _) = error {
+            return true
+        }
+        return false
+    }
+
+    static func publicModerationMessage(for error: Error) -> String? {
+        guard let apiError = error as? APIError else {
+            return nil
+        }
+        switch apiError.serverCode {
+        case "PUBLIC_CONTENT_NOT_ALLOWED":
+            return "This card can't be posted publicly. Save it privately instead."
+        case "PUBLIC_MODERATION_UNAVAILABLE":
+            return "Posting is temporarily unavailable. Save privately or try again."
+        default:
+            return nil
+        }
+    }
+
+    // MARK: - Banners
 
     /// Every write here is optimistic, so a rollback looks like the tap never happened.
     /// Say so instead.
@@ -2812,17 +1410,7 @@ final class HomeViewModel {
         guard !Self.isCancellation(error) else {
             return
         }
-
-        writeError = message
-        writeErrorTask?.cancel()
-        writeErrorTask = Task { @MainActor in
-            defer { writeErrorTask = nil }
-            try? await Task.sleep(for: Self.writeErrorDuration)
-            guard !Task.isCancelled else {
-                return
-            }
-            writeError = nil
-        }
+        showWriteError(message)
     }
 
     func dismissWriteError() {
@@ -2844,176 +1432,62 @@ final class HomeViewModel {
         }
     }
 
-    func dismissUsageBanner() {
-        usageBannerTask?.cancel()
-        usageBannerTask = nil
-        usageBanner = nil
+    // MARK: - Session
+
+    /// Log out starts over on this iPhone: nothing the last session loaded stays in memory, and
+    /// the next unlock loads Home and the library from scratch.
+    func resetForSignOut() {
+        tasteEndedByServer = false
+        writeSessionGeneration &+= 1
+        compose.abandonInFlight()
+        writer.reset()
+        stack.reset()
+        for task in listTasks.values { task.cancel() }
+        for task in followTasks.values { task.cancel() }
+        for task in publicTasks.values { task.cancel() }
+        for task in deleteTasks.values { task.cancel() }
+        for task in reportTasks.values { task.cancel() }
+        for task in blockTasks.values { task.cancel() }
+        for feed in authorFeeds.values { feed.task?.cancel() }
+        listTasks = [:]
+        followTasks = [:]
+        followGeneration = [:]
+        publicTasks = [:]
+        publicGeneration = [:]
+        deleteTasks = [:]
+        reportTasks = [:]
+        blockTasks = [:]
+        blockGeneration = [:]
+        authorFeeds = [:]
+        authorFeedOrder = []
+        authorRevision &+= 1
+
+        yours = CardList()
+        saved = CardList()
+        profileSegment = .yours
+
+        followedPeople = []
+        followingLoadState = .loading
+        blockedPeople = []
+        blocksLoadState = .loading
+        followNotices = []
+        followNoticesLoadState = .loading
+        unreadFollowCount = 0
+        wantsFollowNotifications = false
+        followBadgeRevision &+= 1
+        followNoticesGeneration &+= 1
+        followReadTask?.cancel()
+        followReadTask = nil
+        blocksGeneration &+= 1
+        configureUsageAccount(userID: nil)
+        dismissWriteError()
+        dismissPostToast()
     }
 
-    private func showUsageBanner(_ message: String) {
-        usageBanner = message
-        usageBannerTask?.cancel()
-        usageBannerTask = Task { @MainActor in
-            defer { usageBannerTask = nil }
-            try? await Task.sleep(for: Self.writeErrorDuration)
-            guard !Task.isCancelled else {
-                return
-            }
-            usageBanner = nil
-        }
-    }
-
-    private func applyUsage(_ summary: UsageSummary) {
-        hasLoadedUsage = true
-        usageSummary = summary
-        showLowCreditWarningIfNeeded(summary)
-    }
-
-    func applyCookUsage(_ usage: ReframeUsage) {
-        let previous = usageSummary
-        applyUsage(
-            UsageSummary(
-                creditsGranted: usage.granted,
-                creditsRemaining: usage.remaining,
-                periodStart: previous?.periodStart,
-                periodEnd: previous?.periodEnd,
-                resetsAt: usage.resetsAt,
-                warning: usage.warning,
-                creditCost: usage.creditCost,
-                plan: usage.plan
-            )
-        )
-    }
-
-    func applyUsage(from payload: APIErrorPayload) {
-        guard let creditsRemaining = payload.creditsRemaining,
-              let creditsGranted = payload.creditsGranted else {
-            return
-        }
-        let previous = usageSummary
-        applyUsage(
-            UsageSummary(
-                creditsGranted: creditsGranted,
-                creditsRemaining: creditsRemaining,
-                periodStart: previous?.periodStart,
-                periodEnd: previous?.periodEnd,
-                resetsAt: payload.resetsAt,
-                warning: Self.usageWarning(remaining: creditsRemaining, granted: creditsGranted),
-                creditCost: previous?.creditCost ?? 1,
-                plan: previous?.plan ?? .membership
-            )
-        )
-    }
-
-    private func showLowCreditWarningIfNeeded(_ summary: UsageSummary) {
-        guard summary.warning == .low, let usageAccountID else {
-            return
-        }
-        let period = summary.periodStart ?? summary.resetsAt ?? "granted-\(summary.creditsGranted)"
-        let key = Self.lowWarningDefaultsKey(userID: usageAccountID)
-        guard UserDefaults.standard.string(forKey: key) != period else {
-            return
-        }
-        UserDefaults.standard.set(period, forKey: key)
-        showUsageBanner("Credits are getting low")
-    }
-
-    static func lowWarningDefaultsKey(userID: String) -> String {
-        "\(lowWarningPeriodKeyPrefix).\(userID.lowercased())"
-    }
-
-    private static func usageWarning(remaining: Int, granted: Int) -> UsageWarning {
-        if remaining <= 0 {
-            return .empty
-        }
-        let base = max(granted, 1)
-        if remaining <= base / 10 {
-            return .critical
-        }
-        if remaining <= base / 5 {
-            return .low
-        }
-        return .normal
-    }
-
-    private static func heartTaskKey(id: UUID, style: Style) -> String {
-        "\(id.uuidString)-\(style.rawValue)"
-    }
-
-    private func card(id: UUID) -> HomeCard? {
-        if let match = feedBoard.record(id) {
-            return match
-        }
-        if let match = cards.first(where: { $0.id == id }) {
-            return match
-        }
-        for feed in authorFeeds.values {
-            if let match = feed.cards.first(where: { $0.id == id }) {
-                return match
-            }
-        }
-        return nil
-    }
-
-    private func applyLocal(id: UUID, _ body: (inout HomeCard) -> Void) {
-        _ = feedBoard.update(id, body)
-        if let index = cards.firstIndex(where: { $0.id == id }) {
-            body(&cards[index])
-        }
-        for authorId in Array(authorFeeds.keys) {
-            mutateAuthor(authorId) { feed in
-                if let index = feed.cards.firstIndex(where: { $0.id == id }) {
-                    body(&feed.cards[index])
-                }
-            }
-        }
-    }
-
-    private func applyStored(_ stored: StoredCard) {
-        guard let id = UUID(uuidString: stored.id) else {
-            return
-        }
-        applyLocal(id: id) { card in
-            card.apply(stored)
-        }
-        if let current = card(id: id) {
-            syncSavedOtherIntoLibrary(current)
-        } else if let created = HomeCard(stored: stored) {
-            syncSavedOtherIntoLibrary(created)
-        }
-    }
-
-    private func replaceCard(_ card: HomeCard) {
-        if feedBoard.record(card.id) != nil {
-            feedBoard.remember(card)
-        }
-        if let index = cards.firstIndex(where: { $0.id == card.id }) {
-            cards[index] = card
-        }
-        for authorId in Array(authorFeeds.keys) {
-            mutateAuthor(authorId) { feed in
-                if let index = feed.cards.firstIndex(where: { $0.id == card.id }) {
-                    feed.cards[index] = card
-                }
-            }
-        }
-    }
-
-    private func syncSavedOtherIntoLibrary(_ card: HomeCard) {
-        guard !card.isOwner else {
-            return
-        }
-
-        let keep = card.hasHeartAngle
-        if let index = cards.firstIndex(where: { $0.id == card.id }) {
-            if keep {
-                cards[index] = card
-            } else {
-                cards.remove(at: index)
-            }
-        } else if keep {
-            cards.insert(card, at: 0)
-        }
+    private func withoutAnimation(_ body: () -> Void) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction, body)
     }
 
     static func dateLabel(for date: Date, now: Date = Date()) -> String {
@@ -3047,319 +1521,6 @@ final class HomeViewModel {
         return formatter
     }()
 
-    func authorHeader(for authorId: UUID) -> AuthorHeader? {
-        guard let feed = authorFeeds[authorId] else {
-            return nil
-        }
-        return AuthorHeader(
-            initials: feed.initials,
-            avatarPath: feed.avatarPath,
-            isSelf: feed.isSelf,
-            following: feed.isSelf ? false : feed.following
-        )
-    }
-
-    func authorCards(for authorId: UUID, tab: HomeFeedTab) -> [HomeCard] {
-        guard let feed = authorFeeds[authorId] else {
-            return []
-        }
-        guard let style = tab.matchingStyle else {
-            return feed.cards
-        }
-        return feed.cards.filter { $0.hasStyle(style) }
-    }
-
-    func authorLoadState(for authorId: UUID) -> LibraryLoadState {
-        authorFeeds[authorId]?.loadState ?? .loading
-    }
-
-    func authorFooterState(for authorId: UUID) -> FeedFooterState {
-        authorFeeds[authorId]?.footerState ?? .idle
-    }
-
-    /// Author pages are kept so a back and forth costs no fetch, but not without limit: past
-    /// `maxAuthorFeeds`, the oldest idle ones go. Opening them again just refetches.
-    private static let maxAuthorFeeds = 16
-
-    private func evictOldAuthorFeeds(keeping id: UUID) {
-        authorFeedOrder.removeAll { $0 == id || authorFeeds[$0] == nil }
-        while authorFeeds.count >= Self.maxAuthorFeeds,
-              let oldest = authorFeedOrder.first(where: { authorFeeds[$0]?.task == nil }) {
-            authorFeeds[oldest] = nil
-            authorFeedOrder.removeAll { $0 == oldest }
-        }
-        authorFeedOrder.append(id)
-    }
-
-    func loadAuthorIfNeeded(_ route: AuthorRoute) async {
-        if authorFeeds[route.id] == nil {
-            evictOldAuthorFeeds(keeping: route.id)
-            authorFeeds[route.id] = AuthorFeed(
-                initials: route.initials,
-                avatarPath: route.avatarPath,
-                isSelf: route.isSelf,
-                following: route.isSelf ? false : isFollowing(route.id)
-            )
-        }
-        guard authorFeeds[route.id]?.hasLoaded != true else {
-            return
-        }
-        if let task = authorFeeds[route.id]?.task {
-            await task.value
-            return
-        }
-        startAuthorTask(route.id, replacing: true)
-        await authorFeeds[route.id]?.task?.value
-    }
-
-    func refreshAuthor(_ id: UUID) async {
-        guard authorFeeds[id] != nil, authorFeeds[id]?.isRefreshing != true else {
-            return
-        }
-        let known = Set(authorFeeds[id]?.cards.map(\.id) ?? [])
-        // Like Home, the cursor survives until page one lands.
-        mutateAuthor(id) { feed in
-            feed.isRefreshing = true
-            feed.task?.cancel()
-            feed.task = nil
-            feed.generation &+= 1
-            feed.footerState = .idle
-            if feed.cards.isEmpty {
-                feed.loadState = .loading
-            }
-        }
-        let generation = authorFeeds[id]?.generation ?? 0
-        await fetchAuthorPage(id: id, replacing: true, generation: generation)
-        mutateAuthor(id) { $0.isRefreshing = false }
-
-        guard authorFeeds[id]?.generation == generation else {
-            return
-        }
-        guard let feed = authorFeeds[id] else {
-            return
-        }
-
-        if feed.footerState == .failed {
-            publishAuthorRefresh(.failed, authorId: id)
-            return
-        }
-        if case .failed = feed.loadState, feed.cards.isEmpty {
-            publishAuthorRefresh(.failed, authorId: id)
-            return
-        }
-
-        let added = feed.cards.filter { !known.contains($0.id) }.count
-        publishAuthorRefresh(
-            added > 0 ? .newItems(added) : .upToDate,
-            authorId: id
-        )
-    }
-
-    func retryLoadAuthor(_ id: UUID) {
-        guard authorFeeds[id] != nil else {
-            return
-        }
-        mutateAuthor(id) { feed in
-            feed.task?.cancel()
-            feed.task = nil
-            feed.generation &+= 1
-            feed.before = nil
-            feed.hasMore = true
-            feed.footerState = .idle
-            feed.hasLoaded = false
-            if feed.cards.isEmpty {
-                feed.loadState = .loading
-            }
-        }
-        startAuthorTask(id, replacing: true)
-    }
-
-    func loadMoreAuthor(_ id: UUID) {
-        guard let feed = authorFeeds[id],
-              feed.hasLoaded,
-              feed.hasMore,
-              feed.before != nil,
-              feed.footerState == .idle,
-              feed.task == nil,
-              !feed.isRefreshing
-        else {
-            return
-        }
-        mutateAuthor(id) { $0.footerState = .loading }
-        startAuthorTask(id, replacing: false)
-    }
-
-    func retryLoadMoreAuthor(_ id: UUID) {
-        guard let feed = authorFeeds[id],
-              feed.footerState == .failed,
-              feed.task == nil,
-              !feed.isRefreshing
-        else {
-            return
-        }
-        mutateAuthor(id) { $0.footerState = .loading }
-        startAuthorTask(id, replacing: feed.before == nil)
-    }
-
-    private func startAuthorTask(_ id: UUID, replacing: Bool) {
-        guard var feed = authorFeeds[id], feed.task == nil else {
-            return
-        }
-        let generation = feed.generation
-        let task = Task { @MainActor in
-            await self.fetchAuthorPage(id: id, replacing: replacing, generation: generation)
-            guard self.authorFeeds[id]?.generation == generation else {
-                return
-            }
-            self.mutateAuthor(id) { $0.task = nil }
-        }
-        feed.task = task
-        authorFeeds[id] = feed
-    }
-
-    private func fetchAuthorPage(id: UUID, replacing: Bool, generation: Int) async {
-        let before = replacing ? nil : authorFeeds[id]?.before
-        do {
-            let response = try await cardsService.listAuthorCards(
-                id: id.uuidString.lowercased(),
-                limit: Self.feedPageSize,
-                before: before
-            )
-            guard !Task.isCancelled, authorFeeds[id]?.generation == generation else {
-                return
-            }
-
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                mutateAuthor(id) { feed in
-                    let preserveFollow = self.followTasks[id] != nil
-                    let preservedFollow = feed.following
-                    feed.initials = response.user.initials
-                    feed.avatarPath = response.user.avatarUrl
-                    if response.cards.contains(where: \.isOwner) {
-                        feed.isSelf = true
-                    }
-                    if replacing {
-                        feed.cards = merged(feed.cards, with: response.cards)
-                        feed.cardIDs = Set(feed.cards.map(\.id))
-                    } else {
-                        feed.cards.reserveCapacity(feed.cards.count + response.cards.count)
-                        for item in response.cards {
-                            guard let card = HomeCard(stored: item) else {
-                                continue
-                            }
-                            guard !isLocallyBlocked(card) else {
-                                continue
-                            }
-                            guard feed.cardIDs.insert(card.id).inserted else {
-                                continue
-                            }
-                            feed.cards.append(card)
-                        }
-                    }
-                    if let cursor = response.page.nextCursor {
-                        feed.before = cursor
-                    } else if replacing {
-                        feed.before = nil
-                    }
-                    feed.hasMore = response.page.hasMore(pageSize: Self.feedPageSize)
-                    feed.footerState = .idle
-                    feed.loadState = .loaded
-                    feed.hasLoaded = true
-                    if feed.isSelf {
-                        feed.following = false
-                    } else if preserveFollow {
-                        feed.following = preservedFollow
-                        for index in feed.cards.indices where feed.cards[index].authorId == id {
-                            feed.cards[index].authorFollowing = preservedFollow
-                        }
-                    } else {
-                        feed.following = response.user.following
-                    }
-                }
-            }
-        } catch {
-            guard !Task.isCancelled, authorFeeds[id]?.generation == generation, !Self.isCancellation(error) else {
-                return
-            }
-            mutateAuthor(id) { feed in
-                if case APIError.httpStatus(let status, _, _) = error, status == 404 {
-                    feed.loadState = .failed("That profile isn't available.")
-                    feed.footerState = .idle
-                    feed.hasMore = false
-                } else if replacing, feed.cards.isEmpty {
-                    feed.loadState = .failed("Couldn't load these posts.")
-                    feed.footerState = .idle
-                } else {
-                    feed.footerState = .failed
-                }
-            }
-        }
-    }
-
-    private func isOwnAuthor(_ authorId: UUID) -> Bool {
-        if authorFeeds[authorId]?.isSelf == true {
-            return true
-        }
-        if feedBoard.records.values.contains(where: { $0.authorId == authorId && $0.isOwner }) {
-            return true
-        }
-        if cards.contains(where: { $0.authorId == authorId && $0.isOwner }) {
-            return true
-        }
-        return authorFeeds.values.contains { feed in
-            feed.cards.contains { $0.authorId == authorId && $0.isOwner }
-        }
-    }
-
-    private func isFollowing(_ authorId: UUID) -> Bool {
-        if let feed = authorFeeds[authorId], !feed.isSelf {
-            return feed.following
-        }
-        if let card = feedBoard.records.values.first(where: { $0.authorId == authorId && !$0.isOwner }) {
-            return card.authorFollowing
-        }
-        if let card = cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
-            return card.authorFollowing
-        }
-        for feed in authorFeeds.values {
-            if let card = feed.cards.first(where: { $0.authorId == authorId && !$0.isOwner }) {
-                return card.authorFollowing
-            }
-        }
-        return false
-    }
-
-    private func setFollowing(_ authorId: UUID, following: Bool) {
-        feedBoard.updateAuthor(authorId, following: following)
-        for index in cards.indices where cards[index].authorId == authorId && !cards[index].isOwner {
-            cards[index].authorFollowing = following
-        }
-        for id in Array(authorFeeds.keys) {
-            mutateAuthor(id) { feed in
-                if id == authorId, !feed.isSelf {
-                    feed.following = following
-                }
-                for index in feed.cards.indices
-                where feed.cards[index].authorId == authorId && !feed.cards[index].isOwner {
-                    feed.cards[index].authorFollowing = following
-                }
-            }
-        }
-        for index in followNotices.indices where followNotices[index].actorId == authorId {
-            followNotices[index].following = following
-        }
-    }
-
-    private func mutateAuthor(_ id: UUID, _ body: (inout AuthorFeed) -> Void) {
-        guard var feed = authorFeeds[id] else {
-            return
-        }
-        body(&feed)
-        authorFeeds[id] = feed
-    }
-
     static func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError {
             return true
@@ -3377,7 +1538,7 @@ extension HomeViewModel: ComposeSessionHost {
     }
 
     var libraryCardCount: Int {
-        cards.count
+        yours.cards.count
     }
 
     func markTasteEnded() {
@@ -3385,6 +1546,33 @@ extension HomeViewModel: ComposeSessionHost {
     }
 
     func insertSavedCard(_ card: HomeCard) {
-        cards.insert(card, at: 0)
+        yours.cards.removeAll { $0.id == card.id }
+        yours.cards.insert(card, at: 0)
+    }
+}
+
+extension HomeViewModel: StackHost {
+    func stackSaved(_ card: HomeCard) {
+        insertSaved(card)
+        applyLocal(id: card.id) { $0.decision = card.decision }
+        profilePulseToken &+= 1
+    }
+
+    func stackUnsaved(_ card: HomeCard) {
+        saved.cards.removeAll { $0.id == card.id }
+        applyLocal(id: card.id) { $0.decision = card.decision }
+        insertSaved(card)
+    }
+
+    func stackCardGone(_ id: UUID) {
+        dropUnavailableCard(id)
+    }
+
+    func stackWriteFailed(_ error: Error, _ message: String) {
+        reportWriteFailure(error, message)
+    }
+
+    func isBlocked(_ card: HomeCard) -> Bool {
+        isLocallyBlocked(card)
     }
 }

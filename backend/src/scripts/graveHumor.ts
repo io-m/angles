@@ -3,7 +3,7 @@
  * solemn rule. Dry run by default: it only lists them.
  *
  *   pnpm db:grave-humor --dry-run     list the cards and the angles that would go
- *   pnpm db:grave-humor --apply       remove those angles and their hearts
+ *   pnpm db:grave-humor --apply       remove those angles
  *
  * `--apply` removes only witty and tough, moves the cover to an angle that
  * stays, and records our skip reason on the card. A card with no other angle is left
@@ -72,7 +72,6 @@ async function apply(finding: Finding): Promise<void> {
     ...reasons,
   ];
   await getSql().begin(async (tx) => {
-    await tx`delete from saved_angles where card_id = ${card.id} and style::text in ${tx(drop)}`;
     await tx`delete from card_reframes where card_id = ${card.id} and style::text in ${tx(drop)}`;
     await tx`
       update cards

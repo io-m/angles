@@ -82,9 +82,10 @@ private final class Installed {
     private let gate: BackSwipeGate
 
     init(_ recognizer: UIGestureRecognizer, _ navigationController: UINavigationController) {
+        let base = (recognizer.delegate as? BackSwipeGate)?.original ?? recognizer.delegate
         self.recognizer = recognizer
-        self.original = recognizer.delegate
-        self.gate = BackSwipeGate(navigationController: navigationController, original: recognizer.delegate)
+        self.original = base
+        self.gate = BackSwipeGate(navigationController: navigationController, original: base)
         recognizer.delegate = gate
     }
 
@@ -98,36 +99,43 @@ private final class Installed {
 
 private final class BackSwipeGate: NSObject, UIGestureRecognizerDelegate {
     private weak var navigationController: UINavigationController?
-    private weak var original: UIGestureRecognizerDelegate?
+    fileprivate weak var original: UIGestureRecognizerDelegate?
 
     init(navigationController: UINavigationController, original: UIGestureRecognizerDelegate?) {
         self.navigationController = navigationController
         self.original = original
     }
 
+    private var hasRoot: Bool {
+        (navigationController?.viewControllers.count ?? 0) > 1
+    }
+
     /// Only with a page to go back to.
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        (navigationController?.viewControllers.count ?? 0) > 1
+        hasRoot
     }
 
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool {
-        original?.gestureRecognizer?(gestureRecognizer, shouldRecognizeSimultaneouslyWith: other) ?? false
+        guard hasRoot else { return false }
+        return original?.gestureRecognizer?(gestureRecognizer, shouldRecognizeSimultaneouslyWith: other) ?? false
     }
 
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRequireFailureOf other: UIGestureRecognizer
     ) -> Bool {
-        original?.gestureRecognizer?(gestureRecognizer, shouldRequireFailureOf: other) ?? false
+        guard hasRoot else { return false }
+        return original?.gestureRecognizer?(gestureRecognizer, shouldRequireFailureOf: other) ?? false
     }
 
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldBeRequiredToFailBy other: UIGestureRecognizer
     ) -> Bool {
-        original?.gestureRecognizer?(gestureRecognizer, shouldBeRequiredToFailBy: other) ?? false
+        guard hasRoot else { return false }
+        return original?.gestureRecognizer?(gestureRecognizer, shouldBeRequiredToFailBy: other) ?? false
     }
 }

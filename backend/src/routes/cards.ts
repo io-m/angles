@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import { reportCard } from "../db/communitySafety.js";
+import { clearDecision, writeDecision } from "../db/decisions.js";
 import {
   createCard,
   deleteCard,
@@ -22,7 +23,13 @@ import { REPORT_REASONS } from "../lib/communitySafetyTypes.js";
 import { moderatePublicCard } from "../lib/publicModeration.js";
 import { announceReport } from "../lib/reportAlerts.js";
 import { shownStyleSchema } from "../lib/styleSet.js";
-import { CATEGORIES, STYLES } from "../types/index.js";
+import {
+  CATEGORIES,
+  DECISION_KINDS,
+  MAX_PASSES,
+  STYLES,
+  type DecisionResponse,
+} from "../types/index.js";
 
 const MAX_THOUGHT_LENGTH = 2000;
 const MAX_REFRAME_LENGTH = 4000;
@@ -74,7 +81,7 @@ const listQuerySchema = z.object({
   before: cardCursorSchema().optional(),
   category: z.enum(CATEGORIES).optional(),
   style: shownStyleSchema().optional(),
-  hearted: z
+  saved: z
     .enum(["true", "false"])
     .optional()
     .transform((value) => (value === undefined ? undefined : value === "true")),
@@ -86,15 +93,31 @@ const idParamSchema = z.object({
 
 const patchCardSchema = z
   .object({
-    isHearted: z.boolean().optional(),
-    style: shownStyleSchema().optional(),
-    isPublic: z.boolean().optional(),
+    isPublic: z.boolean(),
   })
-  .refine((body) => body.isHearted !== undefined || body.isPublic !== undefined, {
-    message: "patch must set isHearted or isPublic",
+  .strict();
+
+/**
+ * The whole decision row as the phone wants it stored, so a retry and a rewind are the
+ * same write. A pass counts itself; a save keeps the passes before it.
+ */
+const decisionSchema = z
+  .object({
+    kind: z.enum(DECISION_KINDS),
+    style: shownStyleSchema(),
+    checkedStyles: z
+      .array(shownStyleSchema())
+      .min(1)
+      .max(STYLES.length)
+      .refine((styles) => new Set(styles).size === styles.length, {
+        message: "checkedStyles must not repeat a style",
+      }),
+    passes: z.number().int().min(0).max(MAX_PASSES),
   })
-  .refine((body) => body.isHearted === undefined || body.style !== undefined, {
-    message: "style is required when setting isHearted",
+  .strict()
+  .refine((body) => body.kind !== "pass" || body.passes >= 1, {
+    message: "a pass must count at least one pass",
+    path: ["passes"],
   });
 
 const reportCardSchema = z
@@ -178,7 +201,7 @@ cardsRoute.get(
       before: query.before,
       category: query.category,
       style: query.style,
-      hearted: query.hearted,
+      saved: query.saved,
     });
     return c.json({ cards: cardList });
   },
@@ -253,15 +276,62 @@ cardsRoute.patch(
       if (result.reason === "not_found") {
         return c.json(errorBody("Not found", "NOT_FOUND"), 404);
       }
-      if (result.reason === "publication_blocked") {
-        return c.json(
-          errorBody("This card cannot be published", "PUBLIC_CONTENT_NOT_ALLOWED"),
-          400,
-        );
-      }
-      return c.json(errorBody("style must be one of the card results", "VALIDATION_ERROR"), 400);
+      return c.json(
+        errorBody("This card cannot be published", "PUBLIC_CONTENT_NOT_ALLOWED"),
+        400,
+      );
     }
     return c.json(result.card);
+  },
+);
+
+cardsRoute.put(
+  "/:id/decision",
+  requireAuth,
+  zValidator("param", idParamSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  zValidator("json", decisionSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const result = await writeDecision(id, c.req.valid("json"));
+    if (!result.ok) {
+      switch (result.reason) {
+        case "not_found":
+          return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+        case "own_card":
+          return c.json(errorBody("You cannot save or pass your own card", "VALIDATION_ERROR"), 400);
+        case "not_public":
+          return c.json(errorBody("Private cards cannot be saved or passed", "VALIDATION_ERROR"), 400);
+        case "unknown_style":
+          return c.json(errorBody("styles must be among the card results", "VALIDATION_ERROR"), 400);
+      }
+    }
+    return c.json({ decision: result.decision } satisfies DecisionResponse);
+  },
+);
+
+cardsRoute.delete(
+  "/:id/decision",
+  requireAuth,
+  zValidator("param", idParamSchema, (result, c) => {
+    if (!result.success) {
+      return c.json(errorBody(validationErrorMessage(result.error), "VALIDATION_ERROR"), 400);
+    }
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const result = await clearDecision(id);
+    if (!result.ok) {
+      return c.json(errorBody("Not found", "NOT_FOUND"), 404);
+    }
+    return c.body(null, 204);
   },
 );
 
