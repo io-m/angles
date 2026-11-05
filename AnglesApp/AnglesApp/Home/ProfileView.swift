@@ -148,7 +148,7 @@ private struct ProfilePage: View {
                 CardListEmptyNote(text: "Swipe right on a card, or tap the heart, to keep it here.")
             }
         }
-        .padding(.top, 16)
+        .padding(.top, 12)
         .padding(.bottom, 24)
     }
 

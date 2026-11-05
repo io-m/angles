@@ -16,8 +16,7 @@ struct ModalAction {
     }
 }
 
-/// Sheet chrome: one frosted bar, then the content. The title, text buttons, and tabs
-/// sit on the bar. The list starts below it.
+/// Sheet chrome. The title, text buttons, and tabs sit on the same grey as the rest of the sheet.
 struct ModalScreen<Content: View>: View {
     let title: String
     var searchText: Binding<String>?
@@ -26,7 +25,7 @@ struct ModalScreen<Content: View>: View {
     var scrolls: Bool
     var leading: ModalAction?
     var trailing: ModalAction?
-    /// Stays on the glass under the title. Profile and Filter pass their tabs.
+    /// Stays under the title. Profile and Filter pass their tabs.
     private let header: AnyView?
     /// Pinned under the content. The consent agreement uses this.
     private let footer: AnyView?
@@ -55,7 +54,6 @@ struct ModalScreen<Content: View>: View {
     }
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -93,16 +91,6 @@ struct ModalScreen<Content: View>: View {
             }
         }
         .padding(.bottom, 8)
-        .background {
-            Group {
-                if reduceTransparency {
-                    theme.grey
-                } else {
-                    Rectangle().fill(.ultraThinMaterial)
-                }
-            }
-            .ignoresSafeArea(edges: .top)
-        }
     }
 
     private var titleBar: some View {
