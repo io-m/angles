@@ -103,6 +103,40 @@ final class StackDrag {
     @ObservationIgnored var lastTranslation: CGSize?
     /// Whether the finger has already crossed the release threshold this drag.
     @ObservationIgnored var pastThreshold = false
+    /// A finger that moves this far is a drag, not a tap on the answer or a style chip.
+    static let tapSlop: CGFloat = 12
+    /// Set for the rest of this touch once travel passes `tapSlop`. Ignored by observation so a
+    /// drag frame does not redraw the card just to suppress its tap.
+    @ObservationIgnored var touchWasDrag = false
+    /// Bumped when a touch begins, so the clear scheduled by the previous touch cannot land late.
+    @ObservationIgnored private var touchGeneration = 0
+
+    /// A new finger-down. Drops the previous touch's drag so the next still tap can change style.
+    func beginTouch() {
+        touchGeneration += 1
+        touchWasDrag = false
+    }
+
+    /// `translation` is the finger's travel from the start of the touch, not the card's offset.
+    func noteFingerTravel(_ translation: CGSize) {
+        if hypot(translation.width, translation.height) > Self.tapSlop {
+            touchWasDrag = true
+        }
+    }
+
+    /// The tap often arrives after the drag ends, so the flag stays set through this turn.
+    func finishTouch() {
+        guard touchWasDrag else {
+            return
+        }
+        let generation = touchGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.touchGeneration == generation else {
+                return
+            }
+            self.touchWasDrag = false
+        }
+    }
 
     /// -1 is a full lean toward Pass, 1 toward Love.
     var lean: CGFloat {
@@ -320,6 +354,7 @@ struct StackHome: View {
                 ),
                 isInteractive: flinging == nil,
                 deviceTilt: deviceTilt,
+                stackDrag: drag,
                 actions: actions(for: card)
             )
             .equatable()
@@ -394,6 +429,10 @@ struct StackHome: View {
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 1.5, coordinateSpace: .global)
             .onChanged { value in
+                if drag.isDeciding == nil, drag.lastTranslation == nil {
+                    drag.beginTouch()
+                }
+                drag.noteFingerTravel(value.translation)
                 if drag.isDeciding == nil {
                     drag.isDeciding = dynamicTypeSize.isAccessibilitySize
                         ? abs(value.translation.width) > abs(value.translation.height)
@@ -437,6 +476,7 @@ struct StackHome: View {
                     drag.isDeciding = nil
                     drag.lastTranslation = nil
                     drag.pastThreshold = false
+                    drag.finishTouch()
                 }
                 guard drag.isDeciding == true else {
                     return
@@ -524,6 +564,7 @@ struct StackHome: View {
             drag.isDeciding = nil
             drag.lastTranslation = nil
             drag.pastThreshold = false
+            drag.touchWasDrag = false
             flinging = nil
         }
     }

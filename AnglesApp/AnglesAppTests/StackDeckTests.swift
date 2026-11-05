@@ -263,6 +263,33 @@ struct AngleTypeFitTests {
     }
 }
 
+@MainActor
+struct StackDragTests {
+    @Test func aFingerUnderTheSlopIsStillATap() {
+        let drag = StackDrag()
+        drag.beginTouch()
+        drag.noteFingerTravel(CGSize(width: StackDrag.tapSlop, height: 0))
+        #expect(!drag.touchWasDrag)
+    }
+
+    @Test func aMovePastTheSlopStaysADragWhenTheFingerLifts() {
+        let drag = StackDrag()
+        drag.beginTouch()
+        drag.noteFingerTravel(CGSize(width: 0, height: StackDrag.tapSlop + 1))
+        drag.finishTouch()
+        #expect(drag.touchWasDrag)
+    }
+
+    @Test func theNextTouchCanTapAgain() {
+        let drag = StackDrag()
+        drag.beginTouch()
+        drag.noteFingerTravel(CGSize(width: 40, height: 0))
+        drag.finishTouch()
+        drag.beginTouch()
+        #expect(!drag.touchWasDrag)
+    }
+}
+
 struct StackLayoutTests {
     private static let phones: [(name: String, screen: CGSize, safeTop: CGFloat, safeBottom: CGFloat)] = [
         ("iPhone Pro Max", CGSize(width: 430, height: 932), 59, 34),

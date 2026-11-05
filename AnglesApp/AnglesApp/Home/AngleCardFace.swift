@@ -263,6 +263,9 @@ struct AngleCardFace: View, Equatable {
     var isElevated = true
     /// Physical tilt of the phone. Only the top stack card sets this.
     var deviceTilt: CardDeviceTilt?
+    /// The stack's drag. Only the top card sets this, and only a tap or chip action reads it,
+    /// so a moving finger never redraws the face.
+    var stackDrag: StackDrag?
     var actions = AngleCardActions()
 
     @Environment(\.colorScheme) private var colorScheme
@@ -508,6 +511,9 @@ struct AngleCardFace: View, Equatable {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { stageWidth = $0 }
         .gesture(
             SpatialTapGesture().onEnded { tap in
+                guard stackDrag?.touchWasDrag != true else {
+                    return
+                }
                 step(forward: tap.location.x >= stageWidth / 2)
             },
             including: isInteractive ? .all : .none
@@ -655,6 +661,9 @@ struct AngleCardFace: View, Equatable {
     private var pills: some View {
         if card.styles.count > 1 {
             StyleChipRow(styles: card.styles, selected: currentStyle, faint: theme.faint) { next in
+                guard stackDrag?.touchWasDrag != true else {
+                    return
+                }
                 style = next
             }
         } else {
