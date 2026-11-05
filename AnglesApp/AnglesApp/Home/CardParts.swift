@@ -470,12 +470,29 @@ struct StyleChipRow: View {
     }
 }
 
+/// Which card the header mark is showing an angle for, and which angle. The mark
+/// pings only when the angle changes on the *same* card — a new card coming up
+/// (swipe, rewind, new visit) changes both fields at once and must stay quiet:
+/// that is not the reader changing tabs.
+struct StyleMarkSignal: Equatable {
+    var cardID: UUID?
+    var style: Style?
+
+    static func shouldPing(from old: StyleMarkSignal, to new: StyleMarkSignal) -> Bool {
+        guard let oldStyle = old.style, let newStyle = new.style, newStyle != oldStyle,
+              let cardID = old.cardID, cardID == new.cardID
+        else { return false }
+        return true
+    }
+}
+
 /// The six style colours in a row: the Angles mark on sign-in and in the Home header.
 struct StyleDotsMark: View {
     var dot: CGFloat = 7
     var spacing: CGFloat = 8
-    /// When set (Home stack), a style change pings that dot and briefly shows its letter in "Angles".
-    var active: Style?
+    /// When set (Home stack), an angle change on the same card pings that dot and
+    /// briefly shows its letter in "Angles".
+    var signal = StyleMarkSignal()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pingStyle: Style?
@@ -490,14 +507,20 @@ struct StyleDotsMark: View {
                     letter: index < Self.letters.count ? String(Self.letters[index]) : "",
                     ink: CardStyleAppearance(style: style).ink,
                     dot: dot,
-                    lettersEnabled: active != nil,
+                    lettersEnabled: signal.style != nil,
                     pinging: pingStyle == style
                 )
             }
         }
-        .onChange(of: active) { old, new in
-            guard let old, let new, new != old else { return }
-            firePing(new)
+        .onChange(of: signal) { old, new in
+            if old.cardID != new.cardID {
+                // A different card came up: drop any ping still in flight from
+                // the previous card instead of letting it land on this one.
+                pingGeneration += 1
+                pingStyle = nil
+            }
+            guard StyleMarkSignal.shouldPing(from: old, to: new), let style = new.style else { return }
+            firePing(style)
         }
     }
 

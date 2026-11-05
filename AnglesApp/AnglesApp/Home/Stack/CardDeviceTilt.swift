@@ -1,7 +1,56 @@
 import CoreMotion
 import SwiftUI
 
-/// Gravity on the top stack card. A natural hold sits near zero; tilting the phone
+/// Timestamp-based low-pass for the tilt targets: real elapsed time sets how far
+/// each sample moves, a soft dead-zone keeps a still hand still, and a per-sample
+/// slew cap means no single sample — however late or bunched — can jump the mark.
+struct CardTiltFilter: Equatable {
+    private(set) var roll: Double = 0
+    private(set) var pitch: Double = 0
+
+    /// How long the filtered value takes to close most of the gap to its target.
+    static let timeConstant: TimeInterval = 0.16
+    /// Gaps and pauses longer than this count as one ordinary sample interval.
+    static let maximumStepTime: TimeInterval = 0.05
+    /// The largest change one sample may make, so hand tremor arrives as a glide.
+    static let maximumStep: Double = 0.05
+    /// Targets inside this band around neutral count as neutral.
+    static let deadZone: Double = 0.08
+
+    mutating func ingest(targetRoll: Double, targetPitch: Double, dt: TimeInterval) {
+        let clampedDT = min(max(dt, 0), Self.maximumStepTime)
+        guard clampedDT > 0 else { return }
+        let alpha = 1 - exp(-clampedDT / Self.timeConstant)
+        roll = Self.step(from: roll, toward: Self.softDeadZone(targetRoll), alpha: alpha)
+        pitch = Self.step(from: pitch, toward: Self.softDeadZone(targetPitch), alpha: alpha)
+    }
+
+    private static func step(from: Double, toward target: Double, alpha: Double) -> Double {
+        let delta = (target - from) * alpha
+        return from + min(max(delta, -maximumStep), maximumStep)
+    }
+
+    private static func softDeadZone(_ value: Double) -> Double {
+        let magnitude = abs(value)
+        guard magnitude > deadZone else { return 0 }
+        return (value < 0 ? -1 : 1) * (magnitude - deadZone) / (1 - deadZone)
+    }
+}
+
+/// Where a roll/pitch puts the corner mark. Pure, so the behind and top cards are
+/// guaranteed to place the mark identically for the same tilt. Travel and rotation
+/// sit at roughly three quarters of their original size: present, never showy.
+enum CardTiltGeometry {
+    static func markOffset(roll: CGFloat, pitch: CGFloat) -> CGSize {
+        CGSize(width: 30 + roll * 32, height: 26 + pitch * 26)
+    }
+
+    static func markRotation(roll: CGFloat) -> Double {
+        -12 + Double(roll) * 13
+    }
+}
+
+/// Gravity on the stack cards. A natural hold sits near zero; tilting the phone
 /// moves the light and the corner mark. The same idea as AppSail's featured wash,
 /// driven by the phone instead of a timer.
 @MainActor
@@ -13,20 +62,25 @@ final class CardDeviceTilt {
     private(set) var pitch: CGFloat = 0
 
     @ObservationIgnored private let manager = CMMotionManager()
-    @ObservationIgnored private var filteredRoll = 0.0
-    @ObservationIgnored private var filteredPitch = 0.0
+    @ObservationIgnored private var filter = CardTiltFilter()
+    @ObservationIgnored private var lastTimestamp: TimeInterval?
     @ObservationIgnored private var running = false
 
     func start() {
         guard !running, manager.isDeviceMotionAvailable else { return }
         running = true
+        lastTimestamp = nil
         manager.deviceMotionUpdateInterval = 1.0 / 30.0
+        // Updates already arrive on the main queue, so ingest in place: a fresh
+        // unstructured Task per sample only lets samples queue behind drag frames
+        // and then discharge in a bunch.
         manager.startDeviceMotionUpdates(using: .xArbitraryZVertical, to: .main) { [weak self] motion, _ in
-            guard let motion else { return }
+            guard let self, let motion else { return }
             let x = motion.gravity.x
             let z = motion.gravity.z
-            Task { @MainActor [weak self] in
-                self?.ingest(x: x, z: z)
+            let timestamp = motion.timestamp
+            MainActor.assumeIsolated {
+                self.ingest(x: x, z: z, timestamp: timestamp)
             }
         }
     }
@@ -34,22 +88,24 @@ final class CardDeviceTilt {
     func stop() {
         guard running else { return }
         running = false
+        lastTimestamp = nil
         manager.stopDeviceMotionUpdates()
     }
 
     /// Device gravity: +x is the phone's right, +z is out of the screen.
     /// A comfortable portrait hold already tips the screen back, so pitch is measured from there.
-    private func ingest(x: Double, z: Double) {
+    private func ingest(x: Double, z: Double, timestamp: TimeInterval) {
         let targetRoll = min(1, max(-1, x / 0.32))
         let targetPitch = min(1, max(-1, (z - (-0.42)) / 0.32))
-        filteredRoll += (targetRoll - filteredRoll) * 0.34
-        filteredPitch += (targetPitch - filteredPitch) * 0.34
-        let nextRoll = CGFloat(filteredRoll)
-        let nextPitch = CGFloat(filteredPitch)
-        if abs(nextRoll - roll) >= 0.012 {
+        let dt = lastTimestamp.map { timestamp - $0 } ?? (1.0 / 30.0)
+        lastTimestamp = timestamp
+        filter.ingest(targetRoll: targetRoll, targetPitch: targetPitch, dt: dt)
+        let nextRoll = CGFloat(filter.roll)
+        let nextPitch = CGFloat(filter.pitch)
+        if abs(nextRoll - roll) >= 0.002 {
             roll = nextRoll
         }
-        if abs(nextPitch - pitch) >= 0.012 {
+        if abs(nextPitch - pitch) >= 0.002 {
             pitch = nextPitch
         }
     }
@@ -65,9 +121,9 @@ struct CardTiltWash: View {
         let roll = Double(tilt.roll)
         let pitch = Double(tilt.pitch)
         let presence = 0.7 + 0.3 * max(abs(roll), abs(pitch))
-        let axis = Self.axis(degrees: 135 + roll * 36)
-        let shiftX = roll * 0.55
-        let shiftY = pitch * 0.48
+        let axis = Self.axis(degrees: 135 + roll * 27)
+        let shiftX = roll * 0.42
+        let shiftY = pitch * 0.37
         LinearGradient(
             stops: [
                 .init(color: ink.opacity(0.022 * presence), location: 0),
@@ -106,11 +162,12 @@ struct CardTiltMark: View {
         let roll: CGFloat = reduceMotion ? 0 : (tilt?.roll ?? 0)
         let pitch: CGFloat = reduceMotion ? 0 : (tilt?.pitch ?? 0)
         let fade = colorScheme == .dark ? 0.20 : 0.12
+        let offset = CardTiltGeometry.markOffset(roll: roll, pitch: pitch)
         Image(systemName: systemImage)
             .font(.system(size: AngleCardMetrics.watermarkSize, weight: .semibold))
             .foregroundStyle(ink.opacity(fade))
-            .rotationEffect(.degrees(-12 + Double(roll) * 18))
-            .offset(x: 30 + roll * 42, y: 26 + pitch * 34)
+            .rotationEffect(.degrees(CardTiltGeometry.markRotation(roll: roll)))
+            .offset(x: offset.width, y: offset.height)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: systemImage)
             .allowsHitTesting(false)
             .accessibilityHidden(true)

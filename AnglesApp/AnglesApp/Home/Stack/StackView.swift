@@ -101,8 +101,9 @@ final class StackDrag {
     @ObservationIgnored var isDeciding: Bool?
     /// Previous sample's raw translation so each frame adds only its own delta without a startup jump.
     @ObservationIgnored var lastTranslation: CGSize?
-    /// Whether the finger has already crossed the release threshold this drag.
-    @ObservationIgnored var pastThreshold = false
+    /// Whether the release-threshold haptic has already fired for this touch. Latched so
+    /// hovering around the threshold cannot buzz repeatedly; re-armed by `beginTouch()`.
+    @ObservationIgnored private(set) var thresholdHapticFired = false
     /// A finger that moves this far is a drag, not a tap on the answer or a style chip.
     static let tapSlop: CGFloat = 12
     /// Set for the rest of this touch once travel passes `tapSlop`. Ignored by observation so a
@@ -115,6 +116,17 @@ final class StackDrag {
     func beginTouch() {
         touchGeneration += 1
         touchWasDrag = false
+        thresholdHapticFired = false
+    }
+
+    /// True exactly once per touch: the first time the sideways travel reaches the
+    /// release threshold. Retreating and crossing again stays silent until the next touch.
+    func noteDecideThreshold(distance: CGFloat) -> Bool {
+        guard abs(distance) >= StackMetrics.decideDistance, !thresholdHapticFired else {
+            return false
+        }
+        thresholdHapticFired = true
+        return true
     }
 
     /// `translation` is the finger's travel from the start of the touch, not the card's offset.
@@ -198,8 +210,13 @@ struct StackHome: View {
     @State private var drag = StackDrag()
     @State private var deviceTilt = CardDeviceTilt()
     @State private var flinging: DecisionKind?
-    @State private var decisionTick = 0
+    /// Drag haptic: fired once when a drag reaches the release threshold.
+    /// Promotion and drag commits stay silent, so a swipe buzzes exactly once.
     @State private var thresholdTick = 0
+    /// Button haptic: one light tap when Pass, Love, or Rewind is tapped (the
+    /// accessibility Love/Pass actions count as taps too). Navigation buttons
+    /// (Inspire, Profile, header) stay silent.
+    @State private var actionTick = 0
     @State private var screenSize: CGSize = .zero
     @State private var showFilter = false
     @State private var showSettings = false
@@ -221,7 +238,10 @@ struct StackHome: View {
             StackHeader(
                 filterCount: stack.filter.appliedCount,
                 hasUnread: viewModel.unreadFollowCount > 0,
-                activeStyle: deck.top.map { deck.style(for: $0) },
+                styleSignal: StyleMarkSignal(
+                    cardID: deck.top?.id,
+                    style: deck.top.map { deck.style(for: $0) }
+                ),
                 onFilter: { showFilter = true },
                 onNotifications: openNotifications,
                 onSettings: { showSettings = true }
@@ -245,9 +265,9 @@ struct StackHome: View {
                 drag: drag,
                 profilePulseToken: viewModel.profilePulseToken,
                 onRewind: rewind,
-                onPass: { fling(.pass) },
+                onPass: { fling(.pass, fromButton: true) },
                 onInspire: onInspire,
-                onLove: { fling(.save) },
+                onLove: { fling(.save, fromButton: true) },
                 onProfile: onOpenProfile
             )
             .padding(.top, layout.barGap)
@@ -257,8 +277,8 @@ struct StackHome: View {
         .background(theme.grey.ignoresSafeArea())
         .wideBackSwipe()
         .onGeometryChange(for: CGSize.self) { $0.size } action: { screenSize = $0 }
-        .sensoryFeedback(.impact(weight: .light), trigger: decisionTick)
-        .sensoryFeedback(.impact(weight: .medium), trigger: thresholdTick)
+        .sensoryFeedback(.impact(weight: .light), trigger: thresholdTick)
+        .sensoryFeedback(.impact(weight: .light), trigger: actionTick)
         .onChange(of: stack.visitToken) { _, _ in
             resetDrag()
         }
@@ -314,25 +334,13 @@ struct StackHome: View {
         GeometryReader { proxy in
             let size = CGSize(width: proxy.size.width, height: max(0, proxy.size.height - StackMetrics.sliver))
             ZStack(alignment: .top) {
-                if let top = deck.top {
-                    if let behind = deck.behind {
-                        StackBehindMotion(drag: drag) {
-                            AngleCardFace(
-                                card: behind,
-                                sizing: .stack,
-                                style: .constant(deck.style(for: behind)),
-                                isInteractive: false,
-                                isElevated: false,
-                                actions: actions(for: behind)
-                            )
-                            .equatable()
-                            .frame(width: size.width, height: size.height)
-                        }
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                        .id(behind.id)
+                if deck.top != nil {
+                    // One view per card, keyed by the card's id: promotion is a role
+                    // change on the same face, not a destroy-and-recreate, so its
+                    // tilt mark, wash, and state carry across the seam untouched.
+                    ForEach(Array(deck.cards.prefix(2).enumerated().reversed()), id: \.element.id) { index, card in
+                        stackCard(card, isTop: index == 0, size: size)
                     }
-                    topCard(top, size: size)
                 } else {
                     placeholder
                         .frame(width: size.width, height: size.height)
@@ -344,8 +352,13 @@ struct StackHome: View {
         }
     }
 
-    private func topCard(_ card: HomeCard, size: CGSize) -> some View {
-        StackTopMotion(drag: drag) {
+    /// Both deck roles render through this one path, and every card — top or behind —
+    /// gets the live `deviceTilt`, so a promoted card's watermark and wash are already
+    /// exactly where the top card's would be. Only interaction, elevation, and the
+    /// drag-driven motion differ by role, and at `progress == 1` the behind role is
+    /// identity (scale 1, no sliver offset, no shade), matching the top role at rest.
+    private func stackCard(_ card: HomeCard, isTop: Bool, size: CGSize) -> some View {
+        StackCardMotion(drag: drag, isTop: isTop) {
             AngleCardFace(
                 card: card,
                 sizing: .stack,
@@ -353,17 +366,20 @@ struct StackHome: View {
                     get: { stack.deck.style(for: card) },
                     set: { stack.show($0, on: card.id) }
                 ),
-                isInteractive: flinging == nil,
+                isInteractive: isTop && flinging == nil,
+                isElevated: isTop,
                 deviceTilt: deviceTilt,
-                stackDrag: drag,
+                stackDrag: isTop ? drag : nil,
                 actions: actions(for: card)
             )
             .equatable()
             .frame(width: size.width, height: size.height)
         }
-        .simultaneousGesture(dragGesture, including: flinging == nil ? .all : .none)
-        .accessibilityAction(named: "Love") { fling(.save) }
-        .accessibilityAction(named: "Pass") { fling(.pass) }
+        .simultaneousGesture(dragGesture, including: isTop && flinging == nil ? .all : .none)
+        .allowsHitTesting(isTop)
+        .accessibilityHidden(!isTop)
+        .accessibilityAction(named: "Love") { fling(.save, fromButton: true) }
+        .accessibilityAction(named: "Pass") { fling(.pass, fromButton: true) }
         .id(card.id)
         .transition(.identity)
     }
@@ -466,17 +482,14 @@ struct StackHome: View {
                 withTransaction(transaction) {
                     drag.setOffset(next)
                 }
-                let past = abs(next.width) >= StackMetrics.decideDistance
-                if past, !drag.pastThreshold {
+                if drag.noteDecideThreshold(distance: next.width) {
                     thresholdTick &+= 1
                 }
-                drag.pastThreshold = past
             }
             .onEnded { value in
                 defer {
                     drag.isDeciding = nil
                     drag.lastTranslation = nil
-                    drag.pastThreshold = false
                     drag.finishTouch()
                 }
                 guard drag.isDeciding == true else {
@@ -498,9 +511,14 @@ struct StackHome: View {
     }
 
     /// The card leaves first, then the decision commits, so the next card is never drawn mid-flight.
-    private func fling(_ kind: DecisionKind) {
+    /// A button-initiated fling buzzes once here; a drag-initiated one already buzzed
+    /// at the threshold, and its commit stays silent either way.
+    private func fling(_ kind: DecisionKind, fromButton: Bool = false) {
         guard flinging == nil, deck.top != nil else {
             return
+        }
+        if fromButton {
+            actionTick &+= 1
         }
         flinging = kind
         let direction: CGFloat = kind == .save ? 1 : -1
@@ -526,7 +544,6 @@ struct StackHome: View {
             drag.setOffset(.zero)
             flinging = nil
         }
-        decisionTick &+= 1
     }
 
     /// The last card comes back in from the side it left by.
@@ -537,15 +554,19 @@ struct StackHome: View {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         var entrance: CGSize = .zero
+        var didRewind = false
         withTransaction(transaction) {
             guard let step = stack.rewind() else {
                 return
             }
+            didRewind = true
             let direction: CGFloat = step.kind == .save ? 1 : -1
             entrance = CGSize(width: direction * max(drag.cardWidth, 320) * 1.3, height: 30)
             drag.setOffset(reduceMotion ? .zero : entrance)
         }
-        decisionTick &+= 1
+        if didRewind {
+            actionTick &+= 1
+        }
         guard !reduceMotion, entrance != .zero else {
             return
         }
@@ -564,7 +585,6 @@ struct StackHome: View {
             drag.setOffset(.zero)
             drag.isDeciding = nil
             drag.lastTranslation = nil
-            drag.pastThreshold = false
             drag.touchWasDrag = false
             flinging = nil
         }
@@ -573,31 +593,20 @@ struct StackHome: View {
 
 // MARK: - Motion
 
-/// The top card's tilt, offset, and stamps: the only part of Home that redraws per drag frame.
-private struct StackTopMotion<Content: View>: View {
+/// One motion wrapper for both deck roles, so a card keeps the same modifier chain
+/// when it is promoted: the only part of Home that redraws per drag frame. The top
+/// card follows the finger with its stamps; the card behind is a step smaller, a
+/// sliver lower, and in shadow until the top card moves away. At `progress == 1`
+/// the behind values are exactly the top card's resting values (scale 1, offset 0,
+/// shade 0, no stamps), so promotion changes nothing on screen by itself.
+private struct StackCardMotion<Content: View>: View {
     let drag: StackDrag
+    let isTop: Bool
     let content: Content
 
-    init(drag: StackDrag, @ViewBuilder content: () -> Content) {
+    init(drag: StackDrag, isTop: Bool, @ViewBuilder content: () -> Content) {
         self.drag = drag
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .overlay { StackStamps(lean: drag.lean) }
-            .rotationEffect(drag.tilt, anchor: .bottom)
-            .offset(drag.offset)
-    }
-}
-
-/// The card behind: a step smaller, a sliver lower, and in shadow until the top card moves away.
-private struct StackBehindMotion<Content: View>: View {
-    let drag: StackDrag
-    let content: Content
-
-    init(drag: StackDrag, @ViewBuilder content: () -> Content) {
-        self.drag = drag
+        self.isTop = isTop
         self.content = content()
     }
 
@@ -605,15 +614,23 @@ private struct StackBehindMotion<Content: View>: View {
 
     var body: some View {
         let progress = drag.progress
-        let shade = (colorScheme == .dark ? 0.35 : 0.10) * Double(1 - progress)
+        let shade = isTop ? 0 : (colorScheme == .dark ? 0.35 : 0.10) * Double(1 - progress)
         content
+            .overlay { StackStamps(lean: isTop ? drag.lean : 0) }
             .overlay {
                 RoundedRectangle(cornerRadius: AngleCardMetrics.cornerRadius, style: .continuous)
                     .fill(Color.black.opacity(shade))
                     .allowsHitTesting(false)
             }
-            .scaleEffect(StackMetrics.behindScale + (1 - StackMetrics.behindScale) * progress, anchor: .bottom)
-            .offset(y: StackMetrics.sliver * (1 - progress))
+            .rotationEffect(isTop ? drag.tilt : .zero, anchor: .bottom)
+            .scaleEffect(
+                isTop ? 1 : StackMetrics.behindScale + (1 - StackMetrics.behindScale) * progress,
+                anchor: .bottom
+            )
+            .offset(
+                x: isTop ? drag.offset.width : 0,
+                y: isTop ? drag.offset.height : StackMetrics.sliver * (1 - progress)
+            )
     }
 }
 
@@ -623,7 +640,7 @@ private struct StackBehindMotion<Content: View>: View {
 private struct StackHeader: View {
     let filterCount: Int
     let hasUnread: Bool
-    let activeStyle: Style?
+    let styleSignal: StyleMarkSignal
     let onFilter: () -> Void
     let onNotifications: () -> Void
     let onSettings: () -> Void
@@ -680,9 +697,9 @@ private struct StackHeader: View {
                 .accessibilityIdentifier("stack.settings")
             }
 
-            StyleDotsMark(active: activeStyle)
+            StyleDotsMark(signal: styleSignal)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(activeStyle.map { "Angles, \($0.displayName)" } ?? "Angles")
+                .accessibilityLabel(styleSignal.style.map { "Angles, \($0.displayName)" } ?? "Angles")
                 .accessibilityAddTraits(.isHeader)
         }
         .padding(.horizontal, HeaderCollapse.horizontalPadding)

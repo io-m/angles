@@ -288,6 +288,88 @@ struct StackDragTests {
         drag.beginTouch()
         #expect(!drag.touchWasDrag)
     }
+
+    @Test func theThresholdHapticFiresOncePerTouch() {
+        let drag = StackDrag()
+        drag.beginTouch()
+        #expect(!drag.noteDecideThreshold(distance: StackMetrics.decideDistance - 1))
+        #expect(drag.noteDecideThreshold(distance: StackMetrics.decideDistance))
+        #expect(!drag.noteDecideThreshold(distance: 40))
+        #expect(!drag.noteDecideThreshold(distance: -StackMetrics.decideDistance))
+        drag.beginTouch()
+        #expect(drag.noteDecideThreshold(distance: -StackMetrics.decideDistance))
+    }
+}
+
+struct CardTiltTests {
+    @Test func theFirstSampleGlidesInsteadOfJumping() {
+        var filter = CardTiltFilter()
+        filter.ingest(targetRoll: 1, targetPitch: -1, dt: 1.0 / 30.0)
+        #expect(filter.roll > 0)
+        #expect(filter.roll <= CardTiltFilter.maximumStep)
+        #expect(filter.pitch < 0)
+        #expect(filter.pitch >= -CardTiltFilter.maximumStep)
+    }
+
+    @Test func aLongPauseCountsAsOneSample() {
+        var filter = CardTiltFilter()
+        filter.ingest(targetRoll: 1, targetPitch: 1, dt: 5)
+        #expect(filter.roll <= CardTiltFilter.maximumStep)
+        #expect(filter.pitch <= CardTiltFilter.maximumStep)
+    }
+
+    @Test func tremorInsideTheDeadZoneHoldsStill() {
+        var filter = CardTiltFilter()
+        for index in 0..<30 {
+            let sign: Double = index.isMultiple(of: 2) ? 1 : -1
+            filter.ingest(targetRoll: 0.06 * sign, targetPitch: -0.05 * sign, dt: 1.0 / 30.0)
+        }
+        #expect(filter.roll == 0)
+        #expect(filter.pitch == 0)
+    }
+
+    @Test func aHeldTiltSettlesSmoothlyOnItsTarget() {
+        var filter = CardTiltFilter()
+        var previous = filter.roll
+        for _ in 0..<90 {
+            filter.ingest(targetRoll: 0.5, targetPitch: 0, dt: 1.0 / 30.0)
+            #expect(abs(filter.roll - previous) <= CardTiltFilter.maximumStep + 1e-9)
+            #expect(filter.roll >= previous)
+            previous = filter.roll
+        }
+        // 0.5 with the soft dead-zone rescaled: (0.5 - 0.08) / 0.92.
+        #expect(abs(filter.roll - 0.4565) < 0.01)
+    }
+
+    @Test func theMarkSitsAtNeutralWithoutTilt() {
+        let offset = CardTiltGeometry.markOffset(roll: 0, pitch: 0)
+        #expect(offset == CGSize(width: 30, height: 26))
+        #expect(CardTiltGeometry.markRotation(roll: 0) == -12)
+    }
+
+    @Test func theHeaderMarkPingsOnlyForAnAngleChangeOnTheSameCard() {
+        let card = UUID()
+        let other = UUID()
+        let stoic = StyleMarkSignal(cardID: card, style: .stoic)
+        #expect(StyleMarkSignal.shouldPing(from: stoic, to: StyleMarkSignal(cardID: card, style: .hopeful)))
+        #expect(!StyleMarkSignal.shouldPing(from: stoic, to: StyleMarkSignal(cardID: other, style: .hopeful)))
+        #expect(!StyleMarkSignal.shouldPing(from: stoic, to: StyleMarkSignal(cardID: other, style: .stoic)))
+        #expect(!StyleMarkSignal.shouldPing(from: stoic, to: stoic))
+        #expect(!StyleMarkSignal.shouldPing(from: StyleMarkSignal(), to: StyleMarkSignal(cardID: card, style: .hopeful)))
+        #expect(!StyleMarkSignal.shouldPing(from: stoic, to: StyleMarkSignal(cardID: card, style: nil)))
+    }
+
+    @Test func theMarkTravelsTheSameForAnyCardAtTheSameTilt() {
+        let behind = CardTiltGeometry.markOffset(roll: 0.7, pitch: -0.4)
+        let top = CardTiltGeometry.markOffset(roll: 0.7, pitch: -0.4)
+        #expect(behind == top)
+        #expect(behind.width > 30)
+        #expect(behind.height < 26)
+        #expect(CardTiltGeometry.markRotation(roll: 0.7) > -12)
+        let far = CardTiltGeometry.markOffset(roll: 1, pitch: 1)
+        #expect(far == CGSize(width: 62, height: 52))
+        #expect(CardTiltGeometry.markRotation(roll: 1) == 1)
+    }
 }
 
 struct StackLayoutTests {
