@@ -35,6 +35,7 @@
 		3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22798D92C7B4A8B23E352FFA /* PaywallCardMarquee.swift */; };
 		442B3657D1019F6AEB54DCD3 /* AngleCardFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B3499174E53AFBE4D930EB2 /* AngleCardFace.swift */; };
 		44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4608937EE45D8B74BAF9B4B2 /* AuthCredentials.swift */; };
+		45479CA94858C438CC925816 /* PagingTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7515C78925CFB95643C6DE6A /* PagingTabs.swift */; };
 		475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8FD8BC5000AAF5A8F714129 /* CircleIcon.swift */; };
 		48DB5A27A5D5F15D823FF1E3 /* AnglesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45E4E62ADE2B9E82C5A3A9C /* AnglesApp.swift */; };
 		575F18832B96C9A3BE918399 /* StackDeckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B22B31B64230A85ECE1CE6F /* StackDeckTests.swift */; };
@@ -44,6 +45,7 @@
 		6503AE45AC924C0504394469 /* ComposeThreadMask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CC87B58231E0E2DAB40002E /* ComposeThreadMask.swift */; };
 		684DF9C2B908EFF784977A6B /* ComposeSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0944728A684EB11E97CEE9 /* ComposeSheetView.swift */; };
 		6B24BAA80221DF85876BB30A /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1EBC59EB491832949278518 /* APIClient.swift */; };
+		6B619D704E243C7869C038BC /* PagingTabsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7731573EB952F60657674D70 /* PagingTabsTests.swift */; };
 		7123457C27F52289BD646C61 /* InteractivePop.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC33C2052848083EB87BD473 /* InteractivePop.swift */; };
 		72F41D3FA56036BD2FD1973E /* ComposeThreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2614C0FDEDA65DF5AFC0E9B4 /* ComposeThreadTests.swift */; };
 		7577A11385F82F0FF08EF5C3 /* ComposeHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 742754327C54A26C9C8FB806 /* ComposeHeader.swift */; };
@@ -190,6 +192,8 @@
 		742754327C54A26C9C8FB806 /* ComposeHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeHeader.swift; sourceTree = "<group>"; };
 		74967E0B0593CCC6912B35AE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		7498958071766D66B285676C /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
+		7515C78925CFB95643C6DE6A /* PagingTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagingTabs.swift; sourceTree = "<group>"; };
+		7731573EB952F60657674D70 /* PagingTabsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagingTabsTests.swift; sourceTree = "<group>"; };
 		77B31A78996E9B7E89E9D348 /* FollowPush.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowPush.swift; sourceTree = "<group>"; };
 		7B056E3708A9AE432904A684 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		8598E7366020BE50E4CF231A /* Angles.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Angles.entitlements; sourceTree = "<group>"; };
@@ -278,6 +282,7 @@
 				C17DACFE5A32F9B04674495C /* InspireMark.swift */,
 				DC33C2052848083EB87BD473 /* InteractivePop.swift */,
 				4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */,
+				7515C78925CFB95643C6DE6A /* PagingTabs.swift */,
 				9996A3D179CCC43E3C75DFCB /* RenderCounter.swift */,
 				C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */,
 				657231FF50708210A4AA9FDD /* UserAppearance.swift */,
@@ -482,6 +487,7 @@
 				034D113A357FEEC334E1264E /* ComposeLogicTests.swift */,
 				2614C0FDEDA65DF5AFC0E9B4 /* ComposeThreadTests.swift */,
 				41166FA3D9D53F3AC9DC6EBE /* LaunchResumeTests.swift */,
+				7731573EB952F60657674D70 /* PagingTabsTests.swift */,
 				9147DA97E362AE10C8A58A59 /* ReframeContractTests.swift */,
 				B003432357863314076DF25D /* ReframeRetryTests.swift */,
 				6B22B31B64230A85ECE1CE6F /* StackDeckTests.swift */,
@@ -645,6 +651,7 @@
 				0AE74E800204176A71E3FC48 /* ComposeLogicTests.swift in Sources */,
 				72F41D3FA56036BD2FD1973E /* ComposeThreadTests.swift in Sources */,
 				323C852404B7B64CD719B869 /* LaunchResumeTests.swift in Sources */,
+				6B619D704E243C7869C038BC /* PagingTabsTests.swift in Sources */,
 				07C7B3E2F8C3F83F1A83C0B0 /* ReframeContractTests.swift in Sources */,
 				9216FAA66258518AEEA96C87 /* ReframeRetryTests.swift in Sources */,
 				575F18832B96C9A3BE918399 /* StackDeckTests.swift in Sources */,
@@ -708,6 +715,7 @@
 				1A8E857134A0528319DEE70F /* LaunchSplash.swift in Sources */,
 				7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */,
 				E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */,
+				45479CA94858C438CC925816 /* PagingTabs.swift in Sources */,
 				3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */,
 				1C5A8915F3447627232F0B0D /* PaywallView.swift in Sources */,
 				A524721420264A194D882278 /* ProfileIdentityStore.swift in Sources */,

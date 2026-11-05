@@ -266,8 +266,9 @@ struct StackHome: View {
             StackFilterSheet(appliedFilter: stack.filter) { next in
                 stack.apply(next)
             }
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .presentationContentInteraction(.scrolls)
             .presentationBackground(theme.grey)
         }
         .modifier(

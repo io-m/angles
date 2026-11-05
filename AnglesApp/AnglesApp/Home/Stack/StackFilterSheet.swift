@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct StackFilterSheet: View {
-    private enum FilterTab: String, CaseIterable {
+    private enum FilterTab: String, CaseIterable, Hashable {
         case lifeAreas
         case moods
 
@@ -10,6 +10,20 @@ struct StackFilterSheet: View {
             switch self {
             case .lifeAreas: return "Life areas"
             case .moods: return "Moods"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .lifeAreas: return "square.grid.2x2"
+            case .moods: return "face.smiling"
+            }
+        }
+
+        var selectedSymbol: String {
+            switch self {
+            case .lifeAreas: return "square.grid.2x2.fill"
+            case .moods: return "face.smiling.fill"
             }
         }
     }
@@ -30,79 +44,108 @@ struct StackFilterSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Filter group", selection: $selectedTab) {
-                    ForEach(FilterTab.allCases, id: \.self) { tab in
-                        Text(tab.title)
-                            .tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-
-                List {
-                    switch selectedTab {
-                    case .lifeAreas:
-                        ForEach(ThoughtCategory.allCases, id: \.self) { category in
-                            filterRow(
-                                title: category.displayName,
-                                systemImage: category.systemImage,
-                                ink: FilterIconInk.color(for: category),
-                                isSelected: draft.categories.contains(category)
-                            ) {
-                                toggle(category, in: &draft.categories)
-                            }
-                        }
-                    case .moods:
-                        ForEach(Emotion.allCases, id: \.self) { emotion in
-                            filterRow(
-                                title: emotion.displayName,
-                                systemImage: emotion.systemImage,
-                                ink: FilterIconInk.color(for: emotion),
-                                isSelected: draft.emotions.contains(emotion)
-                            ) {
-                                toggle(emotion, in: &draft.emotions)
-                            }
-                        }
-                    }
-                }
-                .scrollContentBackground(.hidden)
-            }
-            .background(AnglesCanvasBackground())
-            .navigationTitle("Filter Home")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Clear") {
-                        draft = StackFilter()
-                    }
-                    .tint(draft.appliedCount > 0 ? .red : theme.faint)
-                    .disabled(draft.appliedCount == 0)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        onApply(draft)
-                        dismiss()
-                    } label: {
-                        if draft.appliedCount > 0 {
-                            Text("Apply (\(draft.appliedCount))")
-                        } else {
-                            Text("Apply")
-                        }
-                    }
-                    .fontWeight(.semibold)
-                    .accessibilityLabel(
-                        draft.appliedCount > 0
-                            ? "Apply \(draft.appliedCount) filters"
-                            : "Apply"
+        VStack(spacing: 0) {
+            header
+            PagingTabs(
+                ids: Array(FilterTab.allCases),
+                selection: $selectedTab,
+                tint: { _ in theme.ink },
+                label: { tab, isSelected in
+                    PagingTabLabel(
+                        title: tab.title,
+                        symbol: tab.symbol,
+                        selectedSymbol: tab.selectedSymbol,
+                        isSelected: isSelected,
+                        tint: theme.ink
                     )
+                },
+                page: { tab in
+                    rows(for: tab)
+                }
+            )
+            .padding(.top, 16)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(AnglesCanvasBackground())
+        .tint(theme.ink)
+    }
+
+    private var header: some View {
+        ZStack {
+            Text("Filter Home")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .accessibilityAddTraits(.isHeader)
+                .allowsHitTesting(false)
+
+            HStack(spacing: 12) {
+                Button("Clear") {
+                    draft = StackFilter()
+                }
+                .font(.body)
+                .foregroundStyle(draft.appliedCount > 0 ? Color.red : theme.faint)
+                .disabled(draft.appliedCount == 0)
+                .frame(minHeight: 44)
+
+                Spacer(minLength: 8)
+
+                Button {
+                    onApply(draft)
+                    dismiss()
+                } label: {
+                    Text(draft.appliedCount > 0 ? "Apply (\(draft.appliedCount))" : "Apply")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+                }
+                .frame(minHeight: 44)
+                .accessibilityLabel(
+                    draft.appliedCount > 0
+                        ? "Apply \(draft.appliedCount) filters"
+                        : "Apply"
+                )
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .frame(minHeight: 52)
+    }
+
+    @ViewBuilder
+    private func rows(for tab: FilterTab) -> some View {
+        VStack(spacing: 0) {
+            switch tab {
+            case .lifeAreas:
+                let categories = ThoughtCategory.allCases
+                ForEach(Array(categories.enumerated()), id: \.element) { index, category in
+                    filterRow(
+                        title: category.displayName,
+                        systemImage: category.systemImage,
+                        ink: FilterIconInk.color(for: category),
+                        isSelected: draft.categories.contains(category),
+                        showsDivider: index < categories.count - 1
+                    ) {
+                        toggle(category, in: &draft.categories)
+                    }
+                }
+            case .moods:
+                let emotions = Emotion.allCases
+                ForEach(Array(emotions.enumerated()), id: \.element) { index, emotion in
+                    filterRow(
+                        title: emotion.displayName,
+                        systemImage: emotion.systemImage,
+                        ink: FilterIconInk.color(for: emotion),
+                        isSelected: draft.emotions.contains(emotion),
+                        showsDivider: index < emotions.count - 1
+                    ) {
+                        toggle(emotion, in: &draft.emotions)
+                    }
                 }
             }
-            .tint(theme.ink)
         }
+        .padding(.bottom, 12)
     }
 
     private func filterRow(
@@ -110,37 +153,47 @@ struct StackFilterSheet: View {
         systemImage: String,
         ink: Color,
         isSelected: Bool,
+        showsDivider: Bool,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: systemImage)
-                    .resizable()
-                    .scaledToFit()
-                    .fontWeight(.semibold)
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(ink)
-                    .frame(width: 18, height: 18)
-                    .frame(width: 40, height: 40)
-                    .background(ink.opacity(colorScheme == .dark ? 0.22 : 0.14), in: Circle())
-                    .accessibilityHidden(true)
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    Image(systemName: systemImage)
+                        .resizable()
+                        .scaledToFit()
+                        .fontWeight(.semibold)
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(ink)
+                        .frame(width: 18, height: 18)
+                        .frame(width: 40, height: 40)
+                        .background(ink.opacity(colorScheme == .dark ? 0.22 : 0.14), in: Circle())
+                        .accessibilityHidden(true)
 
-                Text(title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.ink)
+                    Text(title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.ink)
 
-                Spacer(minLength: 12)
+                    Spacer(minLength: 12)
 
-                Image(systemName: "checkmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.ink)
-                    .opacity(isSelected ? 1 : 0)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(theme.ink)
+                        .opacity(isSelected ? 1 : 0)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.vertical, 8)
+
+                if showsDivider {
+                    Rectangle()
+                        .fill(theme.line)
+                        .frame(height: 1)
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 20)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 
