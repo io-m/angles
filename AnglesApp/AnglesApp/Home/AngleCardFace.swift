@@ -261,6 +261,8 @@ struct AngleCardFace: View, Equatable {
     var isInteractive = true
     /// The card behind casts no shadow of its own.
     var isElevated = true
+    /// Physical tilt of the phone. Only the top stack card sets this.
+    var deviceTilt: CardDeviceTilt?
     var actions = AngleCardActions()
 
     @Environment(\.colorScheme) private var colorScheme
@@ -341,8 +343,13 @@ struct AngleCardFace: View, Equatable {
             }
         }
         .background {
-            appearance.washFill(over: theme.surface)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: currentStyle)
+            ZStack {
+                appearance.washFill(over: theme.surface)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: currentStyle)
+                if sizing == .stack, let deviceTilt, !reduceMotion {
+                    CardTiltWash(ink: appearance.ink, tilt: deviceTilt)
+                }
+            }
         }
         .clipShape(shape)
         .modifier(AngleCardElevation(sizing: sizing, isElevated: isElevated, theme: theme, shape: shape))
@@ -552,18 +559,13 @@ struct AngleCardFace: View, Equatable {
 
     /// The style's own mark, large and faint, so a short answer never sits on an empty wash.
     private var watermark: some View {
-        ZStack {
-            Image(systemName: appearance.systemImage)
-                .font(.system(size: AngleCardMetrics.watermarkSize, weight: .semibold))
-                .foregroundStyle(appearance.ink.opacity(colorScheme == .dark ? 0.10 : 0.07))
-                .rotationEffect(.degrees(-12))
-                .id(currentStyle)
-                .transition(.opacity)
-        }
-        .offset(x: 30, y: 26)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: currentStyle)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        CardTiltMark(
+            systemImage: appearance.systemImage,
+            ink: appearance.ink,
+            tilt: sizing == .stack ? deviceTilt : nil
+        )
+        .id(currentStyle)
+        .transition(.opacity)
     }
 
     // MARK: - List

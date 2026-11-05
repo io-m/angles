@@ -51,7 +51,6 @@
 		77767A426BAC877733A44558 /* AppGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01BEA95023B9310D87B3474C /* AppGate.swift */; };
 		77CA3DF4D8F8093DD9F53A1F /* CardParts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60578CE1A0106D90811B20C8 /* CardParts.swift */; };
 		782C4F5E524AEDC24CF82EDF /* SessionSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 344BB52CC2E7BFFC4E838D5B /* SessionSnapshotStore.swift */; };
-		7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */; };
 		7A7D5D458E96AE1ECC8C0901 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391AB20557C346784058025E /* LoginView.swift */; };
 		7D3D014724B33A2234007B8A /* ComposePostBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A911C8062B716CE3DA1CDB35 /* ComposePostBar.swift */; };
 		7F5EE095F1DE06721C601E1A /* AIConsentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12BA34429811E6158E351C4 /* AIConsentSheet.swift */; };
@@ -89,6 +88,7 @@
 		D84491053B0BC68DBF6F314F /* BlockedPeopleSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7366F06DED44B5C9EFBFDF /* BlockedPeopleSheet.swift */; };
 		D8C799DCE9434F107A3FA639 /* CardArrivalGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18F655EF6FA01C8BC37C5D1C /* CardArrivalGlow.swift */; };
 		DFCFB932B131DCE1C2800C40 /* FollowingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */; };
+		E6A50253079AFA65329F342E /* CardDeviceTilt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1FC84D12176AC48EB91073 /* CardDeviceTilt.swift */; };
 		E75F22C6B72811A97A886E9B /* Go to school.lottie in Resources */ = {isa = PBXBuildFile; fileRef = BE68FEE0F7F06EC666CA46A9 /* Go to school.lottie */; };
 		E83057385FC38949F84A84A3 /* ModalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */; };
 		E893FFE90BB36CD6A2D17F5C /* SubscriptionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */; };
@@ -169,6 +169,7 @@
 		4942662F18BCD7F2D9B6A32F /* ModalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModalScreen.swift; sourceTree = "<group>"; };
 		4B4DC1B6D0CA26C1CFE1CAA9 /* FollowingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowingSheet.swift; sourceTree = "<group>"; };
 		4C7366F06DED44B5C9EFBFDF /* BlockedPeopleSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedPeopleSheet.swift; sourceTree = "<group>"; };
+		4D1FC84D12176AC48EB91073 /* CardDeviceTilt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardDeviceTilt.swift; sourceTree = "<group>"; };
 		4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
 		4E0CF5E6E50D343C47DF23D3 /* AppStoreReviewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreReviewCoordinator.swift; sourceTree = "<group>"; };
@@ -217,7 +218,6 @@
 		C7A09FCFDA785F5BCECCFC73 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeStore.swift; sourceTree = "<group>"; };
 		CB09EE79B4A27D757AD2944A /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionView.swift; sourceTree = "<group>"; };
-		CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceView.swift; sourceTree = "<group>"; };
 		CECAAC54ED5DE586764B6970 /* HomePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomePalette.swift; sourceTree = "<group>"; };
 		CFC1E4A1063AFDE75D437AE8 /* AnglesWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = AnglesWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D12BA34429811E6158E351C4 /* AIConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIConsentSheet.swift; sourceTree = "<group>"; };
@@ -361,7 +361,6 @@
 		A1EEEC4B1AED5D4B34FC7B21 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				CD7F6CB2C1D8F7F652BDB9D2 /* AppearanceView.swift */,
 				EAC3C2E3C735CDB1A8F28E87 /* ProfileIdentityStore.swift */,
 				C2E7672808B0467D2BBC1FD8 /* SettingsView.swift */,
 				CB8266AD73F8E433BAE71F61 /* SubscriptionView.swift */,
@@ -494,6 +493,7 @@
 		FA79908FFB11BC3E950FC31C /* Stack */ = {
 			isa = PBXGroup;
 			children = (
+				4D1FC84D12176AC48EB91073 /* CardDeviceTilt.swift */,
 				EC1B33C6C2E85F0B94A96DE9 /* StackDeck.swift */,
 				02397193EC8CF06081458730 /* StackFilterSheet.swift */,
 				589C71A4FEF6FF8995017AD6 /* StackModel.swift */,
@@ -667,7 +667,6 @@
 				9250AFB12DAA792D0501ADD1 /* AppConfig.swift in Sources */,
 				77767A426BAC877733A44558 /* AppGate.swift in Sources */,
 				E90699FB7AC129D6439D9CC9 /* AppStoreReviewCoordinator.swift in Sources */,
-				7A3DEDB378C1DC7A7374455E /* AppearanceView.swift in Sources */,
 				21764DF278A00D1C7C01FFE0 /* AppleReauthorization.swift in Sources */,
 				44B5D6C506E1C71988B5D1DC /* AuthCredentials.swift in Sources */,
 				8717B2AC854FC7A03D4101DF /* AuthNonce.swift in Sources */,
@@ -676,6 +675,7 @@
 				97F14BFA6DDA6699C4DD5EB2 /* AvatarImage.swift in Sources */,
 				D84491053B0BC68DBF6F314F /* BlockedPeopleSheet.swift in Sources */,
 				D8C799DCE9434F107A3FA639 /* CardArrivalGlow.swift in Sources */,
+				E6A50253079AFA65329F342E /* CardDeviceTilt.swift in Sources */,
 				77CA3DF4D8F8093DD9F53A1F /* CardParts.swift in Sources */,
 				17CBFD4C422D6640341241AA /* CardsService.swift in Sources */,
 				475145B436D0C0DA04FC256B /* CircleIcon.swift in Sources */,

@@ -30,6 +30,7 @@ struct AnglesApp: App {
     var body: some Scene {
         WindowGroup {
             AppRoot()
+                .preferredColorScheme(.dark)
                 .modifier(UserAppearance(store: themeStore))
                 .task { FrameMonitor.start() }
         }

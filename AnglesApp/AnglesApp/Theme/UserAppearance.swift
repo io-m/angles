@@ -1,16 +1,13 @@
 import SwiftUI
 
-/// Applies saved appearance + accent to the whole tree, including sheets.
+/// Keeps the app dark and applies the saved accent, including sheets.
 struct UserAppearance: ViewModifier {
     @ObservedObject var store: ThemeStore
-    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
-        let override = store.appearanceMode.colorScheme
-        let scheme = override ?? colorScheme
-        let palette = AccentPalette(from: store.accentHSB, colorScheme: scheme)
+        let palette = AccentPalette(from: store.accentHSB, colorScheme: .dark)
         content
-            .preferredColorScheme(override)
+            .preferredColorScheme(.dark)
             .environment(\.accentPalette, palette)
             .environmentObject(store)
             .tint(palette.accent)

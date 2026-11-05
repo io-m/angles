@@ -21,7 +21,6 @@ struct SettingsView: View {
     var writeError: String? = nil
     var onDismissWriteError: () -> Void = {}
 
-    @State private var showAppearance = false
     @State private var showSubscription = false
     @State private var showBlockedPeople = false
     @State private var showDeleteAccount = false
@@ -42,23 +41,6 @@ struct SettingsView: View {
                     .padding(.bottom, 28)
 
                 VStack(spacing: 0) {
-                    cardRow(
-                        symbol: "circle.lefthalf.filled",
-                        title: "Appearance",
-                        subtitle: themeStore.appearanceMode.title
-                    ) {
-                        showAppearance = true
-                    } trailing: {
-                        EmptyView()
-                    }
-                    .popover(isPresented: $showAppearance, arrowEdge: .top) {
-                        AppearanceView()
-                            .presentationCompactAdaptation(.popover)
-                            .modifier(UserAppearance(store: themeStore))
-                    }
-
-                    rowDivider
-
                     followsRow
 
                     rowDivider

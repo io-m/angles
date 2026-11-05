@@ -149,8 +149,10 @@ struct StackHome: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var drag = StackDrag()
+    @State private var deviceTilt = CardDeviceTilt()
     @State private var flinging: DecisionKind?
     @State private var decisionTick = 0
     @State private var thresholdTick = 0
@@ -242,6 +244,18 @@ struct StackHome: View {
                 peopleStartsOnNotifications = false
             }
         }
+        .onAppear { syncDeviceTilt() }
+        .onDisappear { deviceTilt.stop() }
+        .onChange(of: scenePhase) { _, _ in syncDeviceTilt() }
+        .onChange(of: reduceMotion) { _, _ in syncDeviceTilt() }
+    }
+
+    private func syncDeviceTilt() {
+        if reduceMotion || scenePhase != .active {
+            deviceTilt.stop()
+        } else {
+            deviceTilt.start()
+        }
     }
 
     private func openNotifications() {
@@ -295,6 +309,7 @@ struct StackHome: View {
                     set: { stack.show($0, on: card.id) }
                 ),
                 isInteractive: flinging == nil,
+                deviceTilt: deviceTilt,
                 actions: actions(for: card)
             )
             .equatable()

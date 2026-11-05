@@ -33,6 +33,7 @@ final class ThemeStore: ObservableObject {
         static let brightness = "angles.accentBrightness"
     }
 
+    /// Kept so a saved System or Light choice is not dropped. The app never applies it.
     @Published var appearanceMode: AppearanceMode {
         didSet {
             UserDefaults.standard.set(appearanceMode.rawValue, forKey: Keys.appearance)

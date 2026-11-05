@@ -239,7 +239,6 @@ struct StyleWashFill: View {
     let ink: Color
     let surface: Color
     var strength: StyleWashStrength = .card
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         surface.overlay(StyleWashTint(ink: ink, strength: strength))
