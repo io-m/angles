@@ -51,7 +51,7 @@ struct PagingTabLabel: View {
 /// Finger position for one pager. The tab strip reads it; the pages only write it,
 /// so a drag frame does not rebuild the scroll view.
 @Observable
-private final class PagingTrackModel {
+final class PagingTrackModel {
     var progress: CGFloat = 0
     /// The tab whose icon is filled. A tap sets it immediately; a swipe flips it halfway.
     var activeIndex = 0
@@ -114,12 +114,16 @@ private final class PagingTrackModel {
 }
 
 /// Profile-style tabs whose underline tracks a horizontal swipe. The pages slide with it.
-struct PagingTabs<ID: Hashable, Label: View, Page: View>: View {
+/// The strip and the pages are separate so a sheet can put the strip on the frosted bar.
+struct PagingSplit<ID: Hashable, Label: View, Page: View, Root: View>: View {
     let ids: [ID]
     @Binding var selection: ID
+    /// Pull to refresh on a page. Filter leaves this empty.
+    var onRefresh: ((ID) async -> Void)?
     let tint: (ID) -> Color
     let label: (ID, Bool) -> Label
     let page: (ID) -> Page
+    let root: (PagingTabBar<ID, Label>, PagingPages<ID, Page>) -> Root
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -130,15 +134,19 @@ struct PagingTabs<ID: Hashable, Label: View, Page: View>: View {
     init(
         ids: [ID],
         selection: Binding<ID>,
+        onRefresh: ((ID) async -> Void)? = nil,
         tint: @escaping (ID) -> Color,
         @ViewBuilder label: @escaping (ID, Bool) -> Label,
-        @ViewBuilder page: @escaping (ID) -> Page
+        @ViewBuilder page: @escaping (ID) -> Page,
+        @ViewBuilder root: @escaping (PagingTabBar<ID, Label>, PagingPages<ID, Page>) -> Root
     ) {
         self.ids = ids
         self._selection = selection
+        self.onRefresh = onRefresh
         self.tint = tint
         self.label = label
         self.page = page
+        self.root = root
         let initial = ids.firstIndex(of: selection.wrappedValue) ?? 0
         let model = PagingTrackModel()
         model.reset(to: initial)
@@ -146,31 +154,37 @@ struct PagingTabs<ID: Hashable, Label: View, Page: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            PagingTabBar(
-                ids: ids,
-                track: track,
-                tint: tint,
-                label: label,
-                onSelect: select
-            )
-            PagingPages(
-                ids: ids,
-                selection: selection,
-                scrollToken: scrollToken,
-                spring: tapSpring,
-                track: track,
-                page: page,
-                onSettled: settle
-            )
-        }
-        .onChange(of: selection) { _, _ in
-            if ignoreSelectionChange {
-                ignoreSelectionChange = false
-                return
+        root(tabBar, pages)
+            .onChange(of: selection) { _, _ in
+                if ignoreSelectionChange {
+                    ignoreSelectionChange = false
+                    return
+                }
+                scrollToken += 1
             }
-            scrollToken += 1
-        }
+    }
+
+    private var tabBar: PagingTabBar<ID, Label> {
+        PagingTabBar(
+            ids: ids,
+            track: track,
+            tint: tint,
+            label: label,
+            onSelect: select
+        )
+    }
+
+    private var pages: PagingPages<ID, Page> {
+        PagingPages(
+            ids: ids,
+            selection: selection,
+            scrollToken: scrollToken,
+            spring: tapSpring,
+            track: track,
+            onRefresh: onRefresh,
+            page: page,
+            onSettled: settle
+        )
     }
 
     private var tapSpring: Animation? {
@@ -195,16 +209,12 @@ struct PagingTabs<ID: Hashable, Label: View, Page: View>: View {
 }
 
 /// The strip. Reads the track, so it is the only view that redraws while a finger is down.
-private struct PagingTabBar<ID: Hashable, Label: View>: View {
+struct PagingTabBar<ID: Hashable, Label: View>: View {
     let ids: [ID]
     let track: PagingTrackModel
     let tint: (ID) -> Color
     let label: (ID, Bool) -> Label
     let onSelect: (ID) -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
         let progress = track.progress
@@ -241,11 +251,6 @@ private struct PagingTabBar<ID: Hashable, Label: View>: View {
             }
             .allowsHitTesting(false)
         }
-        .background(alignment: .bottom) {
-            Rectangle()
-                .fill(theme.cardHairline)
-                .frame(height: 0.5)
-        }
         .sensoryFeedback(.selection, trigger: track.hapticTick)
     }
 
@@ -264,12 +269,13 @@ private struct PagingTabBar<ID: Hashable, Label: View>: View {
 }
 
 /// Horizontal paging scroll. Writes the track from its offset and does not read it.
-private struct PagingPages<ID: Hashable, Page: View>: View {
+struct PagingPages<ID: Hashable, Page: View>: View {
     let ids: [ID]
     let selection: ID
     let scrollToken: Int
     let spring: Animation?
     let track: PagingTrackModel
+    let onRefresh: ((ID) async -> Void)?
     let page: (ID) -> Page
     let onSettled: (Int) -> Void
 
@@ -281,6 +287,7 @@ private struct PagingPages<ID: Hashable, Page: View>: View {
         scrollToken: Int,
         spring: Animation?,
         track: PagingTrackModel,
+        onRefresh: ((ID) async -> Void)?,
         page: @escaping (ID) -> Page,
         onSettled: @escaping (Int) -> Void
     ) {
@@ -289,6 +296,7 @@ private struct PagingPages<ID: Hashable, Page: View>: View {
         self.scrollToken = scrollToken
         self.spring = spring
         self.track = track
+        self.onRefresh = onRefresh
         self.page = page
         self.onSettled = onSettled
         self._settled = State(initialValue: selection)
@@ -303,6 +311,10 @@ private struct PagingPages<ID: Hashable, Page: View>: View {
                             page(id)
                         }
                         .scrollIndicators(.hidden)
+                        .scrollBounceBehavior(onRefresh == nil ? .automatic : .always)
+                        .modifier(PageRefresh(action: onRefresh.map { refresh in
+                            { await refresh(id) }
+                        }))
                         .containerRelativeFrame(.horizontal)
                         .id(id)
                     }
@@ -347,6 +359,20 @@ private struct PagingPages<ID: Hashable, Page: View>: View {
                     settled = selection
                 }
             }
+        }
+    }
+}
+
+/// Pull to refresh only on pages that asked for it. Filter's lists do not.
+private struct PageRefresh: ViewModifier {
+    var action: (() async -> Void)?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let action {
+            content.refreshable(action: action)
+        } else {
+            content
         }
     }
 }

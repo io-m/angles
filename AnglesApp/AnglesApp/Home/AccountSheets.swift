@@ -17,6 +17,8 @@ struct AccountSheets: ViewModifier {
 
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeStore: ThemeStore
+    /// Opening a person waits until People has closed, so the next sheet is not presented on top of it.
+    @State private var pendingFollowed: FollowedPerson?
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -50,7 +52,11 @@ struct AccountSheets: ViewModifier {
                 .presentationBackground(theme.grey)
                 .modifier(UserAppearance(store: themeStore))
             }
-            .sheet(isPresented: $showPeople) {
+            .sheet(isPresented: $showPeople, onDismiss: {
+                guard let person = pendingFollowed else { return }
+                pendingFollowed = nil
+                onOpenFollowed(person)
+            }) {
                 FollowingSheet(
                     people: viewModel.followedPeople,
                     notices: viewModel.followNotices,
@@ -71,18 +77,16 @@ struct AccountSheets: ViewModifier {
                         viewModel.followBack(notice.actorId)
                     },
                     onOpen: { person in
+                        pendingFollowed = person
                         showPeople = false
-                        onOpenFollowed(person)
                     },
                     onOpenNotice: { notice in
-                        showPeople = false
-                        onOpenFollowed(
-                            FollowedPerson(
-                                id: notice.actorId,
-                                initials: notice.initials,
-                                avatarPath: notice.avatarPath
-                            )
+                        pendingFollowed = FollowedPerson(
+                            id: notice.actorId,
+                            initials: notice.initials,
+                            avatarPath: notice.avatarPath
                         )
+                        showPeople = false
                     },
                     writeError: viewModel.writeError,
                     onDismissError: viewModel.dismissWriteError

@@ -27,6 +27,20 @@ enum ProfileSegment: String, CaseIterable, Hashable {
         }
     }
 
+    var symbol: String {
+        switch self {
+        case .yours: "square.stack"
+        case .saved: "heart"
+        }
+    }
+
+    var selectedSymbol: String {
+        switch self {
+        case .yours: "square.stack.fill"
+        case .saved: "heart.fill"
+        }
+    }
+
     /// `GET /cards?saved=`.
     var savedQuery: Bool {
         self == .saved

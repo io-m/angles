@@ -9,15 +9,7 @@ struct AuthorRoute: Hashable, Identifiable {
 
 struct AuthorProfileView: View {
     let route: AuthorRoute
-    let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
-    let onOpenAuthor: (HomeCard) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var showBlockConfirm = false
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     private var header: AuthorHeader {
         viewModel.authorHeader(for: route.id)
@@ -30,55 +22,47 @@ struct AuthorProfileView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AuthorChrome(
-                header: header,
-                onBack: dismiss.callAsFunction,
-                onToggleFollow: { viewModel.toggleFollow(route.id) },
-                onRequestBlock: { showBlockConfirm = true }
-            )
-            .padding(.top, safeAreaInsets.top + HeaderCollapse.headerTopPad)
-            .padding(.bottom, 8)
-
-            ScrollView {
-                AngleCardListContent(
-                    list: viewModel.authorList(route.id),
-                    loadingLabel: "Loading posts",
-                    makeActions: actions,
-                    onRetry: { viewModel.retryLoadAuthor(route.id) },
-                    onLoadMore: { viewModel.loadMoreAuthor(route.id) },
-                    onRetryLoadMore: { viewModel.retryLoadMoreAuthor(route.id) }
-                ) {
-                    CardListEmptyNote(text: header.isSelf ? "You haven't posted anything yet." : "No posts yet.")
-                }
-                .padding(.bottom, max(safeAreaInsets.bottom, 12) + 20)
+        ModalScreen(
+            title: pageTitle,
+            leading: unfollowAction,
+            trailing: followAction
+        ) {
+            AngleCardListContent(
+                list: viewModel.authorList(route.id),
+                loadingLabel: "Loading posts",
+                makeActions: actions,
+                onRetry: { viewModel.retryLoadAuthor(route.id) },
+                onLoadMore: { viewModel.loadMoreAuthor(route.id) },
+                onRetryLoadMore: { viewModel.retryLoadMoreAuthor(route.id) }
+            ) {
+                CardListEmptyNote(text: header.isSelf ? "You haven't posted anything yet." : "No posts yet.")
             }
-            .scrollIndicators(.hidden)
-            .scrollBounceBehavior(.always)
-            .refreshable {
-                await viewModel.refreshAuthor(route.id)
-            }
-        }
-        .ignoresSafeArea(edges: [.top, .bottom])
-        .background(theme.grey.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
-        .wideBackSwipe()
-        .tint(theme.ink)
-        .accessibilityAction(named: "Back") {
-            dismiss()
+            .padding(.bottom, 24)
         }
         .task(id: route.id) {
             await viewModel.loadAuthorIfNeeded(route)
         }
-        .confirmationDialog(
-            "Block \(displayInitials)?",
-            isPresented: $showBlockConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Block", role: .destructive, action: blockRouteAuthor)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Their posts will disappear, and you won't be able to follow each other.")
+    }
+
+    private var pageTitle: String {
+        let trimmed = header.initials.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Posts" : trimmed
+    }
+
+    /// Unfollow sits on the left once you follow them. Follow sits on the right until then.
+    private var unfollowAction: ModalAction? {
+        guard !header.isSelf, header.following else { return nil }
+        return ModalAction(title: "Unfollow", role: .destructive) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            viewModel.toggleFollow(route.id)
+        }
+    }
+
+    private var followAction: ModalAction? {
+        guard !header.isSelf, !header.following else { return nil }
+        return ModalAction(title: "Follow", role: .emphasis) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            viewModel.toggleFollow(route.id)
         }
     }
 
@@ -99,90 +83,5 @@ struct AuthorProfileView: View {
             viewModel.blockAuthor(authorId, initials: card.authorInitials, avatarPath: card.authorAvatarPath)
         }
         return actions
-    }
-
-    private func blockRouteAuthor() {
-        guard !header.isSelf else { return }
-        viewModel.blockAuthor(
-            route.id,
-            initials: header.initials,
-            avatarPath: header.avatarPath
-        )
-    }
-
-    private var displayInitials: String {
-        let trimmed = header.initials.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "this person" : trimmed
-    }
-}
-
-private struct AuthorChrome: View {
-    let header: AuthorHeader
-    let onBack: () -> Void
-    let onToggleFollow: () -> Void
-    let onRequestBlock: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Button(action: onBack) {
-                CircleIcon(
-                    systemName: "chevron.left",
-                    fill: theme.surface,
-                    symbol: theme.ink,
-                    weight: .semibold,
-                    hairline: theme.cardHairline
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Back")
-
-            Spacer(minLength: 0)
-
-            ZStack(alignment: .bottomTrailing) {
-                if header.isSelf {
-                    authorMark
-                } else {
-                    Menu {
-                        Button(role: .destructive, action: onRequestBlock) {
-                            Label("Block", systemImage: "hand.raised")
-                        }
-                    } label: {
-                        authorMark
-                    }
-                    .menuStyle(.borderlessButton)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Author actions")
-                    .accessibilityHint("Includes block")
-                }
-
-                if !header.isSelf {
-                    FollowBadge(
-                        following: header.following,
-                        action: onToggleFollow
-                    )
-                    .offset(FollowBadge.overhang)
-                }
-            }
-        }
-        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-        .frame(height: HeaderCollapse.headerHeight)
-    }
-
-    private var authorMark: some View {
-        AuthorMark(
-            initials: header.initials,
-            avatarPath: header.avatarPath,
-            prefersLocalPhoto: header.isSelf,
-            side: CircleIcon.Size.normal.side,
-            fill: theme.ink,
-            symbol: theme.paper
-        )
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Posts by \(header.initials)")
-        .accessibilityAddTraits(.isHeader)
     }
 }

@@ -1,85 +1,194 @@
 import SwiftUI
 
-/// Sheet chrome: large title that collapses to a centered inline title, gradient top instead of a solid bar.
+/// A text button in a modal title bar. Plain sits on the left, emphasis on the right,
+/// destructive is the red Clear. Drawn as text, not a system bar button.
+struct ModalAction {
+    var title: String
+    var isEnabled: Bool = true
+    var role: Role = .plain
+    var accessibilityLabel: String?
+    var action: () -> Void
+
+    enum Role {
+        case plain
+        case emphasis
+        case destructive
+    }
+}
+
+/// Sheet chrome: one frosted bar, then the content. The title, text buttons, and tabs
+/// sit on the bar. The list starts below it.
 struct ModalScreen<Content: View>: View {
     let title: String
     var searchText: Binding<String>?
     var searchPrompt: String
-    /// Stays under the title while the content scrolls. The People tabs use this.
+    /// Pages that fill the sheet, such as the filter, scroll themselves.
+    var scrolls: Bool
+    var leading: ModalAction?
+    var trailing: ModalAction?
+    /// Stays on the glass under the title. Profile and Filter pass their tabs.
     private let header: AnyView?
+    /// Pinned under the content. The consent agreement uses this.
+    private let footer: AnyView?
     @ViewBuilder var content: Content
 
     init(
         title: String,
         searchText: Binding<String>? = nil,
         searchPrompt: String = "Search",
+        scrolls: Bool = true,
+        leading: ModalAction? = nil,
+        trailing: ModalAction? = nil,
         header: AnyView? = nil,
+        footer: AnyView? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.searchText = searchText
         self.searchPrompt = searchPrompt
+        self.scrolls = scrolls
+        self.leading = leading
+        self.trailing = trailing
         self.header = header
+        self.footer = footer
         self.content = content()
     }
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if let header {
-                    header
-                }
+        VStack(spacing: 0) {
+            chrome
+            if scrolls {
                 ScrollView {
                     content
-                        .padding(.bottom, 40)
+                        .padding(.top, 12)
+                        .padding(.bottom, footer == nil ? 40 : 16)
                 }
                 .scrollIndicators(.hidden)
+            } else {
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(theme.isDark ? .dark : .light, for: .navigationBar)
-            .background(theme.grey.ignoresSafeArea())
-            .modifier(NavigationSearch(text: searchText, prompt: searchPrompt))
+            if let footer {
+                footer
+            }
         }
-        .tint(theme.ink)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.grey.ignoresSafeArea())
-        .overlay(alignment: .top) {
-            LinearGradient(
-                stops: [
-                    .init(color: theme.grey.opacity(0.94), location: 0),
-                    .init(color: theme.grey.opacity(0.52), location: 0.48),
-                    .init(color: .clear, location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 56)
+        .tint(theme.ink)
+        .presentationBackground(theme.grey)
+        .presentationDragIndicator(.visible)
+    }
+
+    private var chrome: some View {
+        VStack(spacing: 0) {
+            titleBar
+            searchField
+            if let header {
+                header
+            }
+        }
+        .padding(.bottom, 8)
+        .background {
+            Group {
+                if reduceTransparency {
+                    theme.grey
+                } else {
+                    Rectangle().fill(.ultraThinMaterial)
+                }
+            }
             .ignoresSafeArea(edges: .top)
-            .allowsHitTesting(false)
         }
     }
-}
 
-/// System search field in the navigation drawer. Omitted when the screen has nothing to search.
-private struct NavigationSearch: ViewModifier {
-    var text: Binding<String>?
-    var prompt: String
+    private var titleBar: some View {
+        ZStack {
+            Text(title)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.horizontal, 96)
+                .accessibilityAddTraits(.isHeader)
+
+            HStack(spacing: 0) {
+                textButton(leading)
+                Spacer(minLength: 0)
+                textButton(trailing)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, 4)
+    }
 
     @ViewBuilder
-    func body(content: Content) -> some View {
-        if let text {
-            content.searchable(
-                text: text,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: prompt
-            )
-        } else {
-            content
+    private var searchField: some View {
+        if let searchText {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.faint)
+                TextField(searchPrompt, text: searchText)
+                    .font(.body)
+                    .foregroundStyle(theme.ink)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                if !searchText.wrappedValue.isEmpty {
+                    Text("Clear")
+                        .font(.body)
+                        .foregroundStyle(theme.muted)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                        .onTapGesture { searchText.wrappedValue = "" }
+                        .accessibilityLabel("Clear search")
+                        .accessibilityAddTraits(.isButton)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 36)
+            .background(theme.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
+        }
+    }
+
+    @ViewBuilder
+    private func textButton(_ action: ModalAction?) -> some View {
+        if let action {
+            Text(action.title)
+                .font(action.role == .emphasis ? .body.weight(.semibold) : .body)
+                .foregroundStyle(foreground(for: action))
+                .lineLimit(1)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard action.isEnabled else { return }
+                    action.action()
+                }
+                .accessibilityLabel(action.accessibilityLabel ?? action.title)
+                .accessibilityAddTraits(.isButton)
+        }
+    }
+
+    private func foreground(for action: ModalAction) -> Color {
+        guard action.isEnabled else {
+            return theme.faint
+        }
+        switch action.role {
+        case .plain:
+            return theme.muted
+        case .emphasis:
+            return theme.ink
+        case .destructive:
+            return .red
         }
     }
 }

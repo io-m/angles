@@ -16,87 +16,72 @@ struct AIConsentSheet: View {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Before you start")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .tracking(-0.5)
-                            .foregroundStyle(theme.ink)
+        ModalScreen(
+            title: "Before you start",
+            leading: ModalAction(
+                title: cancelTitle,
+                isEnabled: !isAgreeing,
+                action: onCancel
+            ),
+            footer: AnyView(agreeBar)
+        ) {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Angles writes your angles with AI on our servers.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                        Text("Angles writes your angles with AI on our servers.")
-                            .font(.system(size: 15, weight: .regular))
-                            .foregroundStyle(theme.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    VStack(spacing: 12) {
-                        consentRow(
-                            icon: "paperplane",
-                            title: "What is sent",
-                            detail: "The thought you write and your answers to follow-up questions. Your region is never sent to an AI provider."
-                        )
-                        consentRow(
-                            icon: "cpu",
-                            title: "Who processes it",
-                            detail: "Mistral AI (France) or OpenAI (United States). Each request goes to one of them, and to the other if the first is unavailable."
-                        )
-                        consentRow(
-                            icon: "globe",
-                            title: "Posts are checked too",
-                            detail: "When you post a card publicly, it is checked by the same AI before anyone else can see it."
-                        )
-                        consentRow(
-                            icon: "hand.raised",
-                            title: "Community rules",
-                            detail: "There is no tolerance for objectionable content or abusive users. Reported posts are reviewed as soon as possible, and offending accounts are removed."
-                        )
-                        consentRow(
-                            icon: "cross.case",
-                            title: "Not therapy",
-                            detail: "Angles is a self-reflection tool, not medical or mental-health care. If you might hurt yourself, contact local emergency services."
-                        )
-                    }
-
-                    Text("By tapping Agree and continue, you allow Angles to send what you write to these providers and agree to the Terms of Use and Privacy Policy.")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(theme.faint)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(spacing: 20) {
-                        if let termsURL = AppConfig.termsOfServiceURL {
-                            Link("Terms of Use", destination: termsURL)
-                        }
-                        if let privacyURL = AppConfig.privacyPolicyURL {
-                            Link("Privacy Policy", destination: privacyURL)
-                        }
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.ink)
+                VStack(spacing: 12) {
+                    consentRow(
+                        icon: "paperplane",
+                        title: "What is sent",
+                        detail: "The thought you write and your answers to follow-up questions. Your region is never sent to an AI provider."
+                    )
+                    consentRow(
+                        icon: "cpu",
+                        title: "Who processes it",
+                        detail: "Mistral AI (France) or OpenAI (United States). Each request goes to one of them, and to the other if the first is unavailable."
+                    )
+                    consentRow(
+                        icon: "globe",
+                        title: "Posts are checked too",
+                        detail: "When you post a card publicly, it is checked by the same AI before anyone else can see it."
+                    )
+                    consentRow(
+                        icon: "hand.raised",
+                        title: "Community rules",
+                        detail: "There is no tolerance for objectionable content or abusive users. Reported posts are reviewed as soon as possible, and offending accounts are removed."
+                    )
+                    consentRow(
+                        icon: "cross.case",
+                        title: "Not therapy",
+                        detail: "Angles is a self-reflection tool, not medical or mental-health care. If you might hurt yourself, contact local emergency services."
+                    )
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                agreeBar
-            }
-            .background(AnglesCanvasBackground())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(cancelTitle, action: onCancel)
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(theme.muted)
-                        .disabled(isAgreeing)
+
+                Text("By tapping Agree and continue, you allow Angles to send what you write to these providers and agree to the Terms of Use and Privacy Policy.")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(theme.faint)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 20) {
+                    if let termsURL = AppConfig.termsOfServiceURL {
+                        Link("Terms of Use", destination: termsURL)
+                    }
+                    if let privacyURL = AppConfig.privacyPolicyURL {
+                        Link("Privacy Policy", destination: privacyURL)
+                    }
                 }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(theme.ink)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
         }
         .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
     }
 
     private var agreeBar: some View {

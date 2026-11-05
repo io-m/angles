@@ -44,73 +44,49 @@ struct StackFilterSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            PagingTabs(
-                ids: Array(FilterTab.allCases),
-                selection: $selectedTab,
-                tint: { _ in theme.ink },
-                label: { tab, isSelected in
-                    PagingTabLabel(
-                        title: tab.title,
-                        symbol: tab.symbol,
-                        selectedSymbol: tab.selectedSymbol,
-                        isSelected: isSelected,
-                        tint: theme.ink
-                    )
-                },
-                page: { tab in
-                    rows(for: tab)
-                }
-            )
-            .padding(.top, 16)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(AnglesCanvasBackground())
-        .tint(theme.ink)
-    }
-
-    private var header: some View {
-        ZStack {
-            Text("Filter Home")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .accessibilityAddTraits(.isHeader)
-                .allowsHitTesting(false)
-
-            HStack(spacing: 12) {
-                Button("Clear") {
+        PagingSplit(
+            ids: Array(FilterTab.allCases),
+            selection: $selectedTab,
+            tint: { _ in theme.ink },
+            label: { tab, isSelected in
+                PagingTabLabel(
+                    title: tab.title,
+                    symbol: tab.symbol,
+                    selectedSymbol: tab.selectedSymbol,
+                    isSelected: isSelected,
+                    tint: theme.ink
+                )
+            },
+            page: { tab in
+                rows(for: tab)
+                    .padding(.top, 8)
+            }
+        ) { bar, pages in
+            ModalScreen(
+                title: "Filter Home",
+                scrolls: false,
+                leading: ModalAction(
+                    title: "Clear",
+                    isEnabled: draft.appliedCount > 0,
+                    role: .destructive
+                ) {
                     draft = StackFilter()
-                }
-                .font(.body)
-                .foregroundStyle(draft.appliedCount > 0 ? Color.red : theme.faint)
-                .disabled(draft.appliedCount == 0)
-                .frame(minHeight: 44)
-
-                Spacer(minLength: 8)
-
-                Button {
-                    onApply(draft)
-                    dismiss()
-                } label: {
-                    Text(draft.appliedCount > 0 ? "Apply (\(draft.appliedCount))" : "Apply")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(theme.ink)
-                }
-                .frame(minHeight: 44)
-                .accessibilityLabel(
-                    draft.appliedCount > 0
+                },
+                trailing: ModalAction(
+                    title: draft.appliedCount > 0 ? "Apply (\(draft.appliedCount))" : "Apply",
+                    role: .emphasis,
+                    accessibilityLabel: draft.appliedCount > 0
                         ? "Apply \(draft.appliedCount) filters"
                         : "Apply"
-                )
+                ) {
+                    onApply(draft)
+                    dismiss()
+                },
+                header: AnyView(bar)
+            ) {
+                pages
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
-        .frame(minHeight: 52)
     }
 
     @ViewBuilder

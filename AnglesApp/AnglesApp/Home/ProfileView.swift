@@ -1,9 +1,7 @@
-import Observation
 import SwiftUI
 
-/// Your page, pushed over the stack: the cards you wrote and the cards you saved.
+/// Your page, a sheet over the stack: the cards you wrote and the cards you saved.
 struct ProfileView: View {
-    let safeAreaInsets: EdgeInsets
     let viewModel: HomeViewModel
     let storeKitManager: StoreKitManager
     var identityStore: ProfileIdentityStore? = nil
@@ -11,17 +9,16 @@ struct ProfileView: View {
     var onLogOut: (() -> Void)? = nil
     var onDeleteAccount: (() async -> AccountDeletion)? = nil
     var canLoadFullAppContent = false
-    var onOpenAuthor: (HomeCard) -> Void = { _ in }
-    var onOpenFollowed: (FollowedPerson) -> Void = { _ in }
+    /// An author sheet on top of this one is not Home, so a rating prompt waits.
+    var onAuthorVisibility: (Bool) -> Void = { _ in }
 
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeStore: ThemeStore
 
-    @State private var showSettings = false
     @State private var showFollowing = false
     /// A follow push opens People on Notifications. The icon opens Following.
     @State private var peopleStartsOnNotifications = false
+    @State private var authorRoute: AuthorRoute?
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
@@ -38,42 +35,33 @@ struct ProfileView: View {
 
     var body: some View {
         let _ = RenderCounter.hit("ProfileView")
-        // Read the photo here so the header updates when the server copy arrives after sign-in.
-        let _ = identityStore?.photo
-        VStack(spacing: 0) {
-            ProfileHeader(
-                title: profileTitle,
-                identityStore: identityStore,
-                hasUnreadFollows: viewModel.unreadFollowCount > 0,
-                onBack: dismiss.callAsFunction,
-                onOpenFollowing: { showFollowing = true },
-                onOpenSettings: { showSettings = true }
-            )
-            .padding(.top, safeAreaInsets.top + 10)
-
-            ProfileTabs(selection: segment)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
-                .accessibilityIdentifier("profile.segment")
-
-            ScrollView {
-                list(for: viewModel.profileSegment)
-                    .padding(.bottom, max(safeAreaInsets.bottom, 12) + 20)
+        PagingSplit(
+            ids: Array(ProfileSegment.allCases),
+            selection: segment,
+            tint: tabTint,
+            label: { item, isSelected in
+                PagingTabLabel(
+                    title: item.title,
+                    symbol: item.symbol,
+                    selectedSymbol: item.selectedSymbol,
+                    isSelected: isSelected,
+                    tint: tabTint(item)
+                )
+            },
+            page: { item in
+                ProfilePage(
+                    segment: item,
+                    viewModel: viewModel,
+                    onInspire: onInspire,
+                    onOpenAuthor: { authorRoute = $0 }
+                )
             }
-            .id(viewModel.profileSegment)
-            .scrollIndicators(.hidden)
-            .scrollBounceBehavior(.always)
-            .refreshable {
-                await viewModel.refreshList(viewModel.profileSegment)
+        ) { bar, pages in
+            ModalScreen(title: profileTitle, scrolls: false, header: AnyView(bar)) {
+                pages
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("profile.segment")
             }
-        }
-        .ignoresSafeArea(edges: [.top, .bottom])
-        .background(theme.grey.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
-        .wideBackSwipe()
-        .tint(theme.ink)
-        .accessibilityAction(named: "Back") {
-            dismiss()
         }
         .task(id: canLoadFullAppContent) {
             guard canLoadFullAppContent else {
@@ -88,7 +76,7 @@ struct ProfileView: View {
         }
         .modifier(
             AccountSheets(
-                showSettings: $showSettings,
+                showSettings: .constant(false),
                 showPeople: $showFollowing,
                 peopleStartsOnNotifications: peopleStartsOnNotifications,
                 viewModel: viewModel,
@@ -96,9 +84,18 @@ struct ProfileView: View {
                 identityStore: identityStore,
                 onLogOut: onLogOut,
                 onDeleteAccount: onDeleteAccount,
-                onOpenFollowed: onOpenFollowed
+                onOpenFollowed: openFollowed
             )
         )
+        .sheet(item: $authorRoute) { route in
+            AuthorProfileView(route: route, viewModel: viewModel)
+                .presentationDetents([.large])
+                .presentationContentInteraction(.scrolls)
+                .modifier(UserAppearance(store: themeStore))
+        }
+        .onChange(of: authorRoute?.id) { _, id in
+            onAuthorVisibility(id != nil)
+        }
         .onChange(of: showFollowing) { _, showing in
             if !showing {
                 peopleStartsOnNotifications = false
@@ -106,8 +103,36 @@ struct ProfileView: View {
         }
     }
 
-    @ViewBuilder
-    private func list(for segment: ProfileSegment) -> some View {
+    private func tabTint(_ segment: ProfileSegment) -> Color {
+        segment == .saved ? ActionColors.love : theme.ink
+    }
+
+    private func openFollowed(_ person: FollowedPerson) {
+        authorRoute = AuthorRoute(
+            id: person.id,
+            initials: person.initials,
+            avatarPath: person.avatarPath,
+            isSelf: false
+        )
+    }
+
+    private func openFollowNotificationsIfAsked() {
+        guard viewModel.consumeFollowNotificationsRequest() else {
+            return
+        }
+        peopleStartsOnNotifications = true
+        showFollowing = true
+    }
+}
+
+/// One profile list. It reads the view model itself, so a saved card updates this page.
+private struct ProfilePage: View {
+    let segment: ProfileSegment
+    let viewModel: HomeViewModel
+    var onInspire: () -> Void
+    var onOpenAuthor: (AuthorRoute) -> Void
+
+    var body: some View {
         AngleCardListContent(
             list: viewModel.list(segment),
             loadingLabel: segment == .yours ? "Loading your cards" : "Loading loved cards",
@@ -123,6 +148,8 @@ struct ProfileView: View {
                 CardListEmptyNote(text: "Swipe right on a card, or tap the heart, to keep it here.")
             }
         }
+        .padding(.top, 16)
+        .padding(.bottom, 24)
     }
 
     private func actions(for card: HomeCard, style: Style) -> AngleCardActions {
@@ -144,187 +171,22 @@ struct ProfileView: View {
         guard !card.isHouse, let authorId = card.authorId else {
             return actions
         }
-        actions.onOpenAuthor = { onOpenAuthor(card) }
+        actions.onOpenAuthor = {
+            onOpenAuthor(
+                AuthorRoute(
+                    id: authorId,
+                    initials: card.authorInitials,
+                    avatarPath: card.authorAvatarPath,
+                    isSelf: false
+                )
+            )
+        }
         actions.onToggleFollow = { viewModel.toggleFollow(authorId) }
         actions.onReport = { viewModel.reportCard(card.id, reason: $0) }
         actions.onBlock = {
             viewModel.blockAuthor(authorId, initials: card.authorInitials, avatarPath: card.authorAvatarPath)
         }
         return actions
-    }
-
-    private func openFollowNotificationsIfAsked() {
-        guard viewModel.consumeFollowNotificationsRequest() else {
-            return
-        }
-        peopleStartsOnNotifications = true
-        showFollowing = true
-    }
-}
-
-private struct ProfileHeader: View {
-    let title: String
-    var identityStore: ProfileIdentityStore?
-    var hasUnreadFollows: Bool
-    let onBack: () -> Void
-    let onOpenFollowing: () -> Void
-    let onOpenSettings: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Button(action: onBack) {
-                CircleIcon(
-                    systemName: "chevron.left",
-                    fill: theme.surface,
-                    symbol: theme.ink,
-                    weight: .semibold,
-                    hairline: theme.cardHairline
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Back")
-
-            ProfileAvatar(
-                identityStore: identityStore,
-                letters: UserInitials.letters,
-                side: 36,
-                fill: theme.ink,
-                symbol: theme.paper
-            )
-            .accessibilityHidden(true)
-
-            Text(title)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .accessibilityAddTraits(.isHeader)
-
-            Spacer(minLength: 0)
-
-            Button(action: onOpenFollowing) {
-                CircleIcon(
-                    systemName: "person.2",
-                    fill: theme.surface,
-                    symbol: theme.ink,
-                    hairline: theme.cardHairline
-                )
-                .overlay(alignment: .topTrailing) {
-                    if hasUnreadFollows {
-                        Circle()
-                            .fill(theme.ink)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 1, y: -1)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(hasUnreadFollows ? "People, new" : "People")
-
-            Button(action: onOpenSettings) {
-                CircleIcon(
-                    systemName: "gearshape",
-                    fill: theme.surface,
-                    symbol: theme.ink,
-                    hairline: theme.cardHairline
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
-        }
-        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-        .frame(height: 52)
-    }
-}
-
-/// Yours | Loved: icon and title, with an underline that slides to the open tab.
-private struct ProfileTabs: View {
-    @Binding var selection: ProfileSegment
-
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var underline
-    @State private var selectHaptic = 0
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(ProfileSegment.allCases, id: \.self) { segment in
-                tab(segment)
-            }
-        }
-        .padding(.horizontal, HeaderCollapse.horizontalPadding)
-        .background(alignment: .bottom) {
-            Rectangle()
-                .fill(theme.cardHairline)
-                .frame(height: 0.5)
-        }
-        .sensoryFeedback(.selection, trigger: selectHaptic)
-    }
-
-    private func tab(_ segment: ProfileSegment) -> some View {
-        let selected = segment == selection
-        return Button {
-            guard segment != selection else {
-                return
-            }
-            selectHaptic += 1
-            withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86)) {
-                selection = segment
-            }
-        } label: {
-            VStack(spacing: 10) {
-                HStack(spacing: 7) {
-                    Image(systemName: selected ? segment.selectedSymbol : segment.symbol)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(selected ? tint(for: segment) : theme.muted)
-                    Text(segment.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(selected ? theme.ink : theme.muted)
-                }
-                .frame(height: 22)
-                ZStack {
-                    Color.clear
-                        .frame(height: 2)
-                    if selected {
-                        Capsule()
-                            .fill(tint(for: segment))
-                            .frame(height: 2)
-                            .matchedGeometryEffect(id: "underline", in: underline)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(segment.title)
-        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-    }
-
-    private func tint(for segment: ProfileSegment) -> Color {
-        segment == .saved ? ActionColors.love : theme.ink
-    }
-}
-
-private extension ProfileSegment {
-    var symbol: String {
-        switch self {
-        case .yours: "square.stack"
-        case .saved: "heart"
-        }
-    }
-
-    var selectedSymbol: String {
-        switch self {
-        case .yours: "square.stack.fill"
-        case .saved: "heart.fill"
-        }
     }
 }
 
@@ -384,12 +246,9 @@ private struct ProfileEmptyLibraryHero: View {
 }
 
 #Preview("Profile") {
-    NavigationStack {
-        ProfileView(
-            safeAreaInsets: EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0),
-            viewModel: HomeViewModel(),
-            storeKitManager: StoreKitManager()
-        )
-    }
+    ProfileView(
+        viewModel: HomeViewModel(),
+        storeKitManager: StoreKitManager()
+    )
     .environmentObject(ThemeStore())
 }

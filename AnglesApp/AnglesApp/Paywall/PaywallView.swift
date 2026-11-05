@@ -230,74 +230,58 @@ struct PaywallView: View {
     }
 
     private var paywallInfoSheet: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("What’s included")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .tracking(-0.5)
-                            .foregroundStyle(theme.ink)
+        ModalScreen(
+            title: "What’s included",
+            trailing: ModalAction(title: "Done", role: .emphasis) {
+                showsInfoSheet = false
+            }
+        ) {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Membership keeps the practice going after the taste.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                        Text("Membership keeps the practice going after the taste.")
-                            .font(.system(size: 15, weight: .regular))
-                            .foregroundStyle(theme.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                VStack(spacing: 12) {
+                    infoIncludedRow(
+                        icon: "arrow.triangle.2.circlepath",
+                        title: "Keep cooking",
+                        detail: "The next thought gets four angles too. This wasn’t a one-time trick."
+                    )
+                    infoIncludedRow(
+                        icon: "house.fill",
+                        title: "Home",
+                        detail: "See how others turned it around. You’re not the only one."
+                    )
+                    infoIncludedRow(
+                        icon: "sparkles",
+                        title: "240 credits a month",
+                        detail: "Each new thought or new answer uses one credit. Follow-up questions are free. Credits reset every month."
+                    )
+                }
 
-                    VStack(spacing: 12) {
-                        infoIncludedRow(
-                            icon: "arrow.triangle.2.circlepath",
-                            title: "Keep cooking",
-                            detail: "The next thought gets four angles too. This wasn’t a one-time trick."
-                        )
-                        infoIncludedRow(
-                            icon: "house.fill",
-                            title: "Home",
-                            detail: "See how others turned it around. You’re not the only one."
-                        )
-                        infoIncludedRow(
-                            icon: "sparkles",
-                            title: "240 credits a month",
-                            detail: "Each new thought or new answer uses one credit. Follow-up questions are free. Credits reset every month."
-                        )
-                    }
+                restoreButton
 
-                    restoreButton
+                VStack(alignment: .leading, spacing: 12) {
+                    sheetSectionTitle("Membership")
 
+                    legalFooter
+                }
+
+                if onLogOut != nil || onDeleteAccount != nil {
                     VStack(alignment: .leading, spacing: 12) {
-                        sheetSectionTitle("Membership")
+                        sheetSectionTitle("Account")
 
-                        legalFooter
-                    }
-
-                    if onLogOut != nil || onDeleteAccount != nil {
-                        VStack(alignment: .leading, spacing: 12) {
-                            sheetSectionTitle("Account")
-
-                            accountActions
-                        }
+                        accountActions
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-                .padding(.bottom, 28)
             }
-            .background(AnglesCanvasBackground())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        showsInfoSheet = false
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(theme.ink)
-                }
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
         }
         .presentationDetents([.medium, .large], selection: $infoSheetDetent)
-        .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isDeletingAccount)
         .alert("Delete account?", isPresented: $showsDeleteAccount) {
             Button("Delete account", role: .destructive) {

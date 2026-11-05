@@ -17,11 +17,6 @@ private enum SessionEnd {
     case invalidated
 }
 
-enum BrowseRoute: Hashable {
-    case profile
-    case author(AuthorRoute)
-}
-
 @main
 struct AnglesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -46,7 +41,13 @@ struct AppRoot: View {
     /// Sparkle compose over Home. The onboarding taste is a destination, not this flag.
     @State private var isComposePresented = false
     @State private var membershipRequested = false
-    @State private var browsePath: [BrowseRoute] = []
+    @State private var showsProfile = false
+    @State private var authorRoute: AuthorRoute?
+    /// The other sheet waits until the one on screen has closed.
+    @State private var profileAfterAuthor = false
+    @State private var authorAfterProfile: AuthorRoute?
+    /// Profile's own author sheet. A rating prompt treats that as away from Home.
+    @State private var profileCoversWithAuthor = false
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
     @State private var paywallShowsCelebration = false
     @State private var paywallHeroCard: HomeCard?
@@ -65,6 +66,7 @@ struct AppRoot: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
+    @EnvironmentObject private var themeStore: ThemeStore
 
     private static let homeArrivalCap: Duration = LaunchSplashMotion.maximumHold
 
@@ -76,47 +78,26 @@ struct AppRoot: View {
             theme.paper
                 .ignoresSafeArea()
 
-            NavigationStack(path: $browsePath) {
-                StackHome(
-                    viewModel: viewModel,
-                    safeAreaInsets: homeSafeAreaInsets,
-                    storeKitManager: storeKitManager,
-                    identityStore: identityStore,
-                    onLogOut: logOut,
-                    onDeleteAccount: deleteAccount,
-                    onInspire: presentCompose,
-                    onOpenProfile: showOwnProfile,
-                    onOpenAuthor: openAuthor,
-                    onOpenFollowed: openFollowed
-                )
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: BrowseRoute.self) { route in
-                    switch route {
-                    case .profile:
-                        ProfileView(
-                            safeAreaInsets: homeSafeAreaInsets,
-                            viewModel: viewModel,
-                            storeKitManager: storeKitManager,
-                            identityStore: identityStore,
-                            onInspire: presentCompose,
-                            onLogOut: logOut,
-                            onDeleteAccount: deleteAccount,
-                            canLoadFullAppContent: isHomeRevealed,
-                            onOpenAuthor: openAuthor,
-                            onOpenFollowed: openFollowed
-                        )
-                    case .author(let author):
-                        AuthorProfileView(
-                            route: author,
-                            safeAreaInsets: homeSafeAreaInsets,
-                            viewModel: viewModel,
-                            onOpenAuthor: openAuthor
-                        )
-                        // The header chevron is the visible back and the bar stays hidden. A swipe
-                        // from the left 40% of the screen pops it too (`wideBackSwipe`, set on
-                        // the page itself, never globally).
-                    }
-                }
+            StackHome(
+                viewModel: viewModel,
+                safeAreaInsets: homeSafeAreaInsets,
+                storeKitManager: storeKitManager,
+                identityStore: identityStore,
+                onLogOut: logOut,
+                onDeleteAccount: deleteAccount,
+                onInspire: presentCompose,
+                onOpenProfile: showOwnProfile,
+                onOpenAuthor: openAuthor,
+                onOpenFollowed: openFollowed
+            )
+            .sheet(isPresented: $showsProfile, onDismiss: {
+                profileCoversWithAuthor = false
+                presentQueuedAuthor()
+            }) {
+                profileSheet
+            }
+            .sheet(item: $authorRoute, onDismiss: presentQueuedProfile) { route in
+                authorSheet(route)
             }
             .tint(theme.ink)
             .opacity(destination == .home ? 1 : 0)
@@ -540,7 +521,7 @@ struct AppRoot: View {
             isComposePresented = false
             homeArrivalTimedOut = false
             homeRevealPhase = .waitingForCheckout
-            browsePath.removeAll()
+            dismissBrowseSheets()
         }
         // A launch prefetch that failed before the entitlement settled gets one more try here.
         if viewModel.stack.loadState == .failed, viewModel.stack.deck.cards.isEmpty {
@@ -558,6 +539,7 @@ struct AppRoot: View {
         withoutAnimations {
             homeRevealPhase = .hidden
             homeArrivalTimedOut = false
+            dismissBrowseSheets()
             isComposePresented = false
         }
     }
@@ -823,13 +805,37 @@ struct AppRoot: View {
             viewModel.compose.resetCompose()
             viewModel.resetForSignOut()
             identityStore.reset()
+            dismissBrowseSheets()
         }
     }
 
     // MARK: - Navigation
 
+    private var profileSheet: some View {
+        ProfileView(
+            viewModel: viewModel,
+            storeKitManager: storeKitManager,
+            identityStore: identityStore,
+            onInspire: presentCompose,
+            onLogOut: logOut,
+            onDeleteAccount: deleteAccount,
+            canLoadFullAppContent: isHomeRevealed,
+            onAuthorVisibility: { profileCoversWithAuthor = $0 }
+        )
+        .presentationDetents([.large])
+        .presentationContentInteraction(.scrolls)
+        .modifier(UserAppearance(store: themeStore))
+    }
+
+    private func authorSheet(_ route: AuthorRoute) -> some View {
+        AuthorProfileView(route: route, viewModel: viewModel)
+            .presentationDetents([.large])
+            .presentationContentInteraction(.scrolls)
+            .modifier(UserAppearance(store: themeStore))
+    }
+
     private func openFollowed(_ person: FollowedPerson) {
-        pushAuthor(
+        showAuthor(
             AuthorRoute(
                 id: person.id,
                 initials: person.initials,
@@ -839,22 +845,17 @@ struct AppRoot: View {
         )
     }
 
-    /// An author already in the stack is returned to, not pushed again, so going back and forth
-    /// between two people never grows the stack.
-    private func pushAuthor(_ route: AuthorRoute) {
-        let existing = browsePath.lastIndex { entry in
-            if case .author(let author) = entry {
-                return author.id == route.id
-            }
-            return false
-        }
-        if let existing {
-            if existing < browsePath.count - 1 {
-                browsePath.removeSubrange((existing + 1)...)
-            }
+    /// One author sheet at a time. The person already on screen stays put.
+    private func showAuthor(_ route: AuthorRoute) {
+        if authorRoute?.id == route.id, !showsProfile {
             return
         }
-        browsePath.append(.author(route))
+        if showsProfile {
+            authorAfterProfile = route
+            showsProfile = false
+            return
+        }
+        authorRoute = route
     }
 
     private func openAuthor(_ card: HomeCard) {
@@ -865,25 +866,44 @@ struct AppRoot: View {
         guard let authorId = card.authorId else {
             return
         }
-        pushAuthor(
+        showAuthor(
             AuthorRoute(
                 id: authorId,
                 initials: card.authorInitials,
                 avatarPath: card.authorAvatarPath,
-                isSelf: card.isOwner
+                isSelf: false
             )
         )
     }
 
-    /// Profile is pushed over the stack. From deeper in, going back to it pops to it.
+    /// Your profile, as a sheet. An author sheet closes first, then this one opens.
     private func showOwnProfile() {
-        if let index = browsePath.firstIndex(of: .profile) {
-            if index < browsePath.count - 1 {
-                browsePath.removeSubrange((index + 1)...)
-            }
+        if authorRoute != nil {
+            profileAfterAuthor = true
+            authorRoute = nil
             return
         }
-        browsePath.append(.profile)
+        showsProfile = true
+    }
+
+    private func presentQueuedAuthor() {
+        guard let route = authorAfterProfile else { return }
+        authorAfterProfile = nil
+        authorRoute = route
+    }
+
+    private func presentQueuedProfile() {
+        guard profileAfterAuthor else { return }
+        profileAfterAuthor = false
+        showsProfile = true
+    }
+
+    private func dismissBrowseSheets() {
+        showsProfile = false
+        authorRoute = nil
+        profileAfterAuthor = false
+        authorAfterProfile = nil
+        profileCoversWithAuthor = false
     }
 
     // MARK: - Compose
@@ -907,7 +927,8 @@ struct AppRoot: View {
             withoutAnimations {
                 isComposePresented = false
                 viewModel.profileSegment = .saved
-                browsePath = [.profile]
+                authorRoute = nil
+                showsProfile = true
             }
         case .compose:
             presentCompose()
@@ -978,7 +999,7 @@ struct AppRoot: View {
 
     /// Read after the save cover has left. A covered or off-home screen never asks.
     private var settledSaveReviewContext: AppRatingPromptContext {
-        let onRootList = browsePath.isEmpty || browsePath == [.profile]
+        let onRootList = authorRoute == nil && !profileCoversWithAuthor
         return AppRatingPromptContext(
             destinationIsHome: destination == .home,
             homeIsRevealed: isHomeRevealed,
