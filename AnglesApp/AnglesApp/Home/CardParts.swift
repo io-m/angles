@@ -474,15 +474,79 @@ struct StyleChipRow: View {
 struct StyleDotsMark: View {
     var dot: CGFloat = 7
     var spacing: CGFloat = 8
+    /// When set (Home stack), a style change pings that dot and briefly shows its letter in "Angles".
+    var active: Style?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pingStyle: Style?
+    @State private var pingGeneration = 0
+
+    private static let letters = Array("Angles")
 
     var body: some View {
         HStack(spacing: spacing) {
-            ForEach(Style.allCases, id: \.self) { style in
-                Circle()
-                    .fill(CardStyleAppearance(style: style).ink)
-                    .frame(width: dot, height: dot)
+            ForEach(Array(Style.allCases.enumerated()), id: \.element) { index, style in
+                StyleDotCell(
+                    letter: index < Self.letters.count ? String(Self.letters[index]) : "",
+                    ink: CardStyleAppearance(style: style).ink,
+                    dot: dot,
+                    lettersEnabled: active != nil,
+                    pinging: pingStyle == style
+                )
             }
         }
+        .onChange(of: active) { old, new in
+            guard let old, let new, new != old else { return }
+            firePing(new)
+        }
+    }
+
+    private func firePing(_ style: Style) {
+        guard !reduceMotion else { return }
+        pingGeneration += 1
+        let generation = pingGeneration
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
+            pingStyle = style
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(360))
+            guard generation == pingGeneration else { return }
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
+                if pingStyle == style {
+                    pingStyle = nil
+                }
+            }
+        }
+    }
+}
+
+private struct StyleDotCell: View {
+    let letter: String
+    let ink: Color
+    let dot: CGFloat
+    let lettersEnabled: Bool
+    let pinging: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            if lettersEnabled, !letter.isEmpty {
+                Text(letter)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(ink)
+                    .opacity(pinging ? 1 : 0)
+                    .scaleEffect(pinging ? 1 : 0.35)
+            }
+
+            Circle()
+                .fill(ink)
+                .frame(width: dot, height: dot)
+                .offset(y: pinging ? -5 : 0)
+                .scaleEffect(pinging ? 1.35 : 1)
+        }
+        .frame(width: 11, height: dot + 6)
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.65), value: pinging)
     }
 }
 

@@ -175,6 +175,7 @@ struct StackHome: View {
             StackHeader(
                 filterCount: stack.filter.appliedCount,
                 hasUnread: viewModel.unreadFollowCount > 0,
+                activeStyle: deck.top.map { deck.style(for: $0) },
                 onFilter: { showFilter = true },
                 onNotifications: openNotifications,
                 onSettings: { showSettings = true }
@@ -555,6 +556,7 @@ private struct StackBehindMotion<Content: View>: View {
 private struct StackHeader: View {
     let filterCount: Int
     let hasUnread: Bool
+    let activeStyle: Style?
     let onFilter: () -> Void
     let onNotifications: () -> Void
     let onSettings: () -> Void
@@ -611,9 +613,9 @@ private struct StackHeader: View {
                 .accessibilityIdentifier("stack.settings")
             }
 
-            StyleDotsMark()
+            StyleDotsMark(active: activeStyle)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Angles")
+                .accessibilityLabel(activeStyle.map { "Angles, \($0.displayName)" } ?? "Angles")
                 .accessibilityAddTraits(.isHeader)
         }
         .padding(.horizontal, HeaderCollapse.horizontalPadding)
