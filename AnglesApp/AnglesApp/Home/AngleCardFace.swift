@@ -251,8 +251,9 @@ enum AngleCardMetrics {
 }
 
 /// The one card face. On the stack: a quiet thought, the style pills, and each answer at the
-/// size its own length fills best, over a faded style mark; tap the right half for the next
-/// angle and the left half to go back. In a list: thought, divider, answer, then pills and the heart.
+/// size its own length fills best, over a faded style mark; tap the right half of the answer
+/// for the next angle and the left half to go back. In a list those halves cover the thought,
+/// divider, and answer, with the pills and the heart underneath.
 struct AngleCardFace: View, Equatable {
     let card: HomeCard
     var sizing: AngleCardSizing = .list
@@ -580,15 +581,31 @@ struct AngleCardFace: View, Equatable {
         VStack(alignment: .leading, spacing: 0) {
             header
             moderationNotice
-            ReframeCopyStack(
-                thought: displayedThought,
-                answer: answer(for: currentStyle),
-                answerColor: appearance.responseInk
-            )
+            listCopy
             listFooter
             ownerLoves
         }
         .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    /// Thought, divider, and answer. A still finger on the right half steps forward and the
+    /// left half steps back; a moving finger still scrolls the sheet.
+    private var listCopy: some View {
+        ReframeCopyStack(
+            thought: displayedThought,
+            answer: answer(for: currentStyle),
+            answerColor: appearance.responseInk
+        )
+        .contentShape(Rectangle())
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { stageWidth = $0 }
+        .simultaneousGesture(
+            SpatialTapGesture().onEnded { tap in
+                step(forward: tap.location.x >= stageWidth / 2)
+            },
+            including: isInteractive ? .all : .none
+        )
+        .accessibilityAction(named: "Next angle") { step(forward: true) }
+        .accessibilityAction(named: "Previous angle") { step(forward: false) }
     }
 
     private var listFooter: some View {

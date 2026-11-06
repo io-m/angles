@@ -306,6 +306,7 @@ struct ReframeCopyStack: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, ReframeCardMetrics.chromeInset)
                     .padding(.vertical, 14)
+                    .contentTransition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
