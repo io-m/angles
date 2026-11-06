@@ -63,70 +63,101 @@ struct CardStyleAppearance {
     /// Reframe answer copy — tinted by style, tuned for the card wash.
     let responseInk: Color
 
-    init(style: Style) {
+    private init(style: Style, systemImage: String, ink: Color, responseInk: Color) {
         self.style = style
-        // Stoic blue, hopeful orange, witty green, tough red, tender rose, values violet.
+        self.systemImage = systemImage
+        self.ink = ink
+        self.responseInk = responseInk
+    }
+
+    // Stoic blue, hopeful orange, witty green, tough red, tender rose, values violet.
+    private static let stoic = CardStyleAppearance(
+        style: .stoic,
+        systemImage: "mountain.2.fill",
+        ink: Color.adaptive(
+            light: UIColor(red: 0.12, green: 0.40, blue: 0.85, alpha: 1),
+            dark: UIColor(red: 0.45, green: 0.65, blue: 1.0, alpha: 1)
+        ),
+        responseInk: Color.adaptive(
+            light: UIColor(red: 0.08, green: 0.28, blue: 0.62, alpha: 1),
+            dark: UIColor(red: 0.82, green: 0.90, blue: 1.0, alpha: 1)
+        )
+    )
+
+    private static let hopeful = CardStyleAppearance(
+        style: .hopeful,
+        systemImage: "sun.max.fill",
+        ink: Color.adaptive(
+            light: UIColor(red: 0.92, green: 0.45, blue: 0.05, alpha: 1),
+            dark: UIColor(red: 1.0, green: 0.62, blue: 0.22, alpha: 1)
+        ),
+        responseInk: Color.adaptive(
+            light: UIColor(red: 0.58, green: 0.28, blue: 0.02, alpha: 1),
+            dark: UIColor(red: 1.0, green: 0.88, blue: 0.72, alpha: 1)
+        )
+    )
+
+    private static let witty = CardStyleAppearance(
+        style: .witty,
+        systemImage: "theatermasks.fill",
+        ink: Color.adaptive(
+            light: UIColor(red: 0.10, green: 0.62, blue: 0.22, alpha: 1),
+            dark: UIColor(red: 0.35, green: 0.82, blue: 0.45, alpha: 1)
+        ),
+        responseInk: Color.adaptive(
+            light: UIColor(red: 0.06, green: 0.42, blue: 0.14, alpha: 1),
+            dark: UIColor(red: 0.78, green: 0.95, blue: 0.82, alpha: 1)
+        )
+    )
+
+    private static let tough = CardStyleAppearance(
+        style: .tough,
+        systemImage: "flame.fill",
+        ink: Color.adaptive(
+            light: UIColor(red: 0.86, green: 0.15, blue: 0.12, alpha: 1),
+            dark: UIColor(red: 1.0, green: 0.42, blue: 0.38, alpha: 1)
+        ),
+        responseInk: Color.adaptive(
+            light: UIColor(red: 0.55, green: 0.08, blue: 0.06, alpha: 1),
+            dark: UIColor(red: 1.0, green: 0.82, blue: 0.78, alpha: 1)
+        )
+    )
+
+    private static let tender = CardStyleAppearance(
+        style: .tender,
+        systemImage: "hands.and.sparkles.fill",
+        ink: Color.adaptive(
+            light: UIColor(red: 0.80, green: 0.32, blue: 0.56, alpha: 1),
+            dark: UIColor(red: 1.0, green: 0.62, blue: 0.80, alpha: 1)
+        ),
+        responseInk: Color.adaptive(
+            light: UIColor(red: 0.56, green: 0.16, blue: 0.36, alpha: 1),
+            dark: UIColor(red: 1.0, green: 0.88, blue: 0.94, alpha: 1)
+        )
+    )
+
+    private static let values = CardStyleAppearance(
+        style: .values,
+        systemImage: "safari.fill",
+        ink: Color.adaptive(
+            light: UIColor(red: 0.48, green: 0.26, blue: 0.82, alpha: 1),
+            dark: UIColor(red: 0.72, green: 0.58, blue: 1.0, alpha: 1)
+        ),
+        responseInk: Color.adaptive(
+            light: UIColor(red: 0.32, green: 0.14, blue: 0.58, alpha: 1),
+            dark: UIColor(red: 0.90, green: 0.84, blue: 1.0, alpha: 1)
+        )
+    )
+
+    @inline(__always)
+    init(style: Style) {
         switch style {
-        case .stoic:
-            systemImage = "mountain.2.fill"
-            ink = Color.adaptive(
-                light: UIColor(red: 0.12, green: 0.40, blue: 0.85, alpha: 1),
-                dark: UIColor(red: 0.45, green: 0.65, blue: 1.0, alpha: 1)
-            )
-            responseInk = Color.adaptive(
-                light: UIColor(red: 0.08, green: 0.28, blue: 0.62, alpha: 1),
-                dark: UIColor(red: 0.82, green: 0.90, blue: 1.0, alpha: 1)
-            )
-        case .hopeful:
-            systemImage = "sun.max.fill"
-            ink = Color.adaptive(
-                light: UIColor(red: 0.92, green: 0.45, blue: 0.05, alpha: 1),
-                dark: UIColor(red: 1.0, green: 0.62, blue: 0.22, alpha: 1)
-            )
-            responseInk = Color.adaptive(
-                light: UIColor(red: 0.58, green: 0.28, blue: 0.02, alpha: 1),
-                dark: UIColor(red: 1.0, green: 0.88, blue: 0.72, alpha: 1)
-            )
-        case .witty:
-            systemImage = "theatermasks.fill"
-            ink = Color.adaptive(
-                light: UIColor(red: 0.10, green: 0.62, blue: 0.22, alpha: 1),
-                dark: UIColor(red: 0.35, green: 0.82, blue: 0.45, alpha: 1)
-            )
-            responseInk = Color.adaptive(
-                light: UIColor(red: 0.06, green: 0.42, blue: 0.14, alpha: 1),
-                dark: UIColor(red: 0.78, green: 0.95, blue: 0.82, alpha: 1)
-            )
-        case .tough:
-            systemImage = "flame.fill"
-            ink = Color.adaptive(
-                light: UIColor(red: 0.86, green: 0.15, blue: 0.12, alpha: 1),
-                dark: UIColor(red: 1.0, green: 0.42, blue: 0.38, alpha: 1)
-            )
-            responseInk = Color.adaptive(
-                light: UIColor(red: 0.55, green: 0.08, blue: 0.06, alpha: 1),
-                dark: UIColor(red: 1.0, green: 0.82, blue: 0.78, alpha: 1)
-            )
-        case .tender:
-            systemImage = "hands.and.sparkles.fill"
-            ink = Color.adaptive(
-                light: UIColor(red: 0.80, green: 0.32, blue: 0.56, alpha: 1),
-                dark: UIColor(red: 1.0, green: 0.62, blue: 0.80, alpha: 1)
-            )
-            responseInk = Color.adaptive(
-                light: UIColor(red: 0.56, green: 0.16, blue: 0.36, alpha: 1),
-                dark: UIColor(red: 1.0, green: 0.88, blue: 0.94, alpha: 1)
-            )
-        case .values:
-            systemImage = "safari.fill"
-            ink = Color.adaptive(
-                light: UIColor(red: 0.48, green: 0.26, blue: 0.82, alpha: 1),
-                dark: UIColor(red: 0.72, green: 0.58, blue: 1.0, alpha: 1)
-            )
-            responseInk = Color.adaptive(
-                light: UIColor(red: 0.32, green: 0.14, blue: 0.58, alpha: 1),
-                dark: UIColor(red: 0.90, green: 0.84, blue: 1.0, alpha: 1)
-            )
+        case .stoic: self = Self.stoic
+        case .hopeful: self = Self.hopeful
+        case .witty: self = Self.witty
+        case .tough: self = Self.tough
+        case .tender: self = Self.tender
+        case .values: self = Self.values
         }
     }
 

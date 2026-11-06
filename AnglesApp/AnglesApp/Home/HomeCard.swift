@@ -13,7 +13,13 @@ struct HomeCard: Identifiable, Equatable {
     let createdAt: Date
     /// Exact server timestamp retained for cursor pagination.
     let createdAtCursor: String
-    var slides: [HomeCardSlide]
+    var slides: [HomeCardSlide] {
+        didSet {
+            styles = slides.map(\.result.style)
+        }
+    }
+    /// The card's angles in the cook's order.
+    private(set) var styles: [Style]
     var spotlightStyle: Style
     /// The angle this card opens on for this viewer (the server's `openingStyle`).
     var openingStyle: Style
@@ -61,9 +67,10 @@ struct HomeCard: Identifiable, Equatable {
         self.id = id
         self.createdAt = createdAt
         self.createdAtCursor = createdAtCursor ?? ISO8601Dates.string(from: createdAt)
-        self.slides = slides
-        self.spotlightStyle = spotlightStyle
         let styles = slides.map(\.result.style)
+        self.slides = slides
+        self.styles = styles
+        self.spotlightStyle = spotlightStyle
         self.openingStyle = openingStyle.flatMap { styles.contains($0) ? $0 : nil }
             ?? (styles.contains(spotlightStyle) ? spotlightStyle : styles.first ?? spotlightStyle)
         self.thoughtOriginal = thoughtOriginal
@@ -121,11 +128,6 @@ struct HomeCard: Identifiable, Equatable {
         slides.first?.thought ?? ""
     }
 
-    /// The card's angles in the cook's order.
-    var styles: [Style] {
-        slides.map(\.result.style)
-    }
-
     static let moderationHiddenMessage =
         "Hidden by Angles. This post broke the community rules."
 
@@ -159,7 +161,7 @@ struct HomeCard: Identifiable, Equatable {
     }
 
     func hasStyle(_ style: Style) -> Bool {
-        slides.contains { $0.result.style == style }
+        styles.contains(style)
     }
 
     func slide(for style: Style) -> HomeCardSlide? {

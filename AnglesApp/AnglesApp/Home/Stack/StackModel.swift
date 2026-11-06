@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// Every save, pass, rewind, and unsave goes through this one queue, in tap order. A cancelled
 /// request can still commit on the server, so a later write always waits for the one before it.
@@ -137,7 +138,17 @@ final class StackModel {
     /// Back after this long away starts a new visit.
     static let staleAfter: TimeInterval = 30 * 60
 
-    private(set) var deck = StackDeck()
+    @ObservationIgnored private(set) var deck = StackDeck()
+    /// The at-most `StackMetrics.renderedCount` cards visible on screen. Prefetching more cards
+    /// behind them never invalidates the stage while these stay the same.
+    private(set) var renderedCards: [HomeCard] = []
+    /// Shown angle per rendered card id.
+    private(set) var renderedStyles: [UUID: Style] = [:]
+    /// Only changes when the top card's id or shown angle changes.
+    private(set) var topStyleSignal = StyleMarkSignal()
+    private(set) var hasTopCard = false
+    private(set) var canRewind = false
+    private(set) var isFinished = false
     private(set) var loadState: StackLoadState = .idle
     /// The first page of the first visit has answered, with cards or an error. Launch waits on it.
     private(set) var firstLoadFinished = false
@@ -175,7 +186,10 @@ final class StackModel {
         fetchTask?.cancel()
         fetchTask = nil
         deck = StackDeck()
-        loadState = .idle
+        syncObservedDeck()
+        if loadState != .idle {
+            loadState = .idle
+        }
         fetch()
     }
 
@@ -214,10 +228,55 @@ final class StackModel {
         fetchTask?.cancel()
         fetchTask = nil
         deck = StackDeck()
-        loadState = .idle
-        firstLoadFinished = false
+        syncObservedDeck()
+        if loadState != .idle {
+            loadState = .idle
+        }
+        if firstLoadFinished {
+            firstLoadFinished = false
+        }
         backgroundedAt = nil
-        filter = StackFilter()
+        if !filter.isEmpty {
+            filter = StackFilter()
+        }
+    }
+
+    func style(for card: HomeCard) -> Style {
+        renderedStyles[card.id] ?? deck.style(for: card)
+    }
+
+    private func syncObservedDeck() {
+        let nextRendered = Array(deck.cards.prefix(StackMetrics.renderedCount))
+        if renderedCards != nextRendered {
+            renderedCards = nextRendered
+        }
+        var nextStyles: [UUID: Style] = Dictionary(minimumCapacity: nextRendered.count)
+        for card in nextRendered {
+            nextStyles[card.id] = deck.style(for: card)
+        }
+        if renderedStyles != nextStyles {
+            renderedStyles = nextStyles
+        }
+        let nextTop = nextRendered.first
+        let nextSignal = StyleMarkSignal(
+            cardID: nextTop?.id,
+            style: nextTop.flatMap { nextStyles[$0.id] ?? deck.style(for: $0) }
+        )
+        if topStyleSignal != nextSignal {
+            topStyleSignal = nextSignal
+        }
+        let nextHasTop = nextTop != nil
+        if hasTopCard != nextHasTop {
+            hasTopCard = nextHasTop
+        }
+        let nextCanRewind = deck.canRewind
+        if canRewind != nextCanRewind {
+            canRewind = nextCanRewind
+        }
+        let nextFinished = deck.isFinished
+        if isFinished != nextFinished {
+            isFinished = nextFinished
+        }
     }
 
     private func fetchMoreIfNeeded() {
@@ -236,7 +295,9 @@ final class StackModel {
         let session = deck.session
         let seen = deck.seen
         let filter = filter
-        loadState = .loading
+        if loadState != .loading {
+            loadState = .loading
+        }
         fetchTask = Task { @MainActor in
             do {
                 let response = try await cardsService.stack(
@@ -251,14 +312,18 @@ final class StackModel {
                 let cards = response.cards
                     .compactMap(HomeCard.init(stored:))
                     .filter { !(host?.isBlocked($0) ?? false) }
-                deck.receive(
+                receive(
                     cards,
                     receivedIds: response.receivedIds,
                     session: response.session,
                     exhausted: response.exhausted
                 )
-                loadState = .idle
-                firstLoadFinished = true
+                if loadState != .idle {
+                    loadState = .idle
+                }
+                if !firstLoadFinished {
+                    firstLoadFinished = true
+                }
                 fetchTask = nil
                 // A page this build could not show still moved the server along.
                 if !response.receivedIds.isEmpty {
@@ -270,19 +335,54 @@ final class StackModel {
                 }
                 fetchTask = nil
                 guard !HomeViewModel.isCancellation(error) else {
-                    loadState = .idle
+                    if loadState != .idle {
+                        loadState = .idle
+                    }
                     return
                 }
-                loadState = .failed
-                firstLoadFinished = true
+                if loadState != .failed {
+                    loadState = .failed
+                }
+                if !firstLoadFinished {
+                    firstLoadFinished = true
+                }
             }
         }
+    }
+
+    func receive(
+        _ incoming: [HomeCard],
+        receivedIds: [String],
+        session: String,
+        exhausted: Bool
+    ) {
+        deck.receive(
+            incoming,
+            receivedIds: receivedIds,
+            session: session,
+            exhausted: exhausted
+        )
+        syncObservedDeck()
     }
 
     // MARK: - Decisions
 
     func show(_ style: Style, on id: UUID) {
+        let before = deck.shownStyle(for: id)
         deck.show(style, on: id)
+        let after = deck.shownStyle(for: id)
+        guard after != before, let after else {
+            return
+        }
+        if renderedCards.contains(where: { $0.id == id }), renderedStyles[id] != after {
+            renderedStyles[id] = after
+        }
+        if renderedCards.first?.id == id {
+            let nextSignal = StyleMarkSignal(cardID: id, style: after)
+            if topStyleSignal != nextSignal {
+                topStyleSignal = nextSignal
+            }
+        }
     }
 
     /// Takes the top card off right away; the write follows on the queue.
@@ -291,6 +391,7 @@ final class StackModel {
         guard let step = deck.decide(kind) else {
             return nil
         }
+        syncObservedDeck()
         if kind == .save {
             var saved = step.card
             saved.decision = CardDecision(step.request)
@@ -310,6 +411,7 @@ final class StackModel {
         guard let undone = deck.rewind() else {
             return nil
         }
+        syncObservedDeck()
         let step = undone.step
         if step.kind == .save {
             host?.stackUnsaved(step.card)
@@ -324,11 +426,13 @@ final class StackModel {
     /// A blocked author or a reported card leaves the stack and rewind.
     func remove(where shouldRemove: (HomeCard) -> Bool) {
         deck.remove(where: shouldRemove)
+        syncObservedDeck()
         fetchMoreIfNeeded()
     }
 
     func updateCards(_ body: (inout HomeCard) -> Void) {
         deck.updateCards(body)
+        syncObservedDeck()
     }
 
     private func settle(_ step: StackStep, outcome: DecisionWriter.Outcome, generation: Int, isUndo: Bool) {
@@ -336,11 +440,12 @@ final class StackModel {
         switch outcome {
         case .done:
             if generation == visitGeneration, !isUndo {
-                deck.confirm(id)
+                _ = deck.confirm(id)
             }
         case .gone:
             if generation == visitGeneration {
                 deck.remove { $0.id == id }
+                syncObservedDeck()
             }
             host?.stackCardGone(id)
         case .failed(let error):

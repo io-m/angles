@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum StackMetrics {
     /// 16 points a side: the card is about 92% of the screen width.
@@ -11,8 +12,12 @@ enum StackMetrics {
     static var peek: CGFloat { sliver * CGFloat(depthCount - 1) }
     static let behindScale: CGFloat = 0.94
     static let backScale: CGFloat = 0.88
+    static let behindShadeDark: Double = 0.42
+    static let behindShadeLight: Double = 0.14
+    static let backShadeDark: Double = 0.48
+    static let backShadeLight: Double = 0.18
     /// The back card lets the grey show through. The middle card stays opaque, under a veil.
-    static let backOpacity: Double = 0.45
+    static let backOpacity: Double = 0.38
     /// The next card starts smaller than the back slot and scales up into it.
     static let incomingScale: CGFloat = 0.80
     /// The three cards at rest, plus the next one while it scales into the back slot.
@@ -119,21 +124,21 @@ struct StackCardPose: Equatable {
             return StackCardPose(
                 scale: StackMetrics.behindScale,
                 offsetY: StackMetrics.sliver,
-                shade: dark ? 0.35 : 0.10,
+                shade: dark ? StackMetrics.behindShadeDark : StackMetrics.behindShadeLight,
                 opacity: 1
             )
         case 2:
             return StackCardPose(
                 scale: StackMetrics.backScale,
                 offsetY: StackMetrics.sliver * 2,
-                shade: 0,
+                shade: dark ? StackMetrics.backShadeDark : StackMetrics.backShadeLight,
                 opacity: StackMetrics.backOpacity
             )
         default:
             return StackCardPose(
                 scale: StackMetrics.incomingScale,
                 offsetY: StackMetrics.sliver * 2,
-                shade: 0,
+                shade: dark ? StackMetrics.backShadeDark : StackMetrics.backShadeLight,
                 opacity: 0
             )
         }
@@ -154,13 +159,35 @@ struct StackCardPose: Equatable {
     }
 }
 
-/// The top card's drag. Only the views that move with it read it, so a drag frame never
-/// redraws the header, the toast, or the rest of the action row.
+/// The top card's drag. Granular properties (`progress`, `loveFill`, `passFill`) are updated
+/// only when their values change, so a rightward drag never redraws Pass, a vertical drag
+/// never redraws the cards behind, and haptics fire from an empty observer view.
 @MainActor
 @Observable
 final class StackDrag {
-    var offset: CGSize = .zero
-    var cardWidth: CGFloat = 0
+    var offset: CGSize = .zero {
+        didSet {
+            syncDerivedMetrics()
+        }
+    }
+    var cardWidth: CGFloat = 0 {
+        didSet {
+            syncDerivedMetrics()
+        }
+    }
+    /// Each card behind steps one depth forward as the top card is dragged away.
+    private(set) var progress: CGFloat = 0
+    /// 0...1 fill toward Love (rightward drag).
+    private(set) var loveFill: CGFloat = 0
+    /// 0...1 fill toward Pass (leftward drag).
+    private(set) var passFill: CGFloat = 0
+    /// True while the card is displaced from rest.
+    private(set) var isMoving = false
+    /// Drag haptic: fired once when a drag reaches the release threshold.
+    private(set) var thresholdTick = 0
+    /// Button haptic: one light tap when Pass, Love, or Rewind is tapped.
+    private(set) var actionTick = 0
+
     /// Only at accessibility sizes, where the card scrolls: set once a drag is known to be
     /// sideways, so a vertical scroll stays a scroll.
     @ObservationIgnored var isDeciding: Bool?
@@ -186,12 +213,18 @@ final class StackDrag {
 
     /// True exactly once per touch: the first time the sideways travel reaches the
     /// release threshold. Retreating and crossing again stays silent until the next touch.
+    @discardableResult
     func noteDecideThreshold(distance: CGFloat) -> Bool {
         guard abs(distance) >= StackMetrics.decideDistance, !thresholdHapticFired else {
             return false
         }
         thresholdHapticFired = true
+        thresholdTick &+= 1
         return true
+    }
+
+    func fireActionHaptic() {
+        actionTick &+= 1
     }
 
     /// `translation` is the finger's travel from the start of the touch, not the card's offset.
@@ -220,21 +253,56 @@ final class StackDrag {
         max(-1, min(1, offset.width / StackMetrics.decideDistance))
     }
 
-    /// Each card behind steps one depth forward as the top card is dragged away.
-    var progress: CGFloat {
-        guard cardWidth > 0 else {
-            return 0
-        }
-        return min(1, abs(offset.width) / (cardWidth * 0.6))
-    }
-
     /// The leading corner always dips: right turns clockwise, left anticlockwise.
     var tilt: Angle {
         .degrees(Double(offset.width / 22))
     }
+
+    private func syncDerivedMetrics() {
+        let rawLean = max(-1, min(1, offset.width / StackMetrics.decideDistance))
+        let nextLove = max(0, rawLean)
+        if loveFill != nextLove {
+            loveFill = nextLove
+        }
+        let nextPass = max(0, -rawLean)
+        if passFill != nextPass {
+            passFill = nextPass
+        }
+        let nextProgress: CGFloat = cardWidth > 0 ? min(1, abs(offset.width) / (cardWidth * 0.6)) : 0
+        if progress != nextProgress {
+            progress = nextProgress
+        }
+        let nextMoving = offset != .zero
+        if isMoving != nextMoving {
+            isMoving = nextMoving
+        }
+    }
+}
+
+/// Ephemeral UI state for Home (active fling and modal sheets), isolated from `StackHome.body`
+/// so presenting a sheet or starting a fling only updates the subviews that care.
+@MainActor
+@Observable
+final class StackScreenState {
+    var flinging: DecisionKind?
+    var showFilter = false
+    var showSettings = false
+    var showPeople = false
+    @ObservationIgnored var peopleStartsOnNotifications = false
+
+    var hasPresentedSheet: Bool {
+        showFilter || showSettings || showPeople
+    }
+
+    func openNotifications() {
+        peopleStartsOnNotifications = true
+        showPeople = true
+    }
 }
 
 /// Home: the header, the card stack, the toast slot, and the action row.
+/// `StackHome.body` reads only `screenSize`, `safeAreaInsets`, and `colorScheme`; every
+/// dynamic signal is observed inside its own leaf container.
 struct StackHome: View {
     let viewModel: HomeViewModel
     let safeAreaInsets: EdgeInsets
@@ -246,31 +314,18 @@ struct StackHome: View {
     let onOpenProfile: () -> Void
     let onOpenAuthor: (HomeCard) -> Void
     let onOpenFollowed: (FollowedPerson) -> Void
+    var isHomeActive: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.scenePhase) private var scenePhase
 
     @State private var drag = StackDrag()
     @State private var deviceTilt = CardDeviceTilt()
-    @State private var flinging: DecisionKind?
-    /// Drag haptic: fired once when a drag reaches the release threshold.
-    /// Promotion and drag commits stay silent, so a swipe buzzes exactly once.
-    @State private var thresholdTick = 0
-    /// Button haptic: one light tap when Pass, Love, or Rewind is tapped (the
-    /// accessibility Love/Pass actions count as taps too). Navigation buttons
-    /// (Inspire, Profile, header) stay silent.
-    @State private var actionTick = 0
+    @State private var screenState = StackScreenState()
     @State private var screenSize: CGSize = .zero
-    @State private var showFilter = false
-    @State private var showSettings = false
-    @State private var showPeople = false
-    @State private var peopleStartsOnNotifications = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
     private var stack: StackModel { viewModel.stack }
-    private var deck: StackDeck { stack.deck }
 
     var body: some View {
         let _ = RenderCounter.hit("StackHome")
@@ -280,31 +335,34 @@ struct StackHome: View {
             safeBottom: safeAreaInsets.bottom
         )
         VStack(spacing: 0) {
-            StackHeader(
-                filterCount: stack.filter.appliedCount,
-                hasUnread: viewModel.unreadFollowCount > 0,
-                styleSignal: StyleMarkSignal(
-                    cardID: deck.top?.id,
-                    style: deck.top.map { deck.style(for: $0) }
-                ),
-                onFilter: { showFilter = true },
-                onNotifications: openNotifications,
-                onSettings: { showSettings = true }
+            StackHeaderContainer(
+                viewModel: viewModel,
+                screenState: screenState
             )
             .padding(.top, safeAreaInsets.top + HeaderCollapse.headerTopPad)
 
-            cardArea
-                .padding(.horizontal, StackMetrics.horizontalInset)
-                .overlay(alignment: .bottom) { toast }
-                .padding(.top, layout.topGap)
-                .zIndex(1)
+            StackStageView(
+                viewModel: viewModel,
+                drag: drag,
+                deviceTilt: deviceTilt,
+                screenState: screenState,
+                onInspire: onInspire,
+                onOpenAuthor: onOpenAuthor,
+                onFling: fling
+            )
+            .padding(.horizontal, StackMetrics.horizontalInset)
+            .overlay(alignment: .bottom) {
+                StackToastOverlay(viewModel: viewModel)
+            }
+            .padding(.top, layout.topGap)
+            .zIndex(1)
 
             StackActionBar(
-                screenSize: screenSize,
-                canRewind: deck.canRewind && flinging == nil,
-                canDecide: deck.top != nil && flinging == nil,
+                viewModel: viewModel,
                 drag: drag,
-                profilePulseToken: viewModel.profilePulseToken,
+                screenState: screenState,
+                screenSize: screenSize,
+                isHomeActive: isHomeActive,
                 onRewind: rewind,
                 onPass: { fling(.pass, fromButton: true) },
                 onInspire: onInspire,
@@ -316,27 +374,24 @@ struct StackHome: View {
         }
         .ignoresSafeArea(edges: [.top, .bottom])
         .background(theme.grey.ignoresSafeArea())
-        .wideBackSwipe()
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { screenSize = $0 }
-        .sensoryFeedback(.impact(weight: .light), trigger: thresholdTick)
-        .sensoryFeedback(.impact(weight: .light), trigger: actionTick)
-        .onChange(of: stack.visitToken) { _, _ in
-            resetDrag()
+        .background {
+            StackSessionEffects(
+                stack: stack,
+                drag: drag,
+                deviceTilt: deviceTilt,
+                screenState: screenState,
+                isHomeActive: isHomeActive,
+                onResetDrag: resetDrag
+            )
         }
-        .sheet(isPresented: $showFilter) {
-            StackFilterSheet(appliedFilter: stack.filter) { next in
-                stack.apply(next)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { nextSize in
+            if screenSize != nextSize {
+                screenSize = nextSize
             }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationContentInteraction(.scrolls)
-            .presentationBackground(theme.grey)
         }
         .modifier(
-            AccountSheets(
-                showSettings: $showSettings,
-                showPeople: $showPeople,
-                peopleStartsOnNotifications: peopleStartsOnNotifications,
+            StackSheetsModifier(
+                screenState: screenState,
                 viewModel: viewModel,
                 storeKitManager: storeKitManager,
                 identityStore: identityStore,
@@ -345,83 +400,181 @@ struct StackHome: View {
                 onOpenFollowed: onOpenFollowed
             )
         )
-        .onChange(of: showPeople) { _, showing in
-            if !showing {
-                peopleStartsOnNotifications = false
+    }
+
+    // MARK: - Decisions
+
+    /// The card leaves first, then the decision commits, so the next card is never drawn mid-flight.
+    /// A button-initiated fling buzzes once here; a drag-initiated one already buzzed
+    /// at the threshold, and its commit stays silent either way.
+    private func fling(_ kind: DecisionKind, fromButton: Bool = false) {
+        guard screenState.flinging == nil, stack.hasTopCard else {
+            return
+        }
+        if fromButton {
+            drag.fireActionHaptic()
+        }
+        screenState.flinging = kind
+        let direction: CGFloat = kind == .save ? 1 : -1
+        let distance = max(drag.cardWidth, 320) * 1.5
+        let target = CGSize(width: direction * distance, height: drag.offset.height + 40)
+        if reduceMotion {
+            commit(kind)
+            return
+        }
+        withAnimation(.easeIn(duration: 0.22)) {
+            drag.offset = target
+        } completion: {
+            commit(kind)
+        }
+    }
+
+    private func commit(_ kind: DecisionKind) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            stack.decide(kind)
+            drag.offset = .zero
+            screenState.flinging = nil
+        }
+    }
+
+    /// The last card comes back in from the side it left by.
+    private func rewind() {
+        guard screenState.flinging == nil else {
+            return
+        }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        var entrance: CGSize = .zero
+        var didRewind = false
+        withTransaction(transaction) {
+            guard let step = stack.rewind() else {
+                return
+            }
+            didRewind = true
+            let direction: CGFloat = step.kind == .save ? 1 : -1
+            entrance = CGSize(width: direction * max(drag.cardWidth, 320) * 1.3, height: 30)
+            drag.offset = reduceMotion ? .zero : entrance
+        }
+        if didRewind {
+            drag.fireActionHaptic()
+        }
+        guard !reduceMotion, entrance != .zero else {
+            return
+        }
+        Task { @MainActor [drag] in
+            await Task.yield()
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
+                drag.offset = .zero
             }
         }
-        .onAppear { syncDeviceTilt() }
-        .onDisappear { deviceTilt.stop() }
-        .onChange(of: scenePhase) { _, _ in syncDeviceTilt() }
-        .onChange(of: reduceMotion) { _, _ in syncDeviceTilt() }
     }
 
-    private func syncDeviceTilt() {
-        if reduceMotion || scenePhase != .active {
-            deviceTilt.stop()
-        } else {
-            deviceTilt.start()
+    private func resetDrag() {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            drag.offset = .zero
+            drag.isDeciding = nil
+            drag.lastTranslation = nil
+            drag.touchWasDrag = false
+            screenState.flinging = nil
         }
     }
+}
 
-    private func openNotifications() {
-        peopleStartsOnNotifications = true
-        showPeople = true
+// MARK: - Isolated Subtrees
+
+private struct StackHeaderContainer: View {
+    let viewModel: HomeViewModel
+    let screenState: StackScreenState
+
+    var body: some View {
+        let stack = viewModel.stack
+        StackHeader(
+            filterCount: stack.filter.appliedCount,
+            hasUnread: viewModel.unreadFollowCount > 0,
+            styleSignal: stack.topStyleSignal,
+            onFilter: { screenState.showFilter = true },
+            onNotifications: { screenState.openNotifications() },
+            onSettings: { screenState.showSettings = true }
+        )
     }
+}
 
-    // MARK: - Cards
+private struct StackStageView: View {
+    let viewModel: HomeViewModel
+    let drag: StackDrag
+    let deviceTilt: CardDeviceTilt
+    let screenState: StackScreenState
+    let onInspire: () -> Void
+    let onOpenAuthor: (HomeCard) -> Void
+    let onFling: (DecisionKind, Bool) -> Void
 
-    private var cardArea: some View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var stack: StackModel { viewModel.stack }
+
+    var body: some View {
         GeometryReader { proxy in
-            let size = CGSize(width: proxy.size.width, height: max(0, proxy.size.height - StackMetrics.peek))
+            let size = CGSize(
+                width: proxy.size.width,
+                height: max(0, proxy.size.height - StackMetrics.peek)
+            )
             ZStack(alignment: .top) {
-                if deck.top != nil {
+                if stack.hasTopCard {
+                    let cards = stack.renderedCards
+                    let isIdle = screenState.flinging == nil
                     // One view per card, keyed by the card's id: promotion is a role
                     // change on the same face, not a destroy-and-recreate, so its
                     // tilt mark, wash, and state carry across the seam untouched.
-                    ForEach(Array(deck.cards.prefix(StackMetrics.renderedCount).enumerated().reversed()), id: \.element.id) { index, card in
-                        stackCard(card, depth: index, size: size)
+                    ForEach(Array(cards.enumerated().reversed()), id: \.element.id) { index, card in
+                        stackCard(card, depth: index, size: size, isIdle: isIdle)
                     }
                 } else {
-                    placeholder
+                    StackPlaceholderView(stack: stack, onInspire: onInspire)
                         .frame(width: size.width, height: size.height)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-            .onAppear { drag.cardWidth = size.width }
-            .onChange(of: size.width) { _, width in drag.cardWidth = width }
+            .onAppear {
+                if drag.cardWidth != size.width {
+                    drag.cardWidth = size.width
+                }
+            }
+            .onChange(of: size.width) { _, width in
+                if drag.cardWidth != width {
+                    drag.cardWidth = width
+                }
+            }
         }
     }
 
-    /// Every depth renders through this one path, and every card gets the live
-    /// `deviceTilt`, so a promoted card's watermark and wash are already exactly
-    /// where the card in front's would be. Only interaction, elevation, and the
-    /// drag-driven motion differ by depth, and at `progress == 1` a card behind
-    /// matches the resting pose one depth forward.
-    private func stackCard(_ card: HomeCard, depth: Int, size: CGSize) -> some View {
+    private func stackCard(_ card: HomeCard, depth: Int, size: CGSize, isIdle: Bool) -> some View {
         let isTop = depth == 0
+        let isInteractive = isTop && isIdle
         return StackCardMotion(drag: drag, depth: depth) {
             AngleCardFace(
                 card: card,
                 sizing: .stack,
-                style: Binding(
-                    get: { stack.deck.style(for: card) },
-                    set: { stack.show($0, on: card.id) }
-                ),
-                isInteractive: isTop && flinging == nil,
+                style: stack.style(for: card),
+                stackCardSize: size,
+                isInteractive: isInteractive,
                 isElevated: isTop,
                 deviceTilt: deviceTilt,
                 stackDrag: isTop ? drag : nil,
-                actions: actions(for: card)
+                actions: actions(for: card),
+                onSelectStyle: { stack.show($0, on: card.id) }
             )
             .equatable()
             .frame(width: size.width, height: size.height)
         }
-        .simultaneousGesture(dragGesture, including: isTop && flinging == nil ? .all : .none)
+        .simultaneousGesture(dragGesture, including: isInteractive ? .all : .none)
         .allowsHitTesting(isTop)
         .accessibilityHidden(!isTop)
-        .accessibilityAction(named: "Love") { fling(.save, fromButton: true) }
-        .accessibilityAction(named: "Pass") { fling(.pass, fromButton: true) }
+        .accessibilityAction(named: "Love") { onFling(.save, true) }
+        .accessibilityAction(named: "Pass") { onFling(.pass, true) }
         .id(card.id)
         .transition(.identity)
     }
@@ -441,49 +594,6 @@ struct StackHome: View {
         actions.onToggleFollow = { viewModel.toggleFollow(authorId) }
         return actions
     }
-
-    @ViewBuilder
-    private var placeholder: some View {
-        if deck.isFinished {
-            StackEndCard(
-                filtered: !stack.filter.isEmpty,
-                onInspire: onInspire,
-                onCheckAgain: stack.startNewVisit,
-                onClearFilters: { stack.apply(StackFilter()) }
-            )
-        } else if stack.loadState == .failed {
-            StackMessageCard(
-                title: "Couldn't load cards",
-                detail: "Check your connection and try again.",
-                actionTitle: "Try again",
-                action: stack.retry
-            )
-        } else {
-            StackMessageCard(title: nil, detail: nil, actionTitle: nil, action: nil)
-        }
-    }
-
-    // MARK: - Toast
-
-    @ViewBuilder
-    private var toast: some View {
-        ZStack {
-            if let toast = viewModel.postToast {
-                StackToast(toast: toast)
-                    .id(toast.token)
-                    .transition(
-                        reduceMotion
-                            ? .opacity
-                            : .opacity.combined(with: .move(edge: .bottom)).combined(with: .scale(scale: 0.92))
-                    )
-                    .onTapGesture { viewModel.dismissPostToast() }
-            }
-        }
-        .padding(.bottom, StackMetrics.peek + 14)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.38, dampingFraction: 0.82), value: viewModel.postToast)
-    }
-
-    // MARK: - Decisions
 
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 1.5, coordinateSpace: .global)
@@ -524,9 +634,7 @@ struct StackHome: View {
                 withTransaction(transaction) {
                     drag.offset = next
                 }
-                if drag.noteDecideThreshold(distance: next.width) {
-                    thresholdTick &+= 1
-                }
+                _ = drag.noteDecideThreshold(distance: next.width)
             }
             .onEnded { value in
                 defer {
@@ -541,9 +649,9 @@ struct StackHome: View {
                 let velocity = value.predictedEndTranslation.width - value.translation.width
                 let projected = distance + velocity
                 if distance > StackMetrics.decideDistance || projected > StackMetrics.flickDistance {
-                    fling(.save)
+                    onFling(.save, false)
                 } else if distance < -StackMetrics.decideDistance || projected < -StackMetrics.flickDistance {
-                    fling(.pass)
+                    onFling(.pass, false)
                 } else {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.7)) {
                         drag.offset = .zero
@@ -551,84 +659,161 @@ struct StackHome: View {
                 }
             }
     }
+}
 
-    /// The card leaves first, then the decision commits, so the next card is never drawn mid-flight.
-    /// A button-initiated fling buzzes once here; a drag-initiated one already buzzed
-    /// at the threshold, and its commit stays silent either way.
-    private func fling(_ kind: DecisionKind, fromButton: Bool = false) {
-        guard flinging == nil, deck.top != nil else {
-            return
-        }
-        if fromButton {
-            actionTick &+= 1
-        }
-        flinging = kind
-        let direction: CGFloat = kind == .save ? 1 : -1
-        let distance = max(drag.cardWidth, 320) * 1.5
-        let target = CGSize(width: direction * distance, height: drag.offset.height + 40)
-        if reduceMotion {
-            commit(kind)
-            return
-        }
-        withAnimation(.easeIn(duration: 0.22)) {
-            drag.offset = target
-        } completion: {
-            commit(kind)
+/// Only mounted when the deck has no top card, so background page prefetches that toggle
+/// `stack.loadState` never invalidate the stage while cards are on screen.
+private struct StackPlaceholderView: View {
+    let stack: StackModel
+    let onInspire: () -> Void
+
+    var body: some View {
+        if stack.isFinished {
+            StackEndCard(
+                filtered: !stack.filter.isEmpty,
+                onInspire: onInspire,
+                onCheckAgain: stack.startNewVisit,
+                onClearFilters: { stack.apply(StackFilter()) }
+            )
+        } else if stack.loadState == .failed {
+            StackMessageCard(
+                title: "Couldn't load cards",
+                detail: "Check your connection and try again.",
+                actionTitle: "Try again",
+                action: stack.retry
+            )
+        } else {
+            StackMessageCard(title: nil, detail: nil, actionTitle: nil, action: nil)
         }
     }
+}
 
-    private func commit(_ kind: DecisionKind) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            stack.decide(kind)
-            drag.offset = .zero
-            flinging = nil
-        }
-    }
+private struct StackToastOverlay: View {
+    let viewModel: HomeViewModel
 
-    /// The last card comes back in from the side it left by.
-    private func rewind() {
-        guard flinging == nil else {
-            return
-        }
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        var entrance: CGSize = .zero
-        var didRewind = false
-        withTransaction(transaction) {
-            guard let step = stack.rewind() else {
-                return
-            }
-            didRewind = true
-            let direction: CGFloat = step.kind == .save ? 1 : -1
-            entrance = CGSize(width: direction * max(drag.cardWidth, 320) * 1.3, height: 30)
-            drag.offset = reduceMotion ? .zero : entrance
-        }
-        if didRewind {
-            actionTick &+= 1
-        }
-        guard !reduceMotion, entrance != .zero else {
-            return
-        }
-        Task { @MainActor [drag] in
-            await Task.yield()
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
-                drag.offset = .zero
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let toast = viewModel.postToast
+        ZStack {
+            if let toast {
+                StackToast(toast: toast)
+                    .id(toast.token)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .opacity.combined(with: .move(edge: .bottom)).combined(with: .scale(scale: 0.92))
+                    )
+                    .onTapGesture { viewModel.dismissPostToast() }
             }
         }
+        .padding(.bottom, StackMetrics.peek + 14)
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.38, dampingFraction: 0.82),
+            value: toast
+        )
+    }
+}
+
+/// Zero-size observer for haptics, visit resets, layout prewarming, and CoreMotion lifecycle.
+private struct StackSessionEffects: View {
+    let stack: StackModel
+    let drag: StackDrag
+    let deviceTilt: CardDeviceTilt
+    let screenState: StackScreenState
+    let isHomeActive: Bool
+    let onResetDrag: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var shouldRunTilt: Bool {
+        isHomeActive
+            && !screenState.hasPresentedSheet
+            && stack.hasTopCard
+            && !reduceMotion
+            && scenePhase == .active
     }
 
-    private func resetDrag() {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            drag.offset = .zero
-            drag.isDeciding = nil
-            drag.lastTranslation = nil
-            drag.touchWasDrag = false
-            flinging = nil
+    private var shouldPauseTilt: Bool {
+        drag.isMoving || screenState.flinging != nil
+    }
+
+    var body: some View {
+        Color.clear
+            .sensoryFeedback(.impact(weight: .light), trigger: drag.thresholdTick)
+            .sensoryFeedback(.impact(weight: .light), trigger: drag.actionTick)
+            .onAppear {
+                syncTilt()
+                deviceTilt.isPaused = shouldPauseTilt
+            }
+            .onDisappear {
+                deviceTilt.stop()
+            }
+            .onChange(of: stack.visitToken) { _, _ in
+                onResetDrag()
+            }
+            .onChange(of: shouldRunTilt) { _, _ in
+                syncTilt()
+            }
+            .onChange(of: shouldPauseTilt) { _, paused in
+                deviceTilt.isPaused = paused
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private func syncTilt() {
+        if shouldRunTilt {
+            deviceTilt.start()
+        } else {
+            deviceTilt.stop()
         }
+    }
+}
+
+private struct StackSheetsModifier: ViewModifier {
+    @Bindable var screenState: StackScreenState
+    let viewModel: HomeViewModel
+    let storeKitManager: StoreKitManager
+    var identityStore: ProfileIdentityStore?
+    var onLogOut: (() -> Void)?
+    var onDeleteAccount: (() async -> AccountDeletion)?
+    let onOpenFollowed: (FollowedPerson) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $screenState.showFilter) {
+                StackFilterSheet(appliedFilter: viewModel.stack.filter) { next in
+                    viewModel.stack.apply(next)
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationContentInteraction(.scrolls)
+                .presentationBackground(theme.grey)
+            }
+            .modifier(
+                AccountSheets(
+                    showSettings: $screenState.showSettings,
+                    showPeople: $screenState.showPeople,
+                    peopleStartsOnNotifications: screenState.peopleStartsOnNotifications,
+                    viewModel: viewModel,
+                    storeKitManager: storeKitManager,
+                    identityStore: identityStore,
+                    onLogOut: onLogOut,
+                    onDeleteAccount: onDeleteAccount,
+                    onOpenFollowed: onOpenFollowed
+                )
+            )
+            .onChange(of: screenState.showPeople) { _, showing in
+                if !showing {
+                    screenState.peopleStartsOnNotifications = false
+                }
+            }
     }
 }
 
@@ -656,20 +841,25 @@ private struct StackCardMotion<Content: View>: View {
 
     var body: some View {
         let isTop = depth == 0
-        let pose = StackCardPose.posed(depth: depth, progress: drag.progress, dark: colorScheme == .dark)
+        let dark = colorScheme == .dark
+        let pose = isTop
+            ? StackCardPose.rest(depth: 0, dark: dark)
+            : StackCardPose.posed(depth: depth, progress: drag.progress, dark: dark)
+        let topOffset: CGSize = isTop ? drag.offset : .zero
+        let topTilt: Angle = isTop ? drag.tilt : .zero
         content
-            .overlay { StackStamps(lean: isTop ? drag.lean : 0) }
+            .overlay { StackStamps(drag: isTop ? drag : nil) }
             .overlay {
                 RoundedRectangle(cornerRadius: AngleCardMetrics.cornerRadius, style: .continuous)
                     .fill(Color.black.opacity(pose.shade))
                     .allowsHitTesting(false)
             }
             .opacity(pose.opacity)
-            .rotationEffect(isTop ? drag.tilt : .zero, anchor: .bottom)
+            .rotationEffect(topTilt, anchor: .bottom)
             .scaleEffect(pose.scale, anchor: .bottom)
             .offset(
-                x: isTop ? drag.offset.width : 0,
-                y: isTop ? drag.offset.height : pose.offsetY
+                x: topOffset.width,
+                y: isTop ? topOffset.height : pose.offsetY
             )
     }
 }
@@ -760,20 +950,45 @@ private struct StackHeader: View {
 // MARK: - Pieces
 
 /// LOVE in the top-left corner and PASS in the top-right, pressed in as the card leans.
+/// Only the top card passes a non-nil `drag`, and each stamp observes only its own side's fill.
 private struct StackStamps: View {
-    let lean: CGFloat
+    let drag: StackDrag?
 
     var body: some View {
-        ZStack(alignment: .top) {
-            StackStamp(label: "LOVE", tint: ActionColors.love, angle: -14, presence: max(0, lean))
-                .frame(maxWidth: .infinity, alignment: .leading)
-            StackStamp(label: "PASS", tint: ActionColors.pass, angle: 14, presence: max(0, -lean))
-                .frame(maxWidth: .infinity, alignment: .trailing)
+        if let drag {
+            ZStack(alignment: .top) {
+                StackLoveStamp(drag: drag)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                StackPassStamp(drag: drag)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(18)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
-        .padding(18)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+    }
+}
+
+private struct StackLoveStamp: View {
+    let drag: StackDrag
+
+    var body: some View {
+        let presence = drag.loveFill
+        if presence > 0 {
+            StackStamp(label: "LOVE", tint: ActionColors.love, angle: -14, presence: presence)
+        }
+    }
+}
+
+private struct StackPassStamp: View {
+    let drag: StackDrag
+
+    var body: some View {
+        let presence = drag.passFill
+        if presence > 0 {
+            StackStamp(label: "PASS", tint: ActionColors.pass, angle: 14, presence: presence)
+        }
     }
 }
 
@@ -950,22 +1165,18 @@ private struct StackPillButtonStyle: ButtonStyle {
 // MARK: - Action row
 
 /// Rewind, Pass, Inspire me, Love, Profile: small, large, largest, large, small.
+/// Each button observes only its own signal so `StackActionBar.body` never redraws during swipes.
 struct StackActionBar: View {
-    let screenSize: CGSize
-    let canRewind: Bool
-    let canDecide: Bool
-    /// Read only by Pass and Love, so a drag frame redraws just those two.
+    let viewModel: HomeViewModel
     let drag: StackDrag
-    let profilePulseToken: Int
+    let screenState: StackScreenState
+    let screenSize: CGSize
+    var isHomeActive: Bool = true
     let onRewind: () -> Void
     let onPass: () -> Void
     let onInspire: () -> Void
     let onLove: () -> Void
     let onProfile: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     private var gap: CGFloat {
         StackMetrics.buttonGap(screenWidth: screenSize.width)
@@ -977,36 +1188,110 @@ struct StackActionBar: View {
         let decide = StackMetrics.decideSize(screenHeight: screenSize.height)
         let inspire = StackMetrics.inspireSize(screenHeight: screenSize.height)
         HStack(spacing: gap) {
-            StackRoundButton(side: side, systemImage: "arrow.counterclockwise", iconSize: side * 0.42, tint: theme.ink, action: onRewind)
-                .opacity(canRewind ? 1 : 0.5)
-                .disabled(!canRewind)
-                .accessibilityLabel("Rewind")
-                .accessibilityIdentifier("stack.rewind")
-            StackDecideButton(drag: drag, towardLove: false, side: decide, systemImage: "xmark", tint: ActionColors.pass, action: onPass)
-                .disabled(!canDecide)
-                .accessibilityLabel("Pass")
-                .accessibilityIdentifier("stack.pass")
-            StackInspireButton(side: inspire, action: onInspire)
-            StackDecideButton(drag: drag, towardLove: true, side: decide, systemImage: "heart.fill", tint: ActionColors.love, action: onLove)
-                .disabled(!canDecide)
-                .accessibilityLabel("Love")
-                .accessibilityIdentifier("stack.love")
-            StackRoundButton(side: side, systemImage: "person.fill", iconSize: side * 0.42, tint: theme.ink, action: onProfile)
-                .keyframeAnimator(initialValue: 1.0, trigger: profilePulseToken) { content, scale in
-                    content.scaleEffect(scale)
-                } keyframes: { _ in
-                    SpringKeyframe(1.18, duration: 0.18, spring: .snappy)
-                    SpringKeyframe(1.0, duration: 0.32, spring: .bouncy)
-                }
-                .accessibilityLabel("Profile")
-                .accessibilityIdentifier("stack.profile")
+            StackRewindButton(
+                stack: viewModel.stack,
+                screenState: screenState,
+                side: side,
+                action: onRewind
+            )
+            StackDecideButton(
+                stack: viewModel.stack,
+                screenState: screenState,
+                drag: drag,
+                towardLove: false,
+                side: decide,
+                systemImage: "xmark",
+                tint: ActionColors.pass,
+                action: onPass
+            )
+            .accessibilityLabel("Pass")
+            .accessibilityIdentifier("stack.pass")
+            StackInspireButton(
+                side: inspire,
+                screenState: screenState,
+                isHomeActive: isHomeActive,
+                action: onInspire
+            )
+            StackDecideButton(
+                stack: viewModel.stack,
+                screenState: screenState,
+                drag: drag,
+                towardLove: true,
+                side: decide,
+                systemImage: "heart.fill",
+                tint: ActionColors.love,
+                action: onLove
+            )
+            .accessibilityLabel("Love")
+            .accessibilityIdentifier("stack.love")
+            StackProfileButton(
+                viewModel: viewModel,
+                side: side,
+                action: onProfile
+            )
         }
         .frame(maxWidth: .infinity)
     }
 }
 
-/// Pass or Love, flooding with its colour as the card leans its way.
+private struct StackRewindButton: View {
+    let stack: StackModel
+    let screenState: StackScreenState
+    let side: CGFloat
+    let action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        let canRewind = stack.canRewind && screenState.flinging == nil
+        StackRoundButton(
+            side: side,
+            systemImage: "arrow.counterclockwise",
+            iconSize: side * 0.42,
+            tint: theme.ink,
+            action: action
+        )
+        .opacity(canRewind ? 1 : 0.5)
+        .disabled(!canRewind)
+        .accessibilityLabel("Rewind")
+        .accessibilityIdentifier("stack.rewind")
+    }
+}
+
+private struct StackProfileButton: View {
+    let viewModel: HomeViewModel
+    let side: CGFloat
+    let action: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        StackRoundButton(
+            side: side,
+            systemImage: "person.fill",
+            iconSize: side * 0.42,
+            tint: theme.ink,
+            action: action
+        )
+        .keyframeAnimator(initialValue: 1.0, trigger: viewModel.profilePulseToken) { content, scale in
+            content.scaleEffect(scale)
+        } keyframes: { _ in
+            SpringKeyframe(1.18, duration: 0.18, spring: .snappy)
+            SpringKeyframe(1.0, duration: 0.32, spring: .bouncy)
+        }
+        .accessibilityLabel("Profile")
+        .accessibilityIdentifier("stack.profile")
+    }
+}
+
+/// Pass or Love, flooding with its colour only when the card leans toward its side.
 private struct StackDecideButton: View {
+    let stack: StackModel
+    let screenState: StackScreenState
     let drag: StackDrag
     let towardLove: Bool
     let side: CGFloat
@@ -1015,15 +1300,17 @@ private struct StackDecideButton: View {
     let action: () -> Void
 
     var body: some View {
-        let lean = drag.lean
+        let canDecide = stack.hasTopCard && screenState.flinging == nil
+        let fill = towardLove ? drag.loveFill : drag.passFill
         StackRoundButton(
             side: side,
             systemImage: systemImage,
             iconSize: side * 0.42,
             tint: tint,
-            fill: towardLove ? max(0, lean) : max(0, -lean),
+            fill: fill,
             action: action
         )
+        .disabled(!canDecide)
     }
 }
 
@@ -1047,16 +1334,20 @@ private struct StackRoundButton: View {
                 Circle()
                     .fill(theme.surface)
                     .shadow(color: theme.shadowSoft, radius: 10, y: 4)
-                Circle()
-                    .fill(tint)
-                    .opacity(fill)
+                if fill > 0 {
+                    Circle()
+                        .fill(tint)
+                        .opacity(fill)
+                }
                 Image(systemName: systemImage)
                     .font(.system(size: iconSize, weight: .bold))
                     .foregroundStyle(tint)
-                Image(systemName: systemImage)
-                    .font(.system(size: iconSize, weight: .bold))
-                    .foregroundStyle(theme.surface)
-                    .opacity(fill)
+                if fill > 0 {
+                    Image(systemName: systemImage)
+                        .font(.system(size: iconSize, weight: .bold))
+                        .foregroundStyle(theme.surface)
+                        .opacity(fill)
+                }
             }
             .frame(width: side, height: side)
             .overlay(Circle().strokeBorder(theme.cardHairline, lineWidth: 0.5))
@@ -1068,19 +1359,37 @@ private struct StackRoundButton: View {
 }
 
 /// Inspire me: the orange mark on the card surface, ringed by a slow, faint orange spark. Its
-/// visible size is its real size. Still under Reduce Motion, and stopped while Home is off screen.
+/// visible size is its real size. Still under Reduce Motion, and stopped while Home is covered or off screen.
 private struct StackInspireButton: View {
     let side: CGFloat
+    let screenState: StackScreenState
+    let isHomeActive: Bool
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var spinning = false
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     private static let lap: Double = 7
+
+    private static let sparkGradient = AngularGradient(
+        stops: [
+            .init(color: ActionColors.inspire.opacity(0.05), location: 0),
+            .init(color: ActionColors.inspire.opacity(0.05), location: 0.45),
+            .init(color: ActionColors.inspire.opacity(0.3), location: 0.8),
+            .init(color: ActionColors.inspire.opacity(0.6), location: 0.98),
+            .init(color: ActionColors.inspire.opacity(0.05), location: 1),
+        ],
+        center: .center
+    )
+
+    private var shouldSpin: Bool {
+        isHomeActive && !screenState.hasPresentedSheet && !reduceMotion && scenePhase == .active
+    }
 
     var body: some View {
         Button(action: action) {
@@ -1089,19 +1398,7 @@ private struct StackInspireButton: View {
                     .fill(theme.surface)
                     .shadow(color: ActionColors.inspire.opacity(0.2), radius: 8, y: 3)
                 Circle()
-                    .strokeBorder(
-                        AngularGradient(
-                            stops: [
-                                .init(color: ActionColors.inspire.opacity(0.05), location: 0),
-                                .init(color: ActionColors.inspire.opacity(0.05), location: 0.45),
-                                .init(color: ActionColors.inspire.opacity(0.3), location: 0.8),
-                                .init(color: ActionColors.inspire.opacity(0.6), location: 0.98),
-                                .init(color: ActionColors.inspire.opacity(0.05), location: 1),
-                            ],
-                            center: .center
-                        ),
-                        lineWidth: 2
-                    )
+                    .strokeBorder(Self.sparkGradient, lineWidth: 2)
                     .animation(spinning ? .linear(duration: Self.lap).repeatForever(autoreverses: false) : nil) {
                         $0.rotationEffect(.degrees(spinning ? 360 : 0))
                     }
@@ -1113,9 +1410,9 @@ private struct StackInspireButton: View {
         .buttonStyle(StackPressStyle())
         .accessibilityLabel("Inspire me")
         .accessibilityIdentifier("stack.inspire")
-        .onAppear { spinning = !reduceMotion }
+        .onAppear { spinning = shouldSpin }
         .onDisappear { spinning = false }
-        .onChange(of: reduceMotion) { _, reduced in spinning = !reduced }
+        .onChange(of: shouldSpin) { _, next in spinning = next }
     }
 }
 

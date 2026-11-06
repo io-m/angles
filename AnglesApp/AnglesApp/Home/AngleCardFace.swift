@@ -77,11 +77,83 @@ enum AngleTypeFit {
         }
     }
 
+    private final class ThoughtSizeBox {
+        let value: AngleThoughtSize
+
+        init(_ value: AngleThoughtSize) {
+            self.value = value
+        }
+    }
+
+    private final class FontAttributesBox {
+        let attributes: [NSAttributedString.Key: Any]
+
+        init(font: UIFont, lineSpacing: CGFloat) {
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = lineSpacing
+            self.attributes = [.font: font, .paragraphStyle: paragraph]
+        }
+    }
+
     private static let cache: NSCache<NSString, Sizes> = {
         let cache = NSCache<NSString, Sizes>()
         cache.countLimit = 64
         return cache
     }()
+
+    private static let thoughtCache: NSCache<NSString, ThoughtSizeBox> = {
+        let cache = NSCache<NSString, ThoughtSizeBox>()
+        cache.countLimit = 128
+        return cache
+    }()
+
+    private static let attributesCache: NSCache<NSString, FontAttributesBox> = {
+        let cache = NSCache<NSString, FontAttributesBox>()
+        cache.countLimit = 128
+        return cache
+    }()
+
+    static func cachedThoughtSize(
+        for card: HomeCard,
+        showingOriginal: Bool,
+        width: CGFloat,
+        cardHeight: CGFloat,
+        sizeCategory: UIContentSizeCategory
+    ) -> AngleThoughtSize {
+        guard width > 1, cardHeight > 1 else {
+            return .body
+        }
+        let key = "\(card.id.uuidString)|\(showingOriginal ? 1 : 0)|\(width)x\(cardHeight)|\(sizeCategory.rawValue)" as NSString
+        if let cached = thoughtCache.object(forKey: key) {
+            return cached.value
+        }
+        let text = showingOriginal ? (card.thoughtOriginal ?? card.thought) : card.thought
+        let resolved = thoughtSize(for: text, width: width, cardHeight: cardHeight, sizeCategory: sizeCategory)
+        thoughtCache.setObject(ThoughtSizeBox(resolved), forKey: key)
+        return resolved
+    }
+
+    static func cachedAnswerSizes(
+        for card: HomeCard,
+        showingOriginal: Bool,
+        in box: CGSize,
+        sizeCategory: UIContentSizeCategory
+    ) -> [Style: AngleAnswerSize] {
+        let key = "card|\(card.id.uuidString)|\(showingOriginal ? 1 : 0)|\(box.width)x\(box.height)|\(sizeCategory.rawValue)" as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached.value
+        }
+        var sizes: [Style: AngleAnswerSize] = Dictionary(minimumCapacity: card.slides.count)
+        for slide in card.slides {
+            let style = slide.result.style
+            let text = showingOriginal ? (slide.result.reframeOriginal ?? slide.result.reframe) : slide.result.reframe
+            sizes[style] = answerSize(for: text, in: box, sizeCategory: sizeCategory)
+        }
+        if box.width > 1, box.height > 1 {
+            cache.setObject(Sizes(sizes), forKey: key)
+        }
+        return sizes
+    }
 
     /// Every angle's size for one card and box, measured once and then reused.
     static func answerSizes(
@@ -126,7 +198,8 @@ enum AngleTypeFit {
             answerHeight(answer, pointSize: point, width: box.width) + slack <= limit
         }
         guard fits(floor, within: target) else {
-            return AngleAnswerSize(pointSize: floor, scrolls: !fits(floor, within: box.height))
+            let fitsWholeBox = answerHeight(answer, pointSize: floor, width: box.width) <= box.height
+            return AngleAnswerSize(pointSize: floor, scrolls: !fitsWholeBox)
         }
         var low = Int(floor)
         var high = Int(max(floor, scaled(largest, sizeCategory: sizeCategory)))
@@ -142,11 +215,26 @@ enum AngleTypeFit {
     }
 
     static func answerHeight(_ answer: String, pointSize: CGFloat, width: CGFloat) -> CGFloat {
-        height(
-            of: answer,
-            font: UIFont.systemFont(ofSize: pointSize, weight: .semibold),
-            lineSpacing: lineSpacing(for: pointSize),
-            width: width
+        let spacing = lineSpacing(for: pointSize)
+        let key = "ans|\(Int(pointSize * 10))|\(Int(spacing * 10))" as NSString
+        let attrs: [NSAttributedString.Key: Any]
+        if let cached = attributesCache.object(forKey: key) {
+            attrs = cached.attributes
+        } else {
+            let box = FontAttributesBox(
+                font: UIFont.systemFont(ofSize: pointSize, weight: .semibold),
+                lineSpacing: spacing
+            )
+            attributesCache.setObject(box, forKey: key)
+            attrs = box.attributes
+        }
+        return ceil(
+            (answer as NSString).boundingRect(
+                with: CGSize(width: width, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: attrs,
+                context: nil
+            ).height
         )
     }
 
@@ -173,11 +261,25 @@ enum AngleTypeFit {
         width: CGFloat,
         sizeCategory: UIContentSizeCategory
     ) -> CGFloat {
-        height(
-            of: thought,
-            font: uiFont(for: size.textStyle, weight: .regular, sizeCategory: sizeCategory),
-            lineSpacing: AngleThoughtSize.lineSpacing,
-            width: width
+        let key = "th|\(size.rawValue)|\(sizeCategory.rawValue)" as NSString
+        let attrs: [NSAttributedString.Key: Any]
+        if let cached = attributesCache.object(forKey: key) {
+            attrs = cached.attributes
+        } else {
+            let box = FontAttributesBox(
+                font: uiFont(for: size.textStyle, weight: .regular, sizeCategory: sizeCategory),
+                lineSpacing: AngleThoughtSize.lineSpacing
+            )
+            attributesCache.setObject(box, forKey: key)
+            attrs = box.attributes
+        }
+        return ceil(
+            (thought as NSString).boundingRect(
+                with: CGSize(width: width, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: attrs,
+                context: nil
+            ).height
         )
     }
 
@@ -187,6 +289,9 @@ enum AngleTypeFit {
 
     /// Point sizes are written at the default text size and follow the reader's setting.
     static func scaled(_ points: CGFloat, sizeCategory: UIContentSizeCategory) -> CGFloat {
+        if sizeCategory == .large {
+            return points.rounded()
+        }
         let traits = UITraitCollection(preferredContentSizeCategory: sizeCategory)
         return UIFontMetrics(forTextStyle: .body).scaledValue(for: points, compatibleWith: traits).rounded()
     }
@@ -259,18 +364,69 @@ enum AngleCardMetrics {
 /// divider, and answer, with the pills and the heart underneath.
 struct AngleCardFace: View, Equatable {
     let card: HomeCard
-    var sizing: AngleCardSizing = .list
-    @Binding var style: Style
-    /// The card behind the top card: drawn, but not tappable.
-    var isInteractive = true
-    /// The card behind casts no shadow of its own.
-    var isElevated = true
-    /// Physical tilt of the phone. Only the top stack card sets this.
+    var stackCardSize: CGSize = .zero
+    /// Physical tilt of the phone. Only visible stack cards set this.
     var deviceTilt: CardDeviceTilt?
     /// The stack's drag. Only the top card sets this, and only a tap or chip action reads it,
     /// so a moving finger never redraws the face.
     var stackDrag: StackDrag?
     var actions = AngleCardActions()
+    var onSelectStyle: (Style) -> Void = { _ in }
+    var style: Style
+    var sizing: AngleCardSizing = .list
+    /// The card behind the top card: drawn, but not tappable.
+    var isInteractive = true
+    /// The card behind casts no shadow of its own.
+    var isElevated = true
+
+    init(
+        card: HomeCard,
+        sizing: AngleCardSizing = .list,
+        style: Style,
+        stackCardSize: CGSize = .zero,
+        isInteractive: Bool = true,
+        isElevated: Bool = true,
+        deviceTilt: CardDeviceTilt? = nil,
+        stackDrag: StackDrag? = nil,
+        actions: AngleCardActions = AngleCardActions(),
+        onSelectStyle: @escaping (Style) -> Void = { _ in }
+    ) {
+        self.card = card
+        self.stackCardSize = stackCardSize
+        self.deviceTilt = deviceTilt
+        self.stackDrag = stackDrag
+        self.actions = actions
+        self.onSelectStyle = onSelectStyle
+        self.style = style
+        self.sizing = sizing
+        self.isInteractive = isInteractive
+        self.isElevated = isElevated
+    }
+
+    init(
+        card: HomeCard,
+        sizing: AngleCardSizing = .list,
+        style: Binding<Style>,
+        stackCardSize: CGSize = .zero,
+        isInteractive: Bool = true,
+        isElevated: Bool = true,
+        deviceTilt: CardDeviceTilt? = nil,
+        stackDrag: StackDrag? = nil,
+        actions: AngleCardActions = AngleCardActions()
+    ) {
+        self.init(
+            card: card,
+            sizing: sizing,
+            style: style.wrappedValue,
+            stackCardSize: stackCardSize,
+            isInteractive: isInteractive,
+            isElevated: isElevated,
+            deviceTilt: deviceTilt,
+            stackDrag: stackDrag,
+            actions: actions,
+            onSelectStyle: { style.wrappedValue = $0 }
+        )
+    }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -284,14 +440,17 @@ struct AngleCardFace: View, Equatable {
     @State private var actionsHaptic = 0
     @State private var stepHaptic = 0
     @State private var saveHaptic = 0
-    @State private var stageWidth: CGFloat = 0
+    @State private var listStageWidth: CGFloat = 0
 
     static func == (lhs: AngleCardFace, rhs: AngleCardFace) -> Bool {
         lhs.card == rhs.card
             && lhs.sizing == rhs.sizing
             && lhs.style == rhs.style
+            && lhs.stackCardSize == rhs.stackCardSize
             && lhs.isInteractive == rhs.isInteractive
             && lhs.isElevated == rhs.isElevated
+            && lhs.deviceTilt === rhs.deviceTilt
+            && lhs.stackDrag === rhs.stackDrag
             && (lhs.actions.onToggleSave == nil) == (rhs.actions.onToggleSave == nil)
             && (lhs.actions.onToggleFollow == nil) == (rhs.actions.onToggleFollow == nil)
     }
@@ -413,40 +572,50 @@ struct AngleCardFace: View, Equatable {
         AngleCardMetrics.avatarSize(for: sizing)
     }
 
+    @ViewBuilder
     private var stackBody: some View {
-        GeometryReader { proxy in
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                moderationNotice
-                if scrollsWholeCard {
-                    // At accessibility sizes the thought alone can fill a fixed card.
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            stackThought(AngleThoughtSize.body.font)
-                            thoughtDivider
-                            angleTabs
-                            answerText(font: .title3.weight(.semibold), lineSpacing: 3, fillsBox: false)
-                                .padding(.horizontal, inset)
-                                .padding(.top, AngleCardMetrics.answerTop)
-                                .padding(.bottom, inset)
-                        }
-                    }
-                    .scrollIndicators(.hidden)
-                } else {
-                    let thoughtSize = AngleTypeFit.thoughtSize(
-                        for: displayedThought,
-                        width: proxy.size.width - inset * 2,
-                        cardHeight: proxy.size.height,
-                        sizeCategory: sizeCategory
-                    )
-                    stackThought(thoughtSize.font)
-                    thoughtDivider
-                    angleTabs
-                    stage
-                }
+        if stackCardSize.width > 1, stackCardSize.height > 1 {
+            stackContent(size: stackCardSize)
+        } else {
+            GeometryReader { proxy in
+                stackContent(size: proxy.size)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
         }
+    }
+
+    private func stackContent(size: CGSize) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            moderationNotice
+            if scrollsWholeCard {
+                // At accessibility sizes the thought alone can fill a fixed card.
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        stackThought(AngleThoughtSize.body.font)
+                        thoughtDivider
+                        angleTabs
+                        answerText(font: .title3.weight(.semibold), lineSpacing: 3, fillsBox: false)
+                            .padding(.horizontal, inset)
+                            .padding(.top, AngleCardMetrics.answerTop)
+                            .padding(.bottom, inset)
+                    }
+                }
+                .scrollIndicators(.hidden)
+            } else {
+                let thoughtSize = AngleTypeFit.cachedThoughtSize(
+                    for: card,
+                    showingOriginal: showingOriginal,
+                    width: size.width - inset * 2,
+                    cardHeight: size.height,
+                    sizeCategory: sizeCategory
+                )
+                stackThought(thoughtSize.font)
+                thoughtDivider
+                angleTabs
+                stage(cardWidth: size.width)
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .top)
     }
 
     private func stackThought(_ font: Font) -> some View {
@@ -491,17 +660,18 @@ struct AngleCardFace: View, Equatable {
         .padding(.horizontal, inset)
     }
 
-    private var displayedAnswers: [Style: String] {
-        Dictionary(card.styles.map { ($0, answer(for: $0)) }, uniquingKeysWith: { first, _ in first })
-    }
-
-    private var stage: some View {
+    private func stage(cardWidth: CGFloat) -> some View {
         GeometryReader { proxy in
             let box = CGSize(
                 width: max(0, proxy.size.width - inset * 2),
                 height: max(0, proxy.size.height - AngleCardMetrics.answerTop - inset)
             )
-            let sizes = AngleTypeFit.answerSizes(for: displayedAnswers, in: box, sizeCategory: sizeCategory)
+            let sizes = AngleTypeFit.cachedAnswerSizes(
+                for: card,
+                showingOriginal: showingOriginal,
+                in: box,
+                sizeCategory: sizeCategory
+            )
             let fit = sizes[currentStyle]
                 ?? AngleTypeFit.answerSize(for: answer(for: currentStyle), in: box, sizeCategory: sizeCategory)
             stageContent(fit)
@@ -513,13 +683,12 @@ struct AngleCardFace: View, Equatable {
         .frame(maxHeight: .infinity)
         .background(alignment: .bottomTrailing) { watermark }
         .contentShape(Rectangle())
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { stageWidth = $0 }
         .gesture(
             SpatialTapGesture().onEnded { tap in
                 guard stackDrag?.touchWasDrag != true else {
                     return
                 }
-                step(forward: tap.location.x >= stageWidth / 2)
+                step(forward: tap.location.x >= cardWidth / 2)
             },
             including: isInteractive ? .all : .none
         )
@@ -601,10 +770,10 @@ struct AngleCardFace: View, Equatable {
             answerColor: appearance.responseInk
         )
         .contentShape(Rectangle())
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { stageWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { listStageWidth = $0 }
         .simultaneousGesture(
             SpatialTapGesture().onEnded { tap in
-                step(forward: tap.location.x >= stageWidth / 2)
+                step(forward: tap.location.x >= listStageWidth / 2)
             },
             including: isInteractive ? .all : .none
         )
@@ -685,7 +854,7 @@ struct AngleCardFace: View, Equatable {
                 guard stackDrag?.touchWasDrag != true else {
                     return
                 }
-                style = next
+                onSelectStyle(next)
             }
         } else {
             stylePill(appearance)
@@ -809,7 +978,7 @@ struct AngleCardFace: View, Equatable {
         }
         stepHaptic += 1
         withAnimation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.78)) {
-            style = next
+            onSelectStyle(next)
         }
     }
 

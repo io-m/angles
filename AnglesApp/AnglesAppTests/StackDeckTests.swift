@@ -418,11 +418,12 @@ struct StackLayoutTests {
             #expect(middle.scale == StackMetrics.behindScale)
             #expect(middle.offsetY == StackMetrics.sliver)
             #expect(middle.opacity == 1)
-            #expect(middle.shade == (dark ? 0.35 : 0.10))
+            #expect(middle.shade == (dark ? StackMetrics.behindShadeDark : StackMetrics.behindShadeLight))
             #expect(back.scale == StackMetrics.backScale)
             #expect(back.offsetY == StackMetrics.sliver * 2)
             #expect(back.opacity == StackMetrics.backOpacity)
-            #expect(back.shade == 0)
+            #expect(back.shade == (dark ? StackMetrics.backShadeDark : StackMetrics.backShadeLight))
+            #expect(back.shade > middle.shade)
             #expect(back.opacity < middle.opacity)
             #expect(StackCardPose.posed(depth: 0, progress: 1, dark: dark) == front)
             #expect(StackCardPose.posed(depth: 1, progress: 0, dark: dark) == middle)
@@ -443,5 +444,91 @@ struct StackLayoutTests {
         #expect(StackMetrics.inspireSize(screenHeight: 667) < StackMetrics.inspireSize(screenHeight: 852))
         #expect(StackMetrics.decideSize(screenHeight: 667) < StackMetrics.decideSize(screenHeight: 852))
         #expect(StackMetrics.sideSize(screenHeight: 667) < StackMetrics.sideSize(screenHeight: 852))
+    }
+
+    @Test @MainActor func dragGranularMetricsSeparateLovePassAndProgress() {
+        let drag = StackDrag()
+        drag.cardWidth = 350
+
+        drag.offset = CGSize(width: 55, height: 10)
+        #expect(drag.loveFill == 0.5)
+        #expect(drag.passFill == 0)
+        #expect(drag.progress > 0)
+        #expect(drag.isMoving)
+
+        drag.offset = CGSize(width: -110, height: 0)
+        #expect(drag.loveFill == 0)
+        #expect(drag.passFill == 1)
+
+        drag.offset = .zero
+        #expect(drag.loveFill == 0)
+        #expect(drag.passFill == 0)
+        #expect(drag.progress == 0)
+        #expect(!drag.isMoving)
+    }
+
+    @Test @MainActor func pausedTiltIgnoresSamplesAndSettlesCleanly() {
+        let tilt = CardDeviceTilt()
+        tilt.isPaused = true
+        tilt.ingest(x: 0.3, z: -0.1, timestamp: 1.0)
+        #expect(tilt.roll == 0)
+        #expect(tilt.pitch == 0)
+
+        tilt.isPaused = false
+        for step in 1...120 {
+            tilt.ingest(x: 0, z: -0.42, timestamp: 1.0 + Double(step) / 30.0)
+        }
+        #expect(tilt.roll == 0)
+        #expect(tilt.pitch == 0)
+    }
+
+    @Test @MainActor func stackModelIsolatesRenderedCardsAndAngleChanges() {
+        let service = CardsService()
+        let writer = DecisionWriter(cardsService: service)
+        let model = StackModel(cardsService: service, writer: writer)
+        let batch1 = (0..<4).map { _ in
+            HomeCard(
+                slides: [
+                    HomeCardSlide(id: UUID(), thought: "Thought", result: ReframeResult(style: .stoic, reframe: "A")),
+                    HomeCardSlide(id: UUID(), thought: "Thought", result: ReframeResult(style: .hopeful, reframe: "B")),
+                ],
+                openingStyle: .stoic,
+                isOwner: false,
+                authorId: UUID()
+            )
+        }
+        model.receive(
+            batch1,
+            receivedIds: batch1.map { $0.id.uuidString.lowercased() },
+            session: "s1",
+            exhausted: false
+        )
+        #expect(model.renderedCards.count == 4)
+        #expect(model.hasTopCard)
+        #expect(model.topStyleSignal == StyleMarkSignal(cardID: batch1[0].id, style: .stoic))
+
+        model.show(.hopeful, on: batch1[0].id)
+        #expect(model.style(for: batch1[0]) == .hopeful)
+        #expect(model.topStyleSignal == StyleMarkSignal(cardID: batch1[0].id, style: .hopeful))
+
+        let batch2 = (0..<4).map { _ in
+            HomeCard(
+                slides: [
+                    HomeCardSlide(id: UUID(), thought: "More", result: ReframeResult(style: .stoic, reframe: "C")),
+                ],
+                openingStyle: .stoic,
+                isOwner: false,
+                authorId: UUID()
+            )
+        }
+        let beforeRendered = model.renderedCards
+        model.receive(
+            batch2,
+            receivedIds: batch2.map { $0.id.uuidString.lowercased() },
+            session: "s1",
+            exhausted: true
+        )
+        #expect(model.renderedCards == beforeRendered)
+        #expect(model.deck.cards.count == 8)
     }
 }

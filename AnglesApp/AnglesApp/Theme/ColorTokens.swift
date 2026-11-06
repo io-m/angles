@@ -47,42 +47,44 @@ struct ColorTokens {
         var isDark: Bool
     }
 
+    private static let darkTheme = Theme(
+        paper: paperDark,
+        grey: greyDark,
+        surface: surfaceDark,
+        ink: inkDark,
+        ink2: ink2Dark,
+        sub: subDark,
+        muted: mutedDark,
+        faint: faintDark,
+        line: lineDark,
+        shadowSoft: Color.white.opacity(0.04),
+        shadowLift: Color.white.opacity(0.07),
+        cardAmbientShadow: Color.white.opacity(0.042),
+        cardAmbientCore: Color.white.opacity(0.018),
+        cardHairline: Color.white.opacity(0.048),
+        isDark: true
+    )
+
+    private static let lightTheme = Theme(
+        paper: paperLight,
+        grey: greyLight,
+        surface: surfaceLight,
+        ink: inkLight,
+        ink2: ink2Light,
+        sub: subLight,
+        muted: mutedLight,
+        faint: faintLight,
+        line: lineLight,
+        shadowSoft: Color.black.opacity(0.025),
+        shadowLift: Color.black.opacity(0.06),
+        cardAmbientShadow: Color.black.opacity(0.036),
+        cardAmbientCore: Color.black.opacity(0.018),
+        cardHairline: Color.black.opacity(0.048),
+        isDark: false
+    )
+
+    @inline(__always)
     static func theme(_ scheme: ColorScheme) -> Theme {
-        if scheme == .dark {
-            return Theme(
-                paper: paperDark,
-                grey: greyDark,
-                surface: surfaceDark,
-                ink: inkDark,
-                ink2: ink2Dark,
-                sub: subDark,
-                muted: mutedDark,
-                faint: faintDark,
-                line: lineDark,
-                shadowSoft: Color.white.opacity(0.04),
-                shadowLift: Color.white.opacity(0.07),
-                cardAmbientShadow: Color.white.opacity(0.042),
-                cardAmbientCore: Color.white.opacity(0.018),
-                cardHairline: Color.white.opacity(0.048),
-                isDark: true
-            )
-        }
-        return Theme(
-            paper: paperLight,
-            grey: greyLight,
-            surface: surfaceLight,
-            ink: inkLight,
-            ink2: ink2Light,
-            sub: subLight,
-            muted: mutedLight,
-            faint: faintLight,
-            line: lineLight,
-            shadowSoft: Color.black.opacity(0.025),
-            shadowLift: Color.black.opacity(0.06),
-            cardAmbientShadow: Color.black.opacity(0.036),
-            cardAmbientCore: Color.black.opacity(0.018),
-            cardHairline: Color.black.opacity(0.048),
-            isDark: false
-        )
+        scheme == .dark ? darkTheme : lightTheme
     }
 }

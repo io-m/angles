@@ -15,66 +15,59 @@ struct InspireMark: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Icon Composer canvas. Layer scale and translation match `Angles.icon`.
-    private static let canvas: CGFloat = 1024
     /// Ink width of both layers on that canvas, so `size` is the mark, not the empty margin.
     private static let inkWidth: CGFloat = 792.48
 
     var body: some View {
+        let ratio = size / Self.inkWidth
         ZStack {
             placedLayer(
                 "InspireMarkBack",
-                style: backStyle,
-                width: 777,
-                height: 754,
-                scale: 0.9,
-                translation: CGSize(width: 45, height: 13)
+                gradient: backGradient,
+                width: 777 * 0.9 * ratio,
+                height: 754 * 0.9 * ratio,
+                translation: CGSize(width: 45 * ratio, height: 13 * ratio)
             )
             placedLayer(
                 "InspireMarkFront",
-                style: frontStyle,
-                width: 775,
-                height: 771,
-                scale: 0.9,
-                translation: CGSize(width: -49.66155, height: -5.3726)
+                gradient: frontGradient,
+                width: 775 * 0.9 * ratio,
+                height: 771 * 0.9 * ratio,
+                translation: CGSize(width: -49.66155 * ratio, height: -5.3726 * ratio)
             )
         }
-        .frame(width: Self.canvas, height: Self.canvas)
-        .scaleEffect(size / Self.inkWidth)
         .frame(width: size, height: size)
     }
 
     private func placedLayer(
         _ name: String,
-        style: AnyShapeStyle,
+        gradient: LinearGradient,
         width: CGFloat,
         height: CGFloat,
-        scale: CGFloat,
         translation: CGSize
     ) -> some View {
         Image(name)
             .resizable()
             .frame(width: width, height: height)
-            .scaleEffect(scale)
             .offset(translation)
-            .foregroundStyle(style)
+            .foregroundStyle(gradient)
     }
 
-    private var backStyle: AnyShapeStyle {
+    private var backGradient: LinearGradient {
         switch rendering {
         case .brand:
-            AnyShapeStyle(backGradient)
+            brandBackGradient
         case .monochrome(let color):
-            AnyShapeStyle(monochromeBackGradient(color))
+            monochromeBackGradient(color)
         }
     }
 
-    private var frontStyle: AnyShapeStyle {
+    private var frontGradient: LinearGradient {
         switch rendering {
         case .brand:
-            AnyShapeStyle(frontGradient)
+            brandFrontGradient
         case .monochrome(let color):
-            AnyShapeStyle(monochromeFrontGradient(color))
+            monochromeFrontGradient(color)
         }
     }
 
@@ -94,37 +87,48 @@ struct InspireMark: View {
         )
     }
 
-    private var backGradient: LinearGradient {
-        if colorScheme == .dark {
-            return LinearGradient(
-                colors: [
-                    Color(red: 1, green: 0.663, blue: 0.144),
-                    Color(red: 0.968, green: 0.480, blue: 0),
-                ],
-                startPoint: UnitPoint(x: 0.30, y: 0),
-                endPoint: UnitPoint(x: 0.73, y: 1)
-            )
-        }
+    private static let brandBackDark = LinearGradient(
+        colors: [
+            Color(red: 1, green: 0.663, blue: 0.144),
+            Color(red: 0.968, green: 0.480, blue: 0),
+        ],
+        startPoint: UnitPoint(x: 0.30, y: 0),
+        endPoint: UnitPoint(x: 0.73, y: 1)
+    )
 
-        return LinearGradient(
-            colors: [
-                Color(red: 1, green: 0.712, blue: 0),
-                Color(red: 0.968, green: 0.451, blue: 0.037),
-            ],
-            startPoint: UnitPoint(x: 0.10, y: 0),
-            endPoint: UnitPoint(x: 0.78, y: 1)
-        )
+    private static let brandBackLight = LinearGradient(
+        colors: [
+            Color(red: 1, green: 0.712, blue: 0),
+            Color(red: 0.968, green: 0.451, blue: 0.037),
+        ],
+        startPoint: UnitPoint(x: 0.10, y: 0),
+        endPoint: UnitPoint(x: 0.78, y: 1)
+    )
+
+    private static let brandFrontDark = LinearGradient(
+        colors: [
+            Color(red: 1, green: 0.789, blue: 0.370),
+            Color(red: 1, green: 0.578, blue: 0),
+        ],
+        startPoint: UnitPoint(x: 0.13, y: 0),
+        endPoint: UnitPoint(x: 1, y: 1)
+    )
+
+    private static let brandFrontLight = LinearGradient(
+        colors: [
+            Color(red: 1, green: 0.789, blue: 0.370).opacity(0.9),
+            Color(red: 1, green: 0.578, blue: 0),
+        ],
+        startPoint: UnitPoint(x: 0.13, y: 0),
+        endPoint: UnitPoint(x: 1, y: 1)
+    )
+
+    private var brandBackGradient: LinearGradient {
+        colorScheme == .dark ? Self.brandBackDark : Self.brandBackLight
     }
 
-    private var frontGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 1, green: 0.789, blue: 0.370).opacity(colorScheme == .dark ? 1 : 0.9),
-                Color(red: 1, green: 0.578, blue: 0),
-            ],
-            startPoint: UnitPoint(x: 0.13, y: 0),
-            endPoint: UnitPoint(x: 1, y: 1)
-        )
+    private var brandFrontGradient: LinearGradient {
+        colorScheme == .dark ? Self.brandFrontDark : Self.brandFrontLight
     }
 }
 

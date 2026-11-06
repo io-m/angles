@@ -88,7 +88,8 @@ struct AppRoot: View {
                 onInspire: presentCompose,
                 onOpenProfile: showOwnProfile,
                 onOpenAuthor: openAuthor,
-                onOpenFollowed: openFollowed
+                onOpenFollowed: openFollowed,
+                isHomeActive: isHomeInteractive
             )
             .sheet(isPresented: $showsProfile, onDismiss: {
                 profileCoversWithAuthor = false
@@ -387,6 +388,14 @@ struct AppRoot: View {
 
     private var isHomeRevealed: Bool {
         destination == .home && homeRevealPhase == .visible
+    }
+
+    private var isHomeInteractive: Bool {
+        isHomeRevealed
+            && !isComposePresented
+            && !saveCoverPresented
+            && !showsProfile
+            && authorRoute == nil
     }
 
     private var isComposeActive: Bool {

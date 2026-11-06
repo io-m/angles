@@ -55,6 +55,10 @@ struct StackDeck: Equatable {
         shown[card.id] ?? card.openingStyle
     }
 
+    func shownStyle(for id: UUID) -> Style? {
+        shown[id]
+    }
+
     /// Angles that have been on screen, in the order they were seen. The opening one counts.
     func checked(for card: HomeCard) -> [Style] {
         checkedStyles[card.id] ?? [card.openingStyle]
@@ -129,12 +133,13 @@ struct StackDeck: Equatable {
     }
 
     /// The server has this card's decision, so it no longer needs to be named in `seen`.
-    mutating func confirm(_ id: UUID) {
+    @discardableResult
+    mutating func confirm(_ id: UUID) -> Bool {
         let key = Self.key(id)
         guard handedOut.contains(key), !cards.contains(where: { $0.id == id }) else {
-            return
+            return false
         }
-        confirmed.insert(key)
+        return confirmed.insert(key).inserted
     }
 
     /// A blocked author, a report, or a card that is gone: off the deck and out of rewind.

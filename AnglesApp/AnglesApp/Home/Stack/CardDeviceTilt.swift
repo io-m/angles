@@ -26,7 +26,11 @@ struct CardTiltFilter: Equatable {
     }
 
     private static func step(from: Double, toward target: Double, alpha: Double) -> Double {
-        let delta = (target - from) * alpha
+        let diff = target - from
+        if abs(diff) <= 0.002 {
+            return target
+        }
+        let delta = diff * alpha
         return from + min(max(delta, -maximumStep), maximumStep)
     }
 
@@ -59,11 +63,20 @@ enum CardTiltGeometry {
 @MainActor
 @Observable
 final class CardDeviceTilt {
-    /// -1...1. Positive when the right side of the phone is lower.
-    private(set) var roll: CGFloat = 0
-    /// -1...1. Positive when the screen tips face-down from a natural hold.
-    private(set) var pitch: CGFloat = 0
+    struct Pose: Equatable {
+        var roll: CGFloat = 0
+        var pitch: CGFloat = 0
+    }
 
+    private(set) var pose = Pose()
+
+    /// -1...1. Positive when the right side of the phone is lower.
+    var roll: CGFloat { pose.roll }
+    /// -1...1. Positive when the screen tips face-down from a natural hold.
+    var pitch: CGFloat { pose.pitch }
+
+    /// Set during an active card drag or fling so sensor samples never compete with 120Hz gestures.
+    @ObservationIgnored var isPaused = false
     @ObservationIgnored private let manager = CMMotionManager()
     @ObservationIgnored private var filter = CardTiltFilter()
     @ObservationIgnored private var lastTimestamp: TimeInterval?
@@ -97,20 +110,22 @@ final class CardDeviceTilt {
 
     /// Device gravity: +x is the phone's right, +z is out of the screen.
     /// A comfortable portrait hold already tips the screen back, so pitch is measured from there.
-    private func ingest(x: Double, z: Double, timestamp: TimeInterval) {
-        let targetRoll = min(1, max(-1, x / 0.32))
-        let targetPitch = min(1, max(-1, (z - (-0.42)) / 0.32))
+    func ingest(x: Double, z: Double, timestamp: TimeInterval) {
         let dt = lastTimestamp.map { timestamp - $0 } ?? (1.0 / 30.0)
         lastTimestamp = timestamp
+        guard !isPaused else { return }
+        let targetRoll = min(1, max(-1, x / 0.32))
+        let targetPitch = min(1, max(-1, (z - (-0.42)) / 0.32))
         filter.ingest(targetRoll: targetRoll, targetPitch: targetPitch, dt: dt)
         let nextRoll = CGFloat(filter.roll)
         let nextPitch = CGFloat(filter.pitch)
-        if abs(nextRoll - roll) >= 0.002 {
-            roll = nextRoll
-        }
-        if abs(nextPitch - pitch) >= 0.002 {
-            pitch = nextPitch
-        }
+        let rollChanged = abs(nextRoll - pose.roll) >= 0.004 || (nextRoll == 0 && pose.roll != 0)
+        let pitchChanged = abs(nextPitch - pose.pitch) >= 0.004 || (nextPitch == 0 && pose.pitch != 0)
+        guard rollChanged || pitchChanged else { return }
+        pose = Pose(
+            roll: rollChanged ? nextRoll : pose.roll,
+            pitch: pitchChanged ? nextPitch : pose.pitch
+        )
     }
 }
 
