@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Who you follow, and who followed you or loved your posts, on two tabs. Same sheet
-/// chrome as Settings.
+/// Notifications (left, default) and who you follow, on two tabs. Same sheet chrome
+/// as Settings.
 struct FollowingSheet: View {
     /// One row of Notifications: a follow or a love, newest first.
     private enum NoticeRow: Identifiable {
@@ -24,8 +24,8 @@ struct FollowingSheet: View {
     }
 
     private enum PeopleTab: String, CaseIterable, Hashable {
-        case following
         case notifications
+        case following
 
         var title: String {
             switch self {
@@ -54,7 +54,8 @@ struct FollowingSheet: View {
     let loves: [LoveNotice]
     let loadState: LibraryLoadState
     let noticesLoadState: LibraryLoadState
-    /// A follow push opens Notifications. The people icon opens Following.
+    /// A follow push can flip back to Notifications if People is already open on Following.
+    /// The sheet itself always opens on Notifications (the left tab).
     var startsOnNotifications = false
     var onRetry: () -> Void
     /// Marks the follow rows read. Called when Notifications is the tab on screen.
@@ -110,7 +111,7 @@ struct FollowingSheet: View {
         self.onOpenNotice = onOpenNotice
         self.writeError = writeError
         self.onDismissError = onDismissError
-        _tab = State(initialValue: startsOnNotifications ? .notifications : .following)
+        _tab = State(initialValue: .notifications)
     }
 
     private static let relative: RelativeDateTimeFormatter = {
@@ -180,6 +181,10 @@ struct FollowingSheet: View {
         .onChange(of: tab) { _, item in
             guard item == .notifications else { return }
             onViewNotifications()
+        }
+        .onChange(of: startsOnNotifications) { _, on in
+            guard on else { return }
+            tab = .notifications
         }
         .task {
             guard tab == .notifications else { return }

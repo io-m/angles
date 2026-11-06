@@ -65,7 +65,7 @@ Do not add Cloudflare Workers / Wrangler. Do not add `railway.json` (deprecated 
 - `AnglesApp/AnglesApp/Home/ProfileView.swift` — a sheet over the stack: centered name and the Yours | Loved tabs, same grey as the sheet. A downward pan closes it. A follow push still opens People on top
 - `AnglesApp/AnglesApp/Home/AuthorProfileView.swift` — a sheet of one author's public posts, name centered, Follow or Unfollow as text. A downward pan closes it
 - `AnglesApp/AnglesApp/Home/PostDetailView.swift` — a sheet for one specific post (opened from a love push or a love row in the bell), with a top-left X button that closes straight to Home, the card opened on the loved angle, and the people who loved it underneath
-- `AnglesApp/AnglesApp/Home/FollowingSheet.swift` — who the viewer follows and who followed them, on Profile's icon tabs; the search field lifts when focused; unfollow, open, its own write banner
+- `AnglesApp/AnglesApp/Home/FollowingSheet.swift` — Notifications (left, default) and who the viewer follows, on Profile's icon tabs; the search field lifts when focused; unfollow, open, its own write banner
 - `AnglesApp/AnglesApp/Home/AIConsentSheet.swift` — the one-time per-account "Before you start" sheet before the first Send: AI providers, what is sent, community rules, Terms and Privacy acceptance
 - `AnglesApp/AnglesApp/Home/Compose/` — the compose screen, one small view per file:
   - `ComposeSession.swift` — the `@Observable` compose state (thought, turns, phase, input, cook, save) and its `/reframe` and `/cards` calls. `HomeViewModel.compose` holds it; it reaches the shared credit balance and library through `ComposeSessionHost`

@@ -16,14 +16,14 @@ struct StackFilterSheet: View {
         var symbol: String {
             switch self {
             case .lifeAreas: return "square.grid.2x2"
-            case .moods: return "face.smiling"
+            case .moods: return "theatermasks"
             }
         }
 
         var selectedSymbol: String {
             switch self {
             case .lifeAreas: return "square.grid.2x2.fill"
-            case .moods: return "face.smiling.fill"
+            case .moods: return "theatermasks.fill"
             }
         }
     }

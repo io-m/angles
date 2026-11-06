@@ -421,7 +421,7 @@ struct StackLayoutTests {
             #expect(middle.shade == (dark ? StackMetrics.behindShadeDark : StackMetrics.behindShadeLight))
             #expect(back.scale == StackMetrics.backScale)
             #expect(back.offsetY == StackMetrics.sliver * 2)
-            #expect(back.opacity == StackMetrics.backOpacity)
+            #expect(back.opacity == StackMetrics.backOpacity(dark: dark))
             #expect(back.shade == (dark ? StackMetrics.backShadeDark : StackMetrics.backShadeLight))
             #expect(back.shade > middle.shade)
             #expect(back.opacity < middle.opacity)

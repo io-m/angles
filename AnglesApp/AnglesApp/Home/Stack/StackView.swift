@@ -12,12 +12,17 @@ enum StackMetrics {
     static var peek: CGFloat { sliver * CGFloat(depthCount - 1) }
     static let behindScale: CGFloat = 0.94
     static let backScale: CGFloat = 0.88
-    static let behindShadeDark: Double = 0.42
+    static let behindShadeDark: Double = 0.24
     static let behindShadeLight: Double = 0.14
-    static let backShadeDark: Double = 0.48
+    static let backShadeDark: Double = 0.30
     static let backShadeLight: Double = 0.18
     /// The back card lets the grey show through. The middle card stays opaque, under a veil.
-    static let backOpacity: Double = 0.38
+    static let backOpacityLight: Double = 0.38
+    static let backOpacityDark: Double = 0.58
+
+    static func backOpacity(dark: Bool) -> Double {
+        dark ? backOpacityDark : backOpacityLight
+    }
     /// The next card starts smaller than the back slot and scales up into it.
     static let incomingScale: CGFloat = 0.80
     /// The three cards at rest, plus the next one while it scales into the back slot.
@@ -132,7 +137,7 @@ struct StackCardPose: Equatable {
                 scale: StackMetrics.backScale,
                 offsetY: StackMetrics.sliver * 2,
                 shade: dark ? StackMetrics.backShadeDark : StackMetrics.backShadeLight,
-                opacity: StackMetrics.backOpacity
+                opacity: StackMetrics.backOpacity(dark: dark)
             )
         default:
             return StackCardPose(

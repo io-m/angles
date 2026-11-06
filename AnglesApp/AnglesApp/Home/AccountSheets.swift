@@ -5,8 +5,8 @@ import SwiftUI
 struct AccountSheets: ViewModifier {
     @Binding var showSettings: Bool
     @Binding var showPeople: Bool
-    /// A follow push or the bell opens People on Notifications. Profile's icon opens Following
-    /// unless something is unread.
+    /// A follow push or the bell asks People to show Notifications. The sheet already
+    /// opens there; this still jumps back if Following is on screen.
     var peopleStartsOnNotifications: Bool
     let viewModel: HomeViewModel
     let storeKitManager: StoreKitManager
@@ -68,14 +68,13 @@ struct AccountSheets: ViewModifier {
                 }
                 onSheetDismissed()
             }) {
-                let startsOnNotifications = peopleStartsOnNotifications || viewModel.unreadNotificationCount > 0
                 FollowingSheet(
                     people: viewModel.followedPeople,
                     notices: viewModel.followNotices,
                     loves: viewModel.loveNotices,
                     loadState: viewModel.followingLoadState,
                     noticesLoadState: viewModel.followNoticesLoadState,
-                    startsOnNotifications: startsOnNotifications,
+                    startsOnNotifications: peopleStartsOnNotifications,
                     onRetry: {
                         Task {
                             await viewModel.loadFollowing()
@@ -115,9 +114,6 @@ struct AccountSheets: ViewModifier {
                 )
                 .task {
                     await viewModel.loadFollowing()
-                    if !startsOnNotifications {
-                        await viewModel.loadFollowNotifications()
-                    }
                 }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)

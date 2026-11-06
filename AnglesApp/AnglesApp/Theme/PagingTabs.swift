@@ -24,7 +24,10 @@ enum PagingTrack {
 /// Icon and title for one tab, in the same metrics as Profile.
 struct PagingTabLabel: View {
     let title: String
+    /// Outline SF Symbol.
     let symbol: String
+    /// Filled SF Symbol. Used as the selected glyph so outline/fill never depends on
+    /// `.symbolVariant` (some names, like `face.smiling`, have no real outline).
     let selectedSymbol: String
     var isSelected: Bool
     var tint: Color
@@ -36,10 +39,12 @@ struct PagingTabLabel: View {
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: isSelected ? selectedSymbol : symbol)
-                .symbolVariant(isSelected ? .fill : .none)
+                .environment(\.symbolVariants, .none)
+                .symbolRenderingMode(.monochrome)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(isSelected ? tint : theme.muted)
                 .accessibilityHidden(true)
+                .id(isSelected)
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(isSelected ? theme.ink : theme.muted)
@@ -67,7 +72,7 @@ final class PagingTrackModel {
         activeIndex = index
         nearestIndex = index
         reportedPage = index
-        pinnedIndex = nil
+        pinnedIndex = index == 0 ? nil : index
         hasMeasured = false
     }
 
@@ -105,6 +110,9 @@ final class PagingTrackModel {
             nearestIndex = nearest
             hasMeasured = true
         }
+        // A tap or a non-zero start pins the destination. A stale page-0 offset
+        // must not write selection back before the pager has jumped.
+        guard pinnedIndex == nil else { return }
         guard abs(index - index.rounded()) < 0.04 else { return }
         let page = min(max(Int(index.rounded()), 0), max(pageCount - 1, 0))
         guard page != reportedPage else { return }
@@ -304,62 +312,80 @@ struct PagingPages<ID: Hashable, Page: View>: View {
 
     var body: some View {
         GeometryReader { viewport in
-            ScrollView(.horizontal) {
-                HStack(spacing: 0) {
-                    ForEach(ids, id: \.self) { id in
-                        ScrollView(.vertical) {
-                            page(id)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        ForEach(ids, id: \.self) { id in
+                            ScrollView(.vertical) {
+                                page(id)
+                            }
+                            .scrollIndicators(.hidden)
+                            .scrollDismissesKeyboard(.interactively)
+                            .scrollBounceBehavior(onRefresh == nil ? .automatic : .always)
+                            .modifier(PageRefresh(action: onRefresh.map { refresh in
+                                { await refresh(id) }
+                            }))
+                            .containerRelativeFrame(.horizontal)
+                            .id(id)
                         }
-                        .scrollIndicators(.hidden)
-                        .scrollDismissesKeyboard(.interactively)
-                        .scrollBounceBehavior(onRefresh == nil ? .automatic : .always)
-                        .modifier(PageRefresh(action: onRefresh.map { refresh in
-                            { await refresh(id) }
-                        }))
-                        .containerRelativeFrame(.horizontal)
-                        .id(id)
                     }
-                }
-                .scrollTargetLayout()
-                .background {
-                    // iOS 17 has no scroll geometry callback. The named space has to sit
-                    // on the scroll view, or the content's frame never includes the offset.
-                    if #unavailable(iOS 18) {
-                        GeometryReader { content in
-                            Color.clear.preference(
-                                key: PagerScrollMetricsKey.self,
-                                value: PagerScrollMetrics(
-                                    contentMinX: content.frame(in: .named(pagingTabsSpace)).minX,
-                                    pageWidth: viewport.size.width
+                    .scrollTargetLayout()
+                    .background {
+                        // iOS 17 has no scroll geometry callback. The named space has to sit
+                        // on the scroll view, or the content's frame never includes the offset.
+                        if #unavailable(iOS 18) {
+                            GeometryReader { content in
+                                Color.clear.preference(
+                                    key: PagerScrollMetricsKey.self,
+                                    value: PagerScrollMetrics(
+                                        contentMinX: content.frame(in: .named(pagingTabsSpace)).minX,
+                                        pageWidth: viewport.size.width
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 }
-            }
-            .coordinateSpace(name: pagingTabsSpace)
-            .contentMargins(0, for: .scrollContent)
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $settled, anchor: .leading)
-            .scrollIndicators(.hidden)
-            .modifier(
-                PagingOffsetReader { metrics in
-                    track.note(
-                        contentMinX: metrics.contentMinX,
-                        pageWidth: metrics.pageWidth,
-                        pageCount: ids.count,
-                        onSettled: onSettled
-                    )
+                .coordinateSpace(name: pagingTabsSpace)
+                .contentMargins(0, for: .scrollContent)
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $settled, anchor: .leading)
+                .scrollIndicators(.hidden)
+                .modifier(
+                    PagingOffsetReader { metrics in
+                        track.note(
+                            contentMinX: metrics.contentMinX,
+                            pageWidth: metrics.pageWidth,
+                            pageCount: ids.count,
+                            onSettled: onSettled
+                        )
+                    }
+                )
+                .onChange(of: scrollToken) { _, _ in
+                    jump(to: selection, proxy: proxy, animated: true)
                 }
-            )
-            .onChange(of: scrollToken) { _, _ in
-                guard ids.contains(selection) else { return }
-                if let spring {
-                    withAnimation(spring) { settled = selection }
-                } else {
-                    settled = selection
+                .onAppear {
+                    jump(to: selection, proxy: proxy, animated: false)
+                }
+                .task {
+                    jump(to: selection, proxy: proxy, animated: false)
                 }
             }
+        }
+    }
+
+    private func jump(to id: ID, proxy: ScrollViewProxy, animated: Bool) {
+        guard ids.contains(id) else { return }
+        let move = {
+            proxy.scrollTo(id, anchor: UnitPoint.leading)
+            settled = id
+        }
+        if animated, let spring {
+            withAnimation(spring, move)
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction, move)
         }
     }
 }
