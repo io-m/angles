@@ -242,21 +242,24 @@ struct PaywallView: View {
                     .foregroundStyle(theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
 
-                VStack(spacing: 12) {
+                VStack(spacing: 0) {
                     infoIncludedRow(
                         icon: "arrow.triangle.2.circlepath",
                         title: "Keep cooking",
-                        detail: "The next thought gets four angles too. This wasn’t a one-time trick."
+                        detail: "The next thought gets four angles too. This wasn’t a one-time trick.",
+                        showsDivider: true
                     )
                     infoIncludedRow(
                         icon: "house.fill",
                         title: "Home",
-                        detail: "See how others turned it around. You’re not the only one."
+                        detail: "See how others turned it around. You’re not the only one.",
+                        showsDivider: true
                     )
                     infoIncludedRow(
                         icon: "sparkles",
                         title: "240 credits a month",
-                        detail: "Each new thought or new answer uses one credit. Follow-up questions are free. Credits reset every month."
+                        detail: "Each new thought or new answer uses one credit. Follow-up questions are free. Credits reset every month.",
+                        showsDivider: false
                     )
                 }
 
@@ -380,31 +383,36 @@ struct PaywallView: View {
         }
     }
 
-    private func infoIncludedRow(icon: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(theme.ink)
-                .frame(width: 40, height: 40)
-                .background(theme.ink.opacity(theme.isDark ? 0.10 : 0.06), in: Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+    private func infoIncludedRow(icon: String, title: String, detail: String, showsDivider: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.ink)
+                    .frame(width: 40, height: 40)
+                    .background(theme.ink.opacity(colorScheme == .dark ? 0.22 : 0.14), in: Circle())
+                    .accessibilityHidden(true)
 
-                Text(detail)
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(theme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.ink)
+
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(14)
-        .background(theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(theme.isDark ? theme.cardHairline : Color.black.opacity(0.06), lineWidth: 1)
+            .padding(.vertical, 12)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(theme.line)
+                    .frame(height: 1)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(detail)")

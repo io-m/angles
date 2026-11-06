@@ -31,31 +31,36 @@ struct AIConsentSheet: View {
                     .foregroundStyle(theme.muted)
                     .fixedSize(horizontal: false, vertical: true)
 
-                VStack(spacing: 12) {
+                VStack(spacing: 0) {
                     consentRow(
                         icon: "paperplane",
                         title: "What is sent",
-                        detail: "The thought you write and your answers to follow-up questions. Your region is never sent to an AI provider."
+                        detail: "The thought you write and your answers to follow-up questions. Your region is never sent to an AI provider.",
+                        showsDivider: true
                     )
                     consentRow(
                         icon: "cpu",
                         title: "Who processes it",
-                        detail: "Mistral AI (France) or OpenAI (United States). Each request goes to one of them, and to the other if the first is unavailable."
+                        detail: "Mistral AI (France) or OpenAI (United States). Each request goes to one of them, and to the other if the first is unavailable.",
+                        showsDivider: true
                     )
                     consentRow(
                         icon: "globe",
                         title: "Posts are checked too",
-                        detail: "When you post a card publicly, it is checked by the same AI before anyone else can see it."
+                        detail: "When you post a card publicly, it is checked by the same AI before anyone else can see it.",
+                        showsDivider: true
                     )
                     consentRow(
                         icon: "hand.raised",
                         title: "Community rules",
-                        detail: "There is no tolerance for objectionable content or abusive users. Reported posts are reviewed as soon as possible, and offending accounts are removed."
+                        detail: "There is no tolerance for objectionable content or abusive users. Reported posts are reviewed as soon as possible, and offending accounts are removed.",
+                        showsDivider: true
                     )
                     consentRow(
                         icon: "cross.case",
                         title: "Not therapy",
-                        detail: "Angles is a self-reflection tool, not medical or mental-health care. If you might hurt yourself, contact local emergency services."
+                        detail: "Angles is a self-reflection tool, not medical or mental-health care. If you might hurt yourself, contact local emergency services.",
+                        showsDivider: false
                     )
                 }
 
@@ -142,31 +147,36 @@ struct AIConsentSheet: View {
         }
     }
 
-    private func consentRow(icon: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(theme.ink)
-                .frame(width: 40, height: 40)
-                .background(theme.ink.opacity(theme.isDark ? 0.10 : 0.06), in: Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+    private func consentRow(icon: String, title: String, detail: String, showsDivider: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.ink)
+                    .frame(width: 40, height: 40)
+                    .background(theme.ink.opacity(colorScheme == .dark ? 0.22 : 0.14), in: Circle())
+                    .accessibilityHidden(true)
 
-                Text(detail)
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(theme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.ink)
+
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(14)
-        .background(theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(theme.isDark ? theme.cardHairline : Color.black.opacity(0.06), lineWidth: 1)
+            .padding(.vertical, 12)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(theme.line)
+                    .frame(height: 1)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(detail)")

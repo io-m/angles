@@ -39,36 +39,41 @@ struct SubscriptionView: View {
 
                 usageCard
 
-                if isSubscribed {
-                    actionRow(
-                        symbol: "arrow.left.arrow.right",
-                        title: "Change plan",
-                        subtitle: "Switch Yearly or Monthly in the App Store",
-                        ink: CardStyleAppearance(style: .stoic).ink
-                    ) {
-                        Task { await openManageSubscriptions() }
+                VStack(spacing: 0) {
+                    if isSubscribed {
+                        actionRow(
+                            symbol: "arrow.left.arrow.right",
+                            title: "Change plan",
+                            subtitle: "Switch Yearly or Monthly in the App Store",
+                            ink: CardStyleAppearance(style: .stoic).ink,
+                            showsDivider: true
+                        ) {
+                            Task { await openManageSubscriptions() }
+                        }
+
+                        actionRow(
+                            symbol: "xmark",
+                            title: "Cancel",
+                            subtitle: "Manage renewal in the App Store",
+                            ink: CardStyleAppearance(style: .tough).ink,
+                            showsDivider: true
+                        ) {
+                            Task { await openManageSubscriptions() }
+                        }
                     }
 
                     actionRow(
-                        symbol: "xmark",
-                        title: "Cancel",
-                        subtitle: "Manage renewal in the App Store",
-                        ink: CardStyleAppearance(style: .tough).ink
+                        symbol: "arrow.clockwise",
+                        title: storeKitManager.isRestoring ? "Checking…" : "Restore purchases",
+                        subtitle: "Find a subscription already on this Apple ID",
+                        ink: CardStyleAppearance(style: .witty).ink,
+                        showsDivider: false
                     ) {
-                        Task { await openManageSubscriptions() }
+                        Task { await storeKitManager.restorePurchases() }
                     }
+                    .disabled(storeKitManager.isRestoring || isOpeningManage)
+                    .opacity(storeKitManager.isRestoring || isOpeningManage ? 0.55 : 1)
                 }
-
-                actionRow(
-                    symbol: "arrow.clockwise",
-                    title: storeKitManager.isRestoring ? "Checking…" : "Restore purchases",
-                    subtitle: "Find a subscription already on this Apple ID",
-                    ink: CardStyleAppearance(style: .witty).ink
-                ) {
-                    Task { await storeKitManager.restorePurchases() }
-                }
-                .disabled(storeKitManager.isRestoring || isOpeningManage)
-                .opacity(storeKitManager.isRestoring || isOpeningManage ? 0.55 : 1)
 
                 if isOpeningManage || storeKitManager.isRestoring {
                     HStack(spacing: 8) {
@@ -285,40 +290,47 @@ struct SubscriptionView: View {
         title: String,
         subtitle: String,
         ink: Color,
+        showsDivider: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(ink)
-                    .frame(width: 40, height: 40)
-                    .background(ink.opacity(colorScheme == .dark ? 0.22 : 0.14), in: Circle())
+        VStack(spacing: 0) {
+            Button(action: action) {
+                HStack(spacing: 14) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(ink)
+                        .frame(width: 40, height: 40)
+                        .background(ink.opacity(colorScheme == .dark ? 0.22 : 0.14), in: Circle())
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(theme.ink)
-                    Text(subtitle)
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(theme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(theme.ink)
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.faint)
                 }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.faint)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
-            .background(theme.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(theme.line)
+                    .frame(height: 1)
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
     }
 
     @MainActor

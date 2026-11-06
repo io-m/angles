@@ -1370,22 +1370,7 @@ private struct StackInspireButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var spinning = false
-
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    private static let lap: Double = 7
-
-    private static let sparkGradient = AngularGradient(
-        stops: [
-            .init(color: ActionColors.inspire.opacity(0.05), location: 0),
-            .init(color: ActionColors.inspire.opacity(0.05), location: 0.45),
-            .init(color: ActionColors.inspire.opacity(0.3), location: 0.8),
-            .init(color: ActionColors.inspire.opacity(0.6), location: 0.98),
-            .init(color: ActionColors.inspire.opacity(0.05), location: 1),
-        ],
-        center: .center
-    )
 
     private var shouldSpin: Bool {
         isHomeActive && !screenState.hasPresentedSheet && !reduceMotion && scenePhase == .active
@@ -1397,11 +1382,7 @@ private struct StackInspireButton: View {
                 Circle()
                     .fill(theme.surface)
                     .shadow(color: ActionColors.inspire.opacity(0.2), radius: 8, y: 3)
-                Circle()
-                    .strokeBorder(Self.sparkGradient, lineWidth: 2)
-                    .animation(spinning ? .linear(duration: Self.lap).repeatForever(autoreverses: false) : nil) {
-                        $0.rotationEffect(.degrees(spinning ? 360 : 0))
-                    }
+                InspireSparkRing(isSpinning: shouldSpin)
                 InspireMark(size: side * 0.44)
             }
             .frame(width: side, height: side)
@@ -1410,9 +1391,124 @@ private struct StackInspireButton: View {
         .buttonStyle(StackPressStyle())
         .accessibilityLabel("Inspire me")
         .accessibilityIdentifier("stack.inspire")
-        .onAppear { spinning = shouldSpin }
-        .onDisappear { spinning = false }
-        .onChange(of: shouldSpin) { _, next in spinning = next }
+    }
+}
+
+/// Hardware-driven conic border ring that rotates at a strictly constant angular velocity in the
+/// RenderServer, immune to SwiftUI transaction easing and preserving its angle across pause/resume.
+private struct InspireSparkRing: UIViewRepresentable {
+    let isSpinning: Bool
+
+    func makeUIView(context: Context) -> InspireSparkRingView {
+        let view = InspireSparkRingView()
+        view.setSpinning(isSpinning)
+        return view
+    }
+
+    func updateUIView(_ uiView: InspireSparkRingView, context: Context) {
+        uiView.setSpinning(isSpinning)
+    }
+}
+
+private final class InspireSparkRingView: UIView {
+    private static let lap: CFTimeInterval = 7.0
+    private static let lineWidth: CGFloat = 2.0
+    private static let animationKey = "inspire.spark.spin"
+
+    private static let cgColors: [CGColor] = {
+        let alphas: [CGFloat] = [0.05, 0.05, 0.16, 0.38, 0.60, 0.32, 0.12, 0.05, 0.05]
+        return alphas.map { alpha in
+            UIColor(red: 0.968, green: 0.451, blue: 0.037, alpha: alpha).cgColor
+        }
+    }()
+
+    private static let locations: [NSNumber] = [
+        0.00, 0.20, 0.38, 0.50, 0.60, 0.70, 0.82, 0.92, 1.00,
+    ]
+
+    private let gradientLayer = CAGradientLayer()
+    private let maskLayer = CAShapeLayer()
+    private var wantsSpin = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+
+        gradientLayer.type = .conic
+        gradientLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
+        gradientLayer.endPoint = CGPoint(x: 1.0, y: 0.5)
+        gradientLayer.colors = Self.cgColors
+        gradientLayer.locations = Self.locations
+        layer.addSublayer(gradientLayer)
+
+        maskLayer.fillColor = UIColor.clear.cgColor
+        maskLayer.strokeColor = UIColor.white.cgColor
+        maskLayer.lineWidth = Self.lineWidth
+        layer.mask = maskLayer
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        gradientLayer.bounds = bounds
+        gradientLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        maskLayer.frame = bounds
+        let inset = Self.lineWidth / 2
+        maskLayer.path = UIBezierPath(ovalIn: bounds.insetBy(dx: inset, dy: inset)).cgPath
+        CATransaction.commit()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            applySpinState()
+        }
+    }
+
+    func setSpinning(_ spinning: Bool) {
+        guard wantsSpin != spinning || gradientLayer.animation(forKey: Self.animationKey) == nil else {
+            return
+        }
+        wantsSpin = spinning
+        applySpinState()
+    }
+
+    private func applySpinState() {
+        if gradientLayer.animation(forKey: Self.animationKey) == nil {
+            let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+            spin.fromValue = 0.0
+            spin.toValue = Double.pi * 2
+            spin.duration = Self.lap
+            spin.timingFunction = CAMediaTimingFunction(name: .linear)
+            spin.repeatCount = .infinity
+            spin.isRemovedOnCompletion = false
+            gradientLayer.add(spin, forKey: Self.animationKey)
+        }
+
+        if wantsSpin {
+            if gradientLayer.speed == 0 {
+                let pausedTime = gradientLayer.timeOffset
+                gradientLayer.speed = 1.0
+                gradientLayer.timeOffset = 0.0
+                gradientLayer.beginTime = 0.0
+                let elapsed = gradientLayer.convertTime(CACurrentMediaTime(), from: nil) - pausedTime
+                gradientLayer.beginTime = elapsed
+            }
+        } else {
+            if gradientLayer.speed != 0 {
+                let pausedTime = gradientLayer.convertTime(CACurrentMediaTime(), from: nil)
+                gradientLayer.speed = 0.0
+                gradientLayer.timeOffset = pausedTime
+            }
+        }
     }
 }
 

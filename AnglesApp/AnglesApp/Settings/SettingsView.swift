@@ -43,97 +43,51 @@ struct SettingsView: View {
                 VStack(spacing: 0) {
                     followsRow
 
-                    rowDivider
-
-                    cardRow(
+                    settingsRow(
                         symbol: "hand.raised",
                         title: "Blocked people",
-                        subtitle: "Community safety"
+                        subtitle: "Community safety",
+                        showsDivider: false
                     ) {
                         showBlockedPeople = true
                     } trailing: {
                         EmptyView()
                     }
                 }
-                .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .padding(.bottom, 24)
 
-                if showsLegalSection {
+                if !legalLinks.isEmpty {
                     VStack(spacing: 0) {
-                        if showsPrivacyPolicy {
+                        ForEach(Array(legalLinks.enumerated()), id: \.offset) { index, link in
                             externalRow(
-                                symbol: "lock.shield",
-                                title: "Privacy policy",
-                                destination: AppConfig.privacyPolicyURL
-                            )
-                        }
-
-                        if showsTermsOfService {
-                            if showsPrivacyPolicy {
-                                rowDivider
-                            }
-                            externalRow(
-                                symbol: "doc.text",
-                                title: "Terms of service",
-                                destination: AppConfig.termsOfServiceURL
-                            )
-                        }
-
-                        if showsSupport {
-                            if showsPrivacyPolicy || showsTermsOfService {
-                                rowDivider
-                            }
-                            externalRow(
-                                symbol: "questionmark.bubble",
-                                title: "Support",
-                                destination: AppConfig.supportContactURL
-                            )
-                        }
-
-                        if let supportMailURL = AppConfig.supportMailURL,
-                           supportMailURL != AppConfig.supportContactURL {
-                            rowDivider
-                            externalRow(
-                                symbol: "envelope",
-                                title: "Email support",
-                                destination: supportMailURL
-                            )
-                        }
-
-                        if showsRateAngles, let writeReviewURL = AppConfig.writeReviewURL {
-                            if showsPrivacyPolicy || showsTermsOfService || showsSupport
-                                || showsSupportEmail {
-                                rowDivider
-                            }
-                            externalRow(
-                                symbol: "star",
-                                title: "Rate Angles",
-                                destination: writeReviewURL,
-                                beforeOpen: { AppStoreReviewCoordinator.noteSettingsWriteReview() }
+                                symbol: link.symbol,
+                                title: link.title,
+                                destination: link.destination,
+                                showsDivider: index < legalLinks.count - 1,
+                                beforeOpen: link.beforeOpen
                             )
                         }
                     }
-                    .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .padding(.bottom, 24)
                 }
 
                 VStack(spacing: 0) {
-                    cardRow(
+                    settingsRow(
                         symbol: "creditcard",
                         title: "Subscription",
-                        subtitle: storeKitManager.settingsPlanLabel
+                        subtitle: storeKitManager.settingsPlanLabel,
+                        showsDivider: true
                     ) {
                         showSubscription = true
                     } trailing: {
                         EmptyView()
                     }
 
-                    rowDivider
-
-                    cardRow(
+                    settingsRow(
                         symbol: "rectangle.portrait.and.arrow.right",
                         title: "Log out",
-                        subtitle: "Returns to sign in. Does not cancel Apple."
+                        subtitle: "Returns to sign in. Does not cancel Apple.",
+                        showsDivider: true
                     ) {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         onLogOut?()
@@ -141,12 +95,11 @@ struct SettingsView: View {
                         EmptyView()
                     }
 
-                    rowDivider
-
-                    cardRow(
+                    settingsRow(
                         symbol: "trash",
                         title: "Delete account",
-                        subtitle: deleteAccountSubtitle
+                        subtitle: deleteAccountSubtitle,
+                        showsDivider: false
                     ) {
                         guard !isDeletingAccount else {
                             return
@@ -161,7 +114,6 @@ struct SettingsView: View {
                     }
                     .disabled(isDeletingAccount)
                 }
-                .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             }
             .padding(.horizontal, edgePad)
         }
@@ -247,17 +199,51 @@ struct SettingsView: View {
         AppConfig.writeReviewURL != nil
     }
 
-    private var showsLegalSection: Bool {
-        showsPrivacyPolicy || showsTermsOfService || showsSupport || showsRateAngles
+    /// Ordered like Filter / People: full-width dividers between rows on sheet grey.
+    private var legalLinks: [SettingsLegalLink] {
+        var links: [SettingsLegalLink] = []
+        if showsPrivacyPolicy {
+            links.append(
+                SettingsLegalLink(symbol: "lock.shield", title: "Privacy policy", destination: AppConfig.privacyPolicyURL)
+            )
+        }
+        if showsTermsOfService {
+            links.append(
+                SettingsLegalLink(symbol: "doc.text", title: "Terms of service", destination: AppConfig.termsOfServiceURL)
+            )
+        }
+        if showsSupport {
+            links.append(
+                SettingsLegalLink(symbol: "questionmark.bubble", title: "Support", destination: AppConfig.supportContactURL)
+            )
+        }
+        if showsSupportEmail, let supportMailURL = AppConfig.supportMailURL,
+           supportMailURL != AppConfig.supportContactURL {
+            links.append(
+                SettingsLegalLink(symbol: "envelope", title: "Email support", destination: supportMailURL)
+            )
+        }
+        if showsRateAngles, let writeReviewURL = AppConfig.writeReviewURL {
+            links.append(
+                SettingsLegalLink(
+                    symbol: "star",
+                    title: "Rate Angles",
+                    destination: writeReviewURL,
+                    beforeOpen: { AppStoreReviewCoordinator.noteSettingsWriteReview() }
+                )
+            )
+        }
+        return links
     }
 
     /// Banners are an iOS permission. This row never pretends to be a switch: it asks once,
     /// then opens iOS Settings, including when already on so they can turn it off there.
     private var followsRow: some View {
-        cardRow(
+        settingsRow(
             symbol: "bell",
             title: "Follows",
-            subtitle: followsSubtitle
+            subtitle: followsSubtitle,
+            showsDivider: true
         ) {
             Task {
                 await FollowPush.enableFromSettings()
@@ -435,19 +421,29 @@ struct SettingsView: View {
         Rectangle()
             .fill(theme.line)
             .frame(height: 1)
-            .padding(.leading, 70)
+    }
+
+    private func settingsSymbolBadge(symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(theme.ink)
+            .frame(width: 40, height: 40)
+            .background(theme.ink.opacity(colorScheme == .dark ? 0.22 : 0.14), in: Circle())
+            .accessibilityHidden(true)
     }
 
     private func externalRow(
         symbol: String,
         title: String,
         destination: URL?,
+        showsDivider: Bool,
         beforeOpen: (() -> Void)? = nil
     ) -> some View {
-        cardRow(
+        settingsRow(
             symbol: symbol,
             title: title,
-            subtitle: destination == nil ? "Unavailable in this build" : "Opens outside Angles"
+            subtitle: destination == nil ? "Unavailable in this build" : "Opens outside Angles",
+            showsDivider: showsDivider
         ) {
             guard let destination else { return }
             beforeOpen?()
@@ -458,40 +454,61 @@ struct SettingsView: View {
         .disabled(destination == nil)
     }
 
-    private func cardRow<Trailing: View>(
+    private func settingsRow<Trailing: View>(
         symbol: String,
         title: String,
         subtitle: String,
+        showsDivider: Bool,
         action: @escaping () -> Void,
         @ViewBuilder trailing: () -> Trailing
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                CircleIcon(systemName: symbol, fill: theme.grey, symbol: theme.faint)
+        VStack(spacing: 0) {
+            Button(action: action) {
+                HStack(spacing: 14) {
+                    settingsSymbolBadge(symbol: symbol)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(theme.ink)
-                    Text(subtitle)
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(theme.muted)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(theme.ink)
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(theme.muted)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    trailing()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.faint)
                 }
-
-                Spacer(minLength: 8)
-
-                trailing()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.faint)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+
+            if showsDivider {
+                rowDivider
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
+    }
+}
+
+/// One external link row for Settings; order comes from `legalLinks`.
+private struct SettingsLegalLink {
+    let symbol: String
+    let title: String
+    let destination: URL?
+    var beforeOpen: (() -> Void)?
+
+    init(symbol: String, title: String, destination: URL?, beforeOpen: (() -> Void)? = nil) {
+        self.symbol = symbol
+        self.title = title
+        self.destination = destination
+        self.beforeOpen = beforeOpen
     }
 }

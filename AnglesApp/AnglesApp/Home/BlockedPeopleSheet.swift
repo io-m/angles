@@ -37,16 +37,9 @@ struct BlockedPeopleSheet: View {
     private var list: some View {
         VStack(spacing: 0) {
             ForEach(Array(people.enumerated()), id: \.element.id) { index, person in
-                if index > 0 {
-                    Rectangle()
-                        .fill(theme.line)
-                        .frame(height: 1)
-                        .padding(.leading, 70)
-                }
-                personRow(person)
+                personRow(person, showsDivider: index < people.count - 1)
             }
         }
-        .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     private var empty: some View {
@@ -73,46 +66,52 @@ struct BlockedPeopleSheet: View {
                     .frame(maxWidth: .infinity, minHeight: 88)
             }
         }
-        .padding(20)
-        .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.top, 12)
     }
 
-    private func personRow(_ person: BlockedPerson) -> some View {
-        HStack(spacing: 14) {
-            AuthorMark(
-                initials: person.initials,
-                avatarPath: person.avatarPath,
-                side: 40,
-                fill: theme.ink,
-                symbol: theme.paper
-            )
+    private func personRow(_ person: BlockedPerson, showsDivider: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                AuthorMark(
+                    initials: person.initials,
+                    avatarPath: person.avatarPath,
+                    side: 40,
+                    fill: theme.ink,
+                    symbol: theme.paper
+                )
 
-            Text(displayInitials(person.initials))
-                .font(.body.weight(.medium))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            Spacer(minLength: 12)
-
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onUnblock(person)
-            } label: {
-                Text("Unblock")
-                    .font(.subheadline.weight(.semibold))
+                Text(displayInitials(person.initials))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(theme.ink)
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 44)
-                    .background(theme.grey, in: Capsule())
-                    .contentShape(Capsule())
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 12)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onUnblock(person)
+                } label: {
+                    Text("Unblock")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
+                        .background(theme.grey, in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Unblock \(displayInitials(person.initials))")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Unblock \(displayInitials(person.initials))")
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.vertical, 12)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(theme.line)
+                    .frame(height: 1)
+            }
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 8)
-        .padding(.vertical, 8)
     }
 
     private func displayInitials(_ initials: String) -> String {
