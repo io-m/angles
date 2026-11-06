@@ -1,4 +1,5 @@
-import { and, desc, eq, exists, inArray, isNull, lte, max, sql } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, isNull, lte, max, notExists, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   apnsConfigFromEnv,
   followActorPublicName,
@@ -18,14 +19,15 @@ import { cardDecisions, cards, deviceTokens, loveNotifications, users } from "./
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 
 const LIST_LIMIT = 100;
+const newerLove = alias(loveNotifications, "newer_love");
 
 /**
  * How long a love waits before it may push. A swipe right and a Rewind a moment later
  * must not tell the author anything, and loves that land together become one push.
  */
-export const LOVE_PUSH_DELAY_MS = 2 * 60_000;
-/** At most one push per card in this window; the in-app list still gets every love. */
-export const LOVE_PUSH_THROTTLE_MS = 30 * 60_000;
+export const LOVE_PUSH_DELAY_MS = 10_000;
+/** At most one push per card in this window while prior loves are unread; the in-app list still gets every love. */
+export const LOVE_PUSH_THROTTLE_MS = 2 * 60_000;
 /** A love older than this that never pushed (the server was down) is not pushed late. */
 const LOVE_PUSH_MAX_AGE_MS = 60 * 60_000;
 
@@ -101,6 +103,20 @@ export async function listLoveNotifications(
         eq(loveNotifications.recipientId, viewerId),
         eq(cards.userId, viewerId),
         notBlockedBetween(viewerId, loveNotifications.actorId),
+        notExists(
+          db
+            .select({ id: newerLove.id })
+            .from(newerLove)
+            .where(
+              and(
+                eq(newerLove.recipientId, loveNotifications.recipientId),
+                eq(newerLove.actorId, loveNotifications.actorId),
+                eq(newerLove.cardId, loveNotifications.cardId),
+                sql`(${newerLove.createdAt}, ${newerLove.id})
+                    > (${loveNotifications.createdAt}, ${loveNotifications.id})`,
+              ),
+            ),
+        ),
       ),
     )
     .orderBy(desc(loveNotifications.createdAt), desc(loveNotifications.id))
@@ -197,44 +213,36 @@ export async function deliverLovePushes(
 ): Promise<"sent" | "none" | "throttled" | "skipped"> {
   try {
     const db = getDb();
-    const rows = await db
-      .select({
-        id: loveNotifications.id,
-        recipientId: loveNotifications.recipientId,
-        actorId: loveNotifications.actorId,
-        name: users.name,
-        initials: users.initials,
-        shareLoveName: users.shareLoveName,
-      })
+    const activeSave = exists(
+      db
+        .select({ one: sql`1` })
+        .from(cardDecisions)
+        .where(
+          and(
+            eq(cardDecisions.userId, loveNotifications.actorId),
+            eq(cardDecisions.cardId, loveNotifications.cardId),
+            eq(cardDecisions.kind, "save"),
+          ),
+        ),
+    );
+    const unpushed = await db
+      .select({ id: loveNotifications.id })
       .from(loveNotifications)
-      .innerJoin(users, eq(users.id, loveNotifications.actorId))
       .where(
         and(
           eq(loveNotifications.cardId, cardId),
           isNull(loveNotifications.pushedAt),
           isNull(loveNotifications.readAt),
-          exists(
-            db
-              .select({ one: sql`1` })
-              .from(cardDecisions)
-              .where(
-                and(
-                  eq(cardDecisions.userId, loveNotifications.actorId),
-                  eq(cardDecisions.cardId, loveNotifications.cardId),
-                  eq(cardDecisions.kind, "save"),
-                ),
-              ),
-          ),
+          activeSave,
         ),
-      )
-      .orderBy(desc(loveNotifications.createdAt), desc(loveNotifications.id));
-    if (rows.length === 0) {
+      );
+    if (unpushed.length === 0) {
       return "none";
     }
     const [last] = await db
       .select({ at: max(loveNotifications.pushedAt) })
       .from(loveNotifications)
-      .where(eq(loveNotifications.cardId, cardId));
+      .where(and(eq(loveNotifications.cardId, cardId), isNull(loveNotifications.readAt)));
     const quietUntil = last?.at ? last.at.getTime() + LOVE_PUSH_THROTTLE_MS : 0;
     if (quietUntil > now.getTime()) {
       // Everything that lands in the quiet window goes out together when it ends.
@@ -249,15 +257,37 @@ export async function deliverLovePushes(
         and(
           inArray(
             loveNotifications.id,
-            rows.map((row) => row.id),
+            unpushed.map((row) => row.id),
           ),
           isNull(loveNotifications.pushedAt),
         ),
       )
       .returning({ id: loveNotifications.id });
-    const claimedIds = new Set(claimed.map((row) => row.id));
-    const fresh = rows.filter((row) => claimedIds.has(row.id));
-    const newest = fresh[0];
+    if (claimed.length === 0) {
+      return "none";
+    }
+
+    const unreadRows = await db
+      .select({
+        id: loveNotifications.id,
+        recipientId: loveNotifications.recipientId,
+        actorId: loveNotifications.actorId,
+        style: loveNotifications.style,
+        name: users.name,
+        initials: users.initials,
+        shareLoveName: users.shareLoveName,
+      })
+      .from(loveNotifications)
+      .innerJoin(users, eq(users.id, loveNotifications.actorId))
+      .where(
+        and(
+          eq(loveNotifications.cardId, cardId),
+          isNull(loveNotifications.readAt),
+          activeSave,
+        ),
+      )
+      .orderBy(desc(loveNotifications.createdAt), desc(loveNotifications.id));
+    const newest = unreadRows[0];
     if (!newest) {
       return "none";
     }
@@ -272,8 +302,8 @@ export async function deliverLovePushes(
       logLovePushSkipped("switch_off");
       return "skipped";
     }
-    const visible: typeof fresh = [];
-    for (const row of fresh) {
+    const visible: typeof unreadRows = [];
+    for (const row of unreadRows) {
       if (!(await usersAreBlocked(recipientId, row.actorId, db))) {
         visible.push(row);
       }
@@ -299,7 +329,7 @@ export async function deliverLovePushes(
     const names = visible.map((row) =>
       row.shareLoveName ? followActorPublicName(row.name, row.initials) : null,
     );
-    const text = lovePushAlertText(names);
+    const text = lovePushAlertText(names, visible.length === 1 ? lead.style : undefined);
     const badge = await unreadNotificationCount(recipientId, db);
     for (const device of tokens) {
       const result = await send({
@@ -313,6 +343,7 @@ export async function deliverLovePushes(
         category: "love",
         ...(visible.length === 1 && lead.shareLoveName ? { actorId: lead.actorId } : {}),
         cardId,
+        style: lead.style,
       });
       if (result === "unregistered") {
         await db.delete(deviceTokens).where(eq(deviceTokens.token, device.token));
@@ -337,7 +368,7 @@ export async function deliverPendingLovePushes(now: Date = new Date()): Promise<
     const oldest = new Date(now.getTime() - LOVE_PUSH_MAX_AGE_MS);
     await db
       .update(loveNotifications)
-      .set({ pushedAt: now })
+      .set({ pushedAt: loveNotifications.createdAt })
       .where(and(isNull(loveNotifications.pushedAt), lte(loveNotifications.createdAt, oldest)));
     const pending = await db
       .selectDistinct({ cardId: loveNotifications.cardId })

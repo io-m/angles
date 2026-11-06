@@ -1,5 +1,6 @@
 import { createPrivateKey, createSign, type KeyObject } from "node:crypto";
 import http2 from "node:http2";
+import type { Style } from "../types/index.js";
 
 export type PushEnvironment = "sandbox" | "production";
 
@@ -24,6 +25,8 @@ export type PushAlert = {
   actorId?: string;
   /** The card a love push is about. */
   cardId?: string;
+  /** The angle a love push is about, so a tap opens the card on that angle. */
+  style?: Style;
 };
 
 export type FollowPushAlert = PushAlert;
@@ -187,15 +190,25 @@ export function apnsPayload(alert: PushAlert): Record<string, unknown> {
   if (alert.cardId) {
     payload.cardId = alert.cardId;
   }
+  if (alert.style) {
+    payload.style = alert.style;
+  }
   return payload;
 }
 
 /** Display name when the lover shares it, else "Someone"; more than one becomes "and N others". */
-export function lovePushAlertText(names: readonly (string | null)[]): { title: string; body: string } {
+export function lovePushAlertText(
+  names: readonly (string | null)[],
+  style?: Style,
+): { title: string; body: string } {
   const first = names.find((name): name is string => Boolean(name)) ?? "Someone";
   const others = names.length - 1;
   const title =
     others <= 0 ? first : `${first} and ${others} ${others === 1 ? "other" : "others"}`;
+  if (others <= 0 && style) {
+    const label = style.charAt(0).toUpperCase() + style.slice(1);
+    return { title, body: `Loved your ${label} angle` };
+  }
   return { title, body: "Loved your post" };
 }
 

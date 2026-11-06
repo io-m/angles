@@ -84,6 +84,7 @@
 		BFB32DC8E79F7A90F9203F19 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D573D7CCC4F5583E0B1728C /* KeychainStore.swift */; };
 		C061986C112A5D071B555A25 /* StackModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 589C71A4FEF6FF8995017AD6 /* StackModel.swift */; };
 		C095647AB5A040EDEFE9EF2B /* ComposeThreadModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7028E5C717823971E890C432 /* ComposeThreadModel.swift */; };
+		C10A932B1B4A2551EB816041 /* PostDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BF5634E6355BE289E8A1E0A /* PostDetailView.swift */; };
 		C20D7F03983C11800E9C8E9A /* AuthorProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A9A07BDCD466B102291FF01 /* AuthorProfileView.swift */; };
 		C46120EDFFC74F264FC9D3FA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1FFD1F9D62B1D72EFFFBFEAE /* PrivacyInfo.xcprivacy */; };
 		C46799068B894DFB6B8949A8 /* ComposeBottomBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB4DDDBBEA8C2F4D4750843 /* ComposeBottomBar.swift */; };
@@ -181,6 +182,7 @@
 		589C71A4FEF6FF8995017AD6 /* StackModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackModel.swift; sourceTree = "<group>"; };
 		5A0944728A684EB11E97CEE9 /* ComposeSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeSheetView.swift; sourceTree = "<group>"; };
 		5B3499174E53AFBE4D930EB2 /* AngleCardFace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AngleCardFace.swift; sourceTree = "<group>"; };
+		5BF5634E6355BE289E8A1E0A /* PostDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostDetailView.swift; sourceTree = "<group>"; };
 		5CF2FAA5DE1D4F14A82CD8F2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5FDEA7BE4C3652A0EA5F6F80 /* ComposeRowViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeRowViews.swift; sourceTree = "<group>"; };
 		60578CE1A0106D90811B20C8 /* CardParts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardParts.swift; sourceTree = "<group>"; };
@@ -425,6 +427,7 @@
 				9E8DFD347691D83C9323B3E7 /* HomeCard.swift */,
 				CECAAC54ED5DE586764B6970 /* HomePalette.swift */,
 				4DC445BA0D93B443DB9B4A47 /* HomeViewModel.swift */,
+				5BF5634E6355BE289E8A1E0A /* PostDetailView.swift */,
 				A0EF2F1C21B891438C1DAF91 /* ProfileView.swift */,
 				F8021726D54EFD69EABB5659 /* SavedCardWidgetPublisher.swift */,
 				D533E64EF77141771867B1D0 /* Compose */,
@@ -718,6 +721,7 @@
 				45479CA94858C438CC925816 /* PagingTabs.swift in Sources */,
 				3A62B77D3B06CD25DFB2E907 /* PaywallCardMarquee.swift in Sources */,
 				1C5A8915F3447627232F0B0D /* PaywallView.swift in Sources */,
+				C10A932B1B4A2551EB816041 /* PostDetailView.swift in Sources */,
 				A524721420264A194D882278 /* ProfileIdentityStore.swift in Sources */,
 				FB1F5961CD0374E3BA279D00 /* ProfileService.swift in Sources */,
 				01A8AEC059C1A4D61340EAB5 /* ProfileView.swift in Sources */,
@@ -867,7 +871,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 44;
+				CURRENT_PROJECT_VERSION = 45;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -891,7 +895,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = AnglesWidgets/AnglesWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 44;
+				CURRENT_PROJECT_VERSION = 45;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesWidgets/Info.plist;
@@ -986,7 +990,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 44;
+				CURRENT_PROJECT_VERSION = 45;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "AnglesApp/Info-Debug.plist";
@@ -1015,7 +1019,7 @@
 				CODE_SIGN_ENTITLEMENTS = AnglesApp/Angles.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 44;
+				CURRENT_PROJECT_VERSION = 45;
 				DEVELOPMENT_TEAM = 36U79UTZM9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AnglesApp/Info.plist;

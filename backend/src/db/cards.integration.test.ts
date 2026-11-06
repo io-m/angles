@@ -1606,9 +1606,9 @@ describe.skipIf(!testUrl)("cards integration", () => {
       APNS_TEAM_ID: process.env.APNS_TEAM_ID,
       APNS_BUNDLE_ID: process.env.APNS_BUNDLE_ID,
     };
-    const sent: { title: string; body: string; collapseId: string; actorId?: string; cardId?: string }[] = [];
-    const record = async (alert: { title: string; body: string; collapseId: string; actorId?: string; cardId?: string }) => {
-      sent.push({ title: alert.title, body: alert.body, collapseId: alert.collapseId, actorId: alert.actorId, cardId: alert.cardId });
+    const sent: { title: string; body: string; collapseId: string; actorId?: string; cardId?: string; style?: Style }[] = [];
+    const record = async (alert: { title: string; body: string; collapseId: string; actorId?: string; cardId?: string; style?: Style }) => {
+      sent.push({ title: alert.title, body: alert.body, collapseId: alert.collapseId, actorId: alert.actorId, cardId: alert.cardId, style: alert.style });
       return "sent" as const;
     };
     vi.useFakeTimers({ toFake: ["setTimeout"] });
@@ -1626,10 +1626,11 @@ describe.skipIf(!testUrl)("cards integration", () => {
       expect(sent).toEqual([
         {
           title: viewer?.name.trim() || "Someone",
-          body: "Loved your post",
+          body: "Loved your Stoic angle",
           collapseId: `love-${theirs}`,
           actorId: DEV_USER_ID,
           cardId: theirs,
+          style: "stoic",
         },
       ]);
       expect(await deliverLovePushes(theirs, record, now)).toBe("none");
@@ -1643,7 +1644,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
       const later = new Date(now.getTime() + 31 * 60_000);
       expect(await deliverLovePushes(theirs, record, later)).toBe("sent");
-      expect(sent[1]).toMatchObject({ title: "AL", body: "Loved your post", cardId: theirs });
+      expect(sent[1]).toMatchObject({ title: "AL and 1 other", body: "Loved your post", cardId: theirs, style: "stoic" });
 
       await runAsOwner(OTHER_USER_ID, () => setNotificationPreferences({ notifyLoves: false }));
       await getDb().delete(loveNotifications);

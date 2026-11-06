@@ -14,17 +14,20 @@ struct AccountSheets: ViewModifier {
     var onLogOut: (() -> Void)?
     var onDeleteAccount: (() async -> AccountDeletion)?
     var onOpenFollowed: (FollowedPerson) -> Void
+    var onOpenPost: (PostRoute) -> Void = { _ in }
+    var onSheetDismissed: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeStore: ThemeStore
-    /// Opening a person waits until People has closed, so the next sheet is not presented on top of it.
+    /// Opening a person or post waits until People has closed, so the next sheet is not presented on top of it.
     @State private var pendingFollowed: FollowedPerson?
+    @State private var pendingPost: PostRoute?
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $showSettings) {
+            .sheet(isPresented: $showSettings, onDismiss: onSheetDismissed) {
                 SettingsView(
                     storeKitManager: storeKitManager,
                     identityStore: identityStore,
@@ -53,17 +56,26 @@ struct AccountSheets: ViewModifier {
                 .modifier(UserAppearance(store: themeStore))
             }
             .sheet(isPresented: $showPeople, onDismiss: {
-                guard let person = pendingFollowed else { return }
-                pendingFollowed = nil
-                onOpenFollowed(person)
+                if let post = pendingPost {
+                    pendingPost = nil
+                    onOpenPost(post)
+                    return
+                }
+                if let person = pendingFollowed {
+                    pendingFollowed = nil
+                    onOpenFollowed(person)
+                    return
+                }
+                onSheetDismissed()
             }) {
+                let startsOnNotifications = peopleStartsOnNotifications || viewModel.unreadNotificationCount > 0
                 FollowingSheet(
                     people: viewModel.followedPeople,
                     notices: viewModel.followNotices,
                     loves: viewModel.loveNotices,
                     loadState: viewModel.followingLoadState,
                     noticesLoadState: viewModel.followNoticesLoadState,
-                    startsOnNotifications: peopleStartsOnNotifications || viewModel.unreadNotificationCount > 0,
+                    startsOnNotifications: startsOnNotifications,
                     onRetry: {
                         Task {
                             await viewModel.loadFollowing()
@@ -82,6 +94,7 @@ struct AccountSheets: ViewModifier {
                         showPeople = false
                     },
                     onOpenNotice: { notice in
+                        viewModel.markPushNotificationRead(followId: notice.id)
                         pendingFollowed = FollowedPerson(
                             id: notice.actorId,
                             initials: notice.initials,
@@ -92,21 +105,19 @@ struct AccountSheets: ViewModifier {
                     onFollowLover: { actor in
                         viewModel.followBack(actor.id)
                     },
-                    onOpenLover: { actor in
-                        pendingFollowed = FollowedPerson(
-                            id: actor.id,
-                            initials: actor.initials,
-                            avatarPath: actor.avatarPath
-                        )
+                    onOpenLove: { notice in
+                        viewModel.markPushNotificationRead(loveId: notice.id, cardId: notice.cardId)
+                        pendingPost = PostRoute(id: notice.cardId, initialStyle: notice.style)
                         showPeople = false
                     },
                     writeError: viewModel.writeError,
                     onDismissError: viewModel.dismissWriteError
                 )
                 .task {
-                    async let following: Void = viewModel.loadFollowing()
-                    async let notices: Void = viewModel.loadFollowNotifications()
-                    _ = await (following, notices)
+                    await viewModel.loadFollowing()
+                    if !startsOnNotifications {
+                        await viewModel.loadFollowNotifications()
+                    }
                 }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)

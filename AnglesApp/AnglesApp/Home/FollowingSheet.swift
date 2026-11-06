@@ -65,7 +65,7 @@ struct FollowingSheet: View {
     var onOpenNotice: (FollowNotice) -> Void
     /// Follow someone who loved a post. Only a lover who shows their name has a row to follow.
     var onFollowLover: (LoveNotice.Actor) -> Void
-    var onOpenLover: (LoveNotice.Actor) -> Void
+    var onOpenLove: (LoveNotice) -> Void
     /// A failed unfollow puts the row back; this says why.
     var writeError: String? = nil
     var onDismissError: () -> Void = {}
@@ -90,7 +90,7 @@ struct FollowingSheet: View {
         onOpen: @escaping (FollowedPerson) -> Void,
         onOpenNotice: @escaping (FollowNotice) -> Void,
         onFollowLover: @escaping (LoveNotice.Actor) -> Void = { _ in },
-        onOpenLover: @escaping (LoveNotice.Actor) -> Void = { _ in },
+        onOpenLove: @escaping (LoveNotice) -> Void = { _ in },
         writeError: String? = nil,
         onDismissError: @escaping () -> Void = {}
     ) {
@@ -98,7 +98,7 @@ struct FollowingSheet: View {
         self.notices = notices
         self.loves = loves
         self.onFollowLover = onFollowLover
-        self.onOpenLover = onOpenLover
+        self.onOpenLove = onOpenLove
         self.loadState = loadState
         self.noticesLoadState = noticesLoadState
         self.startsOnNotifications = startsOnNotifications
@@ -469,18 +469,23 @@ struct FollowingSheet: View {
 
         return VStack(spacing: 0) {
             HStack(spacing: 14) {
-                if let actor = notice.actor {
-                    Button {
-                        onOpenLover(actor)
-                    } label: {
-                        summary
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(notice.publicLabel) loved your post, \(notice.style.displayName) angle, \(when)")
-                    .accessibilityHint("Opens their posts")
+                Button {
+                    onOpenLove(notice)
+                } label: {
+                    summary
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(notice.publicLabel) loved your post, \(notice.style.displayName) angle, \(when)")
+                .accessibilityHint("Opens your post")
 
-                    if !actor.following {
+                if let actor = notice.actor {
+                    if actor.following {
+                        Text("Following")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.muted)
+                            .frame(minWidth: 44, minHeight: 44)
+                    } else {
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             onFollowLover(actor)
@@ -494,10 +499,6 @@ struct FollowingSheet: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Follow \(notice.publicLabel)")
                     }
-                } else {
-                    summary
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Someone loved your post, \(notice.style.displayName) angle, \(when)")
                 }
             }
             .padding(.vertical, 12)

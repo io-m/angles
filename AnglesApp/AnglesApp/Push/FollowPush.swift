@@ -145,13 +145,36 @@ enum FollowPush {
 
     /// APNs `userInfo` sometimes hands `actorId` as a UUID, or a hex string without dashes.
     static func actorId(from userInfo: [AnyHashable: Any]) -> String? {
-        let raw = userInfo["actorId"] ?? userInfo["actorID"]
-        if let value = raw as? String {
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
+        stringField(from: userInfo, keys: ["actorId", "actorID"])
+    }
+
+    static func cardId(from userInfo: [AnyHashable: Any]) -> String? {
+        stringField(from: userInfo, keys: ["cardId", "cardID"])
+    }
+
+    static func notificationId(from userInfo: [AnyHashable: Any]) -> String? {
+        stringField(from: userInfo, keys: ["notificationId", "notificationID"])
+    }
+
+    static func style(from userInfo: [AnyHashable: Any]) -> Style? {
+        guard let raw = (userInfo["style"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+            return nil
         }
-        if let value = raw as? UUID {
-            return value.uuidString
+        return Style(rawValue: raw)
+    }
+
+    private static func stringField(from userInfo: [AnyHashable: Any], keys: [String]) -> String? {
+        for key in keys {
+            let raw = userInfo[key]
+            if let value = raw as? String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+            if let value = raw as? UUID {
+                return value.uuidString
+            }
         }
         return nil
     }
@@ -173,6 +196,12 @@ enum FollowPush {
     }
 }
 
+struct PendingLovePush: Equatable {
+    var cardId: UUID?
+    var style: Style?
+    var notificationId: UUID?
+}
+
 /// The app delegate and SwiftUI share this. A tap waits here until a session can open the row.
 @MainActor
 @Observable
@@ -183,10 +212,13 @@ final class FollowPushCenter {
     /// Bumps on every token callback, even when iOS hands back the same token, so the root
     /// registers it again with the signed-in account.
     private(set) var tokenRevision = 0
+    /// Bumps when a push banner arrives while the app is open, so the bell and list refresh.
+    private(set) var incomingNotificationRevision = 0
     var pendingActorID: String?
+    var pendingFollowNotificationID: UUID?
     var pendingIntent: FollowPushIntent = .viewProfile
-    /// A love push was tapped: Notifications opens, with that love as the newest row.
-    var pendingNotifications = false
+    /// A love push was tapped: opens the specific post on the angle that was loved.
+    var pendingLovePush: PendingLovePush?
 
     private init() {
         deviceToken = UserDefaults.standard.string(forKey: FollowPush.tokenDefaultsKey)
@@ -203,22 +235,31 @@ final class FollowPushCenter {
         UserDefaults.standard.removeObject(forKey: FollowPush.tokenDefaultsKey)
     }
 
-    func handle(actionIdentifier: String, actorId: String?) {
+    func noteIncomingNotification() {
+        incomingNotificationRevision &+= 1
+    }
+
+    func handle(actionIdentifier: String, actorId: String?, notificationId: UUID? = nil) {
         guard let actorId, !actorId.isEmpty else {
             return
         }
+        pendingLovePush = nil
         pendingActorID = actorId
+        pendingFollowNotificationID = notificationId
         pendingIntent = FollowPushIntent(actionIdentifier: actionIdentifier)
     }
 
-    func handleLove() {
-        pendingNotifications = true
+    func handleLove(cardId: UUID?, style: Style?, notificationId: UUID?) {
+        pendingActorID = nil
+        pendingFollowNotificationID = nil
+        pendingLovePush = PendingLovePush(cardId: cardId, style: style, notificationId: notificationId)
     }
 
     func clearPending() {
         pendingActorID = nil
+        pendingFollowNotificationID = nil
         pendingIntent = .viewProfile
-        pendingNotifications = false
+        pendingLovePush = nil
     }
 }
 
@@ -267,7 +308,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .badge, .sound]
+        await MainActor.run {
+            FollowPushCenter.shared.noteIncomingNotification()
+        }
+        return [.banner, .badge, .sound]
     }
 
     func userNotificationCenter(
@@ -275,17 +319,26 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didReceive response: UNNotificationResponse
     ) async {
         let content = response.notification.request.content
-        if content.categoryIdentifier == FollowPush.loveCategoryIdentifier {
+        let userInfo = content.userInfo
+        let cardId = FollowPush.cardId(from: userInfo).flatMap(FollowPush.uuid(from:))
+        let notificationId = FollowPush.notificationId(from: userInfo).flatMap(FollowPush.uuid(from:))
+        let style = FollowPush.style(from: userInfo)
+        if content.categoryIdentifier == FollowPush.loveCategoryIdentifier || cardId != nil {
             await MainActor.run {
-                FollowPushCenter.shared.handleLove()
+                FollowPushCenter.shared.handleLove(
+                    cardId: cardId,
+                    style: style,
+                    notificationId: notificationId
+                )
             }
             return
         }
-        let actorId = FollowPush.actorId(from: content.userInfo)
+        let actorId = FollowPush.actorId(from: userInfo)
         await MainActor.run {
             FollowPushCenter.shared.handle(
                 actionIdentifier: response.actionIdentifier,
-                actorId: actorId
+                actorId: actorId,
+                notificationId: notificationId
             )
         }
     }

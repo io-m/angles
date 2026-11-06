@@ -41,11 +41,16 @@ struct AppRoot: View {
     /// Sparkle compose over Home. The onboarding taste is a destination, not this flag.
     @State private var isComposePresented = false
     @State private var membershipRequested = false
+    @State private var stackScreenState = StackScreenState()
     @State private var showsProfile = false
     @State private var authorRoute: AuthorRoute?
+    @State private var postRoute: PostRoute?
     /// The other sheet waits until the one on screen has closed.
     @State private var profileAfterAuthor = false
     @State private var authorAfterProfile: AuthorRoute?
+    @State private var postAfterSheet: PostRoute?
+    @State private var notificationsAfterSheet = false
+    @State private var isRegisteringPushToken = false
     /// Profile's own author sheet. A rating prompt treats that as away from Home.
     @State private var profileCoversWithAuthor = false
     @State private var homeSafeAreaInsets = EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0)
@@ -83,22 +88,28 @@ struct AppRoot: View {
                 safeAreaInsets: homeSafeAreaInsets,
                 storeKitManager: storeKitManager,
                 identityStore: identityStore,
+                screenState: stackScreenState,
                 onLogOut: logOut,
                 onDeleteAccount: deleteAccount,
                 onInspire: presentCompose,
                 onOpenProfile: showOwnProfile,
                 onOpenAuthor: openAuthor,
                 onOpenFollowed: openFollowed,
+                onOpenPost: showPost,
+                onSheetDismissed: presentQueuedBrowseSheet,
                 isHomeActive: isHomeInteractive
             )
             .sheet(isPresented: $showsProfile, onDismiss: {
                 profileCoversWithAuthor = false
-                presentQueuedAuthor()
+                presentQueuedBrowseSheet()
             }) {
                 profileSheet
             }
-            .sheet(item: $authorRoute, onDismiss: presentQueuedProfile) { route in
+            .sheet(item: $authorRoute, onDismiss: presentQueuedBrowseSheet) { route in
                 authorSheet(route)
+            }
+            .sheet(item: $postRoute, onDismiss: presentQueuedBrowseSheet) { route in
+                postSheet(route)
             }
             .tint(theme.ink)
             .opacity(destination == .home ? 1 : 0)
@@ -346,6 +357,7 @@ struct AppRoot: View {
                 onTasteEnded: handleTasteEndedByServer,
                 onFollowBadgeChange: syncAppBadge,
                 onPushTokenChange: handlePushTokenChange,
+                onIncomingNotification: handleIncomingNotification,
                 onPushActor: consumeFollowPush,
                 onCheckoutOperationChange: handleCheckoutStateChange
             )
@@ -399,6 +411,7 @@ struct AppRoot: View {
             && !saveCoverPresented
             && !showsProfile
             && authorRoute == nil
+            && postRoute == nil
     }
 
     private var isComposeActive: Bool {
@@ -458,6 +471,16 @@ struct AppRoot: View {
             return
         }
         Task { await registerPushToken(token) }
+    }
+
+    private func handleIncomingNotification() {
+        guard sessionStore.isSignedIn else {
+            return
+        }
+        Task {
+            await viewModel.loadFollowNotifications()
+            syncAppBadge()
+        }
     }
 
     private func withoutAnimations(_ updates: () -> Void) {
@@ -695,6 +718,11 @@ struct AppRoot: View {
     // MARK: - Session
 
     private func registerPushToken(_ token: String) async {
+        guard !isRegisteringPushToken else {
+            return
+        }
+        isRegisteringPushToken = true
+        defer { isRegisteringPushToken = false }
         do {
             try await ProfileService().registerDevice(token: token, environment: FollowPush.tokenEnvironment)
             #if DEBUG
@@ -716,9 +744,6 @@ struct AppRoot: View {
         if FollowPush.isAllowed(status), sessionStore.session?.notifyFollows == false {
             _ = await sessionStore.setNotifyFollows(true)
         }
-        if let token = pushCenter.deviceToken, FollowPush.isAllowed(status) {
-            await registerPushToken(token)
-        }
     }
 
     /// iOS's dialog only after Home is up and splash is gone — never over login, taste, or paywall.
@@ -727,9 +752,6 @@ struct AppRoot: View {
             return
         }
         await FollowPush.askOnceOnHome()
-        if let token = pushCenter.deviceToken, FollowPush.isAllowed(await FollowPush.authorizationStatus()) {
-            await registerPushToken(token)
-        }
     }
 
     /// The icon number is the unread count, set every time it is read so a stale number from
@@ -750,10 +772,18 @@ struct AppRoot: View {
         guard sessionStore.isSignedIn, isHomeRevealed else {
             return
         }
-        if pushCenter.pendingNotifications {
+        if let lovePush = pushCenter.pendingLovePush {
             pushCenter.clearPending()
-            viewModel.requestOpenFollowNotifications()
-            showOwnProfile()
+            isComposePresented = false
+            viewModel.markPushNotificationRead(
+                loveId: lovePush.notificationId,
+                cardId: lovePush.cardId
+            )
+            if let cardId = lovePush.cardId {
+                showPost(PostRoute(id: cardId, initialStyle: lovePush.style))
+            } else {
+                showNotifications()
+            }
             return
         }
         guard let actorId = pushCenter.pendingActorID,
@@ -761,14 +791,16 @@ struct AppRoot: View {
         else {
             return
         }
+        let followNotificationId = pushCenter.pendingFollowNotificationID
         let intent = pushCenter.pendingIntent
         pushCenter.clearPending()
+        isComposePresented = false
+        viewModel.markPushNotificationRead(followId: followNotificationId)
         switch intent {
         case .viewProfile:
             openAuthorFromFollowPush(id)
         case .followBack:
-            viewModel.requestOpenFollowNotifications()
-            showOwnProfile()
+            showNotifications()
             viewModel.followBack(id)
         }
     }
@@ -857,6 +889,23 @@ struct AppRoot: View {
             .modifier(UserAppearance(store: themeStore))
     }
 
+    private func postSheet(_ route: PostRoute) -> some View {
+        PostDetailView(
+            route: route,
+            viewModel: viewModel,
+            onClose: {
+                postRoute = nil
+            },
+            onOpenLover: { person in
+                openFollowed(person)
+            }
+        )
+        .id(route.id)
+        .presentationDetents([.large])
+        .presentationContentInteraction(.scrolls)
+        .modifier(UserAppearance(store: themeStore))
+    }
+
     private func openFollowed(_ person: FollowedPerson) {
         showAuthor(
             AuthorRoute(
@@ -868,14 +917,37 @@ struct AppRoot: View {
         )
     }
 
-    /// One author sheet at a time. The person already on screen stays put.
-    private func showAuthor(_ route: AuthorRoute) {
-        if authorRoute?.id == route.id, !showsProfile {
+    /// One sheet at a time over Home. Any open sheet closes first, then the requested one opens.
+    private func showPost(_ route: PostRoute) {
+        if postRoute != nil, !showsProfile, authorRoute == nil, !stackScreenState.hasPresentedSheet {
+            postRoute = route
             return
         }
-        if showsProfile {
-            authorAfterProfile = route
+        if showsProfile || authorRoute != nil || stackScreenState.hasPresentedSheet {
+            postAfterSheet = route
+            authorAfterProfile = nil
+            profileAfterAuthor = false
+            notificationsAfterSheet = false
             showsProfile = false
+            authorRoute = nil
+            stackScreenState.dismissSheets()
+            return
+        }
+        postRoute = route
+    }
+
+    private func showAuthor(_ route: AuthorRoute) {
+        if authorRoute?.id == route.id, !showsProfile, postRoute == nil, !stackScreenState.hasPresentedSheet {
+            return
+        }
+        if showsProfile || postRoute != nil || stackScreenState.hasPresentedSheet {
+            authorAfterProfile = route
+            postAfterSheet = nil
+            profileAfterAuthor = false
+            notificationsAfterSheet = false
+            showsProfile = false
+            postRoute = nil
+            stackScreenState.dismissSheets()
             return
         }
         authorRoute = route
@@ -899,34 +971,72 @@ struct AppRoot: View {
         )
     }
 
-    /// Your profile, as a sheet. An author sheet closes first, then this one opens.
+    /// Your profile, as a sheet. Any other sheet closes first, then this one opens.
     private func showOwnProfile() {
-        if authorRoute != nil {
+        if authorRoute != nil || postRoute != nil || stackScreenState.hasPresentedSheet {
             profileAfterAuthor = true
+            authorAfterProfile = nil
+            postAfterSheet = nil
+            notificationsAfterSheet = false
             authorRoute = nil
+            postRoute = nil
+            stackScreenState.dismissSheets()
             return
         }
         showsProfile = true
     }
 
-    private func presentQueuedAuthor() {
-        guard let route = authorAfterProfile else { return }
-        authorAfterProfile = nil
-        authorRoute = route
+    private func showNotifications() {
+        if stackScreenState.showPeople {
+            stackScreenState.peopleStartsOnNotifications = true
+            return
+        }
+        if showsProfile || authorRoute != nil || postRoute != nil || stackScreenState.showFilter || stackScreenState.showSettings {
+            notificationsAfterSheet = true
+            postAfterSheet = nil
+            authorAfterProfile = nil
+            profileAfterAuthor = false
+            showsProfile = false
+            authorRoute = nil
+            postRoute = nil
+            stackScreenState.dismissSheets()
+            return
+        }
+        stackScreenState.openNotifications()
     }
 
-    private func presentQueuedProfile() {
-        guard profileAfterAuthor else { return }
-        profileAfterAuthor = false
-        showsProfile = true
+    private func presentQueuedBrowseSheet() {
+        if let route = postAfterSheet {
+            postAfterSheet = nil
+            postRoute = route
+            return
+        }
+        if let route = authorAfterProfile {
+            authorAfterProfile = nil
+            authorRoute = route
+            return
+        }
+        if profileAfterAuthor {
+            profileAfterAuthor = false
+            showsProfile = true
+            return
+        }
+        if notificationsAfterSheet {
+            notificationsAfterSheet = false
+            stackScreenState.openNotifications()
+        }
     }
 
     private func dismissBrowseSheets() {
         showsProfile = false
         authorRoute = nil
+        postRoute = nil
         profileAfterAuthor = false
         authorAfterProfile = nil
+        postAfterSheet = nil
+        notificationsAfterSheet = false
         profileCoversWithAuthor = false
+        stackScreenState.dismissSheets()
     }
 
     // MARK: - Compose
@@ -951,6 +1061,8 @@ struct AppRoot: View {
                 isComposePresented = false
                 viewModel.profileSegment = .saved
                 authorRoute = nil
+                postRoute = nil
+                stackScreenState.dismissSheets()
                 showsProfile = true
             }
         case .compose:
@@ -1022,7 +1134,7 @@ struct AppRoot: View {
 
     /// Read after the save cover has left. A covered or off-home screen never asks.
     private var settledSaveReviewContext: AppRatingPromptContext {
-        let onRootList = authorRoute == nil && !profileCoversWithAuthor
+        let onRootList = authorRoute == nil && postRoute == nil && !profileCoversWithAuthor
         return AppRatingPromptContext(
             destinationIsHome: destination == .home,
             homeIsRevealed: isHomeRevealed,
@@ -1070,6 +1182,7 @@ private struct RootChangeObservers: View {
     var onTasteEnded: () -> Void
     var onFollowBadgeChange: () -> Void
     var onPushTokenChange: () -> Void
+    var onIncomingNotification: () -> Void
     var onPushActor: () -> Void
     var onCheckoutOperationChange: () -> Void
 
@@ -1083,13 +1196,16 @@ private struct RootChangeObservers: View {
             .onChange(of: pushCenter.tokenRevision) { _, _ in
                 onPushTokenChange()
             }
+            .onChange(of: pushCenter.incomingNotificationRevision) { _, _ in
+                onIncomingNotification()
+            }
             .onChange(of: pushCenter.pendingActorID) { _, actorId in
                 if actorId != nil {
                     onPushActor()
                 }
             }
-            .onChange(of: pushCenter.pendingNotifications) { _, pending in
-                if pending {
+            .onChange(of: pushCenter.pendingLovePush) { _, pending in
+                if pending != nil {
                     onPushActor()
                 }
             }

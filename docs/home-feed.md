@@ -44,7 +44,7 @@ Rewind walks back through this visit's decisions one at a time and puts each car
 
 ## Telling the author
 
-A save tells the author, unless the card is From Angles. They see it in the bell list ("Loved your Witty angle", with two lines of their own thought) and, two minutes later, as a push: "Ana" or "Ana and 2 others", "Loved your post", never the words of the card. The wait means a swipe you Rewind straight away tells nobody, and loves that arrive together become one push. A card pushes at most once every 30 minutes; loves in between go out together at the end of the wait. Unsaving or Rewind takes the love back while the author has not read it yet.
+A save tells the author, unless the card is From Angles. They see it in the bell list ("Loved your Witty angle", with two lines of their own thought) and, ten seconds later, as a push: "Ana" ("Loved your Witty angle") or "Ana and 2 others" ("Loved your post"), never the words of the card. Tapping the push or the row in the bell opens that post on the angle they loved, with an X in the top left to return to Home. The wait means a swipe you Rewind straight away tells nobody, and loves that arrive together become one push. While earlier loves on a card are unread, it pushes at most once every 2 minutes; loves in between go out together at the end of the wait. Unsaving or Rewind takes the love back while the author has not read it yet.
 
 Your name is on your loves unless you turn off Settings → Show my name on loves; then the author sees "Someone". The first time you love a card the app says so once. Settings → Loves on my posts turns off the push for loves on your own posts; the bell list keeps them. Blocking someone removes their loves and yours between you.
 

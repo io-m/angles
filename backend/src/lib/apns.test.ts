@@ -10,6 +10,8 @@ import {
   followActorPublicName,
   followAlertCopy,
   followPushAlertText,
+  lovePushAlertText,
+  apnsPayload,
   sendApnsAlert,
   type ApnsConfig,
   type FollowPushAlert,
@@ -25,6 +27,32 @@ describe("follow alert copy", () => {
     expect(followPushAlertText("Alex Lee", "AL", false)).toEqual({
       title: "Alex Lee",
       body: "Followed you",
+    });
+    expect(lovePushAlertText(["Alex Lee"], "witty")).toEqual({
+      title: "Alex Lee",
+      body: "Loved your Witty angle",
+    });
+    expect(lovePushAlertText(["Alex Lee", "Sam"], "witty")).toEqual({
+      title: "Alex Lee and 1 other",
+      body: "Loved your post",
+    });
+    expect(
+      apnsPayload({
+        token: "ab".repeat(32),
+        environment: "production",
+        collapseId: "love-1",
+        title: "Alex Lee",
+        body: "Loved your Witty angle",
+        badge: 1,
+        notificationId: "00000000-0000-4000-8000-000000000001",
+        category: "love",
+        cardId: "00000000-0000-4000-8000-000000000009",
+        style: "witty",
+      }),
+    ).toMatchObject({
+      aps: { category: "love" },
+      cardId: "00000000-0000-4000-8000-000000000009",
+      style: "witty",
     });
   });
 });

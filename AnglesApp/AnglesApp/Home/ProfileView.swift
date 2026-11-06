@@ -15,9 +15,6 @@ struct ProfileView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var themeStore: ThemeStore
 
-    @State private var showFollowing = false
-    /// A follow push opens People on Notifications. The icon opens Following.
-    @State private var peopleStartsOnNotifications = false
     @State private var authorRoute: AuthorRoute?
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -70,23 +67,6 @@ struct ProfileView: View {
             await viewModel.loadLibraryIfNeeded()
             await viewModel.loadFollowNotifications()
         }
-        .onAppear(perform: openFollowNotificationsIfAsked)
-        .onChange(of: viewModel.wantsFollowNotifications) { _, _ in
-            openFollowNotificationsIfAsked()
-        }
-        .modifier(
-            AccountSheets(
-                showSettings: .constant(false),
-                showPeople: $showFollowing,
-                peopleStartsOnNotifications: peopleStartsOnNotifications,
-                viewModel: viewModel,
-                storeKitManager: storeKitManager,
-                identityStore: identityStore,
-                onLogOut: onLogOut,
-                onDeleteAccount: onDeleteAccount,
-                onOpenFollowed: openFollowed
-            )
-        )
         .sheet(item: $authorRoute) { route in
             AuthorProfileView(route: route, viewModel: viewModel)
                 .presentationDetents([.large])
@@ -96,32 +76,10 @@ struct ProfileView: View {
         .onChange(of: authorRoute?.id) { _, id in
             onAuthorVisibility(id != nil)
         }
-        .onChange(of: showFollowing) { _, showing in
-            if !showing {
-                peopleStartsOnNotifications = false
-            }
-        }
     }
 
     private func tabTint(_ segment: ProfileSegment) -> Color {
         segment == .saved ? ActionColors.love : theme.ink
-    }
-
-    private func openFollowed(_ person: FollowedPerson) {
-        authorRoute = AuthorRoute(
-            id: person.id,
-            initials: person.initials,
-            avatarPath: person.avatarPath,
-            isSelf: false
-        )
-    }
-
-    private func openFollowNotificationsIfAsked() {
-        guard viewModel.consumeFollowNotificationsRequest() else {
-            return
-        }
-        peopleStartsOnNotifications = true
-        showFollowing = true
     }
 }
 

@@ -298,6 +298,13 @@ final class StackScreenState {
         peopleStartsOnNotifications = true
         showPeople = true
     }
+
+    func dismissSheets() {
+        showFilter = false
+        showSettings = false
+        showPeople = false
+        peopleStartsOnNotifications = false
+    }
 }
 
 /// Home: the header, the card stack, the toast slot, and the action row.
@@ -308,12 +315,15 @@ struct StackHome: View {
     let safeAreaInsets: EdgeInsets
     let storeKitManager: StoreKitManager
     var identityStore: ProfileIdentityStore?
+    var screenState: StackScreenState
     var onLogOut: (() -> Void)?
     var onDeleteAccount: (() async -> AccountDeletion)?
     let onInspire: () -> Void
     let onOpenProfile: () -> Void
     let onOpenAuthor: (HomeCard) -> Void
     let onOpenFollowed: (FollowedPerson) -> Void
+    var onOpenPost: (PostRoute) -> Void = { _ in }
+    var onSheetDismissed: () -> Void = {}
     var isHomeActive: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
@@ -321,7 +331,6 @@ struct StackHome: View {
 
     @State private var drag = StackDrag()
     @State private var deviceTilt = CardDeviceTilt()
-    @State private var screenState = StackScreenState()
     @State private var screenSize: CGSize = .zero
 
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
@@ -397,7 +406,9 @@ struct StackHome: View {
                 identityStore: identityStore,
                 onLogOut: onLogOut,
                 onDeleteAccount: onDeleteAccount,
-                onOpenFollowed: onOpenFollowed
+                onOpenFollowed: onOpenFollowed,
+                onOpenPost: onOpenPost,
+                onSheetDismissed: onSheetDismissed
             )
         )
     }
@@ -780,6 +791,8 @@ private struct StackSheetsModifier: ViewModifier {
     var onLogOut: (() -> Void)?
     var onDeleteAccount: (() async -> AccountDeletion)?
     let onOpenFollowed: (FollowedPerson) -> Void
+    let onOpenPost: (PostRoute) -> Void
+    let onSheetDismissed: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -787,7 +800,7 @@ private struct StackSheetsModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $screenState.showFilter) {
+            .sheet(isPresented: $screenState.showFilter, onDismiss: onSheetDismissed) {
                 StackFilterSheet(appliedFilter: viewModel.stack.filter) { next in
                     viewModel.stack.apply(next)
                 }
@@ -806,7 +819,9 @@ private struct StackSheetsModifier: ViewModifier {
                     identityStore: identityStore,
                     onLogOut: onLogOut,
                     onDeleteAccount: onDeleteAccount,
-                    onOpenFollowed: onOpenFollowed
+                    onOpenFollowed: onOpenFollowed,
+                    onOpenPost: onOpenPost,
+                    onSheetDismissed: onSheetDismissed
                 )
             )
             .onChange(of: screenState.showPeople) { _, showing in

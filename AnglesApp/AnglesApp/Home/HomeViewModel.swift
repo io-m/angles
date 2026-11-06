@@ -15,6 +15,13 @@ enum ListFooterState: Equatable {
     case failed
 }
 
+enum PostFetchResult: Equatable {
+    case loaded(HomeCard)
+    case notFound
+    case failed
+    case cancelled
+}
+
 /// Profile's two lists: the cards you wrote and the cards you loved.
 enum ProfileSegment: String, CaseIterable, Hashable {
     case yours
@@ -121,8 +128,6 @@ final class HomeViewModel {
     /// Bumped whenever the unread count is set, even to the same value, so the app icon is
     /// rewritten after a push changed it behind the app's back.
     private(set) var followBadgeRevision = 0
-    /// A follow push asked for People on Notifications. Profile opens it when it is on screen.
-    private(set) var wantsFollowNotifications = false
     /// Whose loves these are and whether they carry the name. AppRoot keeps it in step
     /// with the session.
     @ObservationIgnored var loveDisclosure: (accountId: String?, sharesName: Bool) = (nil, true)
@@ -149,6 +154,8 @@ final class HomeViewModel {
     /// Author pages are observed through this, so a page redraws when its feed changes.
     private var authorRevision = 0
     @ObservationIgnored private var followNoticesGeneration = 0
+    @ObservationIgnored private var followLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var followLoadTaskGeneration = -1
     @ObservationIgnored private var followReadTask: Task<Void, Never>?
     @ObservationIgnored private var writeErrorTask: Task<Void, Never>?
     @ObservationIgnored private var usageBannerTask: Task<Void, Never>?
@@ -943,26 +950,101 @@ final class HomeViewModel {
     }
 
     func loadFollowNotifications() async {
+        if let existing = followLoadTask, followLoadTaskGeneration == followNoticesGeneration {
+            await existing.value
+            return
+        }
         if followNotices.isEmpty, loveNotices.isEmpty {
             followNoticesLoadState = .loading
         }
         let generation = followNoticesGeneration
-        do {
-            let response = try await profileService.followNotifications()
-            guard generation == followNoticesGeneration else {
-                return
+        followLoadTaskGeneration = generation
+        let task = Task { @MainActor in
+            defer {
+                if self.followLoadTaskGeneration == generation {
+                    self.followLoadTask = nil
+                }
             }
-            followNotices = response.notifications.compactMap(FollowNotice.init)
-            loveNotices = response.loves.compactMap(LoveNotice.init)
-            unreadNotificationCount = response.unreadCount
-            followNoticesLoadState = .loaded
+            do {
+                let response = try await self.profileService.followNotifications()
+                guard !Task.isCancelled, generation == self.followNoticesGeneration else {
+                    return
+                }
+                self.followNotices = response.notifications.compactMap(FollowNotice.init)
+                self.loveNotices = response.loves.compactMap(LoveNotice.init)
+                self.unreadNotificationCount = response.unreadCount
+                self.followNoticesLoadState = .loaded
+                self.followBadgeRevision &+= 1
+            } catch {
+                guard !Self.isCancellation(error), generation == self.followNoticesGeneration else {
+                    return
+                }
+                if self.followNotices.isEmpty, self.loveNotices.isEmpty {
+                    self.followNoticesLoadState = .failed("Couldn't load notifications.")
+                }
+            }
+        }
+        followLoadTask = task
+        await task.value
+    }
+
+    func loadFollowNotificationsIfEmpty() async {
+        guard followNotices.isEmpty, loveNotices.isEmpty else {
+            return
+        }
+        await loadFollowNotifications()
+    }
+
+    /// Marks the specific follow or love notification from a tapped push (or row) read immediately.
+    func markPushNotificationRead(followId: UUID? = nil, loveId: UUID? = nil, cardId: UUID? = nil) {
+        let now = Date()
+        var markedCount = 0
+        if let followId {
+            for index in followNotices.indices where followNotices[index].id == followId && followNotices[index].readAt == nil {
+                followNotices[index].readAt = now
+                markedCount += 1
+            }
+        }
+        var resolvedLoveId = loveId
+        if let cardId {
+            for index in loveNotices.indices where loveNotices[index].cardId == cardId {
+                if resolvedLoveId == nil {
+                    resolvedLoveId = loveNotices[index].id
+                }
+                if loveNotices[index].readAt == nil {
+                    loveNotices[index].readAt = now
+                    markedCount += 1
+                }
+            }
+        } else if let loveId {
+            for index in loveNotices.indices where loveNotices[index].id == loveId && loveNotices[index].readAt == nil {
+                loveNotices[index].readAt = now
+                markedCount += 1
+            }
+        }
+        if markedCount > 0 {
+            unreadNotificationCount = max(0, unreadNotificationCount - markedCount)
             followBadgeRevision &+= 1
-        } catch {
-            guard !Self.isCancellation(error), generation == followNoticesGeneration else {
+        }
+        guard followId != nil || resolvedLoveId != nil else {
+            return
+        }
+        let session = writeSessionGeneration
+        followNoticesGeneration &+= 1
+        Task { @MainActor in
+            do {
+                let left = try await profileService.markNotificationsRead(
+                    throughId: followId?.uuidString.lowercased(),
+                    loveThroughId: resolvedLoveId?.uuidString.lowercased()
+                )
+                guard writeSessionGeneration == session else {
+                    return
+                }
+                followNoticesGeneration &+= 1
+                unreadNotificationCount = left
+                followBadgeRevision &+= 1
+            } catch {
                 return
-            }
-            if followNotices.isEmpty, loveNotices.isEmpty {
-                followNoticesLoadState = .failed("Couldn't load notifications.")
             }
         }
     }
@@ -1027,18 +1109,6 @@ final class HomeViewModel {
             // The server still has them unread; the next list restores the count.
             return
         }
-    }
-
-    func requestOpenFollowNotifications() {
-        wantsFollowNotifications = true
-    }
-
-    func consumeFollowNotificationsRequest() -> Bool {
-        guard wantsFollowNotifications else {
-            return false
-        }
-        wantsFollowNotifications = false
-        return true
     }
 
     func followBack(_ authorId: UUID) {
@@ -1397,6 +1467,44 @@ final class HomeViewModel {
 
     // MARK: - Shared card state
 
+    func postCard(id: UUID) -> HomeCard? {
+        card(id: id)
+    }
+
+    func fetchPost(id: UUID) async -> PostFetchResult {
+        let session = writeSessionGeneration
+        do {
+            let stored = try await cardsService.get(id: id.uuidString.lowercased())
+            guard !Task.isCancelled, writeSessionGeneration == session else {
+                return .cancelled
+            }
+            guard var fetched = HomeCard(stored: stored) else {
+                return .failed
+            }
+            if publicTasks[fetched.id] != nil, let local = yours.cards.first(where: { $0.id == fetched.id }) {
+                fetched.isPublic = local.isPublic
+            }
+            if fetched.isOwner {
+                if let index = yours.cards.firstIndex(where: { $0.id == fetched.id }) {
+                    yours.cards[index] = fetched
+                } else {
+                    yours.cards.insert(fetched, at: 0)
+                }
+            }
+            applyLocal(id: fetched.id) { $0.apply(stored) }
+            return .loaded(fetched)
+        } catch {
+            if Self.isCancellation(error) || Task.isCancelled {
+                return .cancelled
+            }
+            if Self.isNotFound(error) {
+                dropUnavailableCard(id)
+                return .notFound
+            }
+            return .failed
+        }
+    }
+
     private func card(id: UUID) -> HomeCard? {
         if let match = saved.cards.first(where: { $0.id == id }) ?? yours.cards.first(where: { $0.id == id }) {
             return match
@@ -1539,9 +1647,11 @@ final class HomeViewModel {
         loveNotices = []
         followNoticesLoadState = .loading
         unreadNotificationCount = 0
-        wantsFollowNotifications = false
         followBadgeRevision &+= 1
         followNoticesGeneration &+= 1
+        followLoadTask?.cancel()
+        followLoadTask = nil
+        followLoadTaskGeneration = -1
         followReadTask?.cancel()
         followReadTask = nil
         blocksGeneration &+= 1
