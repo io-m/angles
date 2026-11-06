@@ -39,14 +39,17 @@ struct CardTiltFilter: Equatable {
 
 /// Where a roll/pitch puts the corner mark. Pure, so the behind and top cards are
 /// guaranteed to place the mark identically for the same tilt. Travel and rotation
-/// sit at roughly three quarters of their original size: present, never showy.
+/// are a fifth smaller than the last size: present, never showy.
 enum CardTiltGeometry {
+    /// Share of the previous travel and turn that still moves.
+    static let motion: CGFloat = 0.8
+
     static func markOffset(roll: CGFloat, pitch: CGFloat) -> CGSize {
-        CGSize(width: 30 + roll * 32, height: 26 + pitch * 26)
+        CGSize(width: 30 + roll * 32 * motion, height: 26 + pitch * 26 * motion)
     }
 
     static func markRotation(roll: CGFloat) -> Double {
-        -12 + Double(roll) * 13
+        -12 + Double(roll) * 13 * Double(motion)
     }
 }
 
@@ -126,9 +129,9 @@ struct CardTiltWash: View {
         let shiftY = pitch * 0.37
         LinearGradient(
             stops: [
-                .init(color: ink.opacity(0.022 * presence), location: 0),
-                .init(color: ink.opacity(0.045 * presence), location: 0.46),
-                .init(color: ink.opacity(0.13 * presence), location: 1)
+                .init(color: ink.opacity(0.018 * presence), location: 0),
+                .init(color: ink.opacity(0.036 * presence), location: 0.46),
+                .init(color: ink.opacity(0.104 * presence), location: 1)
             ],
             startPoint: UnitPoint(
                 x: CGFloat(0.5 - axis.dx * 0.75 + shiftX),

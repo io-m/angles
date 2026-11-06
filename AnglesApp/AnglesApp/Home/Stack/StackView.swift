@@ -59,15 +59,18 @@ enum StackMetrics {
 
 /// Where the card sits between the header and the action row, on any iPhone.
 enum StackLayout {
-    static let topGap: CGFloat = 22
-    static let barGap: CGFloat = 14
+    static let topGap: CGFloat = 15
+    static let barGap: CGFloat = 7
     /// Height cap, as a multiple of the 6.1-inch card width. A wider phone wraps the same
     /// answer in fewer lines, so it does not get a taller card.
-    static let maxAspect: CGFloat = 1.48
+    static let maxAspect: CGFloat = 1.52
     static let referenceScreenWidth: CGFloat = 393
 
     /// How far the card and the action row rise together when the phone has spare height.
     static let lift: CGFloat = 16
+    /// Extra air under the header, as a share of the screen height, so a shorter phone
+    /// keeps the same proportion. Taken from the spare below the card.
+    static let headerBreath: CGFloat = 0.003
 
     struct Frame: Equatable {
         var card: CGSize
@@ -87,11 +90,13 @@ enum StackLayout {
         let referenceWidth = referenceScreenWidth - StackMetrics.horizontalInset * 2
         let height = min(room, min(width, referenceWidth) * maxAspect)
         let spare = room - height
-        let lift = min(Self.lift, spare / 2)
+        let half = spare / 2
+        let breath = min(half, screen.height * headerBreath)
+        let lift = min(Self.lift, half - breath)
         return Frame(
             card: CGSize(width: width, height: height),
-            topGap: topGap + spare / 2 - lift,
-            barGap: barGap + spare / 2,
+            topGap: topGap + half - lift + breath,
+            barGap: barGap + half - breath,
             lift: lift
         )
     }
@@ -156,9 +161,6 @@ struct StackCardPose: Equatable {
 final class StackDrag {
     var offset: CGSize = .zero
     var cardWidth: CGFloat = 0
-    /// Up or down only: in from 40 to 70 points, out by 110, and gone once the finger goes sideways.
-    /// Stored and updated only when it changes so horizontal swipes never redraw the hint capsule.
-    var hintOpacity: Double = 0
     /// Only at accessibility sizes, where the card scrolls: set once a drag is known to be
     /// sideways, so a vertical scroll stays a scroll.
     @ObservationIgnored var isDeciding: Bool?
@@ -230,26 +232,6 @@ final class StackDrag {
     var tilt: Angle {
         .degrees(Double(offset.width / 22))
     }
-
-    func setOffset(_ next: CGSize) {
-        offset = next
-        let nextHint = Self.computeHintOpacity(for: next)
-        if abs(nextHint - hintOpacity) > 0.005
-            || (nextHint == 0 && hintOpacity != 0)
-            || (nextHint == 1 && hintOpacity != 1)
-        {
-            hintOpacity = nextHint
-        }
-    }
-
-    private static func computeHintOpacity(for offset: CGSize) -> Double {
-        let vertical = abs(offset.height)
-        let sideways = abs(offset.width)
-        let rise = (vertical - 40) / 30
-        let fall = (110 - vertical) / 40
-        let straight = 1 - (sideways - 10) / 20
-        return Double(max(0, min(1, rise, fall, straight)))
-    }
 }
 
 /// Home: the header, the card stack, the toast slot, and the action row.
@@ -314,10 +296,6 @@ struct StackHome: View {
             cardArea
                 .padding(.horizontal, StackMetrics.horizontalInset)
                 .overlay(alignment: .bottom) { toast }
-                .overlay(alignment: .top) {
-                    StackDragHint(drag: drag)
-                        .offset(y: -StackDragHint.height / 2)
-                }
                 .padding(.top, layout.topGap)
                 .zIndex(1)
 
@@ -544,7 +522,7 @@ struct StackHome: View {
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
-                    drag.setOffset(next)
+                    drag.offset = next
                 }
                 if drag.noteDecideThreshold(distance: next.width) {
                     thresholdTick &+= 1
@@ -568,7 +546,7 @@ struct StackHome: View {
                     fling(.pass)
                 } else {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.7)) {
-                        drag.setOffset(.zero)
+                        drag.offset = .zero
                     }
                 }
             }
@@ -594,7 +572,6 @@ struct StackHome: View {
         }
         withAnimation(.easeIn(duration: 0.22)) {
             drag.offset = target
-            drag.hintOpacity = 0
         } completion: {
             commit(kind)
         }
@@ -605,7 +582,7 @@ struct StackHome: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             stack.decide(kind)
-            drag.setOffset(.zero)
+            drag.offset = .zero
             flinging = nil
         }
     }
@@ -626,7 +603,7 @@ struct StackHome: View {
             didRewind = true
             let direction: CGFloat = step.kind == .save ? 1 : -1
             entrance = CGSize(width: direction * max(drag.cardWidth, 320) * 1.3, height: 30)
-            drag.setOffset(reduceMotion ? .zero : entrance)
+            drag.offset = reduceMotion ? .zero : entrance
         }
         if didRewind {
             actionTick &+= 1
@@ -637,7 +614,7 @@ struct StackHome: View {
         Task { @MainActor [drag] in
             await Task.yield()
             withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
-                drag.setOffset(.zero)
+                drag.offset = .zero
             }
         }
     }
@@ -646,7 +623,7 @@ struct StackHome: View {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            drag.setOffset(.zero)
+            drag.offset = .zero
             drag.isDeciding = nil
             drag.lastTranslation = nil
             drag.touchWasDrag = false
@@ -828,32 +805,6 @@ private struct StackStamp: View {
             .rotationEffect(.degrees(angle))
             .scaleEffect(1.25 - 0.25 * amount)
             .opacity(Double(amount))
-    }
-}
-
-/// A whisper while the finger moves up or down: only the sides decide.
-private struct StackDragHint: View {
-    static let height: CGFloat = 24
-
-    let drag: StackDrag
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
-
-    var body: some View {
-        let opacity = drag.hintOpacity
-        Text("Swipe sideways to love or pass")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(theme.sub)
-            .padding(.horizontal, 12)
-            .frame(height: Self.height)
-            .background(.thinMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(theme.cardHairline, lineWidth: 0.5))
-            .opacity(opacity)
-            .animation(.easeOut(duration: 0.15), value: opacity == 0)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }
 

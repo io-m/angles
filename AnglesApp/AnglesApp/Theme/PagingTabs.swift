@@ -311,6 +311,7 @@ struct PagingPages<ID: Hashable, Page: View>: View {
                             page(id)
                         }
                         .scrollIndicators(.hidden)
+                        .scrollDismissesKeyboard(.interactively)
                         .scrollBounceBehavior(onRefresh == nil ? .automatic : .always)
                         .modifier(PageRefresh(action: onRefresh.map { refresh in
                             { await refresh(id) }

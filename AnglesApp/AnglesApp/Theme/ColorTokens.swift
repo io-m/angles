@@ -10,9 +10,10 @@ struct ColorTokens {
     static let faintLight = Color(red: 0xB9 / 255, green: 0xAF / 255, blue: 0xA0 / 255)
     static let lineLight = Color(red: 0xED / 255, green: 0xE6 / 255, blue: 0xD7 / 255)
 
-    // Dark — near-black charcoal with a hint of warmth, not sepia brown
-    static let paperDark = Color(red: 0x15 / 255, green: 0x14 / 255, blue: 0x13 / 255)
-    static let greyDark = Color(red: 0x1E / 255, green: 0x1D / 255, blue: 0x1C / 255)
+    // Dark — near-black charcoal with a hint of warmth, not sepia brown.
+    // Paper and grey sit a hair under the button surface so circles read as raised.
+    static let paperDark = Color(red: 0x13 / 255, green: 0x12 / 255, blue: 0x11 / 255)
+    static let greyDark = Color(red: 0x1C / 255, green: 0x1B / 255, blue: 0x1A / 255)
     static let inkDark = Color(red: 0xF4 / 255, green: 0xF3 / 255, blue: 0xF1 / 255)
     static let ink2Dark = Color(red: 0xE4 / 255, green: 0xE2 / 255, blue: 0xDE / 255)
     static let subDark = Color(red: 0xC4 / 255, green: 0xC2 / 255, blue: 0xBE / 255)
@@ -20,12 +21,12 @@ struct ColorTokens {
     static let faintDark = Color(red: 0x5E / 255, green: 0x5C / 255, blue: 0x59 / 255)
     static let lineDark = Color.white.opacity(0.10)
     static let surfaceLight = Color.white
-    static let surfaceDark = Color(red: 0x29 / 255, green: 0x28 / 255, blue: 0x27 / 255)
+    static let surfaceDark = Color(red: 0x2C / 255, green: 0x2B / 255, blue: 0x2A / 255)
 
     static let paperLightRGB = (253.0 / 255, 251.0 / 255, 248.0 / 255)
     static let greyLightRGB = (240.0 / 255, 239.0 / 255, 236.0 / 255)
-    static let paperDarkRGB = (21.0 / 255, 20.0 / 255, 19.0 / 255)
-    static let greyDarkRGB = (30.0 / 255, 29.0 / 255, 28.0 / 255)
+    static let paperDarkRGB = (19.0 / 255, 18.0 / 255, 17.0 / 255)
+    static let greyDarkRGB = (28.0 / 255, 27.0 / 255, 26.0 / 255)
 
     struct Theme {
         var paper: Color

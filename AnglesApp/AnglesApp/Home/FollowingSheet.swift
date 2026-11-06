@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Who you follow, and who followed you, on two tabs. Same sheet chrome as Settings.
 struct FollowingSheet: View {
-    private enum PeopleTab: String, CaseIterable {
+    private enum PeopleTab: String, CaseIterable, Hashable {
         case following
         case notifications
 
@@ -10,6 +10,20 @@ struct FollowingSheet: View {
             switch self {
             case .following: "Following"
             case .notifications: "Notifications"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .following: "person.2"
+            case .notifications: "bell"
+            }
+        }
+
+        var selectedSymbol: String {
+            switch self {
+            case .following: "person.2.fill"
+            case .notifications: "bell.fill"
             }
         }
     }
@@ -102,14 +116,27 @@ struct FollowingSheet: View {
     }
 
     var body: some View {
-        ModalScreen(
-            title: "People",
-            searchText: $query,
-            header: AnyView(peoplePicker)
-        ) {
-            tabBody
-                .padding(.horizontal, 20)
-                .padding(.top, 4)
+        PagingSplit(
+            ids: Array(PeopleTab.allCases),
+            selection: $tab,
+            tint: { _ in theme.ink },
+            label: { item, isSelected in
+                tabLabel(item, isSelected: isSelected)
+            },
+            page: { item in
+                tabBody(item)
+                    .padding(.top, 20)
+                    .padding(.bottom, 28)
+            }
+        ) { bar, pages in
+            ModalScreen(
+                title: "People",
+                searchText: $query,
+                scrolls: false,
+                header: AnyView(bar)
+            ) {
+                pages
+            }
         }
         .onChange(of: tab) { _, item in
             guard item == .notifications else { return }
@@ -133,71 +160,65 @@ struct FollowingSheet: View {
         !needle.isEmpty
     }
 
-    private var peoplePicker: some View {
-        Picker("People", selection: $tab) {
-            ForEach(PeopleTab.allCases, id: \.self) { item in
-                Text(segmentTitle(item)).tag(item)
+    private func tabLabel(_ item: PeopleTab, isSelected: Bool) -> some View {
+        HStack(spacing: 6) {
+            PagingTabLabel(
+                title: item.title,
+                symbol: item.symbol,
+                selectedSymbol: item.selectedSymbol,
+                isSelected: isSelected,
+                tint: theme.ink
+            )
+            if item == .notifications, unreadCount > 0 {
+                Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(theme.paper)
+                    .frame(minWidth: 18, minHeight: 18)
+                    .padding(.horizontal, 4)
+                    .background(theme.ink, in: Capsule())
+                    .accessibilityHidden(true)
             }
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
-        .padding(.top, 4)
-        .padding(.bottom, 12)
-    }
-
-    private func segmentTitle(_ item: PeopleTab) -> String {
-        guard item == .notifications, unreadCount > 0 else {
-            return item.title
-        }
-        return "Notifications (\(unreadCount))"
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            item == .notifications && unreadCount > 0
+                ? "Notifications, \(unreadCount) unread"
+                : item.title
+        )
     }
 
     @ViewBuilder
-    private var tabBody: some View {
-        switch tab {
+    private func tabBody(_ item: PeopleTab) -> some View {
+        switch item {
         case .following:
             if searching && filteredPeople.isEmpty {
                 ContentUnavailableView.search(text: query)
-                    .padding(.top, 12)
+                    .padding(.top, 28)
+                    .padding(.horizontal, 20)
             } else if people.isEmpty {
                 status(loadState, empty: "You aren't following anyone yet.")
             } else {
-                rows {
+                VStack(spacing: 0) {
                     ForEach(Array(filteredPeople.enumerated()), id: \.element.id) { index, person in
-                        if index > 0 { rowDivider }
-                        personRow(person)
+                        personRow(person, showsDivider: index < filteredPeople.count - 1)
                     }
                 }
             }
         case .notifications:
             if searching && filteredNotices.isEmpty {
                 ContentUnavailableView.search(text: query)
-                    .padding(.top, 12)
+                    .padding(.top, 28)
+                    .padding(.horizontal, 20)
             } else if notices.isEmpty {
                 status(noticesLoadState, empty: "No follows yet.")
             } else {
-                rows {
+                VStack(spacing: 0) {
                     ForEach(Array(filteredNotices.enumerated()), id: \.element.id) { index, notice in
-                        if index > 0 { rowDivider }
-                        noticeRow(notice)
+                        noticeRow(notice, showsDivider: index < filteredNotices.count - 1)
                     }
                 }
             }
         }
-    }
-
-    private func rows<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 0) {
-            content()
-        }
-        .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-    }
-
-    private var rowDivider: some View {
-        Rectangle()
-            .fill(theme.line)
-            .frame(height: 1)
-            .padding(.leading, 70)
     }
 
     private func status(_ state: LibraryLoadState, empty: String) -> some View {
@@ -223,115 +244,129 @@ struct FollowingSheet: View {
                     .frame(maxWidth: .infinity, minHeight: 88)
             }
         }
-        .padding(20)
-        .background(theme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
     }
 
-    private func personRow(_ person: FollowedPerson) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                onOpen(person)
-            } label: {
-                HStack(spacing: 14) {
-                    AuthorMark(
-                        initials: person.initials,
-                        avatarPath: person.avatarPath,
-                        side: 40,
-                        fill: theme.ink,
-                        symbol: theme.paper
-                    )
+    private func personRow(_ person: FollowedPerson, showsDivider: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Button {
+                    onOpen(person)
+                } label: {
+                    HStack(spacing: 14) {
+                        AuthorMark(
+                            initials: person.initials,
+                            avatarPath: person.avatarPath,
+                            side: 40,
+                            fill: theme.ink,
+                            symbol: theme.paper
+                        )
 
-                    Text(displayInitials(person.initials))
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(theme.ink)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .layoutPriority(1)
-
-                    Spacer(minLength: 12)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(displayInitials(person.initials))
-            .accessibilityHint("Opens their posts")
-
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onUnfollow(person)
-            } label: {
-                Image(systemName: "person.badge.minus")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(theme.ink)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Unfollow \(displayInitials(person.initials))")
-        }
-        .padding(.leading, 16)
-        .padding(.trailing, 8)
-        .padding(.vertical, 8)
-    }
-
-    private func noticeRow(_ notice: FollowNotice) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                onOpenNotice(notice)
-            } label: {
-                HStack(spacing: 14) {
-                    AuthorMark(
-                        initials: notice.initials,
-                        avatarPath: notice.avatarPath,
-                        side: 40,
-                        fill: theme.ink,
-                        symbol: theme.paper
-                    )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(notice.publicLabel)
+                        Text(displayInitials(person.initials))
                             .font(.body.weight(.medium))
                             .foregroundStyle(theme.ink)
                             .lineLimit(1)
-                        Text("\(notice.sentence) · \(Self.relative.localizedString(for: notice.createdAt, relativeTo: Date()))")
-                            .font(.subheadline)
-                            .foregroundStyle(theme.muted)
-                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
+
+                        Spacer(minLength: 12)
                     }
-
-                    Spacer(minLength: 12)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(notice.publicLabel) \(notice.sentence)")
-            .accessibilityHint("Opens their posts")
+                .buttonStyle(.plain)
+                .accessibilityLabel(displayInitials(person.initials))
+                .accessibilityHint("Opens their posts")
 
-            if notice.following {
-                Text("Following")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(theme.muted)
-                    .frame(minWidth: 44, minHeight: 44)
-            } else {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onFollowBack(notice)
+                    onUnfollow(person)
                 } label: {
-                    Text("Follow back")
-                        .font(.subheadline.weight(.semibold))
+                    Image(systemName: "person.badge.minus")
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(theme.ink)
-                        .frame(minHeight: 44)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Follow back \(notice.publicLabel)")
+                .accessibilityLabel("Unfollow \(displayInitials(person.initials))")
+            }
+            .padding(.vertical, 12)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(theme.line)
+                    .frame(height: 1)
             }
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 20)
+    }
+
+    private func noticeRow(_ notice: FollowNotice, showsDivider: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Button {
+                    onOpenNotice(notice)
+                } label: {
+                    HStack(spacing: 14) {
+                        AuthorMark(
+                            initials: notice.initials,
+                            avatarPath: notice.avatarPath,
+                            side: 40,
+                            fill: theme.ink,
+                            symbol: theme.paper
+                        )
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(notice.publicLabel)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(theme.ink)
+                                .lineLimit(1)
+                            Text("\(notice.sentence) · \(Self.relative.localizedString(for: notice.createdAt, relativeTo: Date()))")
+                                .font(.subheadline)
+                                .foregroundStyle(theme.muted)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 12)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(notice.publicLabel) \(notice.sentence)")
+                .accessibilityHint("Opens their posts")
+
+                if notice.following {
+                    Text("Following")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.muted)
+                        .frame(minWidth: 44, minHeight: 44)
+                } else {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        onFollowBack(notice)
+                    } label: {
+                        Text("Follow back")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.ink)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Follow back \(notice.publicLabel)")
+                }
+            }
+            .padding(.vertical, 12)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(theme.line)
+                    .frame(height: 1)
+            }
+        }
+        .padding(.horizontal, 20)
     }
 
     private func displayInitials(_ initials: String) -> String {

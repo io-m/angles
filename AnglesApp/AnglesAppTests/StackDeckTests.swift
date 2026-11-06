@@ -367,8 +367,9 @@ struct CardTiltTests {
         #expect(behind.height < 26)
         #expect(CardTiltGeometry.markRotation(roll: 0.7) > -12)
         let far = CardTiltGeometry.markOffset(roll: 1, pitch: 1)
-        #expect(far == CGSize(width: 62, height: 52))
-        #expect(CardTiltGeometry.markRotation(roll: 1) == 1)
+        #expect(abs(far.width - 55.6) < 0.01)
+        #expect(abs(far.height - 46.8) < 0.01)
+        #expect(abs(CardTiltGeometry.markRotation(roll: 1) - (-1.6)) < 0.01)
     }
 }
 
@@ -388,8 +389,10 @@ struct StackLayoutTests {
             #expect((StackLayout.barGap...112).contains(frame.barGap), "\(phone.name) bar \(frame.barGap)")
             let topExtra = frame.topGap - StackLayout.topGap
             let barExtra = frame.barGap - StackLayout.barGap
-            #expect(barExtra - topExtra == frame.lift, "\(phone.name)")
-            #expect(frame.lift == min(StackLayout.lift, barExtra), "\(phone.name) lift \(frame.lift)")
+            let half = (topExtra + barExtra + frame.lift) / 2
+            let breath = min(half, phone.screen.height * StackLayout.headerBreath)
+            #expect(abs((barExtra - topExtra) - (frame.lift - 2 * breath)) < 0.01, "\(phone.name)")
+            #expect(abs(frame.lift - min(StackLayout.lift, half - breath)) < 0.01, "\(phone.name) lift \(frame.lift)")
         }
     }
 

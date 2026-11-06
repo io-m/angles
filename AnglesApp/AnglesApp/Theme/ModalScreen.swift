@@ -118,33 +118,7 @@ struct ModalScreen<Content: View>: View {
     @ViewBuilder
     private var searchField: some View {
         if let searchText {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.faint)
-                TextField(searchPrompt, text: searchText)
-                    .font(.body)
-                    .foregroundStyle(theme.ink)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                if !searchText.wrappedValue.isEmpty {
-                    Text("Clear")
-                        .font(.body)
-                        .foregroundStyle(theme.muted)
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                        .onTapGesture { searchText.wrappedValue = "" }
-                        .accessibilityLabel("Clear search")
-                        .accessibilityAddTraits(.isButton)
-                }
-            }
-            .padding(.horizontal, 12)
-            .frame(minHeight: 36)
-            .background(theme.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 8)
+            ModalSearchField(text: searchText, prompt: searchPrompt)
         }
     }
 
@@ -178,5 +152,69 @@ struct ModalScreen<Content: View>: View {
         case .destructive:
             return .red
         }
+    }
+}
+
+/// The sheet search field. Quiet until it is focused, then it fills solid and lifts off the grey.
+private struct ModalSearchField: View {
+    @Binding var text: String
+    var prompt: String
+
+    @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(focused ? theme.ink : theme.faint)
+            TextField(prompt, text: $text)
+                .font(.body)
+                .foregroundStyle(theme.ink)
+                .focused($focused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(theme.sub)
+                        .frame(width: 22, height: 22)
+                        .background(
+                            colorScheme == .dark ? Color.white.opacity(0.12) : theme.grey,
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: 40)
+        .background {
+            shape.fill(focused ? theme.surface : theme.surface.opacity(0.72))
+        }
+        .overlay {
+            shape.strokeBorder(
+                focused ? theme.ink.opacity(0.38) : theme.cardHairline,
+                lineWidth: focused ? 1 : 0.5
+            )
+        }
+        .shadow(
+            color: focused ? theme.shadowLift : .clear,
+            radius: focused ? 14 : 0,
+            y: focused ? (colorScheme == .dark ? 0 : 5) : 0
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 16)
+        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.82), value: focused)
     }
 }

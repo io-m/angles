@@ -220,9 +220,11 @@ enum AngleCardMetrics {
     static let stackInset: CGFloat = 18
     static let stackAvatarSize: CGFloat = 40
     static let stackHeaderTop: CGFloat = 16
-    static let thoughtTop: CGFloat = 14
-    /// Space above and below the divider between the thought and its angles.
-    static let dividerGap: CGFloat = 18
+    static let thoughtTop: CGFloat = 16
+    /// Space above the divider, part of the thought's block.
+    static let dividerGapAbove: CGFloat = 20
+    /// Space below the divider, so the angles sit clear of the larger thought.
+    static let dividerGapBelow: CGFloat = 24
     static let dividerHeight: CGFloat = 0.5
     /// The answer hangs this far under its tabs.
     static let answerTop: CGFloat = 12
@@ -237,7 +239,8 @@ enum AngleCardMetrics {
     /// divider, tabs, and the bottom inset.
     static func stackChrome(thoughtHeight: CGFloat) -> CGFloat {
         stackHeaderTop + headerHeight(for: .stack) + thoughtTop + thoughtHeight
-            + dividerGap * 2 + dividerHeight + ReframeCardMetrics.chipSize + answerTop + stackInset
+            + dividerGapAbove + dividerHeight + dividerGapBelow
+            + ReframeCardMetrics.chipSize + answerTop + stackInset
     }
 
     static func avatarSize(for sizing: AngleCardSizing) -> CGFloat {
@@ -465,7 +468,8 @@ struct AngleCardFace: View, Equatable {
             .fill(appearance.ink.opacity(0.15))
             .frame(height: AngleCardMetrics.dividerHeight)
             .padding(.horizontal, inset)
-            .padding(.vertical, AngleCardMetrics.dividerGap)
+            .padding(.top, AngleCardMetrics.dividerGapAbove)
+            .padding(.bottom, AngleCardMetrics.dividerGapBelow)
             .accessibilityHidden(true)
     }
 

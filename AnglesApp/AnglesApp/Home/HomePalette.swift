@@ -165,9 +165,9 @@ enum StyleWashStrength {
         switch self {
         case .card:
             if scheme == .dark {
-                return (0.025, 0.06, 0.12)
+                return (0.020, 0.048, 0.096)
             }
-            return (0.028, 0.058, 0.112)
+            return (0.022, 0.046, 0.090)
         case .header:
             if scheme == .dark {
                 return (0.08, 0.16, 0.26)
