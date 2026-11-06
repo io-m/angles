@@ -3,9 +3,20 @@ import SwiftUI
 enum StackMetrics {
     /// 16 points a side: the card is about 92% of the screen width.
     static let horizontalInset: CGFloat = 16
-    /// How much of the card behind shows under the top card.
+    /// How much of each card behind shows under the one in front.
     static let sliver: CGFloat = 10
+    /// Front, middle, and the see-through card at the back.
+    static let depthCount = 3
+    /// Room under the front card for every card behind it.
+    static var peek: CGFloat { sliver * CGFloat(depthCount - 1) }
     static let behindScale: CGFloat = 0.94
+    static let backScale: CGFloat = 0.88
+    /// The back card lets the grey show through. The middle card stays opaque, under a veil.
+    static let backOpacity: Double = 0.45
+    /// The next card starts smaller than the back slot and scales up into it.
+    static let incomingScale: CGFloat = 0.80
+    /// The three cards at rest, plus the next one while it scales into the back slot.
+    static var renderedCount: Int { depthCount + 1 }
     /// A drag past this commits on release, as does a fast flick.
     static let decideDistance: CGFloat = 110
     static let flickDistance: CGFloat = 240
@@ -62,7 +73,7 @@ enum StackLayout {
         var card: CGSize
         /// Header to card.
         var topGap: CGFloat
-        /// The card behind's sliver to the action row.
+        /// The back card's peek to the action row.
         var barGap: CGFloat
         /// Spare taken from under the header and placed under the action row.
         var lift: CGFloat
@@ -72,7 +83,7 @@ enum StackLayout {
         let width = max(0, screen.width - StackMetrics.horizontalInset * 2)
         let header = safeTop + StackMetrics.headerHeight
         let bar = StackMetrics.inspireSize(screenHeight: screen.height) + StackMetrics.barBottom(safeBottom: safeBottom)
-        let room = max(0, screen.height - header - bar - topGap - barGap - StackMetrics.sliver)
+        let room = max(0, screen.height - header - bar - topGap - barGap - StackMetrics.peek)
         let referenceWidth = referenceScreenWidth - StackMetrics.horizontalInset * 2
         let height = min(room, min(width, referenceWidth) * maxAspect)
         let spare = room - height
@@ -82,6 +93,58 @@ enum StackLayout {
             topGap: topGap + spare / 2 - lift,
             barGap: barGap + spare / 2,
             lift: lift
+        )
+    }
+}
+
+/// Where a stack card sits relative to the one in front. Depth 0 is the front card.
+/// At `progress == 1` a card matches the resting pose one depth forward, so the swap
+/// on release changes nothing on screen by itself.
+struct StackCardPose: Equatable {
+    var scale: CGFloat
+    var offsetY: CGFloat
+    var shade: Double
+    var opacity: Double
+
+    static func rest(depth: Int, dark: Bool) -> StackCardPose {
+        switch max(depth, 0) {
+        case 0:
+            return StackCardPose(scale: 1, offsetY: 0, shade: 0, opacity: 1)
+        case 1:
+            return StackCardPose(
+                scale: StackMetrics.behindScale,
+                offsetY: StackMetrics.sliver,
+                shade: dark ? 0.35 : 0.10,
+                opacity: 1
+            )
+        case 2:
+            return StackCardPose(
+                scale: StackMetrics.backScale,
+                offsetY: StackMetrics.sliver * 2,
+                shade: 0,
+                opacity: StackMetrics.backOpacity
+            )
+        default:
+            return StackCardPose(
+                scale: StackMetrics.incomingScale,
+                offsetY: StackMetrics.sliver * 2,
+                shade: 0,
+                opacity: 0
+            )
+        }
+    }
+
+    static func posed(depth: Int, progress: CGFloat, dark: Bool) -> StackCardPose {
+        let clamped = max(depth, 0)
+        let from = rest(depth: clamped, dark: dark)
+        let toward = rest(depth: max(0, clamped - 1), dark: dark)
+        let t = min(max(progress, 0), 1)
+        let step = Double(t)
+        return StackCardPose(
+            scale: from.scale + (toward.scale - from.scale) * t,
+            offsetY: from.offsetY + (toward.offsetY - from.offsetY) * t,
+            shade: from.shade + (toward.shade - from.shade) * step,
+            opacity: from.opacity + (toward.opacity - from.opacity) * step
         )
     }
 }
@@ -155,7 +218,7 @@ final class StackDrag {
         max(-1, min(1, offset.width / StackMetrics.decideDistance))
     }
 
-    /// The card behind grows into place as the top card is dragged away.
+    /// Each card behind steps one depth forward as the top card is dragged away.
     var progress: CGFloat {
         guard cardWidth > 0 else {
             return 0
@@ -332,14 +395,14 @@ struct StackHome: View {
 
     private var cardArea: some View {
         GeometryReader { proxy in
-            let size = CGSize(width: proxy.size.width, height: max(0, proxy.size.height - StackMetrics.sliver))
+            let size = CGSize(width: proxy.size.width, height: max(0, proxy.size.height - StackMetrics.peek))
             ZStack(alignment: .top) {
                 if deck.top != nil {
                     // One view per card, keyed by the card's id: promotion is a role
                     // change on the same face, not a destroy-and-recreate, so its
                     // tilt mark, wash, and state carry across the seam untouched.
-                    ForEach(Array(deck.cards.prefix(2).enumerated().reversed()), id: \.element.id) { index, card in
-                        stackCard(card, isTop: index == 0, size: size)
+                    ForEach(Array(deck.cards.prefix(StackMetrics.renderedCount).enumerated().reversed()), id: \.element.id) { index, card in
+                        stackCard(card, depth: index, size: size)
                     }
                 } else {
                     placeholder
@@ -352,13 +415,14 @@ struct StackHome: View {
         }
     }
 
-    /// Both deck roles render through this one path, and every card — top or behind —
-    /// gets the live `deviceTilt`, so a promoted card's watermark and wash are already
-    /// exactly where the top card's would be. Only interaction, elevation, and the
-    /// drag-driven motion differ by role, and at `progress == 1` the behind role is
-    /// identity (scale 1, no sliver offset, no shade), matching the top role at rest.
-    private func stackCard(_ card: HomeCard, isTop: Bool, size: CGSize) -> some View {
-        StackCardMotion(drag: drag, isTop: isTop) {
+    /// Every depth renders through this one path, and every card gets the live
+    /// `deviceTilt`, so a promoted card's watermark and wash are already exactly
+    /// where the card in front's would be. Only interaction, elevation, and the
+    /// drag-driven motion differ by depth, and at `progress == 1` a card behind
+    /// matches the resting pose one depth forward.
+    private func stackCard(_ card: HomeCard, depth: Int, size: CGSize) -> some View {
+        let isTop = depth == 0
+        return StackCardMotion(drag: drag, depth: depth) {
             AngleCardFace(
                 card: card,
                 sizing: .stack,
@@ -437,7 +501,7 @@ struct StackHome: View {
                     .onTapGesture { viewModel.dismissPostToast() }
             }
         }
-        .padding(.bottom, StackMetrics.sliver + 14)
+        .padding(.bottom, StackMetrics.peek + 14)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.38, dampingFraction: 0.82), value: viewModel.postToast)
     }
 
@@ -593,43 +657,42 @@ struct StackHome: View {
 
 // MARK: - Motion
 
-/// One motion wrapper for both deck roles, so a card keeps the same modifier chain
-/// when it is promoted: the only part of Home that redraws per drag frame. The top
-/// card follows the finger with its stamps; the card behind is a step smaller, a
-/// sliver lower, and in shadow until the top card moves away. At `progress == 1`
-/// the behind values are exactly the top card's resting values (scale 1, offset 0,
-/// shade 0, no stamps), so promotion changes nothing on screen by itself.
+/// One motion wrapper for every depth, so a card keeps the same modifier chain when
+/// it is promoted: the only part of Home that redraws per drag frame. The top card
+/// follows the finger with its stamps. Each card behind is a step smaller and a
+/// sliver lower; the middle one sits under a veil, and the back one is see-through.
+/// The next card is hidden until the top card leaves, then scales up into the back
+/// slot. At `progress == 1` each card matches the resting pose one depth forward, so
+/// promotion changes nothing on screen by itself.
 private struct StackCardMotion<Content: View>: View {
     let drag: StackDrag
-    let isTop: Bool
+    let depth: Int
     let content: Content
 
-    init(drag: StackDrag, isTop: Bool, @ViewBuilder content: () -> Content) {
+    init(drag: StackDrag, depth: Int, @ViewBuilder content: () -> Content) {
         self.drag = drag
-        self.isTop = isTop
+        self.depth = depth
         self.content = content()
     }
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let progress = drag.progress
-        let shade = isTop ? 0 : (colorScheme == .dark ? 0.35 : 0.10) * Double(1 - progress)
+        let isTop = depth == 0
+        let pose = StackCardPose.posed(depth: depth, progress: drag.progress, dark: colorScheme == .dark)
         content
             .overlay { StackStamps(lean: isTop ? drag.lean : 0) }
             .overlay {
                 RoundedRectangle(cornerRadius: AngleCardMetrics.cornerRadius, style: .continuous)
-                    .fill(Color.black.opacity(shade))
+                    .fill(Color.black.opacity(pose.shade))
                     .allowsHitTesting(false)
             }
+            .opacity(pose.opacity)
             .rotationEffect(isTop ? drag.tilt : .zero, anchor: .bottom)
-            .scaleEffect(
-                isTop ? 1 : StackMetrics.behindScale + (1 - StackMetrics.behindScale) * progress,
-                anchor: .bottom
-            )
+            .scaleEffect(pose.scale, anchor: .bottom)
             .offset(
                 x: isTop ? drag.offset.width : 0,
-                y: isTop ? drag.offset.height : StackMetrics.sliver * (1 - progress)
+                y: isTop ? drag.offset.height : pose.offsetY
             )
     }
 }

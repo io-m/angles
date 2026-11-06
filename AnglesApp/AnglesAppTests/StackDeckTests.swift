@@ -397,9 +397,42 @@ struct StackLayoutTests {
         for phone in Self.phones {
             let frame = StackLayout.frame(screen: phone.screen, safeTop: phone.safeTop, safeBottom: phone.safeBottom)
             let used = phone.safeTop + StackMetrics.headerHeight + frame.topGap + frame.card.height
-                + StackMetrics.sliver + frame.barGap + StackMetrics.inspireSize(screenHeight: phone.screen.height)
+                + StackMetrics.peek + frame.barGap + StackMetrics.inspireSize(screenHeight: phone.screen.height)
                 + StackMetrics.barBottom(safeBottom: phone.safeBottom) + frame.lift
             #expect(abs(used - phone.screen.height) < 0.5, "\(phone.name) used \(used)")
+        }
+    }
+
+    @Test func aCardOneDepthBackMatchesTheRestPoseInFront() {
+        #expect(StackMetrics.peek == StackMetrics.sliver * 2)
+        for dark in [false, true] {
+            let front = StackCardPose.rest(depth: 0, dark: dark)
+            let middle = StackCardPose.rest(depth: 1, dark: dark)
+            let back = StackCardPose.rest(depth: 2, dark: dark)
+            #expect(front.scale == 1)
+            #expect(front.opacity == 1)
+            #expect(front.shade == 0)
+            #expect(middle.scale == StackMetrics.behindScale)
+            #expect(middle.offsetY == StackMetrics.sliver)
+            #expect(middle.opacity == 1)
+            #expect(middle.shade == (dark ? 0.35 : 0.10))
+            #expect(back.scale == StackMetrics.backScale)
+            #expect(back.offsetY == StackMetrics.sliver * 2)
+            #expect(back.opacity == StackMetrics.backOpacity)
+            #expect(back.shade == 0)
+            #expect(back.opacity < middle.opacity)
+            #expect(StackCardPose.posed(depth: 0, progress: 1, dark: dark) == front)
+            #expect(StackCardPose.posed(depth: 1, progress: 0, dark: dark) == middle)
+            #expect(StackCardPose.posed(depth: 1, progress: 1, dark: dark) == front)
+            #expect(StackCardPose.posed(depth: 2, progress: 0, dark: dark) == back)
+            #expect(StackCardPose.posed(depth: 2, progress: 1, dark: dark) == middle)
+            let incoming = StackCardPose.rest(depth: 3, dark: dark)
+            #expect(incoming.scale == StackMetrics.incomingScale)
+            #expect(incoming.scale < back.scale)
+            #expect(incoming.opacity == 0)
+            #expect(incoming.offsetY == back.offsetY)
+            #expect(StackCardPose.posed(depth: 3, progress: 0, dark: dark) == incoming)
+            #expect(StackCardPose.posed(depth: 3, progress: 1, dark: dark) == back)
         }
     }
 
