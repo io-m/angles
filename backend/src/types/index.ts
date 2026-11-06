@@ -216,22 +216,50 @@ export type FollowNotificationItem = {
   actor: StoredCardAuthor;
 };
 
-export type FollowNotificationsResponse = {
-  unreadCount: number;
-  notifications: FollowNotificationItem[];
+/** Someone loved one of the viewer's own posts. */
+export type LoveNotificationItem = {
+  id: string;
+  createdAt: string;
+  readAt: string | null;
+  /** The angle on screen when they loved it. */
+  style: Style;
+  /** The viewer's own card, in their own words. */
+  card: { id: string; thought: string };
+  /** Absent when the lover keeps their name off loves: show "Someone". */
+  actor?: StoredCardAuthor;
 };
 
-/** `before` is the build 18 shape; current clients send `throughId`. */
-export type ReadNotificationsRequest = { throughId: string } | { before: string };
+export type FollowNotificationsResponse = {
+  /** Unread follows and loves together: the badge. */
+  unreadCount: number;
+  notifications: FollowNotificationItem[];
+  loves: LoveNotificationItem[];
+};
+
+/**
+ * `throughId` reads follows and `loveThroughId` loves, each up to the newest on screen;
+ * at least one is sent. `before` is the build 18 shape.
+ */
+export type ReadNotificationsRequest =
+  | { throughId?: string; loveThroughId?: string }
+  | { before: string };
 
 export type ReadNotificationsResponse = {
   read: true;
   unreadCount: number;
 };
 
-export type NotifyFollowsBody = {
+export type NotificationPreferences = {
+  /** Push when someone follows this account. */
   notifyFollows: boolean;
+  /** Push when someone loves this account's post. */
+  notifyLoves: boolean;
+  /** Loves this account gives show its name to the author. */
+  shareLoveName: boolean;
 };
+
+/** `PATCH /profile/notifications` sends any of the switches and gets all of them back. */
+export type NotifyFollowsBody = NotificationPreferences;
 
 export type DeviceRegistrationBody = {
   registered: boolean;
@@ -263,6 +291,10 @@ export type SessionBody = {
   termsAcceptedAt: string | null;
   /** Push when someone follows this account. The in-app list stays either way. */
   notifyFollows: boolean;
+  /** Push when someone loves this account's post. */
+  notifyLoves: boolean;
+  /** Loves this account gives show its name to the author. */
+  shareLoveName: boolean;
   avatarUrl?: string;
 };
 

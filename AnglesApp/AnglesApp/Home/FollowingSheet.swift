@@ -1,7 +1,28 @@
 import SwiftUI
 
-/// Who you follow, and who followed you, on two tabs. Same sheet chrome as Settings.
+/// Who you follow, and who followed you or loved your posts, on two tabs. Same sheet
+/// chrome as Settings.
 struct FollowingSheet: View {
+    /// One row of Notifications: a follow or a love, newest first.
+    private enum NoticeRow: Identifiable {
+        case follow(FollowNotice)
+        case love(LoveNotice)
+
+        var id: UUID {
+            switch self {
+            case .follow(let notice): notice.id
+            case .love(let notice): notice.id
+            }
+        }
+
+        var createdAt: Date {
+            switch self {
+            case .follow(let notice): notice.createdAt
+            case .love(let notice): notice.createdAt
+            }
+        }
+    }
+
     private enum PeopleTab: String, CaseIterable, Hashable {
         case following
         case notifications
@@ -30,6 +51,7 @@ struct FollowingSheet: View {
 
     let people: [FollowedPerson]
     let notices: [FollowNotice]
+    let loves: [LoveNotice]
     let loadState: LibraryLoadState
     let noticesLoadState: LibraryLoadState
     /// A follow push opens Notifications. The people icon opens Following.
@@ -41,6 +63,9 @@ struct FollowingSheet: View {
     var onFollowBack: (FollowNotice) -> Void
     var onOpen: (FollowedPerson) -> Void
     var onOpenNotice: (FollowNotice) -> Void
+    /// Follow someone who loved a post. Only a lover who shows their name has a row to follow.
+    var onFollowLover: (LoveNotice.Actor) -> Void
+    var onOpenLover: (LoveNotice.Actor) -> Void
     /// A failed unfollow puts the row back; this says why.
     var writeError: String? = nil
     var onDismissError: () -> Void = {}
@@ -54,6 +79,7 @@ struct FollowingSheet: View {
     init(
         people: [FollowedPerson],
         notices: [FollowNotice],
+        loves: [LoveNotice] = [],
         loadState: LibraryLoadState,
         noticesLoadState: LibraryLoadState,
         startsOnNotifications: Bool = false,
@@ -63,11 +89,16 @@ struct FollowingSheet: View {
         onFollowBack: @escaping (FollowNotice) -> Void,
         onOpen: @escaping (FollowedPerson) -> Void,
         onOpenNotice: @escaping (FollowNotice) -> Void,
+        onFollowLover: @escaping (LoveNotice.Actor) -> Void = { _ in },
+        onOpenLover: @escaping (LoveNotice.Actor) -> Void = { _ in },
         writeError: String? = nil,
         onDismissError: @escaping () -> Void = {}
     ) {
         self.people = people
         self.notices = notices
+        self.loves = loves
+        self.onFollowLover = onFollowLover
+        self.onOpenLover = onOpenLover
         self.loadState = loadState
         self.noticesLoadState = noticesLoadState
         self.startsOnNotifications = startsOnNotifications
@@ -101,18 +132,26 @@ struct FollowingSheet: View {
         }
     }
 
-    private var filteredNotices: [FollowNotice] {
-        guard !needle.isEmpty else {
-            return notices
-        }
-        return notices.filter {
-            $0.publicLabel.localizedStandardContains(needle)
-                || $0.initials.localizedStandardContains(needle)
-        }
+    private var filteredRows: [NoticeRow] {
+        let follows = notices
+            .filter {
+                needle.isEmpty
+                    || $0.publicLabel.localizedStandardContains(needle)
+                    || $0.initials.localizedStandardContains(needle)
+            }
+            .map(NoticeRow.follow)
+        let loved = loves
+            .filter {
+                needle.isEmpty
+                    || $0.publicLabel.localizedStandardContains(needle)
+                    || $0.thought.localizedStandardContains(needle)
+            }
+            .map(NoticeRow.love)
+        return (follows + loved).sorted { $0.createdAt > $1.createdAt }
     }
 
     private var unreadCount: Int {
-        notices.filter { $0.readAt == nil }.count
+        notices.filter { $0.readAt == nil }.count + loves.filter { $0.readAt == nil }.count
     }
 
     var body: some View {
@@ -205,16 +244,22 @@ struct FollowingSheet: View {
                 }
             }
         case .notifications:
-            if searching && filteredNotices.isEmpty {
+            let rows = filteredRows
+            if searching && rows.isEmpty {
                 ContentUnavailableView.search(text: query)
                     .padding(.top, 28)
                     .padding(.horizontal, 20)
-            } else if notices.isEmpty {
-                status(noticesLoadState, empty: "No follows yet.")
+            } else if notices.isEmpty && loves.isEmpty {
+                status(noticesLoadState, empty: "No follows or loves yet.")
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(filteredNotices.enumerated()), id: \.element.id) { index, notice in
-                        noticeRow(notice, showsDivider: index < filteredNotices.count - 1)
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        switch row {
+                        case .follow(let notice):
+                            noticeRow(notice, showsDivider: index < rows.count - 1)
+                        case .love(let notice):
+                            loveRow(notice, showsDivider: index < rows.count - 1)
+                        }
                     }
                 }
             }
@@ -356,6 +401,103 @@ struct FollowingSheet: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Follow back \(notice.publicLabel)")
+                }
+            }
+            .padding(.vertical, 12)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(theme.line)
+                    .frame(height: 1)
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func loveRow(_ notice: LoveNotice, showsDivider: Bool) -> some View {
+        let when = Self.relative.localizedString(for: notice.createdAt, relativeTo: Date())
+        let sentence = "Loved your \(notice.style.displayName) angle"
+        let summary = HStack(alignment: .top, spacing: 14) {
+            ZStack(alignment: .bottomTrailing) {
+                if let actor = notice.actor {
+                    AuthorMark(
+                        initials: actor.initials,
+                        avatarPath: actor.avatarPath,
+                        side: 40,
+                        fill: theme.ink,
+                        symbol: theme.paper
+                    )
+                } else {
+                    Circle()
+                        .fill(theme.line)
+                        .frame(width: 40, height: 40)
+                        .overlay {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(theme.muted)
+                        }
+                }
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+                    .background(ActionColors.love, in: Circle())
+                    .overlay(Circle().stroke(theme.grey, lineWidth: 2))
+                    .offset(x: 4, y: 4)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(notice.publicLabel)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.ink)
+                    .lineLimit(1)
+                Text("\(sentence) · \(when)")
+                    .font(.subheadline)
+                    .foregroundStyle(theme.muted)
+                    .lineLimit(1)
+                Text("“\(notice.thought)”")
+                    .font(.subheadline)
+                    .foregroundStyle(theme.muted)
+                    .lineLimit(2)
+                    .padding(.top, 2)
+            }
+
+            Spacer(minLength: 12)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+
+        return VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                if let actor = notice.actor {
+                    Button {
+                        onOpenLover(actor)
+                    } label: {
+                        summary
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(notice.publicLabel) loved your post, \(notice.style.displayName) angle, \(when)")
+                    .accessibilityHint("Opens their posts")
+
+                    if !actor.following {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            onFollowLover(actor)
+                        } label: {
+                            Text("Follow")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(theme.ink)
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Follow \(notice.publicLabel)")
+                    }
+                } else {
+                    summary
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Someone loved your post, \(notice.style.displayName) angle, \(when)")
                 }
             }
             .padding(.vertical, 12)

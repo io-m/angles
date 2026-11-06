@@ -10,7 +10,7 @@ export type ApnsConfig = {
   bundleId: string;
 };
 
-export type FollowPushAlert = {
+export type PushAlert = {
   token: string;
   environment: PushEnvironment;
   collapseId: string;
@@ -18,8 +18,15 @@ export type FollowPushAlert = {
   body: string;
   badge: number;
   notificationId: string;
-  actorId: string;
+  /** `follow` (the default) or `love`; the app picks its actions and where a tap goes. */
+  category?: "follow" | "love";
+  /** Absent when naming the actor would reveal someone who loves anonymously. */
+  actorId?: string;
+  /** The card a love push is about. */
+  cardId?: string;
 };
+
+export type FollowPushAlert = PushAlert;
 
 export type ApnsSendResult = "sent" | "unregistered" | "skipped" | "failed";
 
@@ -141,7 +148,7 @@ function apnsHost(environment: PushEnvironment): string {
 
 /** `origin` is for tests; production always derives the Apple host from the token's environment. */
 export async function sendApnsAlert(
-  alert: FollowPushAlert,
+  alert: PushAlert,
   config: ApnsConfig | null = apnsConfigFromEnv(),
   origin = `https://${apnsHost(alert.environment)}`,
 ): Promise<ApnsSendResult> {
@@ -163,21 +170,41 @@ export async function sendApnsAlert(
   }
 }
 
-function postAlert(
-  alert: FollowPushAlert,
-  config: ApnsConfig,
-  origin: string,
-): Promise<{ status: number; reason?: string }> {
-  const body = JSON.stringify({
+/** The JSON APNs gets. Only ids and the alert text: never thought text. */
+export function apnsPayload(alert: PushAlert): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
     aps: {
       alert: { title: alert.title, body: alert.body },
       badge: alert.badge,
       sound: "default",
-      category: "follow",
+      category: alert.category ?? "follow",
     },
     notificationId: alert.notificationId,
-    actorId: alert.actorId,
-  });
+  };
+  if (alert.actorId) {
+    payload.actorId = alert.actorId;
+  }
+  if (alert.cardId) {
+    payload.cardId = alert.cardId;
+  }
+  return payload;
+}
+
+/** Display name when the lover shares it, else "Someone"; more than one becomes "and N others". */
+export function lovePushAlertText(names: readonly (string | null)[]): { title: string; body: string } {
+  const first = names.find((name): name is string => Boolean(name)) ?? "Someone";
+  const others = names.length - 1;
+  const title =
+    others <= 0 ? first : `${first} and ${others} ${others === 1 ? "other" : "others"}`;
+  return { title, body: "Loved your post" };
+}
+
+function postAlert(
+  alert: PushAlert,
+  config: ApnsConfig,
+  origin: string,
+): Promise<{ status: number; reason?: string }> {
+  const body = JSON.stringify(apnsPayload(alert));
   return new Promise((resolve, reject) => {
     const client = http2.connect(origin);
     let settled = false;

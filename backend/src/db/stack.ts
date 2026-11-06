@@ -4,11 +4,12 @@ import {
   asc,
   desc,
   eq,
+  gt,
   inArray,
+  isNotNull,
   isNull,
   lte,
   ne,
-  notInArray,
   or,
   sql,
   type SQL,
@@ -18,15 +19,20 @@ import { isSolemnSkip } from "../lib/decision.js";
 import {
   buildAffinity,
   classifyTheme,
+  emptyVisitSpread,
+  EXPLORATION,
   followMix,
   HEAVY_INTENSITY,
+  qualityBaselines,
   rankCards,
   RETURN_AFTER_HOURS,
   spreadRanked,
   themeMix,
+  type ThemeBucket,
   type ViewerAffinity,
+  type VisitSpread,
 } from "../lib/feedRanking.js";
-import { isStyleShown } from "../lib/styleSet.js";
+import { isStyleShown, stylesForRequest } from "../lib/styleSet.js";
 import {
   MAX_PASSES,
   type Category,
@@ -40,14 +46,30 @@ import { DbError, getDb, wrapDbError } from "./client.js";
 import { notBlockedBetween, notReportedBy } from "./communitySafety.js";
 import { olderThanCursor } from "./cursor.js";
 import { followedAuthorIds } from "./follows.js";
-import { storedCardsForViewer } from "./mapCard.js";
-import { loadCardSaveTotals, loadViewerSavedStyle } from "./saves.js";
-import { cardDecisions, cardReframes, cards, users } from "./schema.js";
+import { storedCardsForViewer, type CardLoaded } from "./mapCard.js";
+import { loadCardDecisionTotals, loadViewerSavedStyle } from "./saves.js";
+import { cardDecisions, cardReframes, cardTags, cards, follows, tags, users } from "./schema.js";
 
 type Db = ReturnType<typeof getDb>;
 
-/** Cards scored per visit. Bounded so one request cannot rank the whole catalog. */
-const STACK_CANDIDATE_CAP = 1000;
+/**
+ * How many candidates each slice of the catalog contributes to a visit. Picking only the
+ * newest would starve every older card past that count, however well people kept it, so
+ * the pool is the newest cards plus the ones that have a reason to be there anyway.
+ */
+const CANDIDATE_STRATA = {
+  newest: 600,
+  followed: 150,
+  returning: 100,
+  /** Cards too few people have decided on yet, newest first. */
+  exploring: 150,
+  /** Older cards the most people kept. */
+  kept: 150,
+  house: 200,
+} as const;
+
+/** Extra ids read per page load, so a card that went private since does not leave it short. */
+const PAGE_SLACK = 4;
 
 /** A card that should never sit right after another like it: real harm, or a hard day. */
 export function isHeavyCard(card: {
@@ -77,118 +99,95 @@ type Candidate = {
 
 export type StackPage = { cards: StoredCard[]; exhausted: boolean };
 
+/** A visit's whole order and what every page of it reads the same way. */
+type VisitOrder = {
+  order: string[];
+  followed: ReadonlySet<string>;
+  preferredStyle: Style | null;
+};
+
+const VISIT_CACHE_LIMIT = 300;
+/** Longer than a visit lasts: 30 minutes away starts a new one. */
+const VISIT_CACHE_TTL_MS = 45 * 60_000;
+const visitCache = new Map<string, VisitOrder & { expiresAt: number }>();
+
+function visitCacheEnabled(): boolean {
+  return process.env.STACK_CACHE?.trim().toLowerCase() !== "off";
+}
+
+/** For tests that change the catalog under one session. */
+export function clearStackCache(): void {
+  visitCache.clear();
+}
+
+function visitKey(viewerId: string, query: StackQuery, ranked: boolean): string {
+  return [
+    viewerId,
+    query.session.seed,
+    query.session.startedAt.toISOString(),
+    query.limit,
+    query.categories?.join(",") ?? "",
+    query.emotions?.join(",") ?? "",
+    stylesForRequest().join(","),
+    ranked ? "ranked" : "newest",
+  ].join("|");
+}
+
+function cachedVisit(key: string, now: number): VisitOrder | null {
+  const hit = visitCache.get(key);
+  if (!hit) {
+    return null;
+  }
+  visitCache.delete(key);
+  if (hit.expiresAt <= now) {
+    return null;
+  }
+  // Re-inserted, so the Map's insertion order is least recently used first.
+  visitCache.set(key, hit);
+  return hit;
+}
+
+function rememberVisit(key: string, visit: VisitOrder, now: number): void {
+  visitCache.set(key, { ...visit, expiresAt: now + VISIT_CACHE_TTL_MS });
+  while (visitCache.size > VISIT_CACHE_LIMIT) {
+    const oldest = visitCache.keys().next().value;
+    if (oldest === undefined) {
+      break;
+    }
+    visitCache.delete(oldest);
+  }
+}
+
 /**
  * One page of a visit's stack: someone else's public cards the viewer has not decided,
  * plus passed cards that may come back once. Community cards first, then the house cards.
  *
- * Every ranking input (saves, follows, themes, the clock, what counts as returning) is read
- * as of `session.startedAt`, so the cards left keep their order however many are decided
- * while the visit lasts. Paging is by exclusion, not offset: a card decided since is gone
- * from the database's point of view, and `seen` drops the ones still waiting on the phone.
+ * The visit's whole order is ranked and spread once, from inputs read as of
+ * `session.startedAt`, and kept in memory; a page only drops what this visit already
+ * handed out or decided and loads the next cards. On a cache miss (a restart, another
+ * replica) the same inputs give the same order. A card that went private, was reported,
+ * or whose author was blocked since is skipped when its page loads.
  */
 export async function listStack(query: StackQuery, ranked: boolean): Promise<StackPage> {
   try {
     const viewerId = getOwnerUserId();
     const db = getDb();
-    const { startedAt, seed } = query.session;
-    const candidates = await loadCandidates(viewerId, query, db);
-    if (candidates.length === 0) {
+    const visit = await visitOrder(viewerId, query, ranked, db);
+    if (visit.order.length === 0) {
       return { cards: [], exhausted: true };
     }
-
-    const community = candidates.filter((card) => !card.isHouse);
-    const house = candidates.filter((card) => card.isHouse);
-    let order: Candidate[];
-    if (ranked) {
-      const afterHeavy = await lastSeenWasHeavy(query.seen, db);
-      const [saves, followed, affinity] = await Promise.all([
-        loadCardSaveTotals(
-          candidates.map((card) => card.id),
-          db,
-          { before: startedAt, excludeUserId: viewerId },
-        ),
-        followedAuthorIds(
-          viewerId,
-          community.map((card) => card.authorId),
-          db,
-          startedAt,
-        ),
-        loadViewerAffinity(viewerId, startedAt, db),
-      ]);
-      const rankGroup = (group: Candidate[], previousHeavy: boolean): Candidate[] => {
-        const byId = new Map(
-          group.map((card) => [
-            card.id,
-            {
-              ...card,
-              bucket: classifyTheme(card, affinity),
-              followed: followed.has(card.authorId),
-            },
-          ]),
-        );
-        const scored = rankCards(
-          group.map((card) => ({
-            id: card.id,
-            authorId: card.authorId,
-            createdAt: card.createdAt,
-            category: card.category,
-            emotions: card.emotions,
-            saves: saves.get(card.id) ?? 0,
-            followed: followed.has(card.authorId),
-            returning: card.returning,
-          })),
-          { now: startedAt, seed, affinity },
-        );
-        const spreadable = scored.flatMap((item) => {
-          const card = byId.get(item.id);
-          return card ? [card] : [];
-        });
-        return spreadRanked(spreadable, query.limit, {
-          mix: themeMix(affinity.confidence),
-          follow: followMix(spreadable, startedAt),
-          afterHeavy: previousHeavy,
-        });
-      };
-      const rankedCommunity = rankGroup(community, afterHeavy);
-      const lastCommunity = rankedCommunity[rankedCommunity.length - 1];
-      order = [
-        ...rankedCommunity,
-        ...rankGroup(house, lastCommunity ? lastCommunity.heavy : afterHeavy),
-      ];
-    } else {
-      // Unranked: newest first, the house cards still last.
-      order = [...community, ...house];
+    const excluded = new Set(query.seen);
+    for (const id of await decidedSince(viewerId, query.session.startedAt, db)) {
+      excluded.add(id);
     }
-
-    const pageIds = order.slice(0, query.limit).map((card) => card.id);
-    if (pageIds.length === 0) {
-      return { cards: [], exhausted: true };
-    }
-    const rows = await db.query.cards.findMany({
-      where: inArray(cards.id, pageIds),
-      with: {
-        user: true,
-        reframes: { orderBy: [asc(cardReframes.position)] },
-        cardTags: { with: { tag: true } },
-      },
-    });
-    const loaded = new Map(rows.map((row) => [row.id, row]));
-    const ordered = pageIds.flatMap((id) => {
-      const row = loaded.get(id);
-      return row ? [row] : [];
-    });
-    const [followed, preferredStyle] = await Promise.all([
-      followedAuthorIds(
-        viewerId,
-        ordered.map((row) => row.userId),
-        db,
-        startedAt,
-      ),
-      loadViewerSavedStyle(viewerId, db, startedAt),
-    ]);
+    const remaining = visit.order.filter((id) => !excluded.has(id));
+    const { rows, lastIndex } = await loadPage(remaining, query.limit, viewerId, db);
     return {
-      cards: await storedCardsForViewer(ordered, viewerId, db, { followed, preferredStyle }),
-      exhausted: order.length <= query.limit,
+      cards: await storedCardsForViewer(rows, viewerId, db, {
+        followed: visit.followed,
+        preferredStyle: visit.preferredStyle,
+      }),
+      exhausted: lastIndex >= remaining.length - 1,
     };
   } catch (error) {
     if (error instanceof DbError) {
@@ -198,22 +197,194 @@ export async function listStack(query: StackQuery, ranked: boolean): Promise<Sta
   }
 }
 
+async function visitOrder(
+  viewerId: string,
+  query: StackQuery,
+  ranked: boolean,
+  db: Db,
+): Promise<VisitOrder> {
+  if (!visitCacheEnabled()) {
+    return buildVisit(viewerId, query, ranked, db);
+  }
+  const key = visitKey(viewerId, query, ranked);
+  const now = Date.now();
+  const hit = cachedVisit(key, now);
+  if (hit) {
+    return hit;
+  }
+  const visit = await buildVisit(viewerId, query, ranked, db);
+  rememberVisit(key, visit, now);
+  return visit;
+}
+
+/** Cards this viewer decided on (or rewound back to a row) since the visit began. */
+async function decidedSince(viewerId: string, startedAt: Date, db: Db): Promise<string[]> {
+  const rows = await db
+    .select({ id: cardDecisions.cardId })
+    .from(cardDecisions)
+    .where(and(eq(cardDecisions.userId, viewerId), gt(cardDecisions.decidedAt, startedAt)));
+  return rows.map((row) => row.id);
+}
+
 /**
- * Public, someone else's, visible to this viewer, posted by the visit's start, not handed
- * out yet this visit, and either never decided or passed once at least
- * `RETURN_AFTER_HOURS` before the visit with an angle the viewer has not seen.
+ * The next `limit` cards of `ids` that are still public and visible to the viewer, in
+ * order. `lastIndex` is the last id examined, so the caller knows whether any are left.
+ */
+async function loadPage(
+  ids: readonly string[],
+  limit: number,
+  viewerId: string,
+  db: Db,
+): Promise<{ rows: CardLoaded[]; lastIndex: number }> {
+  const rows: CardLoaded[] = [];
+  let cursor = 0;
+  let lastIndex = -1;
+  while (rows.length < limit && cursor < ids.length) {
+    const chunk = ids.slice(cursor, cursor + limit - rows.length + PAGE_SLACK);
+    const found = await db.query.cards.findMany({
+      where: and(
+        inArray(cards.id, [...chunk]),
+        sql`${cards.isPublic} = true`,
+        ne(cards.userId, viewerId),
+        notBlockedBetween(viewerId, cards.userId),
+        notReportedBy(viewerId, cards.id),
+      ),
+      with: {
+        user: true,
+        reframes: { orderBy: [asc(cardReframes.position)] },
+        cardTags: { with: { tag: true } },
+      },
+    });
+    const byId = new Map(found.map((row) => [row.id, row]));
+    for (const [offset, id] of chunk.entries()) {
+      if (rows.length >= limit) {
+        break;
+      }
+      lastIndex = cursor + offset;
+      const row = byId.get(id);
+      if (row) {
+        rows.push(row);
+      }
+    }
+    cursor += chunk.length;
+  }
+  return { rows, lastIndex };
+}
+
+type RankedCandidate = Candidate & {
+  saves: number;
+  decisions: number;
+  tags: string[];
+  followed: boolean;
+  bucket: ThemeBucket;
+  exploring: boolean;
+};
+
+async function buildVisit(
+  viewerId: string,
+  query: StackQuery,
+  ranked: boolean,
+  db: Db,
+): Promise<VisitOrder> {
+  const { startedAt, seed } = query.session;
+  const candidates = await loadCandidates(viewerId, query, db);
+  const community = candidates.filter((card) => !card.isHouse);
+  const house = candidates.filter((card) => card.isHouse);
+  const [followed, preferredStyle] = await Promise.all([
+    followedAuthorIds(
+      viewerId,
+      community.map((card) => card.authorId),
+      db,
+      startedAt,
+    ),
+    loadViewerSavedStyle(viewerId, db, startedAt),
+  ]);
+  if (!ranked || candidates.length === 0) {
+    // Unranked: newest first, the house cards still last.
+    return { order: [...community, ...house].map((card) => card.id), followed, preferredStyle };
+  }
+
+  const ids = candidates.map((card) => card.id);
+  const [totals, tagsById, affinity] = await Promise.all([
+    loadCardDecisionTotals(ids, db, { before: startedAt, excludeUserId: viewerId }),
+    loadCardTagSlugs(ids, db),
+    loadViewerAffinity(viewerId, startedAt, db),
+  ]);
+  const enrich = (card: Candidate): RankedCandidate => {
+    const total = totals.get(card.id) ?? { saves: 0, decisions: 0 };
+    return {
+      ...card,
+      saves: total.saves,
+      decisions: total.decisions,
+      tags: tagsById.get(card.id) ?? [],
+      followed: !card.isHouse && followed.has(card.authorId),
+      bucket: classifyTheme(card, affinity),
+      exploring: !card.returning && total.decisions < EXPLORATION.maxDecisions,
+    };
+  };
+  const rankedCommunity = community.map(enrich);
+  const rankedHouse = house.map(enrich);
+  const baselines = qualityBaselines(rankedCommunity);
+  const mix = themeMix(affinity.confidence);
+
+  const rankGroup = (group: RankedCandidate[], visit: VisitSpread): RankedCandidate[] => {
+    const byId = new Map(group.map((card) => [card.id, card]));
+    const scored = rankCards(group, { now: startedAt, seed, affinity, baselines });
+    const spreadable = scored.flatMap((item) => {
+      const card = byId.get(item.id);
+      return card ? [card] : [];
+    });
+    return spreadRanked(spreadable, query.limit, {
+      mix,
+      follow: followMix(spreadable, startedAt),
+      exploreShare: EXPLORATION.share,
+      visit,
+    });
+  };
+  const communityOrder = rankGroup(rankedCommunity, emptyVisitSpread());
+  const lastCommunity = communityOrder[communityOrder.length - 1];
+  // House cards are one author, so they get their own spread; only pacing carries over.
+  const houseOrder = rankGroup(rankedHouse, emptyVisitSpread(lastCommunity?.heavy ?? false));
+  return {
+    order: [...communityOrder, ...houseOrder].map((card) => card.id),
+    followed,
+    preferredStyle,
+  };
+}
+
+type CandidateRow = {
+  id: string;
+  authorId: string;
+  authorKind: "person" | "house";
+  createdAt: Date;
+  category: Category;
+  emotions: StoredCard["emotions"];
+  intensity: number;
+  spotlightStyle: Style;
+  skippedStyles: SkippedStyle[];
+  checkedStyles: Style[] | null;
+  decidedAt: Date | null;
+};
+
+/**
+ * Public, someone else's, visible to this viewer, posted by the visit's start, and either
+ * never decided, passed once at least `RETURN_AFTER_HOURS` before the visit with an angle
+ * the viewer has not seen, or decided only since the visit began. That last group is
+ * dropped again page by page; keeping it here means a rebuilt order matches the first.
+ *
+ * Drawn from several slices of the catalog (`CANDIDATE_STRATA`), deduplicated.
  */
 async function loadCandidates(viewerId: string, query: StackQuery, db: Db): Promise<Candidate[]> {
   const { startedAt } = query.session;
-  const { seen } = query;
+  const startedAtSql = sql`${startedAt.toISOString()}::timestamptz`;
   const returnBy = new Date(startedAt.getTime() - RETURN_AFTER_HOURS * 3_600_000);
   // A literal, not a bound parameter, so even a generic plan can prove the partial index applies.
-  const filters: SQL[] = [
+  const base: SQL[] = [
     sql`${cards.isPublic} = true`,
     ne(cards.userId, viewerId),
     notBlockedBetween(viewerId, cards.userId),
     notReportedBy(viewerId, cards.id),
-    sql`${cards.createdAt} <= ${startedAt.toISOString()}::timestamptz`,
+    sql`${cards.createdAt} <= ${startedAtSql}`,
     or(
       isNull(cardDecisions.cardId),
       and(
@@ -221,40 +392,85 @@ async function loadCandidates(viewerId: string, query: StackQuery, db: Db): Prom
         sql`${cardDecisions.passes} < ${MAX_PASSES}`,
         lte(cardDecisions.decidedAt, returnBy),
       ),
+      gt(cardDecisions.decidedAt, startedAt),
     )!,
   ];
-  if (seen.length > 0) {
-    filters.push(notInArray(cards.id, [...seen]));
-  }
   if (query.categories?.length) {
-    filters.push(inArray(cards.category, query.categories));
+    base.push(inArray(cards.category, query.categories));
   }
   if (query.emotions?.length) {
-    filters.push(arrayOverlaps(cards.emotions, query.emotions));
+    base.push(arrayOverlaps(cards.emotions, query.emotions));
   }
 
-  const found = await db
-    .select({
-      id: cards.id,
-      authorId: cards.userId,
-      authorKind: users.kind,
-      createdAt: cards.createdAt,
-      category: cards.category,
-      emotions: cards.emotions,
-      intensity: cards.intensity,
-      spotlightStyle: cards.spotlightStyle,
-      skippedStyles: cards.skippedStyles,
-      checkedStyles: cardDecisions.checkedStyles,
-    })
-    .from(cards)
-    .innerJoin(users, eq(users.id, cards.userId))
-    .leftJoin(
-      cardDecisions,
-      and(eq(cardDecisions.cardId, cards.id), eq(cardDecisions.userId, viewerId)),
-    )
-    .where(and(...filters))
-    .orderBy(desc(cards.createdAt), desc(cards.id))
-    .limit(STACK_CANDIDATE_CAP);
+  const othersDecided = sql`(
+    select count(*) from "card_decisions" as "others"
+    where "others"."card_id" = ${cards.id}
+      and "others"."user_id" <> ${viewerId}
+      and "others"."decided_at" <= ${startedAtSql}
+  )`;
+  const othersSaved = sql`(
+    select count(*) from "card_decisions" as "others"
+    where "others"."card_id" = ${cards.id}
+      and "others"."user_id" <> ${viewerId}
+      and "others"."kind" = 'save'
+      and "others"."decided_at" <= ${startedAtSql}
+  )`;
+  const person = eq(users.kind, "person");
+  const newestFirst = [desc(cards.createdAt), desc(cards.id)];
+
+  const slice = (extra: SQL[], order: SQL[], limit: number): Promise<CandidateRow[]> =>
+    db
+      .select({
+        id: cards.id,
+        authorId: cards.userId,
+        authorKind: users.kind,
+        createdAt: cards.createdAt,
+        category: cards.category,
+        emotions: cards.emotions,
+        intensity: cards.intensity,
+        spotlightStyle: cards.spotlightStyle,
+        skippedStyles: cards.skippedStyles,
+        checkedStyles: cardDecisions.checkedStyles,
+        decidedAt: cardDecisions.decidedAt,
+      })
+      .from(cards)
+      .innerJoin(users, eq(users.id, cards.userId))
+      .leftJoin(
+        cardDecisions,
+        and(eq(cardDecisions.cardId, cards.id), eq(cardDecisions.userId, viewerId)),
+      )
+      .where(and(...base, ...extra))
+      .orderBy(...order)
+      .limit(limit);
+
+  const followees = db
+    .select({ id: follows.followeeId })
+    .from(follows)
+    .where(and(eq(follows.followerId, viewerId), lte(follows.createdAt, startedAt)));
+
+  const slices = await Promise.all([
+    slice([person], newestFirst, CANDIDATE_STRATA.newest),
+    slice([person, inArray(cards.userId, followees)], newestFirst, CANDIDATE_STRATA.followed),
+    slice([person, isNotNull(cardDecisions.cardId)], newestFirst, CANDIDATE_STRATA.returning),
+    slice(
+      [person, sql`${othersDecided} < ${EXPLORATION.maxDecisions}`],
+      newestFirst,
+      CANDIDATE_STRATA.exploring,
+    ),
+    slice([person, sql`${othersSaved} > 0`], [sql`${othersSaved} desc`, ...newestFirst], CANDIDATE_STRATA.kept),
+    slice([eq(users.kind, "house")], newestFirst, CANDIDATE_STRATA.house),
+  ]);
+
+  const unique = new Map<string, CandidateRow>();
+  for (const row of slices.flat()) {
+    if (!unique.has(row.id)) {
+      unique.set(row.id, row);
+    }
+  }
+  const found = [...unique.values()].sort(
+    (left, right) =>
+      right.createdAt.getTime() - left.createdAt.getTime() || (left.id < right.id ? 1 : -1),
+  );
 
   const styles = await loadCardStyles(
     found.map((row) => row.id),
@@ -267,7 +483,9 @@ async function loadCandidates(viewerId: string, query: StackQuery, db: Db): Prom
       return [];
     }
     const checked = row.checkedStyles;
-    const returning = checked !== null;
+    // A row written during this visit says nothing about whether the card was returning.
+    const decidedBefore = row.decidedAt !== null && row.decidedAt <= startedAt;
+    const returning = checked !== null && decidedBefore;
     if (returning && available.every((style) => checked.includes(style))) {
       return [];
     }
@@ -286,24 +504,6 @@ async function loadCandidates(viewerId: string, query: StackQuery, db: Db): Prom
       },
     ];
   });
-}
-
-/** Whether the card the phone got last was heavy, so a new page does not open on another. */
-async function lastSeenWasHeavy(seen: readonly string[], db: Db): Promise<boolean> {
-  const last = seen[seen.length - 1];
-  if (!last) {
-    return false;
-  }
-  const [row] = await db
-    .select({
-      category: cards.category,
-      intensity: cards.intensity,
-      skippedStyles: cards.skippedStyles,
-    })
-    .from(cards)
-    .where(eq(cards.id, last))
-    .limit(1);
-  return row ? isHeavyCard(row) : false;
 }
 
 /** The angles each card has that the calling app can show, in the cook's order. */
@@ -328,6 +528,25 @@ async function loadCardStyles(cardIds: string[], db: Db): Promise<Map<string, St
   return styles;
 }
 
+/** Tag slugs per card. */
+async function loadCardTagSlugs(cardIds: string[], db: Db): Promise<Map<string, string[]>> {
+  const byCard = new Map<string, string[]>();
+  if (cardIds.length === 0) {
+    return byCard;
+  }
+  const rows = await db
+    .select({ cardId: cardTags.cardId, slug: tags.slug })
+    .from(cardTags)
+    .innerJoin(tags, eq(tags.id, cardTags.tagId))
+    .where(inArray(cardTags.cardId, cardIds));
+  for (const row of rows) {
+    const list = byCard.get(row.cardId) ?? [];
+    list.push(row.slug);
+    byCard.set(row.cardId, list);
+  }
+  return byCard;
+}
+
 /** Recent activity read per source when learning themes. */
 const AFFINITY_SAMPLE = 30;
 
@@ -343,13 +562,19 @@ export async function loadViewerAffinity(
 ): Promise<ViewerAffinity> {
   const [authored, decided] = await Promise.all([
     db
-      .select({ category: cards.category, emotions: cards.emotions, at: cards.createdAt })
+      .select({
+        id: cards.id,
+        category: cards.category,
+        emotions: cards.emotions,
+        at: cards.createdAt,
+      })
       .from(cards)
       .where(and(eq(cards.userId, viewerId), lte(cards.createdAt, now)))
       .orderBy(desc(cards.createdAt), desc(cards.id))
       .limit(AFFINITY_SAMPLE),
     db
       .select({
+        id: cards.id,
         kind: cardDecisions.kind,
         category: cards.category,
         emotions: cards.emotions,
@@ -361,13 +586,24 @@ export async function loadViewerAffinity(
       .orderBy(desc(cardDecisions.decidedAt), desc(cards.id))
       .limit(AFFINITY_SAMPLE * 2),
   ]);
+  const tagsById = await loadCardTagSlugs(
+    [...new Set([...authored, ...decided].map((row) => row.id))],
+    db,
+  );
 
   return buildAffinity(
     [
-      ...authored.map((row) => ({ ...row, source: "authored" as const })),
+      ...authored.map((row) => ({
+        category: row.category,
+        emotions: row.emotions,
+        tags: tagsById.get(row.id) ?? [],
+        at: row.at,
+        source: "authored" as const,
+      })),
       ...decided.map((row) => ({
         category: row.category,
         emotions: row.emotions,
+        tags: tagsById.get(row.id) ?? [],
         at: row.at,
         source: row.kind === "save" ? ("saved" as const) : ("passed" as const),
       })),

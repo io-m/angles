@@ -52,23 +52,21 @@ struct ProfileService: Sendable {
         try await client.get(path: "profile/notifications")
     }
 
-    /// Reads every row up to `throughId` and returns the unread count left on the server.
-    func markFollowNotificationsRead(throughId: String) async throws -> Int {
+    /// Reads follows up to `throughId` and loves up to `loveThroughId` (at least one is
+    /// given) and returns the unread count left on the server, both kinds together.
+    func markNotificationsRead(throughId: String?, loveThroughId: String?) async throws -> Int {
         let response: ReadNotificationsResponse = try await client.post(
             path: "profile/notifications/read",
-            body: ReadNotificationsRequest(throughId: throughId),
+            body: ReadNotificationsRequest(throughId: throughId, loveThroughId: loveThroughId),
             timeout: Self.writeTimeout
         )
         return response.unreadCount
     }
 
-    func updateNotifyFollows(_ notifyFollows: Bool) async throws -> NotifyFollowsBody {
-        struct Body: Encodable {
-            let notifyFollows: Bool
-        }
-        return try await client.patch(
+    func updateNotificationPreferences(_ patch: NotificationPreferencesPatch) async throws -> NotificationPreferences {
+        try await client.patch(
             path: "profile/notifications",
-            body: Body(notifyFollows: notifyFollows),
+            body: patch,
             timeout: Self.writeTimeout
         )
     }

@@ -1,27 +1,30 @@
-import { and, count, desc, eq, isNull, lte, ne, notExists, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, ne, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   apnsConfigFromEnv,
   followPushAlertText,
   sendApnsAlert,
-  type FollowPushAlert,
+  type PushAlert,
 } from "../lib/apns.js";
 import { getOwnerUserId } from "../lib/authStub.js";
 import { avatarUrlFor } from "../lib/avatarUrl.js";
 import type {
   FollowNotificationItem,
   FollowNotificationsResponse,
+  NotificationPreferences,
   PushEnvironment,
 } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
 import { notBlockedBetween, usersAreBlocked } from "./communitySafety.js";
 import { followedAuthorIds } from "./follows.js";
+import { listLoveNotifications } from "./loveNotifications.js";
+import { unreadNotificationCount } from "./notificationCounts.js";
 import { deviceTokens, followNotifications, users } from "./schema.js";
 
 const LIST_LIMIT = 100;
 const newerNotification = alias(followNotifications, "newer_notification");
 
-export type PushSender = (alert: FollowPushAlert) => Promise<"sent" | "unregistered" | "skipped" | "failed">;
+export type PushSender = (alert: PushAlert) => Promise<"sent" | "unregistered" | "skipped" | "failed">;
 
 /**
  * `throughId` reads every row up to the newest one on screen, compared in SQL at full
@@ -29,23 +32,7 @@ export type PushSender = (alert: FollowPushAlert) => Promise<"sent" | "unregiste
  */
 export type FollowReadMark = { throughId: string } | { before: Date };
 
-type Selectable = Pick<ReturnType<typeof getDb>, "select">;
-
-/** The badge number. Counts what the list can show, so the two always agree. */
-async function unreadFollowCount(recipientId: string, db: Selectable): Promise<number> {
-  const [unread] = await db
-    .select({ value: count() })
-    .from(followNotifications)
-    .where(
-      and(
-        eq(followNotifications.recipientId, recipientId),
-        isNull(followNotifications.readAt),
-        notBlockedBetween(recipientId, followNotifications.actorId),
-      ),
-    );
-  return Number(unread?.value ?? 0);
-}
-
+/** The bell: follows and loves, and one unread count for both. */
 export async function listFollowNotifications(): Promise<FollowNotificationsResponse> {
   const viewerId = getOwnerUserId();
   try {
@@ -86,17 +73,20 @@ export async function listFollowNotifications(): Promise<FollowNotificationsResp
       .orderBy(desc(followNotifications.createdAt), desc(followNotifications.id))
       .limit(LIST_LIMIT);
 
-    const unreadCount = await unreadFollowCount(viewerId, db);
-
-    const following = await followedAuthorIds(
-      viewerId,
-      rows.map((row) => row.actorId),
-      db,
-    );
+    const [unreadCount, following, loves] = await Promise.all([
+      unreadNotificationCount(viewerId, db),
+      followedAuthorIds(
+        viewerId,
+        rows.map((row) => row.actorId),
+        db,
+      ),
+      listLoveNotifications(viewerId, db),
+    ]);
 
     return {
       unreadCount,
       notifications: rows.map((row) => toItem(row, following.has(row.actorId))),
+      loves,
     };
   } catch (error) {
     if (error instanceof DbError) {
@@ -106,7 +96,7 @@ export async function listFollowNotifications(): Promise<FollowNotificationsResp
   }
 }
 
-/** Returns the unread count left after the mark. */
+/** Returns the unread count left after the mark, follows and loves together. */
 export async function markFollowNotificationsRead(mark: FollowReadMark): Promise<number> {
   const viewerId = getOwnerUserId();
   const upTo =
@@ -131,7 +121,7 @@ export async function markFollowNotificationsRead(mark: FollowReadMark): Promise
           upTo,
         ),
       );
-    return await unreadFollowCount(viewerId, db);
+    return await unreadNotificationCount(viewerId, db);
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
@@ -188,22 +178,29 @@ export async function unregisterDeviceToken(token: string): Promise<void> {
   }
 }
 
-export async function setNotifyFollows(enabled: boolean): Promise<boolean> {
+/** Writes whichever switches are given and answers with all of them. */
+export async function setNotificationPreferences(
+  patch: Partial<NotificationPreferences>,
+): Promise<NotificationPreferences> {
   try {
     const [row] = await getDb()
       .update(users)
-      .set({ notifyFollows: enabled, updatedAt: new Date() })
+      .set({ ...patch, updatedAt: new Date() })
       .where(eq(users.id, getOwnerUserId()))
-      .returning({ notifyFollows: users.notifyFollows });
+      .returning({
+        notifyFollows: users.notifyFollows,
+        notifyLoves: users.notifyLoves,
+        shareLoveName: users.shareLoveName,
+      });
     if (!row) {
       throw new DbError("Database error");
     }
-    return row.notifyFollows;
+    return row;
   } catch (error) {
     if (error instanceof DbError) {
       throw error;
     }
-    throw wrapDbError(error, "setNotifyFollows");
+    throw wrapDbError(error, "setNotificationPreferences");
   }
 }
 
@@ -262,7 +259,7 @@ export async function deliverFollowPush(
     }
 
     const alertText = followPushAlertText(row.name, row.initials, row.followedBack);
-    const badge = await unreadFollowCount(row.recipientId, db);
+    const badge = await unreadNotificationCount(row.recipientId, db);
 
     for (const device of tokens) {
       const result = await send({

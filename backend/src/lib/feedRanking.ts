@@ -4,22 +4,25 @@ import { type Category, type Emotion, type Style } from "../types/index.js";
 /**
  * Resonance ranking for the Home stack.
  *
- * What it optimizes, in order: recency (a newer post beats an older one unless saves or
- * themes clearly say otherwise), recognition (thoughts near the themes this viewer writes
- * and saves, held to a core/adjacent/explore page mix so it never becomes an echo), relief
- * (cards strangers kept), a different order every visit, and exposure for posts nobody
- * has found yet.
+ * What it optimizes, in order: recency (a newer post beats an older one unless its save
+ * rate or themes clearly say otherwise), recognition (thoughts near the themes this viewer
+ * writes and saves, held to a core/adjacent/explore page mix so it never becomes an echo),
+ * relief (cards the people who met them kept), a different order every visit, and a fair
+ * first hearing for posts too few people have decided on yet.
  *
  * What it refuses to optimize: dwell time, session length, and distress. Intensity is
- * capped and paced by the spread pass, never rewarded. A pass never counts against a
- * card: heavy cards are passed more, and they must not lose to light ones for it.
+ * capped and paced by the spread pass, never rewarded. A card's save rate is only ever
+ * compared with cards of its own weight: heavy cards are passed more, and they must not
+ * lose to light ones for it.
  */
 export const RANKING_WEIGHTS = {
   freshness: 2.0,
-  resonance: 0.8,
+  /** Save rate among the people who decided, shrunk toward its stratum and relative to it. */
+  quality: 0.6,
+  /** Distinct people who saved it, damped and capped: reach a rate cannot show. */
+  reach: 0.2,
   affinity: 0.7,
   followed: 0.6,
-  secondChance: 0.25,
   jitter: 0.15,
   /**
    * A card this viewer passed once, back on an angle they never saw. About a day of
@@ -43,20 +46,41 @@ export const AFFINITY_CONFIG = {
   minCategoryShare: 0.15,
   maxEmotions: 5,
   minEmotionShare: 0.1,
+  maxTags: 8,
+  minTagShare: 0.05,
 } as const;
 
 /**
- * Freshness decay scale in hours. One day: a post from this morning is worth most of a
- * new one, yesterday's about a third, and after three days time no longer separates
- * posts, which leaves saves, themes and follows to order them.
+ * Freshness, two decays added. Most of it (`fast`) is one day: a post from this morning is
+ * worth most of a new one, yesterday's about a third. The rest (`slow`) fades over two
+ * weeks, so a card people keep can still come back after a few days instead of time
+ * flattening every older post to zero.
  */
-const FRESHNESS_SCALE_HOURS = 24;
+const FRESHNESS = { fastHours: 36, slowHours: 24 * 14, slowShare: 0.15 } as const;
 
-/** Saves where resonance saturates, so one popular card cannot own the stack. */
-const RESONANCE_SATURATION = 10;
+/** Saves where reach saturates, so one popular card cannot own the stack. */
+const REACH_SATURATION = 10;
 
-/** A post gets a leg up while it is this young and still unsaved. */
-const SECOND_CHANCE_DAYS = { start: 1, full: 14, end: 30 } as const;
+/**
+ * Save-rate quality. `prior` is how many decisions' worth of the stratum's own rate every
+ * card starts with, so one save from two people does not beat eight from forty. `lift` is
+ * the rate over its stratum's where the term reaches ±1.
+ */
+export const QUALITY_CONFIG = {
+  prior: 10,
+  liftRange: 1,
+  /** The stratum rate before there are enough decisions to measure one. */
+  defaultBaseline: 0.3,
+  /** Decisions' worth of `defaultBaseline` a measured stratum rate starts from. */
+  baselinePrior: 30,
+} as const;
+
+/**
+ * A card with fewer decisions than this has not been judged yet. A share of every page
+ * goes to those, paced from the top, whatever their age, so a post is never buried before
+ * enough people have met it.
+ */
+export const EXPLORATION = { maxDecisions: 8, share: 0.2 } as const;
 
 /** A passed card can come back only once this long has gone by since the pass. */
 export const RETURN_AFTER_HOURS = 12;
@@ -69,10 +93,46 @@ export type RankableCard = {
   emotions: readonly Emotion[];
   /** Distinct other people who saved it. The viewer never counts. */
   saves: number;
+  /** Distinct other people who saved or passed it. Absent reads as `saves`. */
+  decisions?: number;
+  /** Heavy cards are judged against heavy cards only. */
+  heavy?: boolean;
+  tags?: readonly string[];
   followed: boolean;
   /** Passed once by this viewer and back on an angle they never saw. */
   returning?: boolean;
 };
+
+/** The save rate of each stratum: what an average card of that weight gets. */
+export type QualityBaselines = { heavy: number; light: number };
+
+export const DEFAULT_BASELINES: QualityBaselines = {
+  heavy: QUALITY_CONFIG.defaultBaseline,
+  light: QUALITY_CONFIG.defaultBaseline,
+};
+
+/**
+ * Each stratum's rate over the candidates, pulled toward the default until there are
+ * enough decisions, and kept off 0 and 1 so a lift is always defined.
+ */
+export function qualityBaselines(
+  cards: readonly { heavy: boolean; saves: number; decisions: number }[],
+): QualityBaselines {
+  const rate = (heavy: boolean): number => {
+    let saves = 0;
+    let decisions = 0;
+    for (const card of cards) {
+      if (card.heavy === heavy) {
+        saves += card.saves;
+        decisions += Math.max(card.decisions, card.saves);
+      }
+    }
+    const prior = QUALITY_CONFIG.baselinePrior;
+    const shrunk = (saves + prior * QUALITY_CONFIG.defaultBaseline) / (decisions + prior);
+    return Math.min(0.95, Math.max(0.05, shrunk));
+  };
+  return { heavy: rate(true), light: rate(false) };
+}
 
 /**
  * The life areas and moods a viewer is mostly in, as shares of their recent activity.
@@ -82,6 +142,8 @@ export type RankableCard = {
 export type ViewerAffinity = {
   categories: ReadonlyMap<Category, number>;
   emotions: ReadonlyMap<Emotion, number>;
+  /** Tag slugs, a finer and weaker hint than life area and mood. Absent reads as none. */
+  tags?: ReadonlyMap<string, number>;
   confidence: number;
 };
 
@@ -95,6 +157,7 @@ export const EMPTY_AFFINITY: ViewerAffinity = {
 export type AffinitySignal = {
   category: Category;
   emotions: readonly Emotion[];
+  tags?: readonly string[];
   at: Date;
   source: "authored" | "saved" | "passed";
 };
@@ -146,6 +209,7 @@ function signalWeight(source: AffinitySignal["source"]): number {
 export function buildAffinity(signals: readonly AffinitySignal[], now: Date): ViewerAffinity {
   const categoryWeights = new Map<Category, number>();
   const emotionWeights = new Map<Emotion, number>();
+  const tagWeights = new Map<string, number>();
   let total = 0;
 
   for (const signal of signals) {
@@ -164,6 +228,9 @@ export function buildAffinity(signals: readonly AffinitySignal[], now: Date): Vi
     for (const emotion of new Set(signal.emotions)) {
       emotionWeights.set(emotion, (emotionWeights.get(emotion) ?? 0) + weight);
     }
+    for (const tag of new Set(signal.tags ?? [])) {
+      tagWeights.set(tag, (tagWeights.get(tag) ?? 0) + weight);
+    }
   }
 
   const floored = <T>(weights: Map<T, number>): Map<T, number> =>
@@ -181,11 +248,16 @@ export function buildAffinity(signals: readonly AffinitySignal[], now: Date): Vi
   if (categories.size === 0 && emotions.size === 0) {
     return EMPTY_AFFINITY;
   }
-  return {
+  const affinity: ViewerAffinity = {
     categories,
     emotions,
     confidence: Math.min(1, total / AFFINITY_CONFIG.fullConfidenceWeight),
   };
+  const tags = topShares(floored(tagWeights), AFFINITY_CONFIG.maxTags, AFFINITY_CONFIG.minTagShare);
+  if (tags.size > 0) {
+    affinity.tags = tags;
+  }
+  return affinity;
 }
 
 /** A theme's strength relative to the viewer's strongest one, so the top theme is 1. */
@@ -203,10 +275,10 @@ function relativeShare<T>(shares: ReadonlyMap<T, number>, key: T): number {
 
 export type RankingTerms = {
   freshness: number;
-  resonance: number;
+  quality: number;
+  reach: number;
   affinity: number;
   followed: number;
-  secondChance: number;
   jitter: number;
   returning: number;
 };
@@ -215,21 +287,41 @@ export type ScoredCard = { id: string; score: number; terms: RankingTerms };
 
 export function freshnessTerm(card: RankableCard, now: Date): number {
   const ageHours = Math.max(0, (now.getTime() - card.createdAt.getTime()) / 3_600_000);
-  return Math.exp(-ageHours / FRESHNESS_SCALE_HOURS);
+  return (
+    (1 - FRESHNESS.slowShare) * Math.exp(-ageHours / FRESHNESS.fastHours) +
+    FRESHNESS.slowShare * Math.exp(-ageHours / FRESHNESS.slowHours)
+  );
+}
+
+/**
+ * The card's save rate among the people who decided on it, shrunk toward its stratum's
+ * rate and read relative to it: 0 is an ordinary card of its weight (and every card nobody
+ * has decided on yet), +1 clearly kept more, −1 clearly kept less. A heavy card is only
+ * ever measured against heavy cards, so being passed the way grief is passed costs nothing.
+ */
+export function qualityTerm(card: RankableCard, baselines: QualityBaselines = DEFAULT_BASELINES): number {
+  const baseline = card.heavy ? baselines.heavy : baselines.light;
+  const saves = Math.max(0, card.saves);
+  const decisions = Math.max(saves, card.decisions ?? saves);
+  const prior = QUALITY_CONFIG.prior;
+  const rate = (saves + prior * baseline) / (decisions + prior);
+  const lift = rate / baseline - 1;
+  return Math.max(-1, Math.min(1, lift / QUALITY_CONFIG.liftRange));
 }
 
 /** Distinct people who saved the card, damped and capped. */
-export function resonanceTerm(card: RankableCard): number {
+export function reachTerm(card: RankableCard): number {
   if (card.saves <= 0) {
     return 0;
   }
-  const scaled = Math.log1p(card.saves) / Math.log1p(RESONANCE_SATURATION);
+  const scaled = Math.log1p(card.saves) / Math.log1p(REACH_SATURATION);
   return Math.min(1, scaled);
 }
 
 /**
  * How close a card sits to the viewer's themes, graded by how strong each theme is.
- * A life area is worth more than a mood. The viewer's confidence is applied by the caller.
+ * A life area is worth more than a mood, and a mood more than a tag. Tags only take a
+ * share once the viewer has some. The viewer's confidence is applied by the caller.
  */
 export function affinityTerm(card: RankableCard, affinity: ViewerAffinity): number {
   const category = relativeShare(affinity.categories, card.category);
@@ -237,26 +329,16 @@ export function affinityTerm(card: RankableCard, affinity: ViewerAffinity): numb
   for (const emotion of new Set(card.emotions)) {
     mood += relativeShare(affinity.emotions, emotion);
   }
-  return 0.6 * category + 0.4 * Math.min(1, mood / 2);
-}
-
-/**
- * Exposure for a post nobody has kept yet. In a community this small, an author whose
- * card gets no reads stops posting, so this is fairness rather than quality.
- */
-export function secondChanceTerm(card: RankableCard, now: Date): number {
-  if (card.saves > 0) {
-    return 0;
+  const moodScore = Math.min(1, mood / 2);
+  const tagShares = affinity.tags;
+  if (!tagShares || tagShares.size === 0) {
+    return 0.6 * category + 0.4 * moodScore;
   }
-  const ageDays = (now.getTime() - card.createdAt.getTime()) / 86_400_000;
-  if (ageDays < SECOND_CHANCE_DAYS.start || ageDays >= SECOND_CHANCE_DAYS.end) {
-    return 0;
+  let tag = 0;
+  for (const slug of new Set(card.tags ?? [])) {
+    tag += relativeShare(tagShares, slug);
   }
-  if (ageDays <= SECOND_CHANCE_DAYS.full) {
-    return 1;
-  }
-  const remaining = SECOND_CHANCE_DAYS.end - ageDays;
-  return remaining / (SECOND_CHANCE_DAYS.end - SECOND_CHANCE_DAYS.full);
+  return 0.5 * category + 0.35 * moodScore + 0.15 * Math.min(1, tag / 2);
 }
 
 /**
@@ -268,17 +350,21 @@ export function jitterTerm(cardId: string, seed: string): number {
   return digest.readUInt32BE(0) / 0x1_0000_0000;
 }
 
-export function scoreCard(
-  card: RankableCard,
-  options: { now: Date; seed: string; affinity?: ViewerAffinity },
-): ScoredCard {
+export type ScoreOptions = {
+  now: Date;
+  seed: string;
+  affinity?: ViewerAffinity;
+  baselines?: QualityBaselines;
+};
+
+export function scoreCard(card: RankableCard, options: ScoreOptions): ScoredCard {
   const affinity = options.affinity ?? EMPTY_AFFINITY;
   const terms: RankingTerms = {
     freshness: freshnessTerm(card, options.now),
-    resonance: resonanceTerm(card),
+    quality: qualityTerm(card, options.baselines),
+    reach: reachTerm(card),
     affinity: affinityTerm(card, affinity) * affinity.confidence,
     followed: card.followed ? 1 : 0,
-    secondChance: secondChanceTerm(card, options.now),
     jitter: jitterTerm(card.id, options.seed),
     returning: card.returning ? 1 : 0,
   };
@@ -295,10 +381,7 @@ export function compareRanked(left: ScoredCard, right: ScoredCard): number {
   return right.score - left.score || (left.id < right.id ? 1 : -1);
 }
 
-export function rankCards(
-  cards: readonly RankableCard[],
-  options: { now: Date; seed: string; affinity?: ViewerAffinity },
-): ScoredCard[] {
+export function rankCards(cards: readonly RankableCard[], options: ScoreOptions): ScoredCard[] {
   return cards.map((card) => scoreCard(card, options)).sort(compareRanked);
 }
 
@@ -437,6 +520,11 @@ export const SPREAD_LIMITS = {
   peakIntensity: 6,
   /** Share of a page that may be returning cards. Never broken. */
   returningShare: 0.2,
+  /**
+   * Share of a whole visit one author may hold, never below `perAuthor`. Without it the
+   * most active author holds two of every twelve cards from the first page to the last.
+   */
+  visitAuthorShare: 0.1,
 } as const;
 
 /** Intensity from which a card counts as heavy for pacing. */
@@ -475,6 +563,8 @@ export type SpreadableCard = {
   followed?: boolean;
   /** Passed once and back. Capped at `SPREAD_LIMITS.returningShare` of a page. */
   returning?: boolean;
+  /** Too few people have decided on it to judge it yet (`EXPLORATION`). */
+  exploring?: boolean;
   createdAt?: Date;
 };
 
@@ -506,13 +596,53 @@ type SpreadState = {
   followed: number;
   followedRecent: number;
   returning: number;
+  exploring: number;
   lastAuthor: string | null;
   lastHeavy: boolean;
   peakIntensity: number;
   category: Run<Category>;
   mood: Run<Emotion>;
   spotlight: Run<Style>;
+  visit: VisitSpread | null;
+  /** The visit's count before this page, so the visit cap grows with each slot. */
+  visitPlacedBefore: number;
 };
+
+/**
+ * What one page hands the next inside a visit: every author's count so far and the
+ * reading rhythm at the edge, so a run or a heavy card does not restart at each page.
+ */
+export type VisitSpread = {
+  authorTotals: Map<string, number>;
+  placed: number;
+  lastAuthor: string | null;
+  lastHeavy: boolean;
+  category: Run<Category>;
+  mood: Run<Emotion>;
+  spotlight: Run<Style>;
+};
+
+export function emptyVisitSpread(lastHeavy = false): VisitSpread {
+  return {
+    authorTotals: new Map(),
+    placed: 0,
+    lastAuthor: null,
+    lastHeavy,
+    category: { key: null, length: 0 },
+    mood: { key: null, length: 0 },
+    spotlight: { key: null, length: 0 },
+  };
+}
+
+/** The author's cards in the visit so far, this page included. */
+function visitAuthorCount(state: SpreadState, authorId: string): number {
+  return (state.visit?.authorTotals.get(authorId) ?? 0) + (state.perAuthor.get(authorId) ?? 0);
+}
+
+function visitAuthorCap(state: SpreadState, pageLength: number): number {
+  const slots = state.visitPlacedBefore + pageLength + 1;
+  return Math.max(SPREAD_LIMITS.perAuthor, Math.ceil(SPREAD_LIMITS.visitAuthorShare * slots - 1e-9));
+}
 
 function dominantMood(card: SpreadableCard): Emotion | null {
   return card.emotions[0] ?? null;
@@ -538,11 +668,15 @@ function spreadFit(
   card: SpreadableCard,
   state: SpreadState,
   returningCap: number,
+  pageLength: number,
 ): SpreadFit {
   if (card.returning && state.returning >= returningCap) {
     return "never";
   }
   if ((state.perAuthor.get(card.authorId) ?? 0) >= SPREAD_LIMITS.perAuthor) {
+    return "hard";
+  }
+  if (state.visit && visitAuthorCount(state, card.authorId) >= visitAuthorCap(state, pageLength)) {
     return "hard";
   }
   if (card.intensity >= 5 && state.peakIntensity >= SPREAD_LIMITS.peakIntensity) {
@@ -574,6 +708,9 @@ function recordSpread(card: SpreadableCard, state: SpreadState, follow: FollowMi
   if (card.returning) {
     state.returning += 1;
   }
+  if (card.exploring) {
+    state.exploring += 1;
+  }
   state.lastAuthor = card.authorId;
   state.lastHeavy = card.heavy;
   if (card.intensity >= 5) {
@@ -584,26 +721,52 @@ function recordSpread(card: SpreadableCard, state: SpreadState, follow: FollowMi
   state.spotlight = extendRun(state.spotlight, card.spotlightStyle);
 }
 
-function emptySpreadState(lastHeavy = false): SpreadState {
+function emptySpreadState(lastHeavy: boolean, visit: VisitSpread | null): SpreadState {
   return {
     perAuthor: new Map(),
     followed: 0,
     followedRecent: 0,
     returning: 0,
-    lastAuthor: null,
-    lastHeavy,
+    exploring: 0,
+    lastAuthor: visit?.lastAuthor ?? null,
+    lastHeavy: visit ? visit.lastHeavy : lastHeavy,
     peakIntensity: 0,
-    category: { key: null, length: 0 },
-    mood: { key: null, length: 0 },
-    spotlight: { key: null, length: 0 },
+    category: visit ? { ...visit.category } : { key: null, length: 0 },
+    mood: visit ? { ...visit.mood } : { key: null, length: 0 },
+    spotlight: visit ? { ...visit.spotlight } : { key: null, length: 0 },
+    visit,
+    visitPlacedBefore: visit?.placed ?? 0,
   };
+}
+
+function carryIntoVisit(state: SpreadState, page: readonly SpreadableCard[]): void {
+  const visit = state.visit;
+  if (!visit) {
+    return;
+  }
+  for (const card of page) {
+    visit.authorTotals.set(card.authorId, (visit.authorTotals.get(card.authorId) ?? 0) + 1);
+  }
+  visit.placed += page.length;
+  visit.lastAuthor = state.lastAuthor;
+  visit.lastHeavy = state.lastHeavy;
+  visit.category = state.category;
+  visit.mood = state.mood;
+  visit.spotlight = state.spotlight;
 }
 
 export type SpreadOptions = {
   mix?: ThemeMix | null;
   follow?: FollowMix | null;
+  /** Share of each page held for cards still `exploring`. Absent or null: no floor. */
+  exploreShare?: number | null;
   /** The card just before this page was heavy, so pacing carries across the page edge. */
   afterHeavy?: boolean;
+  /**
+   * The visit so far. Given, the author cap and the reading rhythm span the whole visit
+   * (it wins over `afterHeavy`), and this page's cards are added to it.
+   */
+  visit?: VisitSpread;
 };
 
 /** Returning cards one page may hold. At least one, so a small stack can still use them. */
@@ -616,12 +779,13 @@ export function returningCap(pageSize: number): number {
  * Ranking decides what deserves to be read; this only decides what it is like to read in
  * a row. In order:
  *
- * 1. When the follow floor is behind (fewer than `share` of the slots so far), the best
- *    recent card from someone the viewer follows, if one fits without breaking a limit.
+ * 1. When a floor is behind (fewer than its share of the slots so far), the best card it
+ *    is for, if one fits without breaking a limit. In order: recent cards from people the
+ *    viewer follows, cards still exploring, then cards outside the viewer's themes.
  * 2. The best-ranked card that fits and whose theme bucket (and the followed share) has
  *    room; then one that only breaks a rhythm rule; then the same ignoring that room.
  * 3. When every card left breaks a limit (a small community), the card whose author has
- *    the fewest cards on the page, ties to rank. Never plain rank order.
+ *    the fewest cards so far, ties to rank. Never plain rank order.
  * 4. Only returning cards over their cap are left: the page ends short.
  */
 export function spreadPage<T extends SpreadableCard>(
@@ -629,7 +793,7 @@ export function spreadPage<T extends SpreadableCard>(
   pageSize: number,
   options: SpreadOptions = {},
 ): T[] {
-  const state = emptySpreadState(options.afterHeavy ?? false);
+  const state = emptySpreadState(options.afterHeavy ?? false, options.visit ?? null);
   const remaining = [...ranked];
   const page: T[] = [];
   const placed: Record<ThemeBucket, number> = { core: 0, adjacent: 0, explore: 0 };
@@ -649,21 +813,32 @@ export function spreadPage<T extends SpreadableCard>(
     return placed[bucket] < caps[bucket];
   };
 
+  const exploreShare = options.exploreShare ?? 0;
+  const exploreBucketShare = options.mix?.explore ?? 0;
+
   while (page.length < pageSize && remaining.length > 0) {
-    const fits = remaining.map((card) => spreadFit(card, state, returning));
+    const fits = remaining.map((card) => spreadFit(card, state, returning, page.length));
     const pick = (level: SpreadFit, respectCaps: boolean, only?: (card: T) => boolean): number =>
       remaining.findIndex(
         (card, position) =>
           fits[position] === level && (!only || only(card)) && (!respectCaps || hasRoom(card)),
       );
+    const pickFor = (only: (card: T) => boolean): number => {
+      const found = pick("ok", true, only);
+      return found === -1 ? pick("soft", true, only) : found;
+    };
+    const behind = (count: number, share: number): boolean =>
+      share > 0 && count < Math.floor(share * (page.length + 1));
 
     let index = -1;
-    if (follow && state.followedRecent < Math.floor(follow.share * (page.length + 1))) {
-      const eligible = (card: T): boolean => isRecentFollowed(card, follow);
-      index = pick("ok", true, eligible);
-      if (index === -1) {
-        index = pick("soft", true, eligible);
-      }
+    if (follow && behind(state.followedRecent, follow.share)) {
+      index = pickFor((card) => isRecentFollowed(card, follow));
+    }
+    if (index === -1 && behind(state.exploring, exploreShare)) {
+      index = pickFor((card) => card.exploring === true);
+    }
+    if (index === -1 && behind(placed.explore, exploreBucketShare)) {
+      index = pickFor((card) => (card.bucket ?? "explore") === "explore");
     }
     // Spending light cards early would leave heavy ones with nothing between them, so
     // once heavy outnumber light, a heavy card goes next whenever one may.
@@ -695,7 +870,7 @@ export function spreadPage<T extends SpreadableCard>(
         if (fits[position] !== "hard") {
           continue;
         }
-        const count = state.perAuthor.get(card.authorId) ?? 0;
+        const count = visitAuthorCount(state, card.authorId);
         if (count < fewest) {
           fewest = count;
           index = position;
@@ -714,14 +889,15 @@ export function spreadPage<T extends SpreadableCard>(
     page.push(card);
   }
 
+  carryIntoVisit(state, page);
   return page;
 }
 
 /**
- * The whole ranked list, spread one page at a time. The limits are per page, but the
- * result has to be one stable global order or offset paging would drop and repeat
- * cards as the offset moves — so the windows are computed the same way every request.
- * Pacing carries across the page edge: a page never opens heavy after a heavy card.
+ * The whole ranked list, spread one page at a time into one stable visit order. Page
+ * limits (author, intensity, returning, the mixes) apply per window; the visit author cap,
+ * reading rhythm, and heavy pacing carry from each window into the next, so the most
+ * active author does not reset to two at every page edge.
  */
 export function spreadRanked<T extends SpreadableCard>(
   ranked: readonly T[],
@@ -729,15 +905,14 @@ export function spreadRanked<T extends SpreadableCard>(
   options: SpreadOptions = {},
 ): T[] {
   const spread: T[] = [];
+  const visit = options.visit ?? emptyVisitSpread(options.afterHeavy ?? false);
   let remaining: readonly T[] = ranked;
-  let afterHeavy = options.afterHeavy ?? false;
   while (remaining.length > 0) {
-    const window = spreadPage(remaining, pageSize, { ...options, afterHeavy });
+    const window = spreadPage(remaining, pageSize, { ...options, visit });
     if (window.length === 0) {
       break;
     }
     spread.push(...window);
-    afterHeavy = window[window.length - 1]?.heavy ?? false;
     const taken = new Set(window.map((card) => card.id));
     remaining = remaining.filter((card) => !taken.has(card.id));
   }

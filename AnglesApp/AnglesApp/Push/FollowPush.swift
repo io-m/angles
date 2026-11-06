@@ -4,6 +4,8 @@ import UserNotifications
 @MainActor
 enum FollowPush {
     static let categoryIdentifier = "follow"
+    /// A love push has no lock-screen actions; a tap opens Notifications.
+    static let loveCategoryIdentifier = "love"
     static let followBackAction = "FOLLOW_BACK"
     static let viewProfileAction = "VIEW_PROFILE"
     static let promptSeenKey = "angles.followPushPromptSeen"
@@ -47,7 +49,13 @@ enum FollowPush {
             intentIdentifiers: [],
             options: []
         )
-        UNUserNotificationCenter.current().setNotificationCategories([category])
+        let love = UNNotificationCategory(
+            identifier: loveCategoryIdentifier,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category, love])
     }
 
     /// Session start and every foreground. Never the iOS permission dialog — that waits
@@ -177,6 +185,8 @@ final class FollowPushCenter {
     private(set) var tokenRevision = 0
     var pendingActorID: String?
     var pendingIntent: FollowPushIntent = .viewProfile
+    /// A love push was tapped: Notifications opens, with that love as the newest row.
+    var pendingNotifications = false
 
     private init() {
         deviceToken = UserDefaults.standard.string(forKey: FollowPush.tokenDefaultsKey)
@@ -201,9 +211,14 @@ final class FollowPushCenter {
         pendingIntent = FollowPushIntent(actionIdentifier: actionIdentifier)
     }
 
+    func handleLove() {
+        pendingNotifications = true
+    }
+
     func clearPending() {
         pendingActorID = nil
         pendingIntent = .viewProfile
+        pendingNotifications = false
     }
 }
 
@@ -259,7 +274,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        let actorId = FollowPush.actorId(from: response.notification.request.content.userInfo)
+        let content = response.notification.request.content
+        if content.categoryIdentifier == FollowPush.loveCategoryIdentifier {
+            await MainActor.run {
+                FollowPushCenter.shared.handleLove()
+            }
+            return
+        }
+        let actorId = FollowPush.actorId(from: content.userInfo)
         await MainActor.run {
             FollowPushCenter.shared.handle(
                 actionIdentifier: response.actionIdentifier,

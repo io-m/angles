@@ -4,7 +4,8 @@ import { isStyleShown } from "../lib/styleSet.js";
 import type { CardDecision, DecisionBody, Style } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
 import { lockUserPair, usersAreBlocked } from "./communitySafety.js";
-import { cardDecisions, cardReframes, cardReports, cards, type CardDecisionRow } from "./schema.js";
+import { recordLove, retractLove } from "./loveNotifications.js";
+import { cardDecisions, cardReframes, cardReports, cards, users, type CardDecisionRow } from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 
@@ -39,21 +40,26 @@ export async function loadViewerDecisions(
 }
 
 export type DecisionWriteResult =
-  | { ok: true; decision: CardDecision }
+  /** `loved`: this write turned the row into a save and stored a love for the author. */
+  | { ok: true; decision: CardDecision; loved: boolean }
   | { ok: false; reason: "not_found" | "own_card" | "not_public" | "unknown_style" };
 
 /**
  * Writes the viewer's whole decision row as sent, so a retry or a rewind lands on the same
  * state. Only someone else's public card the viewer can still see: not blocked either
  * way, and not one they reported.
+ *
+ * A row that becomes a save tells the author (a love notification); a save that stops
+ * being one takes that notification back while it is unread. A repeated save says nothing.
  */
 export async function writeDecision(cardId: string, body: DecisionBody): Promise<DecisionWriteResult> {
   try {
     return await getDb().transaction(async (tx) => {
       const viewerId = getOwnerUserId();
       const [target] = await tx
-        .select({ authorId: cards.userId })
+        .select({ authorId: cards.userId, authorKind: users.kind })
         .from(cards)
+        .innerJoin(users, eq(users.id, cards.userId))
         .where(eq(cards.id, cardId))
         .limit(1);
       if (!target) {
@@ -96,6 +102,11 @@ export async function writeDecision(cardId: string, body: DecisionBody): Promise
         return { ok: false, reason: "unknown_style" };
       }
       const checked = [...new Set<Style>([...body.checkedStyles, body.style])];
+      const [prior] = await tx
+        .select({ kind: cardDecisions.kind })
+        .from(cardDecisions)
+        .where(and(eq(cardDecisions.userId, viewerId), eq(cardDecisions.cardId, cardId)))
+        .limit(1);
       const decidedAt = new Date();
       const values = {
         kind: body.kind,
@@ -112,7 +123,19 @@ export async function writeDecision(cardId: string, body: DecisionBody): Promise
       if (!row) {
         throw new DbError("Database error");
       }
-      return { ok: true, decision: toCardDecision(row) };
+      let loved = false;
+      const wasSave = prior?.kind === "save";
+      if (body.kind === "save" && !wasSave && target.authorKind !== "house") {
+        loved = await recordLove(tx, {
+          recipientId: target.authorId,
+          actorId: viewerId,
+          cardId,
+          style: body.style,
+        });
+      } else if (body.kind !== "save" && wasSave) {
+        await retractLove(tx, viewerId, cardId);
+      }
+      return { ok: true, decision: toCardDecision(row), loved };
     });
   } catch (error) {
     if (error instanceof DbError) {
@@ -134,8 +157,11 @@ export async function clearDecision(cardId: string): Promise<{ ok: boolean }> {
     const removed = await db
       .delete(cardDecisions)
       .where(and(eq(cardDecisions.userId, viewerId), eq(cardDecisions.cardId, cardId)))
-      .returning({ cardId: cardDecisions.cardId });
+      .returning({ cardId: cardDecisions.cardId, kind: cardDecisions.kind });
     if (removed.length > 0) {
+      if (removed.some((row) => row.kind === "save")) {
+        await retractLove(db, viewerId, cardId);
+      }
       return { ok: true };
     }
     const [exists] = await db.select({ id: cards.id }).from(cards).where(eq(cards.id, cardId)).limit(1);

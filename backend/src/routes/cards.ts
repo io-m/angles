@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { reportCard } from "../db/communitySafety.js";
 import { clearDecision, writeDecision } from "../db/decisions.js";
+import { scheduleLovePush } from "../db/loveNotifications.js";
 import {
   createCard,
   deleteCard,
@@ -312,6 +313,9 @@ cardsRoute.put(
         case "unknown_style":
           return c.json(errorBody("styles must be among the card results", "VALIDATION_ERROR"), 400);
       }
+    }
+    if (result.loved) {
+      scheduleLovePush(id);
     }
     return c.json({ decision: result.decision } satisfies DecisionResponse);
   },

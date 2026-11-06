@@ -52,6 +52,10 @@ vi.mock("../db/decisions.js", () => ({
   clearDecision: vi.fn(),
 }));
 
+vi.mock("../db/loveNotifications.js", () => ({
+  scheduleLovePush: vi.fn(),
+}));
+
 vi.mock("../db/stack.js", () => ({
   listStack: vi.fn(),
   listPublicCardsForUser: vi.fn(),
@@ -668,7 +672,7 @@ describe("PUT /cards/:id/decision", () => {
 
   it("stores the whole row and answers with it", async () => {
     const stored = { ...decision, decidedAt: "2026-09-10T12:00:00.000Z" };
-    vi.mocked(writeDecision).mockResolvedValue({ ok: true, decision: stored });
+    vi.mocked(writeDecision).mockResolvedValue({ ok: true, decision: stored, loved: false });
     const response = await app.request(jsonRequest(`/cards/${CARD_ID}/decision`, "PUT", decision));
     expect(response.status).toBe(200);
     await expect(jsonOf(response)).resolves.toEqual({ decision: stored });

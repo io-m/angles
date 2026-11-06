@@ -7,9 +7,11 @@ import {
   listFollowNotifications,
   markFollowNotificationsRead,
   registerDeviceToken,
-  setNotifyFollows,
+  setNotificationPreferences,
   unregisterDeviceToken,
 } from "../db/followNotifications.js";
+import { markLoveNotificationsRead } from "../db/loveNotifications.js";
+import { unreadNotificationCount } from "../db/notificationCounts.js";
 import { listFollowing } from "../db/follows.js";
 import { getUsageSummary } from "../db/metering.js";
 import {
@@ -79,7 +81,10 @@ const unregisterDeviceSchema = z
   .strict();
 
 const readNotificationsSchema = z.union([
-  z.object({ throughId: z.uuid() }).strict(),
+  z
+    .object({ throughId: z.uuid().optional(), loveThroughId: z.uuid().optional() })
+    .strict()
+    .refine((value) => value.throughId || value.loveThroughId, "throughId or loveThroughId is required"),
   z
     .object({
       before: z
@@ -91,9 +96,12 @@ const readNotificationsSchema = z.union([
 
 const patchNotificationsSchema = z
   .object({
-    notifyFollows: z.boolean(),
+    notifyFollows: z.boolean().optional(),
+    notifyLoves: z.boolean().optional(),
+    shareLoveName: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "send at least one switch");
 
 const deleteAccountSchema = z.object({
   appleAuthorizationCode: z.string().min(1).max(4096).optional(),
@@ -143,6 +151,8 @@ profileRoute.get("/session", requireAuth, async (c) => {
     tasteConsumedAt: user.tasteConsumedAt ? user.tasteConsumedAt.toISOString() : null,
     termsAcceptedAt: user.termsAcceptedAt ? user.termsAcceptedAt.toISOString() : null,
     notifyFollows: user.notifyFollows,
+    notifyLoves: user.notifyLoves,
+    shareLoveName: user.shareLoveName,
   };
   const avatarUrl = avatarUrlFor(user.id, user.avatarKey);
   if (avatarUrl) {
@@ -314,10 +324,21 @@ profileRoute.post(
   }),
   async (c) => {
     const input = c.req.valid("json");
-    const unreadCount = await markFollowNotificationsRead(
-      "throughId" in input ? { throughId: input.throughId } : { before: new Date(input.before) },
-    );
-    const body: ReadNotificationsResponse = { read: true, unreadCount };
+    let unreadCount: number | null = null;
+    if ("before" in input) {
+      unreadCount = await markFollowNotificationsRead({ before: new Date(input.before) });
+    } else {
+      if (input.throughId) {
+        unreadCount = await markFollowNotificationsRead({ throughId: input.throughId });
+      }
+      if (input.loveThroughId) {
+        unreadCount = await markLoveNotificationsRead(input.loveThroughId);
+      }
+    }
+    const body: ReadNotificationsResponse = {
+      read: true,
+      unreadCount: unreadCount ?? (await unreadNotificationCount(getOwnerUserId())),
+    };
     return c.json(body);
   },
 );
@@ -331,9 +352,7 @@ profileRoute.patch(
     }
   }),
   async (c) => {
-    const body: NotifyFollowsBody = {
-      notifyFollows: await setNotifyFollows(c.req.valid("json").notifyFollows),
-    };
+    const body: NotifyFollowsBody = await setNotificationPreferences(c.req.valid("json"));
     return c.json(body);
   },
 );

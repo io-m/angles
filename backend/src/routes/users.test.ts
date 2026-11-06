@@ -79,6 +79,8 @@ function userRow(overrides: { id?: string; initials?: string; avatarKey?: string
     termsAcceptedAt: null as Date | null,
     publishingSuspendedAt: null as Date | null,
     notifyFollows: true,
+    notifyLoves: true,
+    shareLoveName: true,
     kind: "person" as const,
     createdAt: new Date("2026-09-01T00:00:00.000Z"),
     updatedAt: new Date("2026-09-01T00:00:00.000Z"),

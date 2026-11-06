@@ -24,9 +24,13 @@ import {
   rankCards,
   rankingEnabled,
   returningCap,
-  resonanceTerm,
+  DEFAULT_BASELINES,
+  EXPLORATION,
+  emptyVisitSpread,
+  qualityBaselines,
+  qualityTerm,
+  reachTerm,
   scoreCard,
-  secondChanceTerm,
   spreadPage,
   spreadRanked,
   themeMix,
@@ -86,13 +90,16 @@ function spreadable(overrides: Partial<SpreadableCard> = {}): SpreadableCard {
 }
 
 describe("ranking terms", () => {
-  it("decays freshness over a day or two, like a social feed", () => {
+  it("decays freshness over a day or two, with a slow tail that lasts about two weeks", () => {
     expect(freshnessTerm(card({ createdAt: NOW }), NOW)).toBeCloseTo(1, 5);
-    // Still most of its worth this morning, about a third by tomorrow, gone in a few days.
-    expect(freshnessTerm(card({ createdAt: hoursAgo(6) }), NOW)).toBeGreaterThan(0.75);
-    expect(freshnessTerm(card({ createdAt: hoursAgo(24) }), NOW)).toBeCloseTo(Math.exp(-1), 5);
-    expect(freshnessTerm(card({ createdAt: hoursAgo(72) }), NOW)).toBeLessThan(0.06);
-    expect(freshnessTerm(card({ createdAt: hoursAgo(24 * 30) }), NOW)).toBeLessThan(0.001);
+    // Still most of its worth this morning, about half tomorrow, a third the day after,
+    // then a small tail.
+    expect(freshnessTerm(card({ createdAt: hoursAgo(6) }), NOW)).toBeGreaterThan(0.8);
+    expect(freshnessTerm(card({ createdAt: hoursAgo(24) }), NOW)).toBeLessThan(0.6);
+    expect(freshnessTerm(card({ createdAt: hoursAgo(48) }), NOW)).toBeLessThan(0.4);
+    expect(freshnessTerm(card({ createdAt: hoursAgo(72) }), NOW)).toBeLessThan(0.25);
+    expect(freshnessTerm(card({ createdAt: hoursAgo(24 * 7) }), NOW)).toBeGreaterThan(0.05);
+    expect(freshnessTerm(card({ createdAt: hoursAgo(24 * 60) }), NOW)).toBeLessThan(0.005);
   });
 
   it("lets a newer post beat an older one, and only clear signals overturn that", () => {
@@ -113,11 +120,47 @@ describe("ranking terms", () => {
     expect(threeDays.score).toBeGreaterThan(twoDaysPlain.score);
   });
 
-  it("damps resonance and caps it so one card cannot own the feed", () => {
-    expect(resonanceTerm(card({ saves: 0 }))).toBe(0);
-    expect(resonanceTerm(card({ saves: 1 }))).toBeLessThan(resonanceTerm(card({ saves: 3 })));
-    expect(resonanceTerm(card({ saves: 10 }))).toBeCloseTo(1, 5);
-    expect(resonanceTerm(card({ saves: 5_000 }))).toBe(1);
+  it("damps reach and caps it so one card cannot own the feed", () => {
+    expect(reachTerm(card({ saves: 0 }))).toBe(0);
+    expect(reachTerm(card({ saves: 1 }))).toBeLessThan(reachTerm(card({ saves: 3 })));
+    expect(reachTerm(card({ saves: 10 }))).toBeCloseTo(1, 5);
+    expect(reachTerm(card({ saves: 5_000 }))).toBe(1);
+  });
+
+  it("reads quality as a shrunk save rate, so a small sample does not beat a large one", () => {
+    // Nobody has decided yet: an ordinary card, neither helped nor hurt.
+    expect(qualityTerm(card({ saves: 0, decisions: 0 }))).toBe(0);
+    const lucky = qualityTerm(card({ saves: 1, decisions: 2 }));
+    const proven = qualityTerm(card({ saves: 8, decisions: 20 }));
+    expect(proven).toBeGreaterThan(lucky);
+    // Met by many, kept by none: below an ordinary card, never below -1.
+    const ignored = qualityTerm(card({ saves: 0, decisions: 40 }));
+    expect(ignored).toBeLessThan(0);
+    expect(ignored).toBeGreaterThanOrEqual(-1);
+    expect(qualityTerm(card({ saves: 500, decisions: 500 }))).toBe(1);
+  });
+
+  it("judges a heavy card only against heavy cards", () => {
+    // Heavy cards get passed more; at their own stratum's rate they tie a light card at its own.
+    const baselines = { heavy: 0.15, light: 0.4 };
+    const heavy = qualityTerm(card({ heavy: true, saves: 3, decisions: 20 }), baselines);
+    const light = qualityTerm(card({ heavy: false, saves: 8, decisions: 20 }), baselines);
+    expect(heavy).toBeCloseTo(light, 5);
+    expect(heavy).toBeCloseTo(0, 5);
+    // The same numbers on a heavy card read better than on a light one.
+    expect(qualityTerm(card({ heavy: true, saves: 6, decisions: 20 }), baselines)).toBeGreaterThan(
+      qualityTerm(card({ heavy: false, saves: 6, decisions: 20 }), baselines),
+    );
+  });
+
+  it("measures each stratum's rate, pulled toward the default until there is evidence", () => {
+    expect(qualityBaselines([])).toEqual(DEFAULT_BASELINES);
+    const measured = qualityBaselines([
+      ...Array.from({ length: 30 }, () => ({ heavy: true, saves: 1, decisions: 10 })),
+      ...Array.from({ length: 30 }, () => ({ heavy: false, saves: 5, decisions: 10 })),
+    ]);
+    expect(measured.heavy).toBeLessThan(0.15);
+    expect(measured.light).toBeGreaterThan(0.45);
   });
 
   it("scores affinity from the viewer's own life areas and moods", () => {
@@ -133,16 +176,11 @@ describe("ranking terms", () => {
     ).toBeCloseTo(0.4, 5);
   });
 
-  it("gives an unsaved young post a second chance that fades", () => {
-    expect(secondChanceTerm(card({ createdAt: hoursAgo(2) }), NOW)).toBe(0);
-    expect(secondChanceTerm(card({ createdAt: hoursAgo(48) }), NOW)).toBe(1);
-    expect(secondChanceTerm(card({ createdAt: hoursAgo(24 * 20) }), NOW)).toBeCloseTo(
-      10 / 16,
-      5,
-    );
-    expect(secondChanceTerm(card({ createdAt: hoursAgo(24 * 40) }), NOW)).toBe(0);
-    // Hearted posts do not need help being found.
-    expect(secondChanceTerm(card({ createdAt: hoursAgo(48), saves: 1 }), NOW)).toBe(0);
+  it("adds tags to affinity only once the viewer has some, below life area and mood", () => {
+    const withTags: ViewerAffinity = { ...themes(["work"], ["shame"]), tags: new Map([["deadline", 1]]) };
+    const tagged = affinityTerm(card({ category: "money", emotions: [], tags: ["deadline"] }), withTags);
+    expect(tagged).toBeCloseTo(0.15 / 2, 5);
+    expect(affinityTerm(card({ category: "work", emotions: [] }), withTags)).toBeCloseTo(0.5, 5);
   });
 
   it("keeps jitter inside the unit range and stable per seed", () => {
@@ -154,7 +192,7 @@ describe("ranking terms", () => {
   });
 
   it("never lets jitter outrank a real signal", () => {
-    expect(RANKING_WEIGHTS.jitter).toBeLessThan(RANKING_WEIGHTS.resonance);
+    expect(RANKING_WEIGHTS.jitter).toBeLessThan(RANKING_WEIGHTS.quality);
     expect(RANKING_WEIGHTS.jitter).toBeLessThan(RANKING_WEIGHTS.affinity);
     expect(RANKING_WEIGHTS.jitter).toBeLessThan(RANKING_WEIGHTS.freshness);
   });
@@ -789,9 +827,14 @@ describe("passes", () => {
     expect(onlyPasses).toEqual(EMPTY_AFFINITY);
   });
 
-  it("are not a ranking input for anyone else: resonance reads saves only", () => {
+  it("count against a card only as part of its rate, and only against cards of its weight", () => {
     expect(Object.keys(card())).not.toContain("passes");
-    expect(resonanceTerm(card({ saves: 0 }))).toBe(0);
+    expect(reachTerm(card({ saves: 0, decisions: 30 }))).toBe(0);
+    const heavyPassed = qualityTerm(card({ heavy: true, saves: 2, decisions: 20 }), {
+      heavy: 0.1,
+      light: 0.4,
+    });
+    expect(heavyPassed).toBeCloseTo(0, 5);
   });
 });
 
@@ -913,5 +956,74 @@ describe("openingStyle for a returning card", () => {
         checked: new Set<Style>(available),
       }),
     ).toBe("stoic");
+  });
+});
+
+describe("exploration floor", () => {
+  it("holds a share of each page for cards too few people have decided on, paced from the top", () => {
+    // The judged cards are all fresher, so plain rank order would push the new ones off the page.
+    const ranked = [
+      ...Array.from({ length: 30 }, (_, index) =>
+        spreadable({
+          id: `judged-${index}`,
+          authorId: `judged-author-${index}`,
+          category: CATEGORY_CYCLE[index % 4],
+          emotions: [EMOTION_CYCLE[index % 4] ?? "shame"],
+        }),
+      ),
+      ...Array.from({ length: 10 }, (_, index) =>
+        spreadable({
+          id: `new-${index}`,
+          authorId: `new-author-${index}`,
+          category: CATEGORY_CYCLE[(index + 1) % 4],
+          emotions: [EMOTION_CYCLE[(index + 2) % 4] ?? "fear"],
+          exploring: true,
+        }),
+      ),
+    ];
+    const page = spreadPage(ranked, 20, { exploreShare: EXPLORATION.share });
+    const slots = page.flatMap((item, slot) => (item.exploring ? [slot] : []));
+    expect(slots).toHaveLength(Math.floor(EXPLORATION.share * 20));
+    expect(slots[0]).toBeLessThan(5);
+    expect(spreadPage(ranked, 20).filter((item) => item.exploring)).toHaveLength(0);
+  });
+});
+
+describe("visit-wide spread", () => {
+  const pool = (): SpreadableCard[] => [
+    ...Array.from({ length: 12 }, (_, index) =>
+      spreadable({
+        id: `loud-${index}`,
+        authorId: "loud",
+        category: CATEGORY_CYCLE[index % 4],
+        emotions: [EMOTION_CYCLE[index % 4] ?? "shame"],
+      }),
+    ),
+    ...Array.from({ length: 60 }, (_, index) =>
+      spreadable({
+        id: `quiet-${index}`,
+        authorId: `quiet-${index % 20}`,
+        category: CATEGORY_CYCLE[(index + 1) % 4],
+        emotions: [EMOTION_CYCLE[(index + 2) % 4] ?? "fear"],
+      }),
+    ),
+  ];
+
+  it("caps the most active author across the whole visit, not two per page forever", () => {
+    const spread = spreadRanked(pool(), 12);
+    expect(spread).toHaveLength(72);
+    const firstFour = spread.slice(0, 48).filter((item) => item.authorId === "loud").length;
+    // Per page alone it would be 2 of every 12: 8 in 48.
+    expect(firstFour).toBeLessThanOrEqual(Math.ceil(SPREAD_LIMITS.visitAuthorShare * 48));
+  });
+
+  it("carries reading rhythm across the page edge", () => {
+    const visit = emptyVisitSpread();
+    const first = spreadPage(pool(), 12, { visit });
+    expect(visit.placed).toBe(12);
+    const last = first[first.length - 1];
+    const rest = pool().filter((item) => !first.some((placed) => placed.id === item.id));
+    const second = spreadPage(rest, 12, { visit });
+    expect(second[0]?.authorId).not.toBe(last?.authorId);
   });
 });

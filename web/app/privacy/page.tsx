@@ -68,7 +68,7 @@ export default function PrivacyPage() {
         <li>
           <strong>Cards and community activity.</strong> Saved cards are
           private unless you choose to post them publicly. Public cards can be
-          seen by other users. We process hearts, follows, blocks, and
+          seen by other users. We process loves, passes, follows, blocks, and
           reports needed to provide and moderate the community.
         </li>
         <li>
@@ -173,12 +173,12 @@ export default function PrivacyPage() {
       <h2>How Home is ordered</h2>
       <p>
         Home shows public cards in an order chosen for you. The order uses how
-        recent and how hearted each post is, the life areas and moods of the
-        cards you write and the angles you heart, and the people you follow. It
-        does not use how long you look at a card, and it is never used for
-        advertising. Author pages and your Profile are plain lists and are not
-        personalized. Deleting a card or removing a heart takes it out of this
-        order.
+        recent each post is, how often the people who saw it loved it, the
+        life areas, moods, and topics of the cards you write and love, the
+        cards you pass, and the people you follow. It does not use how long you
+        look at a card, and it is never used for advertising. Author pages and
+        your Profile are plain lists and are not personalized. Deleting a card
+        or removing a love takes it out of this order.
       </p>
 
       <h2>Private and public content</h2>
@@ -191,9 +191,12 @@ export default function PrivacyPage() {
         content.
       </p>
       <p>
-        Hearts on another person’s card remain available only while that
-        card remains public. Follows are visible through the app’s social
-        features. Blocking removes the affected public content and follow or
+        Cards you love from another person remain available only while that
+        card remains public. When you love a card, its author is told, with your
+        name and photo, unless you turn off <strong>Show my name on loves</strong>{' '}
+        in Settings; then they see that someone loved it. Taking the love back
+        before they read it removes that notice. Follows are visible through
+        the app’s social features. Blocking removes the affected public content and follow or
         save relationships between those accounts from their in-app experiences
         and records the block. Reports include the reported card, reporter,
         selected reason, and time so we can review and enforce community rules.
@@ -267,7 +270,8 @@ export default function PrivacyPage() {
         <li>
           <strong>Legitimate interests</strong> (Article 6(1)(f)): keeping the
           service secure, preventing abuse, moderating public posts, handling
-          reports and blocks, and using your hearts and follows to order Home.
+          reports and blocks, telling authors about loves, and using your
+          loves, passes, and follows to order Home.
         </li>
         <li>
           <strong>Legal obligation</strong> (Article 6(1)(c)): accounting and

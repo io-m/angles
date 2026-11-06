@@ -10,6 +10,7 @@ import { runProductionMigrations } from "./db/productionMigrations.js";
 import { readAdminConfig } from "./lib/adminSession.js";
 import { reportAlertConfig } from "./lib/reportAlerts.js";
 import { describeApnsConfig } from "./lib/apns.js";
+import { deliverPendingLovePushes } from "./db/loveNotifications.js";
 
 loadLocalEnvFile();
 
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
       console.log(`Angles API listening on http://127.0.0.1:${info.port}`);
     },
   );
+  void deliverPendingLovePushes();
 
   let shuttingDown = false;
   const shutdown = (): void => {

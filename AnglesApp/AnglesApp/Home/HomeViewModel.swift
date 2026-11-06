@@ -58,9 +58,12 @@ struct CardList: Equatable {
     var generation = 0
 }
 
-/// The toast over the action row after a post: "Posted" or "Saved privately".
+/// The toast over the action row: "Posted" or "Saved privately" after a post, and once per
+/// account the first Love, which tells the author who loved it.
 struct PostToast: Equatable {
     let label: String
+    var detail: String? = nil
+    let symbol: String
     let tint: Style
     let token: Int
 }
@@ -110,13 +113,19 @@ final class HomeViewModel {
     private(set) var blockedPeople: [BlockedPerson] = []
     private(set) var blocksLoadState: LibraryLoadState = .loading
     private(set) var followNotices: [FollowNotice] = []
+    /// Loves on the viewer's own posts, newest first. Loaded and read with the follows.
+    private(set) var loveNotices: [LoveNotice] = []
     private(set) var followNoticesLoadState: LibraryLoadState = .loading
-    private(set) var unreadFollowCount = 0
+    /// Unread follows and loves together: the bell dot and the app icon badge.
+    private(set) var unreadNotificationCount = 0
     /// Bumped whenever the unread count is set, even to the same value, so the app icon is
     /// rewritten after a push changed it behind the app's back.
     private(set) var followBadgeRevision = 0
     /// A follow push asked for People on Notifications. Profile opens it when it is on screen.
     private(set) var wantsFollowNotifications = false
+    /// Whose loves these are and whether they carry the name. AppRoot keeps it in step
+    /// with the session.
+    @ObservationIgnored var loveDisclosure: (accountId: String?, sharesName: Bool) = (nil, true)
 
     let compose: ComposeSession
     let stack: StackModel
@@ -524,21 +533,44 @@ final class HomeViewModel {
         guard let card = yours.cards.first(where: { $0.id == cardID }) else {
             return
         }
-        let token = (postToast?.token ?? 0) &+ 1
-        postToast = PostToast(
+        showToast(
             label: card.isPublic ? "Posted" : "Saved privately",
-            tint: card.spotlightStyle,
-            token: token
+            symbol: card.isPublic ? "globe" : "lock.fill",
+            tint: card.spotlightStyle
         )
         profilePulseToken &+= 1
+    }
+
+    private func showToast(label: String, detail: String? = nil, symbol: String, tint: Style, duration: Duration? = nil) {
+        let token = (postToast?.token ?? 0) &+ 1
+        postToast = PostToast(label: label, detail: detail, symbol: symbol, tint: tint, token: token)
         toastTask?.cancel()
         toastTask = Task { @MainActor in
-            try? await Task.sleep(for: Self.toastDuration)
+            try? await Task.sleep(for: duration ?? Self.toastDuration)
             guard !Task.isCancelled, postToast?.token == token else {
                 return
             }
             postToast = nil
         }
+    }
+
+    /// The first Love on this account says, once, that the author sees who loved it.
+    private func discloseLoveIfFirst(_ card: HomeCard) {
+        guard !card.isHouse, let account = loveDisclosure.accountId, loveDisclosure.sharesName else {
+            return
+        }
+        let key = "angles.loveNameDisclosed.\(account)"
+        guard !UserDefaults.standard.bool(forKey: key) else {
+            return
+        }
+        UserDefaults.standard.set(true, forKey: key)
+        showToast(
+            label: "Loved. They'll see it was you",
+            detail: "Turn this off in Settings",
+            symbol: "heart.fill",
+            tint: card.decision?.style ?? card.spotlightStyle,
+            duration: .milliseconds(4200)
+        )
     }
 
     func dismissPostToast() {
@@ -861,7 +893,9 @@ final class HomeViewModel {
         stack.remove(where: isTheirs)
         followedPeople.removeAll { $0.id == authorId }
         followNotices.removeAll { $0.actorId == authorId }
-        unreadFollowCount = followNotices.filter { $0.readAt == nil }.count
+        loveNotices.removeAll { $0.actor?.id == authorId }
+        unreadNotificationCount = followNotices.filter { $0.readAt == nil }.count
+            + loveNotices.filter { $0.readAt == nil }.count
         followBadgeRevision &+= 1
         for id in Array(authorFeeds.keys) {
             mutateAuthor(id) { feed in
@@ -909,7 +943,7 @@ final class HomeViewModel {
     }
 
     func loadFollowNotifications() async {
-        if followNotices.isEmpty {
+        if followNotices.isEmpty, loveNotices.isEmpty {
             followNoticesLoadState = .loading
         }
         let generation = followNoticesGeneration
@@ -919,15 +953,16 @@ final class HomeViewModel {
                 return
             }
             followNotices = response.notifications.compactMap(FollowNotice.init)
-            unreadFollowCount = response.unreadCount
+            loveNotices = response.loves.compactMap(LoveNotice.init)
+            unreadNotificationCount = response.unreadCount
             followNoticesLoadState = .loaded
             followBadgeRevision &+= 1
         } catch {
             guard !Self.isCancellation(error), generation == followNoticesGeneration else {
                 return
             }
-            if followNotices.isEmpty {
-                followNoticesLoadState = .failed("Couldn't load follows.")
+            if followNotices.isEmpty, loveNotices.isEmpty {
+                followNoticesLoadState = .failed("Couldn't load notifications.")
             }
         }
     }
@@ -958,10 +993,12 @@ final class HomeViewModel {
     /// Reads everything up to the newest row on screen. The server compares at its own
     /// precision and answers with the count left, which is what the badge shows.
     private func markDisplayedFollowNotificationsRead() async {
-        guard followNoticesLoadState == .loaded,
-              followNotices.contains(where: { $0.readAt == nil }),
-              let newest = followNotices.first
-        else {
+        guard followNoticesLoadState == .loaded else {
+            return
+        }
+        let followThrough = followNotices.contains(where: { $0.readAt == nil }) ? followNotices.first : nil
+        let loveThrough = loveNotices.contains(where: { $0.readAt == nil }) ? loveNotices.first : nil
+        guard followThrough != nil || loveThrough != nil else {
             return
         }
         let session = writeSessionGeneration
@@ -970,17 +1007,21 @@ final class HomeViewModel {
         for index in followNotices.indices where followNotices[index].readAt == nil {
             followNotices[index].readAt = now
         }
-        unreadFollowCount = 0
+        for index in loveNotices.indices where loveNotices[index].readAt == nil {
+            loveNotices[index].readAt = now
+        }
+        unreadNotificationCount = 0
         followBadgeRevision &+= 1
         do {
-            let left = try await profileService.markFollowNotificationsRead(
-                throughId: newest.id.uuidString.lowercased()
+            let left = try await profileService.markNotificationsRead(
+                throughId: followThrough?.id.uuidString.lowercased(),
+                loveThroughId: loveThrough?.id.uuidString.lowercased()
             )
             guard writeSessionGeneration == session else {
                 return
             }
             followNoticesGeneration &+= 1
-            unreadFollowCount = left
+            unreadNotificationCount = left
             followBadgeRevision &+= 1
         } catch {
             // The server still has them unread; the next list restores the count.
@@ -1004,7 +1045,9 @@ final class HomeViewModel {
         guard !isOwnAuthor(authorId) else {
             return
         }
-        if followNotices.contains(where: { $0.actorId == authorId && $0.following }) || isFollowing(authorId) {
+        if followNotices.contains(where: { $0.actorId == authorId && $0.following })
+            || loveNotices.contains(where: { $0.actor?.id == authorId && $0.actor?.following == true })
+            || isFollowing(authorId) {
             return
         }
         commitFollow(authorId, following: true)
@@ -1052,13 +1095,18 @@ final class HomeViewModel {
                     return
                 }
                 setFollowing(authorId, following: state.following)
-                if next, state.following,
-                   let notice = followNotices.first(where: { $0.actorId == authorId }),
-                   !followedPeople.contains(where: { $0.id == authorId }) {
-                    followedPeople.insert(
-                        FollowedPerson(id: authorId, initials: notice.initials, avatarPath: notice.avatarPath),
-                        at: 0
-                    )
+                if next, state.following, !followedPeople.contains(where: { $0.id == authorId }) {
+                    if let notice = followNotices.first(where: { $0.actorId == authorId }) {
+                        followedPeople.insert(
+                            FollowedPerson(id: authorId, initials: notice.initials, avatarPath: notice.avatarPath),
+                            at: 0
+                        )
+                    } else if let lover = loveNotices.lazy.compactMap(\.actor).first(where: { $0.id == authorId }) {
+                        followedPeople.insert(
+                            FollowedPerson(id: authorId, initials: lover.initials, avatarPath: lover.avatarPath),
+                            at: 0
+                        )
+                    }
                 }
             } catch {
                 guard !Task.isCancelled, self.followGeneration[authorId] == generation,
@@ -1117,6 +1165,9 @@ final class HomeViewModel {
         }
         for index in followNotices.indices where followNotices[index].actorId == authorId {
             followNotices[index].following = following
+        }
+        for index in loveNotices.indices where loveNotices[index].actor?.id == authorId {
+            loveNotices[index].actor?.following = following
         }
     }
 
@@ -1485,8 +1536,9 @@ final class HomeViewModel {
         blockedPeople = []
         blocksLoadState = .loading
         followNotices = []
+        loveNotices = []
         followNoticesLoadState = .loading
-        unreadFollowCount = 0
+        unreadNotificationCount = 0
         wantsFollowNotifications = false
         followBadgeRevision &+= 1
         followNoticesGeneration &+= 1
@@ -1570,6 +1622,7 @@ extension HomeViewModel: StackHost {
         insertSaved(card)
         applyLocal(id: card.id) { $0.decision = card.decision }
         profilePulseToken &+= 1
+        discloseLoveIfFirst(card)
     }
 
     func stackUnsaved(_ card: HomeCard) {

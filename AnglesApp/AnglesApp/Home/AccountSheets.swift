@@ -60,9 +60,10 @@ struct AccountSheets: ViewModifier {
                 FollowingSheet(
                     people: viewModel.followedPeople,
                     notices: viewModel.followNotices,
+                    loves: viewModel.loveNotices,
                     loadState: viewModel.followingLoadState,
                     noticesLoadState: viewModel.followNoticesLoadState,
-                    startsOnNotifications: peopleStartsOnNotifications || viewModel.unreadFollowCount > 0,
+                    startsOnNotifications: peopleStartsOnNotifications || viewModel.unreadNotificationCount > 0,
                     onRetry: {
                         Task {
                             await viewModel.loadFollowing()
@@ -85,6 +86,17 @@ struct AccountSheets: ViewModifier {
                             id: notice.actorId,
                             initials: notice.initials,
                             avatarPath: notice.avatarPath
+                        )
+                        showPeople = false
+                    },
+                    onFollowLover: { actor in
+                        viewModel.followBack(actor.id)
+                    },
+                    onOpenLover: { actor in
+                        pendingFollowed = FollowedPerson(
+                            id: actor.id,
+                            initials: actor.initials,
+                            avatarPath: actor.avatarPath
                         )
                         showPeople = false
                     },

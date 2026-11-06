@@ -85,6 +85,10 @@ export const users = pgTable(
     publishingSuspendedAt: timestamp("publishing_suspended_at", { withTimezone: true, mode: "date" }),
     /** Push when someone follows this account. The in-app list stays either way. */
     notifyFollows: boolean("notify_follows").notNull().default(true),
+    /** Push when someone loves this account's post. The in-app list stays either way. */
+    notifyLoves: boolean("notify_loves").notNull().default(true),
+    /** A love this account gives shows its name to the author; off, the author sees "Someone". */
+    shareLoveName: boolean("share_love_name").notNull().default(true),
     /** `house` is the one Angles account whose curated cards fill the stack after the community's. */
     kind: userKindEnum("kind").notNull().default("person"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
@@ -538,6 +542,8 @@ export const cardDecisions = pgTable(
     // The primary key leads with the user, so counting the saves *on* a card needs its own
     // index: ranking reads them and an author sees them on their own posts.
     index("card_decisions_card_saves_idx").on(table.cardId).where(sql`${table.kind} = 'save'`),
+    // Save rate needs every decision on a card, passes included.
+    index("card_decisions_card_idx").on(table.cardId, table.decidedAt),
     check("card_decisions_passes_range", sql`${table.passes} between 0 and 2`),
     check(
       "card_decisions_pass_counted",
@@ -591,6 +597,42 @@ export const followNotifications = pgTable(
     uniqueIndex("follow_notifications_unread_pair_idx")
       .on(table.recipientId, table.actorId)
       .where(sql`${table.readAt} is null`),
+  ],
+);
+
+/**
+ * One row per love of someone's card: a save that was not a save before. An unread pair
+ * on one card cannot stack, and the row goes away while unread if the save is taken back.
+ * `pushed_at` is set once the delayed push has run for it, sent or not.
+ */
+export const loveNotifications = pgTable(
+  "love_notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipientId: uuid("recipient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    /** The angle on screen when it was loved. */
+    style: styleEnum("style").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
+    pushedAt: timestamp("pushed_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    index("love_notifications_recipient_created_idx").on(table.recipientId, table.createdAt.desc()),
+    index("love_notifications_card_idx").on(table.cardId),
+    uniqueIndex("love_notifications_unread_idx")
+      .on(table.recipientId, table.actorId, table.cardId)
+      .where(sql`${table.readAt} is null`),
+    index("love_notifications_unpushed_idx").on(table.createdAt).where(sql`${table.pushedAt} is null`),
   ],
 );
 

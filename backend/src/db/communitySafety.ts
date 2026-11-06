@@ -5,7 +5,16 @@ import { avatarUrlFor } from "../lib/avatarUrl.js";
 import type { ReportReason } from "../lib/communitySafetyTypes.js";
 import type { StoredCardAuthor } from "../types/index.js";
 import { DbError, getDb, wrapDbError } from "./client.js";
-import { cardDecisions, cardReports, cards, followNotifications, follows, userBlocks, users } from "./schema.js";
+import {
+  cardDecisions,
+  cardReports,
+  cards,
+  followNotifications,
+  follows,
+  loveNotifications,
+  userBlocks,
+  users,
+} from "./schema.js";
 
 type Selectable = Pick<ReturnType<typeof getDb>, "select">;
 export type AppTransaction = Parameters<
@@ -150,6 +159,14 @@ export async function blockUser(blockedId: string): Promise<BlockWriteResult> {
               eq(followNotifications.recipientId, blockedId),
               eq(followNotifications.actorId, blockerId),
             ),
+          ),
+        );
+      await tx
+        .delete(loveNotifications)
+        .where(
+          or(
+            and(eq(loveNotifications.recipientId, blockerId), eq(loveNotifications.actorId, blockedId)),
+            and(eq(loveNotifications.recipientId, blockedId), eq(loveNotifications.actorId, blockerId)),
           ),
         );
 

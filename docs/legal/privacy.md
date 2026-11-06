@@ -1,6 +1,6 @@
 # Angles Privacy Policy
 
-Last updated: October 9, 2026
+Last updated: November 6, 2026
 
 Published at `https://useangles.app/privacy` (`ANGLES_PRIVACY_POLICY_URL`).
 
@@ -12,7 +12,7 @@ You may also complain to [Datatilsynet](https://www.datatilsynet.dk/), the Danis
 
 - **Apple sign-in and account information.** We receive an Apple account identifier and, when Apple provides them, your name and relay or account email address. We store account and session identifiers, your chosen display name or initials, and authentication/session records.
 - **Thoughts and reframes.** We process the text you submit, follow-up answers, generated reframes (in English and, when you write in another language, in that language), the AI model used, language, tags, category, mood, intensity, timeframe, safety classification, and related card metadata. Do not submit information you do not want processed.
-- **Cards and community activity.** Saved cards are private unless you choose to post them publicly. Public cards can be seen by other users. We process hearts, follows, blocks, and reports needed to provide and moderate the community.
+- **Cards and community activity.** Saved cards are private unless you choose to post them publicly. Public cards can be seen by other users. We process loves, passes, follows, blocks, and reports needed to provide and moderate the community.
 - **Profile photos.** If you choose a photo, we upload and store a JPEG avatar. Avatars are displayed with your public cards and profile activity.
 - **Subscription and purchase information.** Apple processes payment. We receive and verify signed product, entitlement, renewal/expiration, transaction, refund/revocation, and purchase-status information needed to bind membership to your Angles account, restore access, and maintain monthly credit periods. When you buy, the app gives Apple your Angles account identifier (a random ID, not your name or email) with the purchase so Apple's records can be matched to your account. We do not receive your full payment-card details.
 - **Usage and metering information.** We maintain account-linked monthly credit balances, request identifiers and text-free request fingerprints, operation status, the AI model used, rate/tariff versions, and abuse-limit counters. For each actual AI-provider attempt, including failed attempts, we record available or estimated token counts, provider request identifiers, success/failure status, and calculated company cost. The metering and provider-cost records do not contain your thought or generated reframe text. So that a lost connection does not charge you twice, we keep the finished response to each request for one hour, encrypted under a key that only your device holds and that we do not store; we cannot read it, and it is deleted after that hour or with your account.
@@ -44,13 +44,13 @@ Angles does not use what you write to train or improve any model. We send it onl
 
 ## How Home is ordered
 
-Home shows public cards in an order chosen for you. The order uses how recent and how hearted each post is, the life areas and moods of the cards you write and the angles you heart, and the people you follow. It does not use how long you look at a card, and it is never used for advertising. Author pages and your Profile are plain lists and are not personalized. Deleting a card or removing a heart takes it out of this order.
+Home shows public cards in an order chosen for you. The order uses how recent each post is, how often the people who saw it loved it, the life areas, moods, and topics of the cards you write and love, the cards you pass, and the people you follow. It does not use how long you look at a card, and it is never used for advertising. Author pages and your Profile are plain lists and are not personalized. Deleting a card or removing a love takes it out of this order.
 
 ## Private and public content
 
 Cards are stored privately unless you choose to post them. A public card, its generated English reframes, author initials/avatar, and date may be visible to other users. A reframe in your own language is shown only to you. Making a card private removes it from public surfaces. Other users may have previously seen or captured public content.
 
-Hearts on another person's card remain available only while that card remains public. Follows are visible through the app's social features as implemented. Blocking removes the affected public content and follow/save relationships between those accounts from their in-app experiences and records the block. Reports include the reported card, reporter, selected reason, and time so we can review and enforce community rules. Reporting removes that card from the reporter's experience; repeated reports can automatically make a card private.
+Cards you love from another person remain available only while that card remains public. When you love a card, its author is told, with your name and photo, unless you turn off **Show my name on loves** in Settings; then they see that someone loved it. Taking the love back before they read it removes that notice. Follows are visible through the app's social features as implemented. Blocking removes the affected public content and follow/save relationships between those accounts from their in-app experiences and records the block. Reports include the reported card, reporter, selected reason, and time so we can review and enforce community rules. Reporting removes that card from the reporter's experience; repeated reports can automatically make a card private.
 
 ## Sharing and service providers
 
@@ -73,7 +73,7 @@ You can delete individual cards in the app. You can delete your account in Setti
 
 - **Contract** (GDPR Article 6(1)(b)): your account, saved cards, subscription, credits, and the community features you choose to use.
 - **Explicit consent** (Articles 6(1)(a) and 9(2)(a)): what you write can reveal information about your health or mental state. We process your thoughts, follow-up answers, and the mood and life-area details derived from them, send them to the AI providers, and use them to order Home, only with the consent you give on the **Before you start** screen. You can withdraw it at any time by deleting cards or your account; that does not affect processing that already happened, and Angles cannot write reframes without it.
-- **Legitimate interests** (Article 6(1)(f)): keeping the service secure, preventing abuse, moderating public posts, handling reports and blocks, and using your hearts and follows to order Home.
+- **Legitimate interests** (Article 6(1)(f)): keeping the service secure, preventing abuse, moderating public posts, handling reports and blocks, telling authors about loves, and using your loves, passes, and follows to order Home.
 - **Legal obligation** (Article 6(1)(c)): accounting and tax records, and answering lawful requests from authorities.
 
 ## Security and international transfers

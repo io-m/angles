@@ -579,14 +579,36 @@ struct FollowNotificationItem: Decodable, Equatable, Sendable {
     let actor: StoredCardAuthor
 }
 
-struct FollowNotificationsResponse: Decodable, Equatable, Sendable {
-    let unreadCount: Int
-    let notifications: [FollowNotificationItem]
+/// Someone loved one of the viewer's own posts.
+struct LoveNotificationItem: Decodable, Equatable, Sendable {
+    struct Card: Decodable, Equatable, Sendable {
+        let id: String
+        let thought: String
+    }
+
+    let id: String
+    let createdAt: String
+    let readAt: String?
+    /// The angle on screen when they loved it.
+    let style: Style
+    /// The viewer's own card, in their own words.
+    let card: Card
+    /// Absent when the lover keeps their name off loves: show "Someone".
+    let actor: StoredCardAuthor?
 }
 
-/// The server also accepts build 18's `{ before }`; this app only sends `throughId`.
+struct FollowNotificationsResponse: Decodable, Equatable, Sendable {
+    /// Unread follows and loves together: the badge.
+    let unreadCount: Int
+    let notifications: [FollowNotificationItem]
+    let loves: [LoveNotificationItem]
+}
+
+/// `throughId` reads follows and `loveThroughId` loves, each up to the newest on screen.
+/// The server also accepts build 18's `{ before }`; this app never sends it.
 struct ReadNotificationsRequest: Encodable, Equatable, Sendable {
-    let throughId: String
+    let throughId: String?
+    let loveThroughId: String?
 }
 
 struct ReadNotificationsResponse: Decodable, Equatable, Sendable {
@@ -594,8 +616,23 @@ struct ReadNotificationsResponse: Decodable, Equatable, Sendable {
     let unreadCount: Int
 }
 
-struct NotifyFollowsBody: Decodable, Equatable, Sendable {
-    let notifyFollows: Bool
+struct NotificationPreferences: Codable, Equatable, Sendable {
+    /// Push when someone follows this account.
+    var notifyFollows: Bool
+    /// Push when someone loves this account's post.
+    var notifyLoves: Bool
+    /// Loves this account gives show its name to the author.
+    var shareLoveName: Bool
+}
+
+/// `PATCH /profile/notifications` sends any of the switches and gets all of them back.
+typealias NotifyFollowsBody = NotificationPreferences
+
+/// Any subset of the switches; `nil` fields are left out of the body.
+struct NotificationPreferencesPatch: Encodable, Equatable, Sendable {
+    var notifyFollows: Bool?
+    var notifyLoves: Bool?
+    var shareLoveName: Bool?
 }
 
 struct DeviceRegistrationBody: Decodable, Equatable, Sendable {
@@ -645,6 +682,64 @@ struct FollowNotice: Identifiable, Equatable, Sendable {
     }
 }
 
+struct LoveNotice: Identifiable, Equatable, Sendable {
+    struct Actor: Equatable, Sendable {
+        let id: UUID
+        let initials: String
+        let displayName: String?
+        let avatarPath: String?
+        var following: Bool
+
+        var publicLabel: String {
+            let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !name.isEmpty {
+                return name
+            }
+            let trimmed = initials.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Someone" : trimmed
+        }
+    }
+
+    let id: UUID
+    let createdAt: Date
+    var readAt: Date?
+    let style: Style
+    let cardId: UUID
+    let thought: String
+    /// `nil` when the lover keeps their name off loves.
+    var actor: Actor?
+
+    var publicLabel: String {
+        actor?.publicLabel ?? "Someone"
+    }
+
+    init?(item: LoveNotificationItem) {
+        guard let id = UUID(uuidString: item.id),
+              let cardId = UUID(uuidString: item.card.id),
+              let createdAt = ISO8601Dates.date(from: item.createdAt)
+        else {
+            return nil
+        }
+        self.id = id
+        self.createdAt = createdAt
+        self.readAt = item.readAt.flatMap(ISO8601Dates.date(from:))
+        self.style = item.style
+        self.cardId = cardId
+        self.thought = item.card.thought
+        if let author = item.actor, let actorId = UUID(uuidString: author.id) {
+            actor = Actor(
+                id: actorId,
+                initials: author.initials,
+                displayName: author.displayName,
+                avatarPath: author.avatarUrl,
+                following: author.following
+            )
+        } else {
+            actor = nil
+        }
+    }
+}
+
 struct SessionBody: Codable, Equatable, Sendable {
     let id: String
     let initials: String
@@ -655,6 +750,10 @@ struct SessionBody: Codable, Equatable, Sendable {
     let avatarUrl: String?
     /// Push when someone follows this account. The in-app list stays either way.
     let notifyFollows: Bool
+    /// Push when someone loves this account's post. The in-app list stays either way.
+    let notifyLoves: Bool
+    /// Loves this account gives show its name to the author.
+    let shareLoveName: Bool
 
     init(
         id: String,
@@ -664,7 +763,9 @@ struct SessionBody: Codable, Equatable, Sendable {
         tasteConsumedAt: String?,
         termsAcceptedAt: String?,
         avatarUrl: String?,
-        notifyFollows: Bool = true
+        notifyFollows: Bool = true,
+        notifyLoves: Bool = true,
+        shareLoveName: Bool = true
     ) {
         self.id = id
         self.initials = initials
@@ -674,6 +775,32 @@ struct SessionBody: Codable, Equatable, Sendable {
         self.termsAcceptedAt = termsAcceptedAt
         self.avatarUrl = avatarUrl
         self.notifyFollows = notifyFollows
+        self.notifyLoves = notifyLoves
+        self.shareLoveName = shareLoveName
+    }
+
+    var notificationPreferences: NotificationPreferences {
+        NotificationPreferences(notifyFollows: notifyFollows, notifyLoves: notifyLoves, shareLoveName: shareLoveName)
+    }
+
+    /// The same session with a change: the fields left `nil` keep their value.
+    func with(
+        tasteCompletedAt: String? = nil,
+        termsAcceptedAt: String? = nil,
+        preferences: NotificationPreferences? = nil
+    ) -> SessionBody {
+        SessionBody(
+            id: id,
+            initials: initials,
+            name: name,
+            tasteCompletedAt: tasteCompletedAt ?? self.tasteCompletedAt,
+            tasteConsumedAt: tasteConsumedAt,
+            termsAcceptedAt: termsAcceptedAt ?? self.termsAcceptedAt,
+            avatarUrl: avatarUrl,
+            notifyFollows: preferences?.notifyFollows ?? notifyFollows,
+            notifyLoves: preferences?.notifyLoves ?? notifyLoves,
+            shareLoveName: preferences?.shareLoveName ?? shareLoveName
+        )
     }
 
     init(from decoder: Decoder) throws {
@@ -686,6 +813,8 @@ struct SessionBody: Codable, Equatable, Sendable {
         termsAcceptedAt = try container.decodeIfPresent(String.self, forKey: .termsAcceptedAt)
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         notifyFollows = try container.decodeIfPresent(Bool.self, forKey: .notifyFollows) ?? true
+        notifyLoves = try container.decodeIfPresent(Bool.self, forKey: .notifyLoves) ?? true
+        shareLoveName = try container.decodeIfPresent(Bool.self, forKey: .shareLoveName) ?? true
     }
 
     var hasUsedTaste: Bool {
@@ -709,6 +838,8 @@ struct SessionBody: Codable, Equatable, Sendable {
         try container.encodeIfPresent(termsAcceptedAt, forKey: .termsAcceptedAt)
         try container.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
         try container.encode(notifyFollows, forKey: .notifyFollows)
+        try container.encode(notifyLoves, forKey: .notifyLoves)
+        try container.encode(shareLoveName, forKey: .shareLoveName)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -720,6 +851,8 @@ struct SessionBody: Codable, Equatable, Sendable {
         case termsAcceptedAt
         case avatarUrl
         case notifyFollows
+        case notifyLoves
+        case shareLoveName
     }
 }
 

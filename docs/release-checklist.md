@@ -26,7 +26,7 @@ To review reports: [https://useangles.app/admin](https://useangles.app/admin) af
 
 1. **Report + email (wife’s phone):** She installs TestFlight (same internal group or external tester), signs in with **her** Apple ID, opens Home, reports **one of your** public cards (⋯ or long-press → Report). You check `info@bithavn.app`, then `keep` that card at [https://useangles.app/admin](https://useangles.app/admin) (or SSH `pnpm reports` and `keep <cardId>`).
 2. **Delete account (optional throwaway):** On a test account you do not need, Settings → Delete account → confirm Apple sheet. Confirm Sign in with Apple no longer lists Angles; Railway logs show no `apple_revoke_failed`.
-3. **Latest build:** Use TestFlight build **40**. Attach that build to version 1.0 before submit.
+3. **Latest build:** Use TestFlight build **44**. Attach that build to version 1.0 before submit.
 4. **Follow push (two TestFlight phones):** see "Follow push" below.
 
 ### 3a. Follow push — APNs key (done; rotated 28 October 2026)

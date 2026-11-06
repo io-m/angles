@@ -494,7 +494,7 @@ private struct StackHeaderContainer: View {
         let stack = viewModel.stack
         StackHeader(
             filterCount: stack.filter.appliedCount,
-            hasUnread: viewModel.unreadFollowCount > 0,
+            hasUnread: viewModel.unreadNotificationCount > 0,
             styleSignal: stack.topStyleSignal,
             onFilter: { screenState.showFilter = true },
             onNotifications: { screenState.openNotifications() },
@@ -1032,9 +1032,16 @@ private struct StackToast: View {
     private var theme: ColorTokens.Theme { ColorTokens.theme(colorScheme) }
 
     var body: some View {
-        Label(toast.label, systemImage: toast.label == "Posted" ? "globe" : "lock.fill")
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(theme.ink)
+        VStack(spacing: 2) {
+            Label(toast.label, systemImage: toast.symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.ink)
+            if let detail = toast.detail {
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(theme.muted)
+            }
+        }
             .padding(.horizontal, 18)
             .padding(.vertical, 11)
             .background(theme.paper, in: Capsule())

@@ -17,8 +17,9 @@ The filter at the top left narrows the stack to some life areas, some moods, or 
 ## What you see first
 
 - **What is new.** A post from today beats one from last week unless saves, follows, and your themes together make up the difference.
-- **A mix of people.** At most 2 cards per author in 12, and never the same author twice in a row when someone else is available. In a community of two or three people the stack alternates between them.
-- **A mix of themes.** About 40% close to what you write and save, 35% next to it, and 25% something else. A new account with little history gets the plain ranked order.
+- **New posts get read.** About 1 card in 5 is one that fewer than 8 people have decided on yet, so a fresh post is seen before anyone can say whether it is good.
+- **A mix of people.** At most 2 cards per author in 12, about a tenth of a whole visit for any one author (at least 2), and never the same author twice in a row when someone else is available. In a community of two or three people the stack alternates between them.
+- **A mix of themes.** About 40% close to what you write and save, 35% next to it, and 25% something else. The 25% is held for you, not just allowed, as long as such cards are left. A new account with little history gets the plain ranked order.
 - **Pacing.** Two heavy cards never sit back to back while a lighter one is left. A card is heavy when it is about real harm (the cook skipped Witty and Tough for it), about grief and loss, or has intensity 4 or more. At most two cards from one life area in a row, and at most 6 of the most intense posts in 12.
 
 ## Your own cards
@@ -41,11 +42,17 @@ It then opens on the first angle you have not seen, in the order the cook ranked
 
 Rewind walks back through this visit's decisions one at a time and puts each card back exactly as it was before.
 
+## Telling the author
+
+A save tells the author, unless the card is From Angles. They see it in the bell list ("Loved your Witty angle", with two lines of their own thought) and, two minutes later, as a push: "Ana" or "Ana and 2 others", "Loved your post", never the words of the card. The wait means a swipe you Rewind straight away tells nobody, and loves that arrive together become one push. A card pushes at most once every 30 minutes; loves in between go out together at the end of the wait. Unsaving or Rewind takes the love back while the author has not read it yet.
+
+Your name is on your loves unless you turn off Settings → Show my name on loves; then the author sees "Someone". The first time you love a card the app says so once. Settings → Loves on my posts turns off the push for loves on your own posts; the bell list keeps them. Blocking someone removes their loves and yours between you.
+
 ## Follow vs discovery
 
 Following someone is a strong nudge, never a filter:
 
-- A followed author's post scores higher, worth about 7 hours of freshness on a new post.
+- A followed author's post scores higher, worth about half a day of freshness on a new post.
 - When you follow **3 or more people who posted in the last 7 days**, about a quarter of the stack (3 in 12) comes from them, spread through it rather than stacked at the top.
 - Followed authors never take more than half. The rest is always discovery.
 
@@ -72,14 +79,14 @@ Each card gets one number. These are the weights:
 
 | Term | Weight | What it measures |
 | --- | --- | --- |
-| Freshness | 2.0 | How new the post is; halves roughly every 17 hours |
-| Saves | 0.8 | How many other people saved it; grows slowly and stops at 10, so one popular card cannot take over. Passes never count against a card. |
-| Your themes | 0.7 | How close its life area and mood are to what you write (weight 1) and save (1.5), scaled by how much history you have. A pass takes a little (0.3) from that card's themes, for you only, never below zero. |
+| Freshness | 2.0 | How new the post is: about half its worth after a day, a third after two, then a small tail that lasts about two weeks |
+| Kept | 0.6 | Of the people who decided on it, how many saved it, compared with cards of the same weight. A heavy card is only compared with heavy cards, so a grief post is never marked down because people pass grief more often than a joke. A card with few decisions sits in the middle until there are enough to say. |
+| Reach | 0.2 | How many other people saved it; grows slowly and stops at 10, so one popular card cannot take over |
+| Your themes | 0.7 | How close its life area, mood, and topics are to what you write (weight 1) and save (1.5), scaled by how much history you have. A pass takes a little (0.3) from that card's themes, for you only, never below zero. |
 | Followed | 0.6 | You follow the author |
-| Second chance | 0.25 | Nobody has saved it yet and it is 1 to 14 days old (fading out by 30), so no post dies unseen |
 | Variety | 0.15 | A small, stable shuffle per visit, so two visits do not look identical |
 | Coming back | −0.75 | You passed it once and it is back on an angle you have not seen |
 
 ## Checking it
 
-`pnpm db:feed-audit --viewer=<email>` walks one visit as that account, page after page, and prints each card's age, life area, theme bucket, author, and flags (followed, heavy, returning), with no thought text. It ends with the numbers that must hold: no repeats, no own or saved cards, no heavy cards side by side, no page over the returning cap, no community card after the first house card, and the newest post near the top. It is in the production image and runs read-only over `railway ssh`. `pnpm db:seed-realistic --viewer=<email>` gives the fixture community readers who save and pass, and that account a small history.
+`pnpm db:feed-audit --viewer=<email>` walks one visit as that account, page after page, and prints each card's age, life area, theme bucket, author, and flags (followed, heavy, returning), with no thought text. It ends with the numbers that must hold: no repeats, no own or saved cards, no heavy cards side by side, no page over the returning cap, no community card after the first house card, and the newest post near the top. It also prints how many authors the visit reached, the top author's share, the share of cards from outside your themes, and how long each page took. It is in the production image and runs read-only over `railway ssh`. `pnpm db:seed-realistic --viewer=<email>` gives the fixture community readers who save and pass, and that account a small history.

@@ -28,6 +28,9 @@ struct SettingsView: View {
     @State private var deleteAccountError: String?
     @State private var photoItem: PhotosPickerItem?
     @State private var pushStatus: UNAuthorizationStatus?
+    /// A switch that is waiting on the server shows its new value until the answer comes.
+    @State private var pendingSwitches: [String: Bool] = [:]
+    @Environment(SessionStore.self) private var sessionStore: SessionStore?
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var nameFocused: Bool
 
@@ -42,6 +45,28 @@ struct SettingsView: View {
 
                 VStack(spacing: 0) {
                     followsRow
+
+                    if let preferences = sessionStore?.session?.notificationPreferences {
+                        switchRow(
+                            symbol: "heart",
+                            title: "Loves on my posts",
+                            subtitle: "A notification when someone loves your post",
+                            isOn: preferences.notifyLoves
+                        ) { on in
+                            NotificationPreferencesPatch(notifyLoves: on)
+                        }
+
+                        switchRow(
+                            symbol: "person.crop.circle.badge.checkmark",
+                            title: "Show my name on loves",
+                            subtitle: preferences.shareLoveName
+                                ? "Authors see that you loved their post"
+                                : "Authors see “Someone” loved their post",
+                            isOn: preferences.shareLoveName
+                        ) { on in
+                            NotificationPreferencesPatch(shareLoveName: on)
+                        }
+                    }
 
                     settingsRow(
                         symbol: "hand.raised",
@@ -241,7 +266,7 @@ struct SettingsView: View {
     private var followsRow: some View {
         settingsRow(
             symbol: "bell",
-            title: "Follows",
+            title: "Notifications",
             subtitle: followsSubtitle,
             showsDivider: true
         ) {
@@ -257,7 +282,7 @@ struct SettingsView: View {
 
     private var followsSubtitle: String {
         guard let pushStatus else {
-            return "When someone follows you"
+            return "Follows and loves"
         }
         if FollowPush.isAllowed(pushStatus) {
             return "On · iOS Settings"
@@ -452,6 +477,55 @@ struct SettingsView: View {
             EmptyView()
         }
         .disabled(destination == nil)
+    }
+
+    /// An account switch kept on the server. It shows the new value at once and goes back
+    /// if the write fails.
+    private func switchRow(
+        symbol: String,
+        title: String,
+        subtitle: String,
+        isOn: Bool,
+        patch: @escaping (Bool) -> NotificationPreferencesPatch
+    ) -> some View {
+        let shown = pendingSwitches[title] ?? isOn
+        return VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                settingsSymbolBadge(symbol: symbol)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.ink)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(theme.muted)
+                }
+
+                Spacer(minLength: 8)
+
+                Toggle(
+                    title,
+                    isOn: Binding(
+                        get: { shown },
+                        set: { next in
+                            pendingSwitches[title] = next
+                            Task {
+                                _ = await sessionStore?.setNotificationPreferences(patch(next))
+                                pendingSwitches[title] = nil
+                            }
+                        }
+                    )
+                )
+                .labelsHidden()
+                .tint(theme.ink)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.vertical, 12)
+            .accessibilityElement(children: .combine)
+
+            rowDivider
+        }
     }
 
     private func settingsRow<Trailing: View>(

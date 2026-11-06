@@ -219,6 +219,9 @@ struct AppRoot: View {
             }
         }
         .environment(\.profileIdentity, identityStore)
+        .environment(sessionStore)
+        .onChange(of: sessionStore.session?.id, initial: true) { _, _ in syncLoveDisclosure() }
+        .onChange(of: sessionStore.session?.shareLoveName) { _, _ in syncLoveDisclosure() }
         .onAppear(perform: configureComposeContext)
         .task(id: reviewCoordinator.promptGeneration) {
             guard reviewCoordinator.promptGeneration > 0 else {
@@ -732,17 +735,28 @@ struct AppRoot: View {
     /// The icon number is the unread count, set every time it is read so a stale number from
     /// a push cannot outlive it.
     private func syncAppBadge() {
-        let count = sessionStore.isSignedIn ? viewModel.unreadFollowCount : 0
+        let count = sessionStore.isSignedIn ? viewModel.unreadNotificationCount : 0
         UNUserNotificationCenter.current().setBadgeCount(count)
     }
 
     /// Lock-screen tap or action. View profile opens their posts; Follow back opens People
     /// and follows. Pending state waits until Home is revealed — the same gate as widget links —
     /// so enterHome cannot wipe the author page and the cover cannot hide it.
+    private func syncLoveDisclosure() {
+        viewModel.loveDisclosure = (sessionStore.session?.id, sessionStore.session?.shareLoveName ?? true)
+    }
+
     private func consumeFollowPush() {
-        guard sessionStore.isSignedIn,
-              isHomeRevealed,
-              let actorId = pushCenter.pendingActorID,
+        guard sessionStore.isSignedIn, isHomeRevealed else {
+            return
+        }
+        if pushCenter.pendingNotifications {
+            pushCenter.clearPending()
+            viewModel.requestOpenFollowNotifications()
+            showOwnProfile()
+            return
+        }
+        guard let actorId = pushCenter.pendingActorID,
               let id = FollowPush.uuid(from: actorId)
         else {
             return
@@ -1071,6 +1085,11 @@ private struct RootChangeObservers: View {
             }
             .onChange(of: pushCenter.pendingActorID) { _, actorId in
                 if actorId != nil {
+                    onPushActor()
+                }
+            }
+            .onChange(of: pushCenter.pendingNotifications) { _, pending in
+                if pending {
                     onPushActor()
                 }
             }

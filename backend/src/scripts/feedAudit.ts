@@ -15,7 +15,7 @@
  * after every community card. Read-only: it writes no decisions. Prints no thought or
  * answer text.
  */
-import { and, count, eq, ne, sql } from "drizzle-orm";
+import { and, count, eq, inArray, ne, sql } from "drizzle-orm";
 import { runAsOwner } from "../lib/authStub.js";
 import { classifyTheme, returningCap, type ThemeBucket } from "../lib/feedRanking.js";
 import type { StoredCard } from "../types/index.js";
@@ -162,10 +162,13 @@ async function main(): Promise<void> {
 
     // One visit, page after page, the way the phone asks when five cards are left.
     const pages: StoredCard[][] = [];
+    const pageMs: number[] = [];
     const seen: string[] = [];
     let exhausted = false;
     for (let index = 0; index < pageCount && !exhausted; index += 1) {
+      const began = performance.now();
       const page = await listStack({ limit: STACK_PAGE_SIZE, session, seen: [...seen] }, true);
+      pageMs.push(Math.round(performance.now() - began));
       pages.push(page.cards);
       seen.push(...page.cards.map((card) => card.id));
       exhausted = page.exhausted;
@@ -210,6 +213,28 @@ async function main(): Promise<void> {
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
     const newestSlot = newestOther ? walked.findIndex((card) => card.id === newestOther.id) + 1 : null;
 
+    const community = walked.filter((card) => !card.isHouse);
+    const visitAuthors = new Map<string, number>();
+    for (const card of community) {
+      visitAuthors.set(card.author.id, (visitAuthors.get(card.author.id) ?? 0) + 1);
+    }
+    const visitTopAuthorShare = community.length
+      ? Math.round((100 * Math.max(0, ...visitAuthors.values())) / community.length)
+      : 0;
+    const exploreShare = community.length
+      ? Math.round((100 * community.filter((card) => bucketOf(card) === "explore").length) / community.length)
+      : 0;
+    const walkedIds = walked.map((card) => card.id);
+    const decisionCounts = walkedIds.length
+      ? await db
+          .select({ cardId: cardDecisions.cardId, decisions: count() })
+          .from(cardDecisions)
+          .where(and(inArray(cardDecisions.cardId, walkedIds), ne(cardDecisions.userId, viewer.id)))
+          .groupBy(cardDecisions.cardId)
+      : [];
+    const decisionsById = new Map(decisionCounts.map((row) => [row.cardId, row.decisions]));
+    const barelyDecided = community.filter((card) => (decisionsById.get(card.id) ?? 0) < 8).length;
+
     const summary = {
       viewer: { email, name: viewer.name, initials: viewer.initials },
       startedAt: startedAt.toISOString(),
@@ -228,6 +253,11 @@ async function main(): Promise<void> {
       returningOverCapPages: returningOverCap,
       communityAfterHouse,
       newestOtherSlot: newestSlot,
+      visitAuthors: visitAuthors.size,
+      visitTopAuthorShare,
+      exploreShare,
+      barelyDecided,
+      pageMs,
     };
 
     if (asJson) {
@@ -249,6 +279,12 @@ async function main(): Promise<void> {
     log(`Pages over the returning cap of ${returningCap(STACK_PAGE_SIZE)}: ${returningOverCap} (want 0)`);
     log(`Community cards after the first house card: ${communityAfterHouse} (want 0)`);
     log(`Newest community post is card ${newestSlot ?? "not reached"} (want 1 to 6)`);
+    log(
+      `Across the visit: ${visitAuthors.size} authors, top author ${visitTopAuthorShare}% of community cards (want about 10% or less)`,
+    );
+    log(`Explore cards ${exploreShare}% of community cards (want about 25% once themes are known)`);
+    log(`Cards fewer than 8 people have decided on: ${barelyDecided} of ${community.length}`);
+    log(`Page times: ${pageMs.map((ms) => `${ms} ms`).join(", ")} (the first page builds the visit)`);
   });
 }
 

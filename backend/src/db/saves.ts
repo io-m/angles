@@ -49,6 +49,43 @@ export async function loadCardSaveTotals(
   return totals;
 }
 
+export type DecisionTotals = { saves: number; decisions: number };
+
+/**
+ * Per card, how many people saved it and how many decided on it at all (saved or passed):
+ * a save rate's numerator and denominator. Same window rules as `loadCardSaveTotals`.
+ */
+export async function loadCardDecisionTotals(
+  cardIds: string[],
+  db: Selectable = getDb(),
+  options: SaveWindow = {},
+): Promise<Map<string, DecisionTotals>> {
+  const totals = new Map<string, DecisionTotals>();
+  if (cardIds.length === 0) {
+    return totals;
+  }
+  const filters: SQL[] = [inArray(cardDecisions.cardId, cardIds) as SQL];
+  if (options.before) {
+    filters.push(lte(cardDecisions.decidedAt, options.before));
+  }
+  if (options.excludeUserId) {
+    filters.push(ne(cardDecisions.userId, options.excludeUserId));
+  }
+  const rows = await db
+    .select({
+      cardId: cardDecisions.cardId,
+      saves: sql<number>`count(*) filter (where ${cardDecisions.kind} = 'save')::int`,
+      decisions: sql<number>`count(*)::int`,
+    })
+    .from(cardDecisions)
+    .where(and(...filters))
+    .groupBy(cardDecisions.cardId);
+  for (const row of rows) {
+    totals.set(row.cardId, { saves: row.saves, decisions: row.decisions });
+  }
+  return totals;
+}
+
 /** Saves per card and the angle that was on screen. Read only for the author's own posts. */
 export async function loadSaveCountsByStyle(
   cardIds: string[],

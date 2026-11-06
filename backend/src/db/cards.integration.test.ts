@@ -91,15 +91,16 @@ const {
   startMeterOperation,
 } = await import("./metering.js");
 const { openReplay, parseReplayKey, sealReplay } = await import("../lib/reframeReplay.js");
-const { listPublicCardsForUser, listStack } = await import("./stack.js");
+const { clearStackCache, listPublicCardsForUser, listStack } = await import("./stack.js");
 const { clearDecision, writeDecision } = await import("./decisions.js");
 const { followUser, unfollowUser } = await import("./follows.js");
+const { deliverLovePushes, markLoveNotificationsRead } = await import("./loveNotifications.js");
 const {
   deliverFollowPush,
   listFollowNotifications,
   markFollowNotificationsRead,
   registerDeviceToken,
-  setNotifyFollows,
+  setNotificationPreferences,
 } = await import("./followNotifications.js");
 const {
   deleteReportedCard,
@@ -119,6 +120,7 @@ const {
   deviceTokens,
   followNotifications,
   follows,
+  loveNotifications,
   meterOperations,
   subscriptionEntitlements,
   subscriptionEvents,
@@ -211,10 +213,11 @@ describe.skipIf(!testUrl)("cards integration", () => {
 
   beforeEach(async () => {
     process.env.USAGE_ENFORCEMENT = "off";
+    clearStackCache();
     await getSql()`
       TRUNCATE llm_call_usage, credit_adjustments, meter_operations, daily_usage, taste_usage,
         usage_periods, subscription_events, subscription_entitlements, user_blocks, card_reports,
-        follow_notifications, device_tokens, follows, card_decisions, card_reframes, card_tags, cards,
+        follow_notifications, love_notifications, device_tokens, follows, card_decisions, card_reframes, card_tags, cards,
         tags, category_proposals
         RESTART IDENTITY CASCADE
     `;
@@ -1535,6 +1538,132 @@ describe.skipIf(!testUrl)("cards integration", () => {
     expect(await getDb().select().from(cardDecisions)).toHaveLength(0);
   });
 
+  it("tells the author about a new love, and takes it back on unsave or rewind", async () => {
+    const theirs = await insertOtherCard({ thought: "A card someone will love.", isPublic: true });
+    const lovesFor = () => getDb().select().from(loveNotifications).where(eq(loveNotifications.cardId, theirs));
+
+    const first = await save(theirs, "hopeful");
+    expect(first.ok && first.loved).toBe(true);
+    expect(await lovesFor()).toMatchObject([
+      { recipientId: OTHER_USER_ID, actorId: DEV_USER_ID, style: "hopeful", readAt: null },
+    ]);
+    // A repeated save is the same love.
+    const again = await save(theirs, "hopeful");
+    expect(again.ok && again.loved).toBe(false);
+    expect(await lovesFor()).toHaveLength(1);
+
+    expect((await pass(theirs, [...LEGACY_STYLES], 2)).ok).toBe(true);
+    expect(await lovesFor()).toHaveLength(0);
+
+    expect((await save(theirs)).ok).toBe(true);
+    expect(await clearDecision(theirs)).toEqual({ ok: true });
+    expect(await lovesFor()).toHaveLength(0);
+
+    // From Angles never hears about loves.
+    const house = await insertOtherCard({ thought: "A house card.", isPublic: true, authorId: HOUSE_USER_ID });
+    const houseSave = await save(house);
+    expect(houseSave.ok && houseSave.loved).toBe(false);
+  });
+
+  it("lists loves to the author, named only when the lover allows it, and reads them", async () => {
+    const theirs = await insertOtherCard({ thought: "A card someone will love.", isPublic: true });
+    expect((await save(theirs, "witty")).ok).toBe(true);
+    try {
+      const named = await runAsOwner(OTHER_USER_ID, () => listFollowNotifications());
+      expect(named.unreadCount).toBe(1);
+      expect(named.loves).toMatchObject([
+        { style: "witty", readAt: null, card: { id: theirs, thought: "A card someone will love." }, actor: { id: DEV_USER_ID } },
+      ]);
+
+      await setNotificationPreferences({ shareLoveName: false });
+      const unnamed = await runAsOwner(OTHER_USER_ID, () => listFollowNotifications());
+      expect(unnamed.loves[0]?.actor).toBeUndefined();
+
+      const loveId = unnamed.loves[0]?.id as string;
+      // Nobody else can read someone's love.
+      expect(await markLoveNotificationsRead(loveId)).toBe(0);
+      expect(await runAsOwner(OTHER_USER_ID, () => markLoveNotificationsRead(loveId))).toBe(0);
+      expect((await runAsOwner(OTHER_USER_ID, () => listFollowNotifications())).loves[0]?.readAt).not.toBeNull();
+
+      // A read love stays when the save is taken back; an unread one would not.
+      expect((await pass(theirs, [...LEGACY_STYLES], 2)).ok).toBe(true);
+      expect(await getDb().select().from(loveNotifications)).toHaveLength(1);
+
+      await blockUser(OTHER_USER_ID);
+      expect(await getDb().select().from(loveNotifications)).toHaveLength(0);
+    } finally {
+      await setNotificationPreferences({ shareLoveName: true });
+    }
+  });
+
+  it("pushes a card's loves once, together, and waits out the quiet window", async () => {
+    const theirs = await insertOtherCard({ thought: "A card someone will love.", isPublic: true });
+    const THIRD_ID = "00000000-0000-4000-8000-000000000098";
+    await ensureUser(THIRD_ID);
+    const previous = {
+      APNS_KEY: process.env.APNS_KEY,
+      APNS_KEY_ID: process.env.APNS_KEY_ID,
+      APNS_TEAM_ID: process.env.APNS_TEAM_ID,
+      APNS_BUNDLE_ID: process.env.APNS_BUNDLE_ID,
+    };
+    const sent: { title: string; body: string; collapseId: string; actorId?: string; cardId?: string }[] = [];
+    const record = async (alert: { title: string; body: string; collapseId: string; actorId?: string; cardId?: string }) => {
+      sent.push({ title: alert.title, body: alert.body, collapseId: alert.collapseId, actorId: alert.actorId, cardId: alert.cardId });
+      return "sent" as const;
+    };
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      process.env.APNS_KEY = "test-key";
+      process.env.APNS_KEY_ID = "KEYID12345";
+      process.env.APNS_TEAM_ID = "TEAMID1234";
+      process.env.APNS_BUNDLE_ID = "app.angles.ios";
+      await runAsOwner(OTHER_USER_ID, () => registerDeviceToken("ef".repeat(32), "sandbox"));
+
+      expect((await save(theirs)).ok).toBe(true);
+      const now = new Date();
+      const [viewer] = await getDb().select({ name: users.name }).from(users).where(eq(users.id, DEV_USER_ID));
+      expect(await deliverLovePushes(theirs, record, now)).toBe("sent");
+      expect(sent).toEqual([
+        {
+          title: viewer?.name.trim() || "Someone",
+          body: "Loved your post",
+          collapseId: `love-${theirs}`,
+          actorId: DEV_USER_ID,
+          cardId: theirs,
+        },
+      ]);
+      expect(await deliverLovePushes(theirs, record, now)).toBe("none");
+
+      await getDb()
+        .insert(cardDecisions)
+        .values({ userId: THIRD_ID, cardId: theirs, kind: "save", style: "stoic", checkedStyles: ["stoic"], passes: 0 });
+      await getDb().insert(loveNotifications).values({ recipientId: OTHER_USER_ID, actorId: THIRD_ID, cardId: theirs, style: "stoic" });
+      expect(await deliverLovePushes(theirs, record, new Date(now.getTime() + 60_000))).toBe("throttled");
+      expect(sent).toHaveLength(1);
+
+      const later = new Date(now.getTime() + 31 * 60_000);
+      expect(await deliverLovePushes(theirs, record, later)).toBe("sent");
+      expect(sent[1]).toMatchObject({ title: "AL", body: "Loved your post", cardId: theirs });
+
+      await runAsOwner(OTHER_USER_ID, () => setNotificationPreferences({ notifyLoves: false }));
+      await getDb().delete(loveNotifications);
+      await getDb().insert(loveNotifications).values({ recipientId: OTHER_USER_ID, actorId: THIRD_ID, cardId: theirs, style: "stoic" });
+      expect(await deliverLovePushes(theirs, record, new Date(later.getTime() + 31 * 60_000))).toBe("skipped");
+      expect(sent).toHaveLength(2);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      await runAsOwner(OTHER_USER_ID, () => setNotificationPreferences({ notifyLoves: true }));
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
   it("unsaves as a final pass, and rewinds even on a card that went private", async () => {
     const theirs = await insertOtherCard({ thought: "A card saved and then let go.", isPublic: true });
     expect((await save(theirs)).ok).toBe(true);
@@ -1722,7 +1851,11 @@ describe.skipIf(!testUrl)("cards integration", () => {
         isPublic: true,
         createdAt: new Date(Date.now() - 120_000),
       });
-      const late = await insertOtherCard({ thought: "Posted after the visit began.", isPublic: true });
+      const late = await insertOtherCard({
+        thought: "Posted after the visit began.",
+        isPublic: true,
+        createdAt: new Date(),
+      });
       const priv = await insertOtherCard({
         thought: "A private thought that belongs to nobody's stack.",
         isPublic: false,
@@ -2213,11 +2346,11 @@ describe.skipIf(!testUrl)("cards integration", () => {
       process.env.APNS_KEY_ID = "KEYID12345";
       process.env.APNS_TEAM_ID = "TEAMID1234";
       process.env.APNS_BUNDLE_ID = "app.angles.ios";
-      await setNotifyFollows(false);
+      await setNotificationPreferences({ notifyFollows: false });
       await deliverFollowPush(notificationId, record);
       expect(sent).toHaveLength(0);
 
-      await setNotifyFollows(true);
+      await setNotificationPreferences({ notifyFollows: true });
       await getDb().delete(deviceTokens);
       await deliverFollowPush(notificationId, record);
       expect(sent).toHaveLength(0);
@@ -2241,7 +2374,7 @@ describe.skipIf(!testUrl)("cards integration", () => {
       ]);
       expect(await getDb().select().from(deviceTokens)).toHaveLength(0);
     } finally {
-      await setNotifyFollows(true);
+      await setNotificationPreferences({ notifyFollows: true });
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) {
           delete process.env[key];

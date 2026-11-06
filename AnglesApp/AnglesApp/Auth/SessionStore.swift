@@ -137,16 +137,7 @@ final class SessionStore {
         guard let current = session, current.tasteCompletedAt == nil else {
             return
         }
-        session = SessionBody(
-            id: current.id,
-            initials: current.initials,
-            name: current.name,
-            tasteCompletedAt: ISO8601Dates.string(from: Date()),
-            tasteConsumedAt: current.tasteConsumedAt,
-            termsAcceptedAt: current.termsAcceptedAt,
-            avatarUrl: current.avatarUrl,
-            notifyFollows: current.notifyFollows
-        )
+        session = current.with(tasteCompletedAt: ISO8601Dates.string(from: Date()))
         if let session {
             snapshotStore.save(session)
         }
@@ -170,16 +161,7 @@ final class SessionStore {
             guard session?.id == current.id, let latest = session else {
                 return false
             }
-            session = SessionBody(
-                id: latest.id,
-                initials: latest.initials,
-                name: latest.name,
-                tasteCompletedAt: latest.tasteCompletedAt,
-                tasteConsumedAt: latest.tasteConsumedAt,
-                termsAcceptedAt: accepted.termsAcceptedAt,
-                avatarUrl: latest.avatarUrl,
-                notifyFollows: latest.notifyFollows
-            )
+            session = latest.with(termsAcceptedAt: accepted.termsAcceptedAt)
             if let session {
                 snapshotStore.save(session)
             }
@@ -191,24 +173,20 @@ final class SessionStore {
 
     /// Push only. The in-app follow list stays either way.
     func setNotifyFollows(_ enabled: Bool) async -> Bool {
+        await setNotificationPreferences(NotificationPreferencesPatch(notifyFollows: enabled))
+    }
+
+    /// Writes any of the notification switches and keeps all three the server answers.
+    func setNotificationPreferences(_ patch: NotificationPreferencesPatch) async -> Bool {
         guard let current = session else {
             return false
         }
         do {
-            let updated = try await profileService.updateNotifyFollows(enabled)
+            let updated = try await profileService.updateNotificationPreferences(patch)
             guard session?.id == current.id, let latest = session else {
                 return false
             }
-            session = SessionBody(
-                id: latest.id,
-                initials: latest.initials,
-                name: latest.name,
-                tasteCompletedAt: latest.tasteCompletedAt,
-                tasteConsumedAt: latest.tasteConsumedAt,
-                termsAcceptedAt: latest.termsAcceptedAt,
-                avatarUrl: latest.avatarUrl,
-                notifyFollows: updated.notifyFollows
-            )
+            session = latest.with(preferences: updated)
             if let session {
                 snapshotStore.save(session)
             }

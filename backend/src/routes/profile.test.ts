@@ -63,8 +63,16 @@ vi.mock("../db/followNotifications.js", () => ({
   markFollowNotificationsRead: vi.fn(),
   registerDeviceToken: vi.fn(),
   unregisterDeviceToken: vi.fn(),
-  setNotifyFollows: vi.fn(),
+  setNotificationPreferences: vi.fn(),
   deliverFollowPush: vi.fn(),
+}));
+
+vi.mock("../db/loveNotifications.js", () => ({
+  markLoveNotificationsRead: vi.fn(),
+}));
+
+vi.mock("../db/notificationCounts.js", () => ({
+  unreadNotificationCount: vi.fn(),
 }));
 
 vi.mock("../lib/objectStorage.js", () => {
@@ -86,7 +94,10 @@ const { createApp } = await import("../app.js");
 const { listBlockedUsers } = await import("../db/communitySafety.js");
 const { listFollowing } = await import("../db/follows.js");
 const { getUsageSummary } = await import("../db/metering.js");
-const { markFollowNotificationsRead } = await import("../db/followNotifications.js");
+const { markFollowNotificationsRead, setNotificationPreferences } = await import(
+  "../db/followNotifications.js"
+);
+const { markLoveNotificationsRead } = await import("../db/loveNotifications.js");
 const { acceptOwnerTerms, getUserById, setOwnerAvatar, updateOwnerIdentity, deleteOwnerAccount } =
   await import("../db/users.js");
 const { deleteAvatar, getAvatar, putAvatar, StorageUnavailableError } = await import("../lib/objectStorage.js");
@@ -109,6 +120,8 @@ const owner = {
   termsAcceptedAt: null as Date | null,
   publishingSuspendedAt: null as Date | null,
   notifyFollows: true,
+  notifyLoves: true,
+  shareLoveName: true,
   kind: "person" as const,
   createdAt: new Date("2026-09-10T12:00:00.000Z"),
   updatedAt: new Date("2026-09-10T12:00:00.000Z"),
@@ -269,7 +282,32 @@ describe("profile avatar", () => {
       tasteConsumedAt: null,
       termsAcceptedAt: null,
       notifyFollows: true,
+      notifyLoves: true,
+      shareLoveName: true,
     });
+  });
+
+  it("writes any one notification switch and returns all three", async () => {
+    vi.mocked(setNotificationPreferences).mockResolvedValue({
+      notifyFollows: true,
+      notifyLoves: false,
+      shareLoveName: true,
+    });
+    const response = await app.request("/profile/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notifyLoves: false }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ notifyFollows: true, notifyLoves: false, shareLoveName: true });
+    expect(setNotificationPreferences).toHaveBeenCalledWith({ notifyLoves: false });
+
+    const empty = await app.request("/profile/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(empty.status).toBe(400);
   });
 
   it("records the Terms acceptance and reports it in the session", async () => {
@@ -327,6 +365,18 @@ describe("profile avatar", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ read: true, unreadCount: 0 });
       expect(markFollowNotificationsRead).toHaveBeenCalledWith({ throughId });
+    });
+
+    it("reads follows and loves through their own newest rows", async () => {
+      vi.mocked(markLoveNotificationsRead).mockReset();
+      vi.mocked(markLoveNotificationsRead).mockResolvedValue(1);
+      const throughId = "00000000-0000-4000-8000-000000000099";
+      const loveThroughId = "00000000-0000-4000-8000-000000000098";
+      const response = await readRequest({ throughId, loveThroughId });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ read: true, unreadCount: 1 });
+      expect(markFollowNotificationsRead).toHaveBeenCalledWith({ throughId });
+      expect(markLoveNotificationsRead).toHaveBeenCalledWith(loveThroughId);
     });
 
     it("still accepts the build 18 timestamp", async () => {
